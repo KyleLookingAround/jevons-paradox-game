@@ -1,3 +1,5 @@
+// bun-types are not installed and tsconfig has "types": [], so the test runner's own module has no declarations.
+// @ts-ignore
 import { describe, expect, test } from 'bun:test';
 import { model } from './model';
 import { fixture, FOUNDED, STEAM_EFFICIENCY, STEAM_REFERENCE } from './fixture';
@@ -24,7 +26,8 @@ function steamAt(k: number, extra: Partial<GameState> = {}): GameState {
   for (let i = 0; i < k; i++) upgrades[STEAM_EFFICIENCY[i]] = 1;
   s = { ...s, upgrades, ...extra };
   s = foundAll(s, C, 'steam');
-  return patchEra(s, 'steam', { eta: STEAM_REFERENCE.eta[k] });
+  // re-baseline on the next tick, as if this economy had been there from the start
+  return patchEra(s, 'steam', { eta: STEAM_REFERENCE.eta[k], baseR: 0, baseD: 0, basePs: 0, smoothR: 0, peakR: 0, etaAtBase: 0 } as never);
 }
 const R = (s: GameState, e: EraId = 'steam', c: Content = C) => model.derive(s, c).eras[e]!.resourceUse;
 const run = (s: GameState, secs: number, dt = 1, c: Content = C) => {
@@ -41,10 +44,10 @@ function greedy(s: GameState, c: Content): GameState {
   return s;
 }
 /** All five eras open, every app founded, every efficiency upgrade bought. */
-function openAll(c: Content = C): GameState {
+function openAll(c: Content = C, maxSeconds = 40): GameState {
   const meta: MetaState = { ...model.createState(c).meta, reckonings: 9 };
   let s = { ...model.createState(c, meta), capital: 1e15 };
-  for (let i = 0; i < 40 && !ERA_ORDER.every((e) => s.eras[e].open); i++) s = greedy(model.tick(greedy(s, c), c, 1), c);
+  for (let i = 0; i < maxSeconds && !ERA_ORDER.every((e) => s.eras[e].open); i++) s = greedy(model.tick(greedy(s, c), c, 1), c);
   return s;
 }
 function deepFreeze<T>(o: T): T {
@@ -223,7 +226,9 @@ describe('efficiency upgrades', () => {
 
 describe('Reckoning', () => {
   test('exhaustion → pending, tick is a no-op, reckon gives a fresh run', () => {
-    let s = steamAt(3, { capital: 1234 });
+    let s = run(steamAt(0, { capital: 1e6 }), 1);
+    for (const u of STEAM_EFFICIENCY.slice(0, 3)) s = model.buyUpgrade(s, C, u);
+    s = { ...s, capital: 1234 };
     s = patchEra(s, 'steam', { reserve: s.eras.steam.reserveMax * 0.004 });
     let n = 0;
     while (!model.derive(s, C).pendingReckoning && n++ < 5000) s = model.tick(s, C, 1);
@@ -257,6 +262,24 @@ describe('Reckoning', () => {
     s = patchEra(s, 'steam', { pressure: 100 });
     expect(model.derive(s, C).pendingReckoning).toEqual({ cause: 'collapse', era: 'steam' });
     expect(model.reckon(s, C).meta.lastRun!.cause).toBe('collapse');
+  });
+  test('Hindsight spent on the Reckoning screen applies to the run it was spent on', () => {
+    let r = model.reckon(run(steamAt(2), 30), C);
+    r = { ...model.click(r, C), meta: { ...r.meta, hindsight: 100 } };
+    const cap0 = r.capital;
+    r = model.buyKnowhow(r, C, 'kh.seed');
+    expect(r.capital).toBeCloseTo(cap0 + C.global.startCapital, 9); // start capital doubled, the click kept
+    r = model.buyKnowhow(r, C, 'kh.engines');
+    expect(r.eras.steam.eta).toBeCloseTo(1.15, 9);
+    expect(model.derive(r, C).eras.steam!.etaFold).toBeCloseTo(1, 9);
+    expect(r.news[0].key).toBe('reckoning');
+    r = model.buyInstitution(model.buyInstitution(r, C, 'inst.stats'), C, 'inst.duty');
+    expect(r.flags.revealed).toBe(true);
+    expect(r.levers['steam.duty'].level).toBe(1);
+    expect(r.meta.hindsight).toBeCloseTo(100 - 1 - 2 - 3 - 5, 9);
+    // mid-run, a purchase does not restart the run
+    const mid = model.buyKnowhow({ ...model.tick(r, C, 1), meta: { ...r.meta, hindsight: 100 } }, C, 'kh.seed');
+    expect(mid.time).toBe(1);
   });
   test('chosen reckoning, knowhow and institutions carry over', () => {
     const s = run(steamAt(2), 60);
@@ -415,6 +438,19 @@ describe('mandate', () => {
     expect(s.news[0].key).toBe('leverLapsed');
     expect(s.news[0].text).toBe('Measure lapses for want of mandate'); // fallback (no variants)
   });
+  test('lapsing is independent of tick length: drops levels until upkeep is covered', () => {
+    let s = { ...steamAt(1), flags: { revealed: true, won: false }, mandate: 1e5 };
+    for (const id of ['steam.cap', 'steam.duty', 'steam.circularity']) s = model.setLever(s, C, id, 2);
+    s = model.setLever(s, C, 'steam.cap', 3);
+    s = { ...s, mandate: 0 };
+    const lv = (st: GameState) => C.levers.map((l) => st.levers[l.id].level).join(',');
+    const a = model.tick(s, C, 1);
+    let b = s;
+    for (let i = 0; i < 10; i++) b = model.tick(b, C, 0.1);
+    expect(lv(a)).toBe(lv(b));
+    expect(model.derive(a, C).mandatePerSec).toBeGreaterThanOrEqual(0);
+    expect(a.news.filter((n) => n.key === 'leverLapsed').length).toBeGreaterThanOrEqual(1);
+  });
   test('mandate accrues from wellbeing above the floor', () => {
     const s = steamAt(4);
     const d = model.derive(s, C);
@@ -498,6 +534,45 @@ describe('robustness', () => {
     s = run(s, 600, 1);
     expect(badNumbers(s)).toEqual([]);
     expect(badNumbers(model.derive(s, C))).toEqual([]);
+  });
+  test('dt = 1 (balancer) and dt = 0.1 (browser) give the same game', () => {
+    const play = (dt: number) => {
+      let s = model.createState(realContent);
+      const buys: [number, string][] = [[60, 'steam.boilers'], [200, 'steam.mills'], [400, 'steam.condenser'], [900, 'steam.railways'], [1100, 'steam.doubleActing']];
+      let i = 0;
+      for (let k = 0; k < Math.round(1500 / dt); k++) {
+        while (i < buys.length && s.time >= buys[i][0] - 1e-9) {
+          const id = buys[i++][1];
+          s = { ...s, capital: s.capital + 1e5 };
+          s = id.endsWith('mills') || id.endsWith('railways') ? model.foundApp(s, realContent, id) : model.buyUpgrade(s, realContent, id);
+        }
+        s = model.tick(s, realContent, dt);
+      }
+      return s;
+    };
+    const a = play(1), b = play(0.1);
+    const close = (x: number, y: number) => expect(Math.abs(x / y - 1)).toBeLessThan(0.01);
+    close(a.capital, b.capital);
+    close(a.eras.steam.reserve, b.eras.steam.reserve);
+    close(a.eras.steam.pressure, b.eras.steam.pressure);
+    close(a.population, b.population);
+    close(a.mandate, b.mandate);
+    close(R(a, 'steam', realContent), R(b, 'steam', realContent));
+  });
+  test('real content: all five eras open, every lever at max, 10 minutes, stays finite', () => {
+    // keep it alive: no collapse, reserves topped up (Code opens ~14 min into Compute, on autoEta alone)
+    const C3: Content = { ...realContent, eras: Object.fromEntries(ERA_ORDER.map((e) => [e, { ...realContent.eras[e], collapseAt: 1e12, reserve: realContent.eras[e].reserve * (realContent.eras[e].resourceKind === 'stock' ? 1e3 : 1) }])) as Content['eras'] };
+    let s = openAll(C3, 3000);
+    for (const e of ERA_ORDER) expect(s.eras[e].open).toBe(true);
+    s = { ...s, mandate: 1e9, flags: { revealed: true, won: false } };
+    for (const e of ERA_ORDER) s = patchEra(s, e, { pressure: 0, reserve: s.eras[e].reserveMax });
+    for (const l of C3.levers) s = model.setLever(s, C3, l.id, l.levels.length);
+    for (let i = 0; i < 600; i++) s = model.tick(s, C3, 1);
+    expect(badNumbers(s)).toEqual([]);
+    const d = model.derive(s, C3);
+    expect(badNumbers(d)).toEqual([]);
+    expect(d.eras.code!.reserveFraction).toBeGreaterThan(0);
+    expect(badNumbers(model.upgradeViews(s, C3))).toEqual([]);
   });
   test('large dt is sub-stepped; fastForward caps and stops', () => {
     const s = steamAt(2);
@@ -594,15 +669,24 @@ describe('Era 5 and cross-era links', () => {
 describe('trend and decoupling', () => {
   test('falling R with high wellbeing counts as decoupling and accrues years', () => {
     // all steam apps, η 18 (saturated), heavy sufficiency pushing R down, wellbeing kept high
+    const C2: Content = { ...C, eras: { ...C.eras, steam: { ...C.eras.steam, pressureIntensity: 0 } } };
+    const go = (st: GameState, n: number) => { for (let i = 0; i < n; i++) st = model.tick(st, C2, 1); return st; };
     let s = { ...steamAt(7), mandate: 1e6, flags: { revealed: true, won: false }, population: 5 };
-    s = run(s, 150);
-    s = model.setLever(s, C, 'steam.sufficiency', 2);
-    s = run(s, 60);
-    const d = model.derive(s, C);
-    expect(d.eras.steam!.trendR).toBeLessThan(0);
-    if (d.wellbeing >= C.global.wellbeingTarget) {
-      expect(d.eras.steam!.decoupling).toBe(true);
-      expect(s.run.decoupledYears).toBeGreaterThan(0);
-    }
+    s = go(s, 200);
+    s = model.setLever(s, C2, 'steam.sufficiency', 2);
+    s = go(s, 150);
+    const d = model.derive(s, C2);
+    expect(d.eras.steam!.trendR).toBeLessThan(-0.001);
+    expect(d.wellbeing).toBeGreaterThanOrEqual(C.global.wellbeingTarget);
+    expect(d.eras.steam!.decoupling).toBe(true);
+    expect(s.run.decoupledYears).toBeGreaterThan(0);
+    expect(s.eras.steam.steadyYears).toBeGreaterThan(0);
+    // fifty years of it: per-era Steady State
+    const near = patchEra(s, 'steam', { steadyYears: 49.99 });
+    const t = model.tick(near, C2, 1);
+    expect(t.meta.steadyEras.steam).toBe(true);
+    expect(t.meta.achievements.steadyState).toBe(true);
+    expect(t.news.some((n) => n.key === 'steadyEra')).toBe(true);
+    expect(model.hindsightOnReckon(t, C2)).toBeGreaterThanOrEqual(100);
   });
 });

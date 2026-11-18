@@ -411,10 +411,24 @@ function solveEra(
     R = FLOW_MAX_UTILISATION * usable;
     D = sigma < 1 ? (R * eta) / (1 - sigma) : D;
   }
-  const util = isFlow ? R / usable : 0;
-  const unrev = isFlow ? clamp((util - DEFECT_UTILISATION_START) / (FLOW_MAX_UTILISATION - DEFECT_UTILISATION_START), 0, 1) : 0;
-  const cut = lev.review * unrev;
-  if (cut > 0) { D *= 1 - cut; R *= 1 - cut; }
+  const unrevAt = (u: number): number =>
+    clamp((u - DEFECT_UTILISATION_START) / (FLOW_MAX_UTILISATION - DEFECT_UTILISATION_START), 0, 1);
+  let util = isFlow ? R / usable : 0;
+  let unrev = isFlow ? unrevAt(util) : 0;
+  if (isFlow && lev.review > 0 && unrev > 0) {
+    // The gate cuts shipped service by review × unreviewedShare, and the share is measured at the gated
+    // utilisation: solve u = u0 · (1 − review · unrev(u)) (left side rises, right side falls: one root).
+    const u0 = util;
+    let lo = 0, hi = u0;
+    for (let it = 0; it < 40; it++) {
+      const mid = (lo + hi) / 2;
+      if (mid < u0 * (1 - lev.review * unrevAt(mid))) lo = mid; else hi = mid;
+    }
+    util = hi;
+    unrev = unrevAt(util);
+    const keep = u0 > 0 ? util / u0 : 1;
+    D *= keep; R *= keep;
+  }
 
   // per-app split
   const appD = new Array<number>(n).fill(0);
@@ -820,7 +834,10 @@ function step(state: GameState, content: Content, dt: number): GameState {
   let mandate = state.mandate + (fl.mandateGain - fl.upkeep) * dt + crisisCount * g.crisisMandate;
   if (mandate <= 0) {
     mandate = 0;
-    if (fl.upkeep > fl.mandateGain) {
+    // Drop the costliest-upkeep lever one level, again and again, until upkeep is covered. Doing it all in this
+    // step (rather than one level per step) keeps the outcome independent of the tick length.
+    let upkeep = fl.upkeep;
+    for (let guard = 0; upkeep > fl.mandateGain + 1e-12 && guard < 1000; guard++) {
       let worst: LeverDef | null = null, worstUp = 0;
       for (const ld of content.levers ?? []) {
         const ls = levers[ld.id];
@@ -828,13 +845,13 @@ function step(state: GameState, content: Content, dt: number): GameState {
         const up = leverNetUpkeep(ld, ls.level, mods.startLevers[ld.id] ?? 0);
         if (up > worstUp) { worstUp = up; worst = ld; }
       }
-      if (worst) {
-        const ls = levers[worst.id];
-        if (levers === state.levers) levers = { ...levers };
-        const lvl = ls.level - 1;
-        levers[worst.id] = { level: lvl, ref: lvl > 0 ? ls.ref : 0 };
-        items.push(headline(tmp, content, 'leverLapsed', time, worst.era));
-      }
+      if (!worst) break;
+      const ls = levers[worst.id];
+      if (levers === state.levers) levers = { ...levers };
+      const lvl = ls.level - 1;
+      levers[worst.id] = { level: lvl, ref: lvl > 0 ? ls.ref : 0 };
+      upkeep += leverNetUpkeep(worst, lvl, mods.startLevers[worst.id] ?? 0) - worstUp;
+      items.push(headline(tmp, content, 'leverLapsed', time, worst.era));
     }
   }
   mandate = fin(mandate);
@@ -1169,6 +1186,21 @@ function reckon(state: GameState, content: Content): GameState {
   return { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, fl.pending?.era)]) };
 }
 
+/**
+ * reckon() hands back the fresh next run, so Hindsight is normally spent on a run at time 0. Start-of-run effects
+ * (start capital, reserves, the η baseline, standing levers) live in state, so a purchase made before the run has
+ * started rebuilds it from the new meta, keeping its news and any capital clicked in the meantime.
+ */
+function withMeta(state: GameState, content: Content, meta: MetaState): GameState {
+  if (state.time > 0 || Object.keys(state.upgrades).length > 0) return { ...state, meta };
+  const before = createState(content, state.meta, state.seed);
+  const fresh = createState(content, meta, state.seed);
+  return {
+    ...fresh, capital: fresh.capital + Math.max(0, state.capital - before.capital), mandate: state.mandate,
+    run: { ...fresh.run, clicks: state.run.clicks }, news: state.news,
+  };
+}
+
 function buyKnowhow(state: GameState, content: Content, id: string): GameState {
   const def = idx(content).knowhow.get(id);
   if (!def) return state;
@@ -1176,10 +1208,8 @@ function buyKnowhow(state: GameState, content: Content, id: string): GameState {
   if (lvl >= def.maxLevel) return state;
   const cost = def.cost * Math.pow(def.costGrowth, lvl);
   if (!(state.meta.hindsight >= cost)) return state;
-  return {
-    ...state,
-    meta: { ...state.meta, hindsight: state.meta.hindsight - cost, knowhow: { ...state.meta.knowhow, [id]: lvl + 1 } },
-  };
+  return withMeta(state, content,
+    { ...state.meta, hindsight: state.meta.hindsight - cost, knowhow: { ...state.meta.knowhow, [id]: lvl + 1 } });
 }
 
 function buyInstitution(state: GameState, content: Content, id: string): GameState {
@@ -1187,10 +1217,9 @@ function buyInstitution(state: GameState, content: Content, id: string): GameSta
   if (!def || state.meta.institutions[id]) return state;
   if (!(def.requires ?? []).every((r) => state.meta.institutions[r])) return state;
   if (!(state.meta.hindsight >= def.cost)) return state;
-  let s: GameState = {
-    ...state,
-    meta: { ...state.meta, hindsight: state.meta.hindsight - def.cost, institutions: { ...state.meta.institutions, [id]: true } },
-  };
+  let s = withMeta(state, content,
+    { ...state.meta, hindsight: state.meta.hindsight - def.cost, institutions: { ...state.meta.institutions, [id]: true } });
+  if (s.time === 0 && Object.keys(s.upgrades).length === 0) return s; // rebuilt: createState applied everything
   // mid-run effects that live in state rather than in recomputed modifiers
   for (const ef of def.effects) {
     if (ef.type === 'reveal' && !s.flags.revealed) s = { ...s, flags: { ...s.flags, revealed: true } };
@@ -1309,8 +1338,12 @@ function deserialize(text: string, content: Content): GameState | null {
     for (const e of ERA_ORDER) if (fresh.eras[e]) eras[e] = merged.eras[e];
     const s: GameState = {
       ...merged, version: SAVE_VERSION, eras,
-      news: Array.isArray(merged.news) ? merged.news.slice(0, NEWS_MAX) : [],
-      history: Array.isArray(merged.history) ? merged.history : [],
+      news: Array.isArray(merged.news)
+        ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number').slice(0, NEWS_MAX)
+        : [],
+      history: Array.isArray(merged.history)
+        ? merged.history.filter((h) => isObj(h) && Number.isFinite(h.time) && isObj(h.eras)).slice(-HISTORY_MAX)
+        : [],
     };
     // sanity: must be computable
     const d = computeFlows(s, content);
