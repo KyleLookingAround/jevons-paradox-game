@@ -1,15 +1,16 @@
-// Pinned top bar (year, capital, mandate, wellbeing, menu) and the era tabs.
+// Pinned top bar (year and age, capital, mandate, wellbeing, menu) and the industry tabs.
 import type { Ctx, Comp } from './ctx';
-import { eraDef, eraWarning, openEras } from './ctx';
-import type { EraId } from '../types';
+import { sectorDef, sectorWarning, openSectors, sectorIndex, roman, ageDef, lookFor } from './ctx';
+import type { SectorId } from '../types';
 import { h, svg, setText, setStyle, show, cls, setAttr, syncChildren } from './dom';
-import { fmt, money, fmtPrice, num, clamp } from './fmt';
+import { fmt, money, num, clamp } from './fmt';
 import { UI_ICONS } from './icons';
-
-const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
 export function buildTopbar(ctx: Ctx): Comp {
   const year = h('span', { class: 'tb-v num' });
+  const ageThe = h('span', { class: 'age-the' });
+  const ageName = h('span', { class: 'age-n' });
+  const ageLbl = h('span', { class: 'tb-l tb-age' }, ageThe, ageName);
   const cap = h('span', { class: 'tb-v num' });
   const inc = h('span', { class: 'tb-s num' });
   const man = h('span', { class: 'tb-v num' });
@@ -17,9 +18,9 @@ export function buildTopbar(ctx: Ctx): Comp {
   const wb = h('span', { class: 'tb-v num' });
   const wbFill = h('span', { class: 'wb-fill' });
   const wbBar = h('span', { class: 'wb-bar', 'aria-hidden': 'true' }, wbFill, h('span', { class: 'wb-tgt' }));
-  const cell = (cl: string, label: string, ...kids: Node[]) =>
-    h('div', { class: 'tb-cell ' + cl }, h('span', { class: 'tb-l', text: label }), h('span', { class: 'tb-row' }, ...kids));
-  const cYear = cell('tb-year', 'Year', year);
+  const cell = (cl: string, label: string | HTMLElement, ...kids: Node[]) =>
+    h('div', { class: 'tb-cell ' + cl }, typeof label === 'string' ? h('span', { class: 'tb-l', text: label }) : label, h('span', { class: 'tb-row' }, ...kids));
+  const cYear = cell('tb-year', ageLbl, year);
   const cCap = cell('tb-cap', 'Capital', cap, inc);
   const cMan = cell('tb-man', 'Mandate', man, manRate);
   const cWb = cell('tb-wb', 'Wellbeing', wb, wbBar);
@@ -29,7 +30,15 @@ export function buildTopbar(ctx: Ctx): Comp {
 
   function update(): void {
     const d = ctx.d, s = ctx.state, g = ctx.content.global;
-    setText(year, String(Math.floor(num(d?.year, 1780))));
+    const y = String(Math.floor(num(d?.year, 1780)));
+    setText(year, y);
+    const age = ageDef(ctx.content, d?.age);
+    const nm = age?.name ?? 'Year';
+    const m = /^(The )(.*)$/.exec(nm);
+    setText(ageThe, m ? m[1] : '');
+    setText(ageName, m ? m[2] : nm);
+    setAttr(cYear, 'title', age ? `${y} · ${age.name}` : null);
+    setAttr(cYear, 'aria-label', age ? `${y}, ${age.name}` : `Year ${y}`);
     setText(cap, money(s.capital));
     const ip = num(d?.incomePerSec);
     setText(inc, `+${money(ip)}/s`);
@@ -52,65 +61,77 @@ export function buildTopbar(ctx: Ctx): Comp {
 }
 
 export function buildTabs(ctx: Ctx): Comp {
-  const el = h('nav', { class: 'tabs', 'aria-label': 'Eras' });
-  const btns = new Map<EraId, HTMLButtonElement>();
-  const lockName = h('span', { class: 'tab-name' });
-  const lockSub = h('span', { class: 'tab-sub num' });
-  const locked = h('button', { class: 'tab locked', type: 'button', onclick: () => explainLocked() },
-    svg(UI_ICONS.lock), h('span', { class: 'tab-txt' }, lockName, lockSub));
+  const el = h('nav', { class: 'tabs', 'aria-label': 'Industries' });
+  const btns = new Map<SectorId, HTMLButtonElement>();
+  const locks = new Map<SectorId, { b: HTMLButtonElement; name: HTMLElement; sub: HTMLElement }>();
   let key = '';
+  let shown = '';
 
-  function explainLocked(): void {
-    const n = ctx.d?.nextEra;
-    if (!n) return;
-    const def = eraDef(ctx, n.id), prevId = ctx.content.eras ? (Object.values(ctx.content.eras).find((e) => e.index === (def?.index ?? 0) - 1)?.id) : undefined;
-    const prev = prevId ? eraDef(ctx, prevId) : undefined;
-    const svc = prev ? prev.service.name.toLowerCase() : 'the previous service';
-    const unit = prev ? prev.service.unit : '';
-    const rk = n.reckoningsNeeded > 0 ? ` and ${n.reckoningsNeeded} Reckoning${n.reckoningsNeeded === 1 ? '' : 's'} behind you (you have ${n.reckoningsHave})` : '';
-    ctx.toast(`${def?.name ?? 'The next era'} opens when ${svc} sells below £${fmtPrice(n.priceNeeded)}${unit ? '/' + unit : ''}${rk}.`);
-  }
-
-  function tabFor(id: EraId): HTMLButtonElement {
+  function tabFor(id: SectorId): HTMLButtonElement {
     let b = btns.get(id);
     if (!b) {
-      const def = eraDef(ctx, id);
-      b = h('button', { class: 'tab', type: 'button', 'data-theme': def?.theme ?? '', onclick: () => ctx.selectEra(id) },
-        h('span', { class: 'tab-num', text: ROMAN[def?.index ?? 0] ?? '' }),
+      const def = sectorDef(ctx, id);
+      b = h('button', { class: 'tab', type: 'button', 'data-look': lookFor(ctx.content, id), onclick: () => ctx.selectSector(id) },
+        h('span', { class: 'tab-num', text: roman(sectorIndex(ctx.content, id)) }),
         h('span', { class: 'tab-txt' }, h('span', { class: 'tab-name', text: def?.name ?? id })),
         h('span', { class: 'tab-dot', 'aria-hidden': 'true' }));
       btns.set(id, b);
     }
     return b;
   }
+  function lockFor(id: SectorId) {
+    let l = locks.get(id);
+    if (!l) {
+      const name = h('span', { class: 'tab-name' });
+      const sub = h('span', { class: 'tab-sub num' });
+      const b = h('button', { class: 'tab locked', type: 'button', 'aria-haspopup': 'dialog', onclick: () => ctx.openLocked(id) },
+        svg(UI_ICONS.lock), h('span', { class: 'tab-txt' }, name, sub));
+      l = { b, name, sub };
+      locks.set(id, l);
+    }
+    return l;
+  }
 
   function update(): void {
-    const ids = openEras(ctx);
-    const n = ctx.d?.nextEra ?? null;
-    const k = ids.join(',') + '|' + (n ? n.id : '');
+    const ids = openSectors(ctx);
+    const next = Array.isArray(ctx.d?.nextSectors) ? ctx.d.nextSectors : [];
+    const k = ids.join(',') + '|' + next.map((n) => n.id).join(',');
     if (k !== key) {
       key = k;
-      const nodes: Node[] = ids.map(tabFor);
-      if (n) nodes.push(locked);
-      syncChildren(el, nodes);
+      syncChildren(el, [...ids.map(tabFor), ...next.map((n) => lockFor(n.id).b)]);
     }
     for (const id of ids) {
       const b = tabFor(id);
-      const sel = id === ctx.era;
+      const sel = id === ctx.sector;
       cls(b, 'sel', sel);
       setAttr(b, 'aria-current', sel ? 'page' : null);
-      cls(b, 'warn', eraWarning(ctx, id));
+      cls(b, 'warn', sectorWarning(ctx, id));
     }
-    if (n) {
-      const def = eraDef(ctx, n.id);
-      setText(lockName, def?.name ?? n.id);
+    // Keep the selected tab in view when the row scrolls sideways (many industries on a phone).
+    if (shown !== ctx.sector) {
+      shown = ctx.sector;
+      const b = btns.get(ctx.sector);
+      if (b && el.scrollWidth > el.clientWidth) {
+        const left = b.offsetLeft - el.offsetLeft - 16;
+        if (left < el.scrollLeft || left + b.offsetWidth + 32 > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, left);
+      }
+    }
+    for (const n of next) {
+      const l = lockFor(n.id);
+      const def = sectorDef(ctx, n.id);
+      setText(l.name, def?.name ?? n.id);
+      const list = Array.isArray(n.checklist) ? n.checklist : [];
+      const met = list.filter((c) => c.met).length;
       const parts: string[] = [];
-      const pn = num(n.priceNow, NaN);
-      parts.push(Number.isFinite(pn) ? `£${fmtPrice(pn)} → £${fmtPrice(n.priceNeeded)}` : `at £${fmtPrice(n.priceNeeded)}`);
-      const need = num(n.reckoningsNeeded) - num(n.reckoningsHave);
-      if (need > 0) parts.push(`${need} more Reckoning${need === 1 ? '' : 's'}`);
-      setText(lockSub, parts.join(' · '));
-      setAttr(locked, 'aria-label', `${def?.name ?? n.id}, locked: ${parts.join(', ')}`);
+      if (n.ready) parts.push('opening');
+      else {
+        if (list.length) parts.push(`${met} of ${list.length}`);
+        const need = num(n.reckoningsNeeded) - num(n.reckoningsHave);
+        if (need > 0) parts.push(`${need} more Reckoning${need === 1 ? '' : 's'}`);
+      }
+      setText(l.sub, parts.join(' · '));
+      cls(l.b, 'ready', !!n.ready);
+      setAttr(l.b, 'aria-label', `${def?.name ?? n.id}, a locked industry: ${parts.join(', ') || 'conditions'}. Show what it needs.`);
     }
   }
   return { el, update };

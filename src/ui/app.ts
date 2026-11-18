@@ -1,15 +1,15 @@
 // Assembles the page and keeps the layout in step with the state. Holds no game rules.
 import type { Ctx, Comp } from './ctx';
-import { eraDef, openEras } from './ctx';
-import type { EraId } from '../types';
-import { h, setText, show, cls } from './dom';
+import { sectorDef, openSectors, lookFor, accentFor, ageOfSector, sectorIds } from './ctx';
+import type { SectorId } from '../types';
+import { h, setText, show, cls, setAttr } from './dom';
 import { buildTopbar, buildTabs } from './bar';
 import { buildGauges } from './gauges';
-import { buildNews, buildApps, buildDock } from './world';
-import { buildUpgrades, buildLevers } from './panels';
+import { buildNews, buildWorld, buildDock } from './world';
+import { buildUpgrades, buildLevers, buildBudget } from './panels';
 import {
-  buildSheets, buildToasts, formulaSheet, menuSheet, shopSheet, confirmReckonSheet, pendingSheet, summarySheet, winSheet,
-  type MenuHooks, type Sheets,
+  buildSheets, buildToasts, formulaSheet, menuSheet, shopSheet, confirmReckonSheet, pendingSheet, summarySheet, winSheet, lockedSheet,
+  unreadSaveSheet, type MenuHooks, type Sheets,
 } from './sheets';
 import { fmt } from './fmt';
 
@@ -21,8 +21,10 @@ export interface UI {
   openFormula: Ctx['openFormula'];
   openMenu(): void;
   openShop(): void;
+  openLocked(id: SectorId): void;
   confirmReckoning(): void;
-  /** Call after the whole state was swapped (import, reset): forgets transient memory. */
+  unreadSave(raw: string): void;
+  /** Call after the whole state was swapped (import, reset, new run): forgets transient memory. */
   reset(): void;
 }
 
@@ -30,7 +32,14 @@ const THEME_COLOUR: Record<string, string> = {
   ledger: '#efe6d0', gaslight: '#141d33', chrome: '#ece5d6', terminal: '#070b08', agentic: '#f2f1ed',
 };
 
-export function mountUI(root: HTMLElement, ctx: Ctx, hooks: MenuHooks & { reckon(): boolean }): UI {
+export interface AppHooks extends MenuHooks {
+  /** End the run (model.reckon). True if accepted. */
+  reckon(): boolean;
+  /** The post-Reckoning screens are closed and the next run begins: restart the clock. */
+  resume(): void;
+}
+
+export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const sheets = buildSheets();
   const toasts = buildToasts();
 
@@ -39,8 +48,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: MenuHooks & { reckon
   const gauges = buildGauges(ctx);
   const dock = buildDock(ctx);
   const news = buildNews(ctx);
-  const apps = buildApps(ctx);
+  const world = buildWorld(ctx);
   const ups = buildUpgrades(ctx);
+  const budget = buildBudget(ctx);
   const levs = buildLevers(ctx);
 
   const onboard = h('p', { class: 'onboard', hidden: true });
@@ -50,17 +60,18 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: MenuHooks & { reckon
     h('p', { class: 'muted' }, 'Hindsight on offer: ', hb), reckonBtn);
 
   const cockpit = h('div', { class: 'cockpit' }, topbar.el, tabs.el, gauges.el, dock.el);
-  const feed = h('main', { class: 'feed', id: 'main' }, onboard, news.el, apps.el, ups.el, levs.el, foot);
+  // Improvements sit above the world so that a phone shows the first purchase above the fold.
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, onboard, news.el, ups.el, world.el, budget.el, levs.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, toasts.el);
 
-  const comps: Comp[] = [topbar, tabs, gauges, dock, news, apps, ups, levs];
+  const comps: Comp[] = [topbar, tabs, gauges, dock, news, world, ups, budget, levs];
 
-  let theme = '';
-  let knownOpen: Set<EraId> | null = null;
+  let look = '', accent: string | null | undefined;
+  let knownOpen: Set<SectorId> | null = null;
   let wasWon = !!ctx.state.flags?.won;
   let onboardState: 'show' | 'fading' | 'gone' | '' = '';
 
-  function reckonNow(): void { if (hooks.reckon()) summarySheet(ctx, sheets, () => { /* the loop resumes once no blocking sheet is open */ }); }
+  function reckonNow(): void { if (hooks.reckon()) summarySheet(ctx, sheets, () => hooks.resume()); }
 
   const ui: UI = {
     sheets,
@@ -68,33 +79,37 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: MenuHooks & { reckon
     openFormula: (k) => formulaSheet(ctx, sheets, k),
     openMenu: () => menuSheet(ctx, sheets, hooks),
     openShop: () => shopSheet(ctx, sheets),
+    openLocked: (id) => lockedSheet(ctx, sheets, id),
     confirmReckoning: () => confirmReckonSheet(ctx, sheets, reckonNow),
+    unreadSave: (raw) => unreadSaveSheet(sheets, raw),
     blocking: () => sheets.blocking(),
     reset() { knownOpen = null; wasWon = !!ctx.state.flags?.won; onboardState = ''; },
     update,
   };
 
   function update(): void {
-    const open = openEras(ctx);
-    // Keep the selected tab on an open era.
-    if (!open.includes(ctx.era) && open.length) ctx.era = open[0];
-    // Era opened: say so once, with a way there.
+    const open = openSectors(ctx);
+    // Keep the selected tab on an open industry.
+    if (!open.includes(ctx.sector) && open.length) ctx.sector = open[0];
+    // An industry opened: say so once, with a way there.
     if (knownOpen) {
       for (const id of open) if (!knownOpen.has(id)) {
-        const def = eraDef(ctx, id);
-        if (def) toasts.push(`${def.name}, ${def.years}. ${def.tagline}`, { label: 'Go there', run: () => ctx.selectEra(id) }, 12000);
+        const def = sectorDef(ctx, id);
+        if (def) toasts.push(`${def.name}, ${def.years}. ${def.tagline}`, { label: 'Go there', run: () => ctx.selectSector(id) }, 10000);
       }
     }
     knownOpen = new Set(open);
 
-    const def = eraDef(ctx);
-    const t = def?.theme ?? 'ledger';
-    if (t !== theme) {
-      theme = t;
-      document.documentElement.setAttribute('data-era', t);
+    const lk = lookFor(ctx.content, ctx.sector);
+    const ac = accentFor(ctx.content, ctx.sector);
+    const html = document.documentElement;
+    if (lk !== look) {
+      look = lk;
+      html.setAttribute('data-look', lk);
       const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', THEME_COLOUR[t] ?? '#efe6d0');
+      if (meta) meta.setAttribute('content', THEME_COLOUR[lk] ?? '#efe6d0');
     }
+    if (ac !== accent) { accent = ac; setAttr(html, 'data-accent', ac); }
 
     for (const c of comps) c.update();
 
@@ -103,9 +118,11 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: MenuHooks & { reckon
     if (onboardState === '') {
       onboardState = fresh && ctx.state.time < 600 ? 'show' : 'gone';
       const again = (ctx.state.meta?.reckonings ?? 0) > 0;
+      const first = sectorIds(ctx.content)[0];
+      const y = ageOfSector(ctx.content, first)?.yearSpan?.[0] ?? 1780;
       setText(onboard, again
-        ? 'Lancashire, 1780, again. The pit is flooded. You know more this time.'
-        : 'Lancashire, 1780. You have one atmospheric engine and a flooded pit.');
+        ? `Lancashire, ${y}, again. The pit is flooded. You know more this time.`
+        : `Lancashire, ${y}. You have one atmospheric engine and a flooded pit.`);
       show(onboard, onboardState === 'show');
     } else if (onboardState === 'show' && !fresh) {
       onboardState = 'fading';
@@ -116,7 +133,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: MenuHooks & { reckon
     setText(hb, fmt(Math.floor(ctx.d?.hindsightIfReckonNow ?? 0)));
 
     // Forced Reckoning: the loop has stopped; show the card.
-    if (ctx.d?.pendingReckoning && sheets.kind() !== 'pending' && sheets.kind() !== 'summary' && sheets.kind() !== 'shop') {
+    const k = sheets.kind();
+    if (ctx.d?.pendingReckoning && k !== 'pending' && k !== 'summary' && k !== 'shop') {
       pendingSheet(ctx, sheets, () => reckonNow());
     }
     // Win: first time only.
