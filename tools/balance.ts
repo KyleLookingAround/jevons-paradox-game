@@ -14,12 +14,13 @@
  *               seating a cap / duty / reveal loadout, then Know-how.
  *   forks       plays `efficiency` once per combination of fork arms (upgrades linked by `excludes`), at most 16
  *               combinations (random ones from --seed beyond that), each for [runs] runs from a fresh meta, and prints
- *               Hindsight per minute per combination and the spread (fork audit target ±10%).
+ *               Hindsight per minute per combination and the spread (fork audit target ±10%). Forks of
+ *               sectorOrder[0] only, unless --fork-sector=<id> or --fork-sector=all.
  *   idle        buy nothing.
  *
  * Flags: --fixture (test fixture instead of src/content), --hours=3 (cap per run), --every=120 (series interval, s),
  *        --cps=0 (manual clicks per second), --seed=1, --no-series, --dt=1, --json (one JSON summary per run, no
- *        text), --budget-fold=2.5.
+ *        text), --budget-fold=2.5, --fork-sector=<id>|all.
  * Runs are consecutive (the prestige loop), except in `forks`.
  */
 import { model } from '../src/model';
@@ -57,7 +58,9 @@ const SERIES = flag('no-series', 'false') !== 'true';
 const DT = parseFloat(flag('dt', '1'));
 const JSON_OUT = flag('json', 'false') === 'true';
 const BUDGET_FOLD = parseFloat(flag('budget-fold', '2.5'));
+const FORK_SECTOR = flag('fork-sector', '');
 const ORDER = C.sectorOrder;
+const forkSector = FORK_SECTOR || ORDER[0];
 const log = (...a: unknown[]) => { if (!JSON_OUT) console.log(...a); };
 
 /* ---------------- formatting ---------------- */
@@ -470,7 +473,8 @@ function forkGroups(): string[][] {
   const adj = new Map<string, Set<string>>();
   const link = (a: string, b: string) => { (adj.get(a) ?? adj.set(a, new Set()).get(a)!).add(b); };
   const ids = new Set(C.upgrades.map((u) => u.id));
-  for (const u of C.upgrades) for (const x of u.excludes ?? []) if (ids.has(x)) { link(u.id, x); link(x, u.id); }
+  const inScope = (id: string) => forkSector === 'all' || C.upgrades.find((u) => u.id === id)?.sector === forkSector;
+  for (const u of C.upgrades) for (const x of u.excludes ?? []) if (ids.has(x) && inScope(u.id) && inScope(x)) { link(u.id, x); link(x, u.id); }
   const seen = new Set<string>();
   const groups: string[][] = [];
   for (const u of C.upgrades) {
@@ -499,7 +503,7 @@ if (strategy === 'forks') {
     while (picked.size < 16) picked.add(Math.floor(rnd() * combos.length));
     combos = [...picked].sort((a, b) => a - b).map((i) => combos[i]);
   }
-  log(`forks: ${groups.length} fork group(s) [${groups.map((g) => g.join(' | ')).join('; ')}], ${total} combination(s), playing ${combos.length}`);
+  log(`forks (sector ${forkSector}): ${groups.length} fork group(s) [${groups.map((g) => g.join(' | ')).join('; ')}], ${total} combination(s), playing ${combos.length}`);
   const results: { arms: string[]; hpm: number; hindsight: number; minutes: number }[] = [];
   for (const arms of combos) {
     const skip = new Set(groups.flat().filter((id) => !arms.includes(id)));

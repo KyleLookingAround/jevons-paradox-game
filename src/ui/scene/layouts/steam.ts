@@ -10,56 +10,55 @@ import { field } from '../props/ledger';
 
 const SHAFT_X = 70;
 const FIELDS: Slot[] = [
-  { p: 'furrows', x: 46, y: 346, w: 64 }, { p: 'furrows', x: 205, y: 344, w: 60 }, { p: 'furrows', x: 300, y: 352, w: 56 },
-  { p: 'furrows', x: 150, y: 366, w: 70 }, { p: 'furrows', x: 380, y: 364, w: 52 },
+  { p: 'furrows', x: 48, y: 332, w: 66 }, { p: 'furrows', x: 205, y: 330, w: 60 }, { p: 'furrows', x: 302, y: 340, w: 58 },
+  { p: 'furrows', x: 150, y: 360, w: 72 }, { p: 'furrows', x: 384, y: 356, w: 52 },
 ];
 
 export const steam: Layout = {
   id: 'steam',
   look: 'ledger',
   place: 'a coal valley running down to the sea',
-  bands: [246, 316],
-  depth: [190, 0.42, 372, 1],
+  bands: [200, 264],
+  depth: [110, 0.4, 372, 1.15],
 
   backdrop(c) {
-    const farRidge = ridge([[0, 170], [60, 152], [130, 163], [200, 147], [280, 160], [350, 150], [410, 168], [450, 190], [470, 201]], 270);
-    const midRidge = ridge([[0, 199], [50, 189], [120, 201], [190, 191], [250, 205], [310, 199], [370, 211], [420, 216], [452, 238], [466, 256]], 300);
-    const valley = ridge([[0, 236], [90, 232], [180, 240], [290, 236], [380, 244], [440, 254], [468, 272], [478, 334]], 400);
-    const fore = ridge([[0, 322], [120, 326], [260, 331], [380, 335], [445, 340]], 372);
+    const farRidge = ridge([[0, 108], [70, 92], [150, 104], [230, 88], [320, 100], [390, 94], [430, 108], [452, 121]], 230);
+    const midRidge = ridge([[0, 138], [60, 128], [130, 142], [200, 132], [270, 146], [340, 140], [400, 152], [440, 162], [462, 180]], 260);
+    const valley = ridge([[0, 168], [100, 164], [200, 174], [300, 170], [400, 182], [450, 196], [470, 214], [478, 300]], 400);
+    const fore = ridge([[0, 300], [120, 304], [260, 310], [380, 316], [446, 320]], 372);
     const sky =
-      engravedSun(512, 62, 15) +
+      engravedSun(512, 48, 14) +
       `<g class="nosteady">` +
-      P('M60 70c6-9 18-9 22-2c5-6 16-4 17 4c7 0 9 8 3 10H58c-6-2-5-11 2-12z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') +
-      P('M300 46c5-7 15-7 18-1c4-5 13-3 14 3c6 0 7 7 2 8H298c-5-2-4-9 2-10z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') + '</g>';
+      P('M60 50c6-9 18-9 22-2c5-6 16-4 17 4c7 0 9 8 3 10H58c-6-2-5-11 2-12z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') +
+      P('M300 30c5-7 15-7 18-1c4-5 13-3 14 3c6 0 7 7 2 8H298c-5-2-4-9 2-10z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') + '</g>';
     const far =
-      P(farRidge, 'tr', 'fill-opacity=".38"') + P(farRidge, 'hz', `fill="${c.hatch(0.3)}" opacity=".35"`) + P(farRidge.replace(/L\d+(\.\d+)? 270Z$/, ''), 'k k2') +
-      R(430, 199.5, 170, 75, 'wa') + L(430, 199.5, 600, 199.5, 'k') + waterLines(440, 203, 160, 60, 40, 'sea') +
-      P(midRidge, 'tr', 'fill-opacity=".6"') + P(midRidge, 'hz', `fill="${c.hatch(0.35)}" opacity=".45"`) +
-      P('M0 214Q60 206 120 214M150 210Q200 202 250 214M280 214Q330 208 380 220', 'k k2') +
-      bprop(church, 214, 197, 0.42, 0.5, c) + bprop(poplar, 168, 194, 0.42, 0.3, c) + bprop(poplar, 176, 195, 0.4, 0.8, c) +
-      bprop(cottage, 120, 201, 0.4, 0.2, c) + bprop(cottage, 300, 200, 0.4, 0.7, c) + bprop(tree, 330, 203, 0.4, 0.4, c) + bprop(tree, 360, 208, 0.42, 0.9, c);
+      P(farRidge, 'tr', 'fill-opacity=".34"') + P(farRidge.replace(/L[\d.]+ 230Z$/, ''), 'k k2') +
+      R(440, 120, 160, 90, 'wa') + L(440, 120, 600, 120, 'k') + waterLines(446, 124, 154, 70, 36, 'sea') +
+      P(midRidge, 'tr', 'fill-opacity=".55"') + P(midRidge, 'hz', `fill="${c.hatch(0.4)}" opacity=".3"`) + P(midRidge.replace(/L[\d.]+ 260Z$/, ''), 'k k2') +
+      P('M0 152Q60 144 120 152M150 148Q200 140 250 154M280 156Q330 150 380 164', 'k k2') +
+      bprop(church, 214, 140, 0.48, 0.5, c) + bprop(poplar, 168, 136, 0.46, 0.3, c) + bprop(poplar, 177, 137, 0.44, 0.8, c) +
+      bprop(cottage, 120, 144, 0.44, 0.2, c) + bprop(cottage, 300, 146, 0.44, 0.7, c) + bprop(tree, 336, 147, 0.46, 0.4, c) + bprop(tree, 366, 154, 0.48, 0.9, c);
     const mid =
-      P(valley, 'gd') + P(valley, 'tr', 'fill-opacity=".42"') + P('M0 236C90 232 180 240 290 236S440 254 468 272L478 334', 'k k2') +
-      P('M455 262L600 258V340H470Z', 'gd') + P('M455 262L600 258V340H470Z', 'tr', 'fill-opacity=".3"') +
-      ribbon([[150, 237], [205, 248], [255, 262], [300, 280], [350, 300], [410, 322], [456, 340]], 2, 16, 'wa') +
-      waterLines(260, 268, 170, 60, 14, 'river', 'k k2') +
-      bprop(hedge, 120, 262, 0.55, 0.5, c, { w: 60 }) + bprop(hedge, 230, 300, 0.7, 0.5, c, { w: 50 }) +
-      bprop(tree, 30, 300, 0.62, 0.3, c) + bprop(tree, 222, 280, 0.6, 0.6, c) + bprop(tree, 440, 300, 0.66, 0.1, c);
+      P(valley, 'gd') + P(valley, 'tr', 'fill-opacity=".45"') + P(valley.replace(/L[\d.]+ 400Z$/, ''), 'k k2') +
+      P('M455 196L600 190V320H468Z', 'gd') + P('M455 196L600 190V320H468Z', 'tr', 'fill-opacity=".3"') +
+      ribbon([[168, 171], [215, 188], [262, 214], [310, 240], [362, 264], [410, 286], [454, 306]], 2, 18, 'wa') +
+      waterLines(270, 222, 170, 70, 14, 'river', 'k k2') +
+      bprop(hedge, 120, 210, 0.6, 0.5, c, { w: 70 }) + bprop(hedge, 236, 250, 0.75, 0.5, c, { w: 56 }) +
+      bprop(tree, 28, 246, 0.72, 0.3, c) + bprop(tree, 226, 232, 0.68, 0.6, c) + bprop(tree, 444, 262, 0.8, 0.1, c);
     const near =
-      P(fore, 'gd') + P(fore, 'tr', 'fill-opacity=".5"') + P('M0 322C120 326 260 331 380 335L445 340', 'k k2') +
+      P(fore, 'gd') + P(fore, 'tr', 'fill-opacity=".55"') + P(fore.replace(/L[\d.]+ 372Z$/, ''), 'k k2') +
       FIELDS.map((s) => bprop(field, s.x, s.y, 1, 0.5, c, { w: s.w })).join('') +
-      P('M434 340Q470 334 600 337V372H426Z', 'wa') + P('M434 340Q470 334 600 337', 'k') + waterLines(440, 343, 160, 27, 26, 'basin') +
-      tufts(0, 330, 440, 40, 70, 'grass') +
-      bprop(tree, 12, 372, 1.45, 0.75, c) + bprop(tree, 420, 372, 1.1, 0.2, c);
-    // The cut-away: strata and the seam, emptied outward from the shaft as the reserve falls.
+      P('M436 322Q470 314 600 317V372H426Z', 'wa') + P('M436 322Q470 314 600 317', 'k') + waterLines(442, 325, 158, 44, 30, 'basin') +
+      tufts(0, 310, 436, 60, 60, 'grass') +
+      bprop(tree, 12, 372, 1.6, 0.75, c) + bprop(tree, 418, 372, 1.2, 0.2, c);
     const ox = (SHAFT_X / 600 * 100).toFixed(2) + '%';
     const cut =
-      R(0, 372, 600, 28, 'gd') + R(0, 372, 600, 28, 'hz', `fill="${c.hatch(0.9)}" opacity=".5"`) +
+      R(0, 372, 600, 28, 'gd') + R(0, 372, 600, 28, 'hz', `fill="${c.hatch(0.9)}" opacity=".45"`) +
       L(0, 372, 600, 372, 'k K') + P('M0 379Q150 377 300 380T600 379M0 395Q200 393 400 396T600 395', 'k k2') +
       R(0, 384, 600, 8, 'd') +
       `<rect x="0" y="384.6" width="600" height="6.8" class="dx" style="transform-origin:${ox} 50%;fill:var(--s-paper)"/>` +
       `<rect x="0" y="384.6" width="600" height="6.8" class="dx" style="transform-origin:${ox} 50%" fill="${c.hatch(1, 1)}" opacity=".35"/>` +
-      R(SHAFT_X - 1.6, 372, 3.2, 20, 'b') + L(SHAFT_X, 372, SHAFT_X, 392, 'k') + R(148, 372, 2.6, 20, 'b');
+      R(SHAFT_X - 1.6, 372, 3.2, 20, 'b') + L(SHAFT_X, 372, SHAFT_X, 392, 'k') + R(158, 372, 2.6, 20, 'b');
     return { sky, far, mid, near, cut };
   },
 
@@ -67,91 +66,91 @@ export const steam: Layout = {
     {
       key: 'town', driver: 'population',
       slots: weave(
-        scatter('terrace', [150, 238, 300, 52], 22, 'steam-town', { from: [250, 262], gap: [30, 7] }),
-        scatter(['cottage', 'terrace'], [10, 300, 120, 12], 4, 'steam-town2', { from: [100, 306], gap: [24, 6] }),
+        scatter('terrace', [150, 178, 290, 62], 18, 'steam-town', { from: [262, 200], gap: [36, 9] }),
+        scatter(['cottage', 'terrace'], [8, 236, 120, 22], 4, 'steam-town2', { from: [100, 246], gap: [26, 8] }),
       ),
     },
     {
       key: 'pump', match: ['pump'],
-      anchor: { p: 'engine', x: SHAFT_X, y: 302, s: 1 },
-      slots: scatter('engine', [8, 238, 190, 44], 5, 'steam-pumps', { from: [100, 270], gap: [40, 8], k: 0.95 }),
-      hit: [22, 226, 96, 80],
+      anchor: { p: 'engine', x: SHAFT_X, y: 284, s: 1.1 },
+      slots: scatter('engine', [10, 176, 180, 56], 4, 'steam-pumps', { from: [100, 210], gap: [46, 10], k: 0.95 }),
+      hit: [20, 196, 100, 92],
     },
     {
       key: 'winder', match: ['winder'],
-      anchor: { p: 'headframe', x: 150, y: 306, s: 0.95 },
-      slots: scatter('headframe', [6, 240, 205, 52], 8, 'steam-winders', { from: [150, 290], gap: [26, 7], k: 0.95 }),
-      hit: [120, 252, 62, 56],
+      anchor: { p: 'headframe', x: 162, y: 290, s: 1.05 },
+      slots: scatter('headframe', [4, 186, 210, 90], 7, 'steam-winders', { from: [150, 250], gap: [30, 9], k: 0.95 }),
+      hit: [128, 230, 70, 64],
     },
     {
       key: 'spoil', driver: 'depletion', curve: 0.9,
       slots: [
-        { p: 'spoil', x: 196, y: 316, v: 0.4 }, { p: 'spoil', x: 112, y: 286, v: 0.6 }, { p: 'spoil', x: 30, y: 262, v: 0.3 },
-        { p: 'spoil', x: 186, y: 262, v: 0.7 }, { p: 'spoil', x: 228, y: 318, v: 0.95 }, { p: 'spoil', x: 80, y: 250, v: 0.8 },
-        { p: 'spoil', x: 130, y: 248, v: 0.5 }, { p: 'spoil', x: 4, y: 290, v: 1 },
+        { p: 'spoil', x: 204, y: 298, v: 0.4 }, { p: 'spoil', x: 116, y: 262, v: 0.6 }, { p: 'spoil', x: 30, y: 226, v: 0.3 },
+        { p: 'spoil', x: 196, y: 236, v: 0.7 }, { p: 'spoil', x: 236, y: 300, v: 0.95 }, { p: 'spoil', x: 82, y: 214, v: 0.8 },
+        { p: 'spoil', x: 134, y: 204, v: 0.5 }, { p: 'spoil', x: 6, y: 268, v: 1 },
       ],
     },
     {
       key: 'mills', match: ['mill'],
-      anchor: { p: 'mill', x: 312, y: 322, v: 0.75 },
+      anchor: { p: 'mill', x: 312, y: 302, v: 0.75, s: 1.05 },
       slots: weave(
-        scatter('mill', [225, 246, 210, 60], 9, 'steam-mills', { from: [312, 300], gap: [46, 8], k: 0.95 }),
-        scatter('chimney', [215, 244, 230, 50], 7, 'steam-stacks', { from: [300, 290], gap: [16, 6] }),
+        scatter('mill', [222, 186, 215, 92], 8, 'steam-mills', { from: [312, 260], gap: [52, 12], k: 0.95 }),
+        scatter('chimney', [214, 184, 232, 80], 6, 'steam-stacks', { from: [300, 240], gap: [18, 8] }),
       ),
-      hit: [258, 262, 112, 64],
+      hit: [250, 222, 124, 84],
     },
     {
       key: 'rail', match: ['train'],
-      anchor: { p: 'viaduct', x: 24, y: 247, s: 0.7, w: 400 / 0.7, band: 'far' },
+      anchor: { p: 'viaduct', x: 56, y: 200, s: 0.85, w: 384 / 0.85, band: 'far' },
       slots: [
-        { p: 'rails', x: -10, y: 297, s: 1, w: 620, band: 'mid' },
-        { p: 'station', x: 238, y: 296, s: 0.85, band: 'mid' }, { p: 'signal', x: 120, y: 296, s: 0.85, band: 'mid' },
-        { p: 'goodsShed', x: 410, y: 296, s: 0.8, band: 'mid' }, { p: 'signal', x: 372, y: 296, s: 0.85, band: 'mid' },
-        { p: 'station', x: 40, y: 246, s: 0.55, band: 'far' },
+        { p: 'rails', x: -10, y: 262, s: 1, w: 620, band: 'mid' },
+        { p: 'station', x: 240, y: 262, s: 0.95, band: 'mid' }, { p: 'signal', x: 120, y: 262, s: 0.95, band: 'mid' },
+        { p: 'goodsShed', x: 412, y: 262, s: 0.9, band: 'mid' }, { p: 'signal', x: 376, y: 262, s: 0.95, band: 'mid' },
+        { p: 'station', x: 70, y: 199, s: 0.6, band: 'far' },
       ],
       movers: [
-        { p: 'train', x0: -70, y0: 225.3, x1: 470, y1: 225.3, dur: 26, n: 3, s: 0.5, band: 'far' },
-        { p: 'train', x0: 680, y0: 296.6, x1: -90, y1: 296.6, dur: 19, n: 2, s: 0.82, from: 0.2, band: 'mid' },
+        { p: 'train', x0: -70, y0: 174.5, x1: 480, y1: 174.5, dur: 26, n: 3, s: 0.56, band: 'far' },
+        { p: 'train', x0: 690, y0: 261.6, x1: -100, y1: 261.6, dur: 18, n: 2, s: 0.92, from: 0.2, band: 'mid' },
       ],
-      hit: [40, 196, 230, 36],
-      site: [100, 236, 120, 8],
+      hit: [60, 150, 210, 46],
+      site: [110, 190, 120, 9],
     },
     {
       key: 'harbour', match: ['ship'],
-      anchor: { p: 'quay', x: 446, y: 336, s: 1, w: 160, band: 'near' },
+      anchor: { p: 'quay', x: 446, y: 320, s: 1, w: 160, band: 'near' },
       slots: weave(
-        row('warehouse', 495, 334, 590, 334, 4, 'steam-wh', 0.2, { band: 'near' }),
-        row('ship', 470, 362, 585, 362, 4, 'steam-moored', 0.3, { band: 'near' }),
-        row('crane', 478, 334, 575, 334, 3, 'steam-cranes', 0.5, { band: 'near' }),
-        scatter('warehouse', [470, 262, 120, 30], 4, 'steam-wh2', { k: 0.9 }),
+        row('warehouse', 496, 318, 592, 318, 4, 'steam-wh', 0.2, { band: 'near', k: 1.05 }),
+        row('ship', 472, 350, 586, 350, 4, 'steam-moored', 0.3, { band: 'near' }),
+        row('crane', 478, 318, 576, 318, 3, 'steam-cranes', 0.5, { band: 'near' }),
+        scatter('warehouse', [470, 204, 120, 44], 4, 'steam-wh2', { k: 0.9 }),
       ),
       movers: [
-        { p: 'ship', x0: 430, y0: 232, x1: 650, y1: 226, dur: 46, n: 3, s: 0.42, band: 'far' },
+        { p: 'ship', x0: 430, y0: 156, x1: 660, y1: 150, dur: 46, n: 3, s: 0.44, band: 'far' },
       ],
-      hit: [440, 252, 160, 118],
-      site: [470, 322, 100, 12],
+      hit: [440, 196, 160, 174],
+      site: [470, 306, 100, 12],
     },
     {
       key: 'plough', match: ['plough'],
-      anchor: { p: 'ploughField', x: 110, y: 360, s: 1, w: 66 },
+      anchor: { p: 'ploughField', x: 112, y: 346, s: 1.05, w: 66 },
       slots: FIELDS.map((s) => ({ ...s, s: 1 })),
-      hit: [20, 326, 200, 46],
-      site: [80, 350, 60, 12],
+      hit: [20, 312, 200, 56],
+      site: [82, 334, 60, 12],
     },
   ],
 
-  spares: [[330, 324, 90, 34], [236, 200, 90, 30], [470, 266, 110, 40]],
+  spares: [[330, 306, 90, 40], [236, 140, 90, 30], [470, 210, 110, 46]],
 
   restraint: {
-    duty: { p: 'customs', x: 466, y: 333, s: 0.85, band: 'near' },
-    cap: { p: 'permits', x: 205, y: 322, s: 0.9 },
-    sufficiency: { p: 'allotments', x: 300, y: 366, s: 1 },
-    substitution: { p: 'windmill', x: 36, y: 214, s: 0.8, band: 'far' },
-    circularity: { p: 'kiln', x: 252, y: 336, s: 0.9 },
-    greenSpending: { p: 'park', x: 386, y: 366, s: 1 },
+    duty: { p: 'customs', x: 466, y: 317, s: 0.9, band: 'near' },
+    cap: { p: 'permits', x: 206, y: 300, s: 1 },
+    sufficiency: { p: 'allotments', x: 302, y: 368, s: 1.05 },
+    substitution: { p: 'windmill', x: 36, y: 142, s: 0.9, band: 'far' },
+    circularity: { p: 'kiln', x: 254, y: 316, s: 1 },
+    greenSpending: { p: 'park', x: 388, y: 370, s: 1.05 },
   },
-  restraintSpare: [{ p: 'notice', x: 418, y: 344 }, { p: 'notice', x: 190, y: 366 }],
-  steadyMovers: [{ p: 'birds', x0: -40, y0: 96, x1: 640, y1: 80, dur: 40, n: 2, s: 1, band: 'far' }],
+  restraintSpare: [{ p: 'notice', x: 418, y: 330 }, { p: 'notice', x: 192, y: 368 }],
+  steadyMovers: [{ p: 'birds', x0: -40, y0: 70, x1: 640, y1: 56, dur: 40, n: 2, s: 1, band: 'far' }],
 };
 
 void birds; void f;

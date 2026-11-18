@@ -65,7 +65,7 @@ function findAnywhere(key: string): Prop | undefined {
 export function washFor(look: string, pf: number, clear: number): [string, string] | null {
   const t = Math.max(0, Math.min(1, pf));
   switch (look) {
-    case 'ledger': return [mix(mix('#b3bf8a', '#9a8c6c', t), '#aac08a', clear * 0.6), mix('#a9bfc4', '#8f8a74', t)];
+    case 'ledger': return [mix(mix('#a8bd7c', '#9a8c6c', t), '#9fc07a', clear * 0.7), mix(mix('#a3bcc4', '#8f8a74', t), '#9cc0cc', clear * 0.6)];
     case 'chrome': return [mix('#8fb58f', '#a7a27f', t), mix('#86bccb', '#9a9a86', t)];
     case 'gaslight': return [mix('#14203d', '#221f22', t), mix('#22325c', '#2a2a30', t)];
     default: return null;

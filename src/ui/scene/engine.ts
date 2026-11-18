@@ -135,7 +135,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   const places = div('scn-places');
   const banner = div('scn-banner');
   banner.setAttribute('aria-hidden', 'true');
-  stage.append(world, places, banner);
+  const toast = div('scn-toast');
+  toast.setAttribute('aria-hidden', 'true');
+  stage.append(world, places, banner, toast);
   const summary = document.createElement('p');
   summary.className = 'vh-scn';
   summary.id = id + 'sum';
@@ -540,6 +542,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     }
     if (!prevSteady && v.steady && prevSector === v.sectorId) flash('The sky clears.', 6000);
 
+    // Founding moments are played only when one or two places change at once (not on a jump or a load).
+    let changes = 0;
+    for (const p of plots) if (p.app && p.status && p.status !== p.app.status && p.app.status === 'founded') changes++;
+    const allowBuild = changes > 0 && changes <= 2;
     // Plots.
     const durK = [1.3, 1, 0.7][pace];
     for (const p of plots) {
@@ -552,12 +558,12 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           setOn(`${p.idx}:a`, st === 'founded');
           if (p.ghost) { p.ghost.classList.toggle('on', st !== 'founded'); p.ghost.classList.toggle('avail', st === 'available'); }
           p.svy?.classList.toggle('on', st === 'available');
-          if (st === 'founded' && prev && prev !== 'founded' && !rm()) {
+          if (st === 'founded' && prev && prev !== 'founded' && allowBuild && !rm()) {
             // Founding: scaffold goes up and the landmark rises.
             (elsByKey.get(`${p.idx}:a`) ?? []).forEach((el) => { el.classList.remove('build'); void (el as SVGGElement).getBBox; el.classList.add('build'); });
             if (p.scaf) { p.scaf.classList.remove('on'); void (p.scaf as SVGGElement).getBBox; p.scaf.classList.add('on'); }
             window.setTimeout(() => { p.scaf?.classList.remove('on'); (elsByKey.get(`${p.idx}:a`) ?? []).forEach((el) => el.classList.remove('build')); }, 2700);
-            flash(`${p.app.name}: founded.`, 3200);
+            showToast(`${p.app.name} founded`);
           }
         }
         prevStatus.set(p.app.id, st);
@@ -645,6 +651,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     bannerText = t;
     if (t) { banner.innerHTML = `<span>${esc(t)}</span>`; banner.classList.add('on'); } else banner.classList.remove('on');
   }
+  let toastTimer = 0;
+  function showToast(t: string): void {
+    toast.textContent = t;
+    toast.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toast.classList.remove('on'), 2800);
+  }
   let flashTimer = 0;
   function flash(t: string, ms: number): void {
     captionText = t;
@@ -725,7 +738,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     io?.disconnect(); ro?.disconnect();
     document.removeEventListener('visibilitychange', onVis);
     mq?.removeEventListener?.('change', onMq);
-    clearTimeout(crisisTimer); clearTimeout(flashTimer);
+    clearTimeout(crisisTimer); clearTimeout(flashTimer); clearTimeout(toastTimer);
     root.remove();
   }
 

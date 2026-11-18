@@ -452,7 +452,7 @@ const motion: SectorDef = {
       all: [
         { owns: 'light.mantle', label: 'Own the Incandescent gas mantle' },
         { stat: 'appsFounded', sector: 'light', op: '>=', value: 2, label: '2 Light applications founded' },
-        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 25_000, label: '25,000 klm·h·years of light delivered' },
+        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 15_000, label: '15,000 klm·h·years of light delivered' },
       ],
     },
   },
@@ -556,7 +556,7 @@ const compute: SectorDef = {
     minReckonings: 3,
     when: {
       all: [
-        { owns: 'motion.injection', label: 'Own Fuel injection' },
+        { owns: 'motion.radial', label: 'Own Radial tyres' },
         { stat: 'appsFounded', sector: 'motion', op: '>=', value: 2, label: '2 Motion applications founded' },
         { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 50_000, label: '50,000 veh·mi·years driven' },
       ],

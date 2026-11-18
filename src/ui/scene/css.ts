@@ -7,7 +7,7 @@ const LOOKS = `
   --s-paper:var(--bg-solid,#efe6d0);--s-ink:#2a1f15;--s-b:#f4ecd6;--s-b2:#e6d9b9;--s-rf:#d8c7a2;--s-w:#3b2d1f;--s-lit:#e8ae3c;
   --s-tr:var(--s-wash,#a9b585);--s-wa:var(--s-water,#a7bcc0);--s-gd:#ddd1ab;--s-gd2:#cdbd92;--s-sp:#7a6e5d;--s-ac:#a3231a;--s-ac2:#24473a;
   --s-mt:#8e8a80;--s-smk:58,48,38;--s-hz:118,98,72;--s-mist:239,230,208;--s-sun:#e9c46a;
-  --s-sky0:#f3ecd9;--s-sky0b:#e9e0c6;--s-sky1:#b49f7c;--s-sky1b:#d8c8a4;--s-sky2:#f4efdc;--s-sky2b:#dde7d8;
+  --s-sky0:#f3ecd9;--s-sky0b:#e9e0c6;--s-sky1:#b49f7c;--s-sky1b:#d8c8a4;--s-sky2:#dfe8e4;--s-sky2b:#f1eedc;
   --s-sv:#a3231a;--s-hatch:#2a1f15;--s-glow:255,206,110;--s-frame:#2a1f15;
 }
 .scn[data-look=gaslight]{
@@ -183,7 +183,7 @@ const BASE = `
   border-radius:4px;-webkit-tap-highlight-color:transparent}
 .scn-place:focus-visible{outline:2px solid var(--focus,var(--s-sv));outline-offset:1px}
 .scn-place.sel{outline:1.5px dashed var(--s-sv);outline-offset:1px}
-.scn-pin{position:absolute;left:50%;bottom:6%;width:22px;height:22px;margin-left:-11px;border-radius:50%;display:none;
+.scn-pin{position:absolute;left:50%;bottom:4%;width:20px;height:20px;margin-left:-10px;border-radius:50%;display:none;
   align-items:center;justify-content:center;font:700 15px/1 var(--numf,system-ui);background:var(--s-sv);color:var(--s-paper);
   box-shadow:0 0 0 2px var(--s-paper)}
 .scn-place.avail .scn-pin{display:flex}
@@ -191,10 +191,14 @@ const BASE = `
   animation:scn-ping 2.2s ease-out infinite}
 @keyframes scn-ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.5);opacity:0}}
 .scn-banner{position:absolute;left:0;right:0;top:38%;transform:translateY(-50%);text-align:center;pointer-events:none;
-  font-family:var(--display,Georgia,serif);font-weight:700;font-size:clamp(17px,5vw,30px);color:var(--s-paper);
+  font-family:var(--display,Georgia,serif);font-weight:700;font-size:clamp(15px,4.2vw,26px);color:var(--s-paper);
   text-shadow:0 1px 0 rgba(0,0,0,.25);opacity:0;transition:opacity 1s;padding:8px 12px}
 .scn-banner span{display:inline-block;padding:6px 14px;background:rgba(var(--s-smk),.82);border-top:1px solid currentColor;border-bottom:1px solid currentColor}
 .scn-banner.on{opacity:1}
+.scn-toast{position:absolute;left:8px;top:8px;padding:3px 8px;font:600 12px/1.3 var(--labelf,var(--body,system-ui));letter-spacing:.04em;
+  background:var(--s-paper);color:var(--s-ink);border:1px solid var(--s-ink);opacity:0;transform:translateY(-4px);transition:opacity .4s,transform .4s;pointer-events:none}
+.scn-toast.on{opacity:.95;transform:none}
+.scn.crisis.rm .scn-fog{opacity:.62}
 
 /* --- the card under the picture --- */
 .scn-card{min-height:44px;padding:6px 2px 0;font-size:14px;line-height:1.35}
