@@ -77,7 +77,7 @@ export function buildGauges(ctx: Ctx): Comp {
   const eff = dial(ctx, 'eff', 'Efficiency', 'eff');
   const cons = dial(ctx, 'cons', 'Consumption', 'cons',
     `<g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g>`);
-  const reb = dial(ctx, 'reb', 'Rebound', 'rebound', `<text class="d-q" x="${CX}" y="${CY - 13}" text-anchor="middle">?</text>`);
+  const reb = dial(ctx, 'reb', 'Rebound', 'rebound');
   // Static rebound scale: 0..250%, the 100% line marked; everything past it is the backfire zone.
   {
     const ticks = reb.svgEl.querySelector('.d-ticks')!;
@@ -175,7 +175,6 @@ export function buildGauges(ctx: Ctx): Comp {
     const revealed = !!ctx.state.flags?.revealed;
     const rb = e?.rebound;
     cls(reb.box, 'unknown', !revealed);
-    show(reb.svgEl.querySelector('.d-q') as SVGElement | null, !revealed);
     const needle = reb.svgEl.querySelector('.d-needle') as SVGElement | null;
     const has = revealed && rb != null && Number.isFinite(rb);
     show(needle, has);
