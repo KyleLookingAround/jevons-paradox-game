@@ -23,12 +23,14 @@ Bun is the whole toolchain; there are no runtime dependencies. Keep it that way 
 - The UI holds no game rules. It reads `derive()`, calls the model API, and patches the DOM in place (build structure
   once per layout change; never rebuild per tick).
 - British English, dry broadsheet tone. The game never lectures.
+- Words: the unit of play is a `Sector` in code and an "Industry" on screen; the period is an "Age". Player-facing text
+  never says "sector" or "era" for the unit. (`DESIGN.md` and `design/*.md` predate this and still say "era".)
 
 ## Status (18 Nov 2026)
 
 | Piece | State |
 |---|---|
-| `src/types.ts` | v1 contract. M1 contract change pending (see `design/roadmap.md`). |
+| `src/types.ts` | M1 contract (save version 2). Decisions and the old → new name mapping are in `design/m1-contract-notes.md`. |
 | `src/model.ts` | All of `ModelApi`, tested (`src/model.test.ts`, fixture in `src/fixture.ts`). Independent review in progress. |
 | `src/content.ts` | Five eras drafted. Runs without error; numbers unbalanced (see `design/critique-v1.md`). |
 | `tools/balance.ts` | Headless balancer: `efficiency`, `levers`, `idle`; `--fixture` for the test content. |
@@ -40,6 +42,9 @@ The game is to be a very long one with a lot of content (true ending at roughly 
 until answered, work to the recommendations given there.
 
 ## Next steps, in order
+
+M1 is in progress: core, content and UI lanes are conforming to the new contract per `briefs/m1-*.md`, then balance.
+Until they finish, the branch does not typecheck; `main` holds the last playable build (v1).
 
 1. Finish the independent model review and the UI; browser playtest script (Playwright, phone viewport).
 2. **M1 "v1, honest"**: instruments (counterfactual rebound, decade and within-reach projections), budget-line Steady
