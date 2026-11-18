@@ -41,8 +41,8 @@ html[data-look='chrome'] {
   color-scheme: light;
   --bg: #ece5d6; --bg-solid: #ece5d6;
   --bg-img: linear-gradient(180deg, #f3eee2, #e6dfcf);
-  --surface: #fbf8f0; --surface-2: #e1dccf; --ink: #1a2a2d; --muted: #5a6868; --rule: rgba(26, 42, 45, .16); --rule-2: rgba(26, 42, 45, .4);
-  --accent: var(--acc-l, #0e7c77); --accent-ink: #ffffff; --bad: #c13c24; --good: #2b7b49; --track: rgba(26, 42, 45, .09); --focus: #0e7c77;
+  --surface: #fbf8f0; --surface-2: #e1dccf; --ink: #1a2a2d; --muted: #4f5d5d; --rule: rgba(26, 42, 45, .16); --rule-2: rgba(26, 42, 45, .4);
+  --accent: var(--acc-l, #0a6763); --accent-ink: #ffffff; --bad: #a8331d; --good: #1f6a3c; --track: rgba(26, 42, 45, .09); --focus: #0e7c77;
   --smog: 120, 110, 100; --water: #2a7fa8;
   --display: var(--f-grot); --body: var(--f-grot); --numf: var(--f-grot); --labelf: var(--f-grot);
   --display-wt: 700; --display-stretch: 112%; --display-case: none; --display-track: -.01em;
@@ -64,7 +64,7 @@ html[data-look='agentic'] {
   --bg: #f2f1ed; --bg-solid: #f2f1ed;
   --bg-img: radial-gradient(rgba(24, 25, 27, .07) 1px, transparent 1px) 0 0 / 16px 16px;
   --surface: #ffffff; --surface-2: #f6f5f1; --ink: #18191b; --muted: #65696e; --rule: #dddbd3; --rule-2: #b9b6ac;
-  --accent: var(--acc-l, #e0592a); --accent-ink: #ffffff; --bad: #cf222e; --good: #1a7f37; --track: rgba(24, 25, 27, .07); --focus: #e0592a;
+  --accent: var(--acc-l, #e0592a); --accent-ink: #ffffff; --bad: #cf222e; --good: #17722f; --track: rgba(24, 25, 27, .07); --focus: #e0592a;
   --smog: 140, 140, 150; --water: #3474d4;
   --display: var(--f-grot); --body: var(--f-grot); --numf: var(--f-mono); --labelf: var(--f-mono);
   --display-wt: 700; --display-stretch: 100%; --display-case: none; --display-track: -.02em;
@@ -76,9 +76,9 @@ html[data-look='agentic'] {
    one for dark looks (--acc-d), and the tint of its pressure weather (--smog). Unknown keys set nothing. */
 html[data-accent='iron'] { --acc-l: #2c4a5a; --acc-d: #a9c2d4; --smog: 70, 62, 56; }
 html[data-accent='gas'] { --acc-l: #8f6110; --acc-d: #f2b544; --smog: 38, 34, 30; }
-html[data-accent='chrome'] { --acc-l: #0e7c77; --acc-d: #55c4bd; --smog: 118, 112, 104; }
+html[data-accent='chrome'] { --acc-l: #0a6763; --acc-d: #55c4bd; --smog: 118, 112, 104; }
 html[data-accent='phosphor'] { --acc-l: #6d5a12; --acc-d: #e9b44a; --smog: 64, 34, 22; }
-html[data-accent='diff'] { --acc-l: #d6501f; --acc-d: #ff8a5c; --smog: 140, 140, 150; }
+html[data-accent='diff'] { --acc-l: #ad4318; --acc-d: #ff8a5c; --smog: 140, 140, 150; }
 
 /* ------------------------------------------------------------------ */
 /* Base                                                                */

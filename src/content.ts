@@ -343,7 +343,7 @@ const light: SectorDef = {
   wellbeingWeight: 4,
   wellbeingScale: 500,
 
-  spill: { to: 'steam', rate: 0.4 },
+  spill: { to: 'steam', rate: 0.1 },
   unlock: {
     minReckonings: 1,
     when: {
@@ -451,7 +451,7 @@ const motion: SectorDef = {
     when: {
       all: [
         { owns: 'light.mantle', label: 'Own the Incandescent gas mantle' },
-        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 4_000, label: '4,000 klm·h·years of light delivered' },
+        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 2_000, label: '2,000 klm·h·years of light delivered' },
       ],
     },
   },
@@ -556,7 +556,7 @@ const compute: SectorDef = {
     when: {
       all: [
         { owns: 'motion.injection', label: 'Own Fuel injection' },
-        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 20_000, label: '20,000 veh·mi·years driven' },
+        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 10_000, label: '10,000 veh·mi·years driven' },
       ],
     },
   },
@@ -880,7 +880,7 @@ const steamUpgrades: UpgradeDef[] = [
 
 /* ---- Light: chain to ×32 ---- */
 const lightUpgrades: UpgradeDef[] = [
-  ...chain('light', ladder(5_000, 2.3, 6), [
+  ...chain('light', ladder(2_500, 2.3, 6), [
     {
       id: 'light.batswing', name: 'Batswing burner', fold: 1.6,
       blurb: 'A slit in the jet fans the flame out. Brighter for the same gas.',
@@ -972,7 +972,7 @@ const lightUpgrades: UpgradeDef[] = [
 
 /* ---- Motion: chain to ×8.2 ---- */
 const motionUpgrades: UpgradeDef[] = [
-  ...chain('motion', ladder(25_000, 2.7, 5), [
+  ...chain('motion', ladder(12_000, 2.4, 5), [
     {
       id: 'motion.radial', name: 'Radial tyres', fold: 1.3,
       blurb: 'Michelin, 1946. Less rolling resistance, longer life, further trips.',
@@ -1054,7 +1054,7 @@ const motionUpgrades: UpgradeDef[] = [
 
 /* ---- Compute: bought ×21.6 on top of the automatic halving ---- */
 const computeUpgrades: UpgradeDef[] = [
-  ...chain('compute', ladder(150_000, 3.9, 5), [
+  ...chain('compute', ladder(80_000, 3, 5), [
     {
       id: 'compute.multicore', name: 'Multi-core chips', fold: 1.5,
       blurb: 'The clock speed hit a wall, so put several processors behind it.',
@@ -1581,7 +1581,7 @@ const institutions: InstitutionDef[] = [
   leverInstitution({
     id: 'inst.smokeAbatement', name: 'Smoke Abatement Act',
     blurb: 'The ceiling on the borough’s coal is law before the first engine is lit. The line itself is drawn once there is a town to draw it across.',
-    cost: 30, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
+    cost: 60, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
   }),
   leverInstitution({
     id: 'inst.gasReferees', name: 'Gas referees',
