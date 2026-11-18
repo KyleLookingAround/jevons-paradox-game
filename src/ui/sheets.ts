@@ -257,7 +257,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void): void
               h('h3', { text: `${def?.name ?? id}` }),
               h('div', { class: 'acct-row eff' }, h('span', { class: 'acct-l', text: 'Efficiency' }),
                 h('span', { class: 'acct-bar' }, h('span', { style: `width:${w(r.etaFold)}` })), h('span', { class: 'acct-v num', text: fold(r.etaFold) })),
-              h('div', { class: 'acct-row use' }, h('span', { class: 'acct-l', text: `${def?.resource.name ?? 'Resource'} a year, at peak` }),
+              h('div', { class: 'acct-row use' }, h('span', { class: 'acct-l', text: `Peak ${lower(def?.resource.name ?? 'resource')} use` }),
                 h('span', { class: 'acct-bar' }, h('span', { style: `width:${w(r.peakRFold)}` })), h('span', { class: 'acct-v num', text: fold(r.peakRFold) })),
               h('p', { class: 'acct-tot num', text: `${fmt(r.resourceUsed)} ${def?.resource.unit ?? ''} burned in all` }));
           })),

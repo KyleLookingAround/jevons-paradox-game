@@ -28,7 +28,7 @@ export function buildNews(ctx: Ctx): Comp {
     h('span', { class: 'news-top' }, mast, yr, more), txt);
   const list = h('ol', { class: 'news-list', hidden: true });
   const el = h('section', { class: 'news', 'aria-label': 'Broadsheet' }, head, list);
-  let open = false, lastKey = '', listKey = '';
+  let open = false, lastKey = '\u0000', listKey = '';
 
   function toggle(): void {
     open = !open;
@@ -46,7 +46,7 @@ export function buildNews(ctx: Ctx): Comp {
     setText(more, news.length > 1 ? (open ? 'Fold' : `${news.length} items`) : '');
     const k = top ? `${top.time}|${top.text}` : '';
     if (k !== lastKey) {
-      const fresh = lastKey !== '' && !!top;
+      const fresh = lastKey !== '\u0000' && lastKey !== '' && !!top;
       lastKey = k;
       setText(yr, top ? String(Math.floor(num(top.year, 1780))) : '');
       setText(txt, top ? top.text : 'Nothing in the papers yet. Give it time.');
@@ -108,13 +108,13 @@ function makeAppCard(ctx: Ctx, era: EraId, a: ApplicationDef): AppCard {
     if (st !== status) setStatus(st);
     const unit = def.service.unit;
     if (st === 'unknown') {
-      setText(name, '?');
+      setText(name, '');
       setText(blurb, Number.isFinite(a.visibleBelow) ? `Thinkable below £${fmtPrice(a.visibleBelow)}/${unit}` : 'Not yet thinkable');
-      show(blurb, true); show(found, false); show(meta, false); show(bar, false);
+      show(blurb, true); show(found, false); show(meta, false); show(bar, false); show(name, false);
       setAttr(el, 'aria-label', 'An application not yet thinkable');
       return;
     }
-    setText(name, a.name);
+    setText(name, a.name); show(name, true);
     setAttr(el, 'aria-label', null);
     setAttr(el, 'title', a.blurb);
     const adoption = clamp(num(view?.adoption), 0, 1);
