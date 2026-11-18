@@ -33,14 +33,14 @@ export const steam: Layout = {
       P('M300 30c5-7 15-7 18-1c4-5 13-3 14 3c6 0 7 7 2 8H298c-5-2-4-9 2-10z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') + '</g>';
     const far =
       P(farRidge, 'tr', 'fill-opacity=".34"') + P(farRidge.replace(/L[\d.]+ 230Z$/, ''), 'k k2') +
-      R(440, 120, 160, 90, 'wa') + L(440, 120, 600, 120, 'k') + waterLines(446, 124, 154, 70, 36, 'sea') +
+      P('M448 121L600 120V222H470C462 190 458 150 448 121Z', 'wa') + L(448, 120.5, 600, 120.5, 'k') + waterLines(458, 124, 142, 74, 34, 'sea') +
       P(midRidge, 'tr', 'fill-opacity=".55"') + P(midRidge, 'hz', `fill="${c.hatch(0.4)}" opacity=".3"`) + P(midRidge.replace(/L[\d.]+ 260Z$/, ''), 'k k2') +
       P('M0 152Q60 144 120 152M150 148Q200 140 250 154M280 156Q330 150 380 164', 'k k2') +
       bprop(church, 214, 140, 0.48, 0.5, c) + bprop(poplar, 168, 136, 0.46, 0.3, c) + bprop(poplar, 177, 137, 0.44, 0.8, c) +
       bprop(cottage, 120, 144, 0.44, 0.2, c) + bprop(cottage, 300, 146, 0.44, 0.7, c) + bprop(tree, 336, 147, 0.46, 0.4, c) + bprop(tree, 366, 154, 0.48, 0.9, c);
     const mid =
       P(valley, 'gd') + P(valley, 'tr', 'fill-opacity=".45"') + P(valley.replace(/L[\d.]+ 400Z$/, ''), 'k k2') +
-      P('M455 196L600 190V320H468Z', 'gd') + P('M455 196L600 190V320H468Z', 'tr', 'fill-opacity=".3"') +
+      P('M455 200C480 196 500 206 530 200S580 194 600 198V320H468Z', 'gd') + P('M455 200C480 196 500 206 530 200S580 194 600 198V320H468Z', 'tr', 'fill-opacity=".3"') + P('M455 200C480 196 500 206 530 200S580 194 600 198', 'k k2') +
       ribbon([[168, 171], [215, 188], [262, 214], [310, 240], [362, 264], [410, 286], [454, 306]], 2, 18, 'wa') +
       waterLines(270, 222, 170, 70, 14, 'river', 'k k2') +
       bprop(hedge, 120, 210, 0.6, 0.5, c, { w: 70 }) + bprop(hedge, 236, 250, 0.75, 0.5, c, { w: 56 }) +

@@ -64,12 +64,12 @@ const BASE = `
 .scn-defs{position:absolute;width:0;height:0;overflow:hidden}
 .scn-sky{background:linear-gradient(to bottom,var(--s-sky0),var(--s-sky0b) 52%)}
 .scn-sky.smog{background:linear-gradient(to bottom,var(--s-sky1),var(--s-sky1b) 55%);opacity:var(--pf2,0);transition:opacity 1.2s}
-.scn-sky.fresh{background:linear-gradient(to bottom,var(--s-sky2),var(--s-sky2b) 58%);opacity:0;transition:opacity 5s ease}
+.scn-sky.fresh{background:linear-gradient(to bottom,var(--s-sky2),var(--s-sky2b) 58%);opacity:0;transition:opacity 3s ease}
 .scn.steady .scn-sky.fresh{opacity:1}
 .scn-glow{background:radial-gradient(70% 38% at 50% 58%,rgba(var(--s-glow),.55),rgba(var(--s-glow),0) 70%);opacity:var(--light,0);transition:opacity 1.5s}
 .scn-hz{pointer-events:none;transition:opacity 1.2s}
-.scn-hz.mist{background:linear-gradient(to bottom,rgba(var(--s-mist),0) 30%,rgba(var(--s-mist),.55) 58%,rgba(var(--s-mist),0) 75%)}
-.scn-hz.mist.m2{background:linear-gradient(to bottom,rgba(var(--s-mist),0) 52%,rgba(var(--s-mist),.32) 72%,rgba(var(--s-mist),0) 86%)}
+.scn-hz.mist{background:linear-gradient(to bottom,rgba(var(--s-mist),0) 14%,rgba(var(--s-mist),.5) 30%,rgba(var(--s-mist),.15) 42%,rgba(var(--s-mist),0) 50%)}
+.scn-hz.mist.m2{background:linear-gradient(to bottom,rgba(var(--s-mist),0) 40%,rgba(var(--s-mist),.22) 50%,rgba(var(--s-mist),0) 64%)}
 .scn-hz.smog{background:linear-gradient(to bottom,rgba(var(--s-hz),.95),rgba(var(--s-hz),.75) 45%,rgba(var(--s-hz),.35) 70%,rgba(var(--s-hz),0) 92%)}
 .scn-hz.smog.h1{opacity:var(--hz1,0)}
 .scn-hz.smog.h2{opacity:var(--hz2,0);background:linear-gradient(to bottom,rgba(var(--s-hz),.7),rgba(var(--s-hz),.45) 50%,rgba(var(--s-hz),.15) 80%,rgba(var(--s-hz),0))}
@@ -104,8 +104,10 @@ const BASE = `
 .scn .mt{fill:var(--s-mt);stroke:var(--s-ink);stroke-width:calc(.7px*var(--sw))}
 .scn .hz,.scn .hz2{stroke:none}
 .scn .sl{fill:var(--s-b);stroke:var(--s-ink);stroke-width:calc(.6px*var(--sw))}
-.scn .fur{stroke-width:calc(.5px*var(--sw));opacity:.7}
-.scn .plm{fill:none;stroke:rgba(var(--s-smk),.45);stroke-width:calc(5px*var(--sw));stroke-linecap:round}
+.scn .fur{stroke-width:calc(.6px*var(--sw));opacity:.55}
+.scn .fld{fill:var(--s-tr);fill-opacity:.55;stroke:var(--s-ink);stroke-width:calc(.5px*var(--sw));stroke-opacity:.6}
+.scn .fld2{fill:var(--s-gd2);fill-opacity:.9}
+.scn .plm{fill:none;stroke:rgba(var(--s-smk),.28);stroke-width:4.5;stroke-linecap:round;vector-effect:none!important}
 .scn .scf{stroke:var(--s-ac);stroke-width:calc(.8px*var(--sw))}
 .scn .gl{stroke:none}
 .scn .svf{fill:var(--s-sv);fill-opacity:.07;stroke:none}

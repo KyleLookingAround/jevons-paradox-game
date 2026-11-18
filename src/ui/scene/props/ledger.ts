@@ -213,8 +213,9 @@ export const ship: Prop = (a) => {
 function fieldBase(a: PropArgs, furrows: boolean): string {
   const w = a.w || 56, h = 13;
   let d = '';
-  if (furrows) for (let x = -w / 2 + 3; x < w / 2 - 2; x += 2.6) d += `M${f(x)} 0L${f(x + 5)} ${-h}`;
-  return P(`M${f(-w / 2)} 0H${f(w / 2)}L${f(w / 2 - 6 + 5)} ${-h}H${f(-w / 2 + 6 + 5)}Z`, furrows ? 'gd gd2' : 'gd') + (d ? P(d, 'k fur') : '');
+  if (furrows) for (let x = -w / 2 + 4; x < w / 2 - 3; x += 3.6) d += `M${f(x)} -0.5L${f(x + 4.6)} ${-h + 0.5}`;
+  const shape = `M${f(-w / 2)} 0Q0 1.5 ${f(w / 2)} 0L${f(w / 2 - 1)} ${-h}Q${f(5)} ${-h - 1.2} ${f(-w / 2 + 11)} ${-h}Z`;
+  return P(shape, furrows ? 'fld fld2' : 'fld') + (d ? P(d, 'k fur') : '');
 }
 const traction = (x: number, flip: boolean) => {
   const s = flip ? -1 : 1;
