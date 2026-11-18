@@ -451,8 +451,8 @@ const motion: SectorDef = {
     when: {
       all: [
         { owns: 'light.mantle', label: 'Own the Incandescent gas mantle' },
-        { stat: 'appsFounded', sector: 'light', op: '>=', value: 3, label: '3 Light applications founded' },
-        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 100_000, label: '100,000 klm·h·years of light delivered' },
+        { stat: 'appsFounded', sector: 'light', op: '>=', value: 2, label: '2 Light applications founded' },
+        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 25_000, label: '25,000 klm·h·years of light delivered' },
       ],
     },
   },
@@ -558,7 +558,7 @@ const compute: SectorDef = {
       all: [
         { owns: 'motion.injection', label: 'Own Fuel injection' },
         { stat: 'appsFounded', sector: 'motion', op: '>=', value: 2, label: '2 Motion applications founded' },
-        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 150_000, label: '150,000 veh·mi·years driven' },
+        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 50_000, label: '50,000 veh·mi·years driven' },
       ],
     },
   },
@@ -668,7 +668,7 @@ const code: SectorDef = {
       all: [
         { owns: 'compute.multicore', label: 'Own Multi-core chips' },
         { stat: 'appsFounded', sector: 'compute', op: '>=', value: 2, label: '2 Compute applications founded' },
-        { stat: 'serviceDelivered', sector: 'compute', op: '>=', value: 600_000, label: '600,000 PFLOP·years computed' },
+        { stat: 'serviceDelivered', sector: 'compute', op: '>=', value: 200_000, label: '200,000 PFLOP·years computed' },
       ],
     },
   },
@@ -1570,11 +1570,16 @@ const institutions: InstitutionDef[] = [
       { effects: [{ type: 'mandateRateMul', value: 1.1 }], label: 'Monthly returns: Mandate accrues 10% faster' },
     ], [4]),
   },
-  leverInstitution({
+  {
+    /* Not a standing cap: a cap started at run start draws its budget on the first step, at pumping-only R (see report). */
     id: 'inst.alkaliInspectorate', name: 'Alkali Inspectorate',
-    blurb: 'Alkali Act, 1863: the first inspectors of what chimneys put in the air. The smoke cap is law from the start.',
-    cost: 40, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
-  }),
+    blurb: 'Alkali Act, 1863: the first inspectors of what chimneys put in the air. Steam’s smoke clears a little faster.',
+    cost: 40, effects: [absorb('steam', 0.002)],
+    nextLevels: levels(40, [
+      { effects: [absorb('steam', 0.002)], label: 'More inspectors: the smoke clears faster again' },
+      { effects: [absorb('steam', 0.002), { type: 'mandateRateMul', value: 1.05 }], label: 'Published reports: Mandate accrues 5% faster' },
+    ]),
+  },
   leverInstitution({
     id: 'inst.standingDuty', name: 'Standing fuel duty',
     blurb: 'The escalator is law before the first engine is built.',
@@ -1627,8 +1632,8 @@ const institutions: InstitutionDef[] = [
     blurb: 'Pay the gas company for light delivered, not for therms sold. It stops building load.',
     cost: 130, effects: [startLever('light.sufficiency', 1)],
     nextLevels: levels(130, [
-      { effects: [startLever('light.cap', 1)], label: 'The gas works allowance is law from the start' },
-      { effects: [startLever('light.sufficiency', 2), startLever('light.cap', 2)], label: 'Both start a level higher' },
+      { effects: [startLever('light.duty', 1)], label: 'The gas & lighting rate is law from the start' },
+      { effects: [startLever('light.sufficiency', 2), startLever('light.duty', 2)], label: 'Both start a level higher' },
     ]),
   },
   leverInstitution({
@@ -1638,24 +1643,27 @@ const institutions: InstitutionDef[] = [
   }),
   {
     id: 'inst.climateCommittee', name: 'Independent climate committee',
-    blurb: 'Carbon budgets set years ahead, out of reach of the next election. Every cap is law from the start. Takes two seats.',
+    blurb: 'Carbon budgets set years ahead, out of reach of the next election. Every fuel duty is law from the start. Takes two seats.',
     cost: 300, requires: ['inst.alkaliInspectorate', 'inst.standingDuty'], slots: 2,
-    effects: [startLever('steam.cap', 1), startLever('light.cap', 1), startLever('motion.cap', 1), startLever('compute.cap', 1)],
+    effects: [
+      startLever('steam.duty', 1), startLever('light.duty', 1), startLever('motion.duty', 1), startLever('compute.duty', 1),
+      { type: 'mandateRateMul', value: 1.1 },
+    ],
     nextLevels: levels(300, [
       {
-        effects: [startLever('steam.cap', 2), startLever('light.cap', 2), startLever('motion.cap', 2), startLever('compute.cap', 2)],
-        label: 'Every cap starts at level 2',
+        effects: [startLever('steam.duty', 2), startLever('light.duty', 2), startLever('motion.duty', 2), startLever('compute.duty', 2)],
+        label: 'Every fuel duty starts at level 2',
       },
       {
-        effects: [startLever('steam.cap', 3), startLever('light.cap', 3), startLever('motion.cap', 3), startLever('compute.cap', 3)],
-        label: 'Every cap starts at level 3',
+        effects: [startLever('steam.duty', 3), startLever('light.duty', 3), startLever('motion.duty', 3), startLever('compute.duty', 3)],
+        label: 'Every fuel duty starts at level 3',
       },
     ]),
   },
   leverInstitution({
     id: 'inst.gridCode', name: 'Grid connection code',
-    blurb: 'Data centres queue for power like everybody else.',
-    cost: 260, requires: ['inst.cleanAirAct'], lever: 'compute.cap', leverName: 'Grid allocation', maxLevel: 3,
+    blurb: 'Data centres queue for power like everybody else, and are told to bring their own.',
+    cost: 260, requires: ['inst.cleanAirAct'], lever: 'compute.substitution', leverName: 'Solar & storage', maxLevel: 3,
   }),
   {
     id: 'inst.engineeringGuild', name: 'Engineering guild',

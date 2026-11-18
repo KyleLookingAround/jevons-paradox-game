@@ -276,11 +276,11 @@ export function buildDock(ctx: Ctx): Comp {
     const v = num(ctx.d?.clickValue);
     setText(lbl, `Sell ${lower(def?.service.name ?? 'power')}`);
     setText(val, '+' + money(v));
-    // Shrink once a tap is worth less than 1.2 seconds of income (Derived.clickValue < 1.2 × incomePerSec): the flat
-    // part of a click no longer matters and tapping has become a garnish. With clickSeconds = 1 and clickFlat = 2 this
-    // fires at about £10/s of income; with clickSeconds ≥ 1.2 it never fires. The ratio is the balance lane's to tune.
+    // Shrink once a tap is worth less than half a second of income (Derived.clickValue < 0.5 × incomePerSec): tapping
+    // has become a garnish. Click value is clickFlat + clickSeconds × income, so with clickSeconds ≥ 0.5 in content this
+    // never fires; whether a click should fade is the balance lane's call (e.g. a falling clickSeconds), not the UI's.
     const ip = num(ctx.d?.incomePerSec);
-    cls(el, 'small', ip > 0 && v < 1.2 * ip);
+    cls(el, 'small', ip > 0 && v < 0.5 * ip);
   }
   return { el, update };
 }

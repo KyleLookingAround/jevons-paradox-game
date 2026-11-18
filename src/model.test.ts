@@ -39,7 +39,8 @@ const run = (s: GameState, secs: number, dt = 1, c: Content = C) => {
   return s;
 };
 function greedy(s: GameState, c: Content): GameState {
-  for (const v of model.upgradeViews(s, c)) if (v.visible && v.affordable) s = model.buyUpgrade(s, c, v.def.id);
+  // cost and visibility do not depend on the reveal; skipping it skips the (cached, but per-second) projections
+  for (const v of model.upgradeViews({ ...s, flags: { ...s.flags, revealed: false } }, c)) if (v.visible && v.affordable) s = model.buyUpgrade(s, c, v.def.id);
   for (const e of orderOf(c)) {
     const es = s.sectors[e];
     if (!es?.open) continue;

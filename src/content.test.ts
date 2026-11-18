@@ -341,6 +341,14 @@ describe('know-how and institutions', () => {
     }
   });
 
+  test('no institution starts a cap (a standing cap draws its budget on the first step, at the opening R)', () => {
+    const caps = new Set(C.levers.filter((l) => l.kind === 'cap').map((l) => l.id));
+    for (const i of C.institutions) {
+      const effs = [...i.effects, ...(i.nextLevels ?? []).flatMap((l) => l.effects)];
+      expect(effs.filter((e) => e.type === 'startLever' && caps.has(e.lever)).map(() => i.id)).toEqual([]);
+    }
+  });
+
   test('the Statistics Office is the cheapest first buy and has no prerequisites', () => {
     const so = C.institutions.find((i) => i.id === 'inst.statisticsOffice')!;
     expect(so.requires ?? []).toEqual([]);

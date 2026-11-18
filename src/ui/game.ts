@@ -197,7 +197,7 @@ function boot(o: GameOpts): void {
     if (note && seconds > 60) {
       const gained = (s.capital ?? 0) - (before.capital ?? 0);
       const capped = Math.min(seconds, content.global?.offlineCapSeconds ?? seconds);
-      ui.toast(`While you were away (${dur(seconds)}${capped < seconds ? `; ${dur(capped)} counted` : ''}): ${gained >= 0 ? '+' : ''}${money(gained)}.`);
+      ui.toast(`While you were away (${dur(seconds)}${capped < seconds ? `; ${dur(capped)} counted` : ''}): ${gained >= 0 ? '+\u2060' : ''}${money(gained)}.`);
     }
   }
 

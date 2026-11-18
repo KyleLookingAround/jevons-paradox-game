@@ -318,12 +318,16 @@ async function checks() {
     await ctx.close();
   });
   await step('"While you were away" after a reload with a gap', async () => {
-    const { ctx, page, errs } = await newPage(sz);
+    const { ctx, page: first, errs } = await newPage(sz);
+    await first.goto(mock + '#mock:persist'); await first.waitForTimeout(800);
+    await first.evaluate(() => window.rebound.save());
+    const t0 = await first.evaluate(() => window.rebound.state.time);
+    await first.close(); // pagehide saves and stamps the time, as a real close would
+    // Come back 25 minutes later: backdate the stamp before the page's own scripts run.
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
+    await page.addInitScript(() => { localStorage.setItem('rebound.mock.save.at', String(Date.now() - 25 * 60 * 1000)); });
     await page.goto(mock + '#mock:persist'); await page.waitForTimeout(800);
-    await page.evaluate(() => window.rebound.save());
-    const t0 = await page.evaluate(() => window.rebound.state.time);
-    await page.evaluate(() => localStorage.setItem('rebound.mock.save.at', String(Date.now() - 25 * 60 * 1000)));
-    await page.reload(); await page.waitForTimeout(800);
     const toast = await page.locator('.toast-t:has-text("While you were away")').count();
     const t1 = await page.evaluate(() => window.rebound.state.time);
     await page.screenshot({ path: `${out}/check-away.png` });
@@ -375,6 +379,87 @@ async function real() {
     const o = await overflow(page);
     if (o.sw > o.cw) fail(`OVERFLOW real/${sz.tag}`);
     if (errs.length) fail(`real/${sz.tag}: ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  await realFlow(url);
+}
+
+// A scripted run on the real model: capital is topped up through the console handle so the run reaches the reveal,
+// levers, budgets and a Reckoning in seconds. Everything else goes through the UI.
+async function realFlow(url) {
+  for (const sz of SIZES.slice(0, 2)) {
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: 1 });
+    const T = `real-${sz.tag}`;
+    const step = async (name, f) => {
+      try { await f(); console.log(`  ok   ${T} ${name}`); }
+      catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); }
+    };
+    const st = () => page.evaluate(() => window.rebound.state);
+    const rich = (cap, man = 0) => page.evaluate(([c, m]) => { const r = window.rebound; r.ctx.state = { ...r.state, capital: r.state.capital + c, mandate: r.state.mandate + m }; }, [cap, man]);
+    const closeToasts = async () => { for (const x of await page.locator('.toast-x').all()) await x.click().catch(() => {}); };
+    await page.goto(url); await page.waitForTimeout(800);
+    await step('sell and buy', async () => {
+      for (let i = 0; i < 5; i++) await page.click('.sell');
+      await rich(1e3); await page.waitForTimeout(1100);
+      await page.locator('.up .buy:not([aria-disabled="true"]):visible').first().click(); await page.waitForTimeout(200);
+      if (!Object.keys((await st()).upgrades).length) throw new Error('nothing bought');
+    });
+    await step('buy through to the reveal', async () => {
+      for (let round = 0; round < 25 && !(await st()).flags.revealed; round++) {
+        await rich(1e6); await page.waitForTimeout(1100);
+        const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
+        for (let i = 0; i < 4 && (await b.count()); i++) { await b.first().click().catch(() => {}); await page.waitForTimeout(150); }
+        const f = page.locator('.found:not([aria-disabled="true"]):visible');
+        if (await f.count()) await f.first().click().catch(() => {});
+      }
+      if (!(await st()).flags.revealed) throw new Error('never revealed');
+      await page.waitForTimeout(1200);
+      await page.screenshot({ path: `${out}/${T}-revealed.png` });
+      await page.screenshot({ path: `${out}/${T}-revealed-full.png`, fullPage: true });
+    });
+    await step('formula sheets', async () => {
+      for (const k of ['eff', 'cons', 'reb']) { await page.click(`.dial-${k} .info`); await page.waitForTimeout(200); await page.keyboard.press('Escape'); }
+      await page.click('.price-row .info'); await page.waitForTimeout(200); await page.screenshot({ path: `${out}/${T}-price.png` }); await page.keyboard.press('Escape');
+    });
+    await step('draw the budget, enact a lever', async () => {
+      await closeToasts();
+      await page.locator('.bud-draw').click(); await page.waitForTimeout(300);
+      const s = await st(); if (!Object.values(s.sectors).some((x) => x.budget)) throw new Error('no budget drawn');
+      await rich(0, 1e4); await page.waitForTimeout(1100);
+      const r = page.locator('.lev-raise:not([aria-disabled="true"]):visible');
+      if (!(await r.count())) throw new Error('no lever to raise');
+      await r.first().click(); await page.waitForTimeout(1200);
+      await page.locator('.lever.active').first().scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${out}/${T}-lever.png` });
+    });
+    await step('locked industry checklist', async () => {
+      const c = page.locator('.tab.locked');
+      if (!(await c.count())) return;
+      await c.first().click(); await page.waitForTimeout(250); await page.screenshot({ path: `${out}/${T}-checklist.png` }); await page.keyboard.press('Escape');
+    });
+    await step('Reckoning, summary, shop, next run', async () => {
+      await closeToasts();
+      await page.click('.run-foot .btn'); await page.waitForTimeout(250);
+      await page.screenshot({ path: `${out}/${T}-confirm.png` });
+      await page.click('button:has-text("Close the books")'); await page.waitForTimeout(500);
+      await page.screenshot({ path: `${out}/${T}-summary.png` });
+      const t0 = (await st()).time; await page.waitForTimeout(600);
+      if ((await st()).time !== t0) throw new Error('ticked behind the summary');
+      await page.click('button:has-text("Spend Hindsight")'); await page.waitForTimeout(300);
+      await page.screenshot({ path: `${out}/${T}-shop.png` });
+      const kb = page.locator('.kh-node .btn:not([aria-disabled="true"])');
+      if (await kb.count()) { const h0 = (await st()).meta.hindsight; await kb.first().click(); await page.waitForTimeout(200); if ((await st()).meta.hindsight >= h0) throw new Error('know-how click did nothing'); }
+      const ib = page.locator('.shop-item .btn:not([aria-disabled="true"]):not(.seat-b)');
+      if (await ib.count()) { await ib.first().click(); await page.waitForTimeout(200); }
+      const sb = page.locator('.shop-item .seat-b:not([aria-disabled="true"]):visible');
+      if (await sb.count()) { await sb.first().click(); await page.waitForTimeout(200); }
+      await page.screenshot({ path: `${out}/${T}-shop-after.png` });
+      await page.click('button:has-text("Begin the next run")'); await page.waitForTimeout(700);
+      if (!((await st()).time > 0)) throw new Error('next run not ticking');
+    });
+    const o = await overflow(page);
+    if (o.sw > o.cw) fail(`OVERFLOW ${T}`);
+    if (errs.length) fail(`console ${T}: ${errs.join(' | ')}`);
     await ctx.close();
   }
 }

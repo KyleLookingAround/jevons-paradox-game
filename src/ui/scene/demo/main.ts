@@ -1,0 +1,248 @@
+// Standalone demo for the scene engine: hand-made SceneViews, scrubbable inputs, a 60-second auto-play run, and a
+// strip mode for screenshots (#strip=steam). Built by tools/scene-demo.ts into dist/scene-demo.html.
+import { createScene } from '../engine';
+import type { SceneView, SceneApp, SceneHandle } from '../types';
+
+interface Ind {
+  id: string; name: string; look: string; service: [string, string]; resource: string; pressure: string; crisis: string; flow?: boolean;
+  apps: [string, string, string, number][]; // icon, name, blurb, cost
+}
+
+const IND: Ind[] = [
+  { id: 'steam', name: 'Steam', look: 'ledger', service: ['Motive power', 'hp'], resource: 'Coal', pressure: 'Smog', crisis: 'The Black Fog', apps: [
+    ['pump', 'Mine pumping', 'Keeps the pit dry. Dry pits go deeper.', 0], ['mill', 'Cotton mills', 'Now they can be anywhere there is coal.', 60],
+    ['winder', 'Winding engines', 'Haul the coal up as fast as the pumps let the men dig it.', 180], ['train', 'Railways', 'Coal hauling coal to the people who burn coal.', 900],
+    ['ship', 'Steamships', 'The trade winds are now optional.', 4000], ['plough', 'Steam ploughing', 'An engine at each headland, a plough between.', 12000]] },
+  { id: 'light', name: 'Light', look: 'gaslight', service: ['Light', 'klm·h'], resource: 'Town gas & current', pressure: 'Coal smoke', crisis: 'The Pea-Souper', apps: [
+    ['lamp', 'Street lamps', 'The night, abolished street by street.', 0], ['factory-night', 'Night shifts', 'The mill no longer waits for the sun.', 400],
+    ['tram', 'Electric trams', 'The suburbs, connected.', 2000], ['house', 'Lit homes', 'Reading after dark becomes a habit.', 6000], ['sign', 'Shop signs', 'Selling to people who are only passing.', 20000]] },
+  { id: 'motion', name: 'Motion', look: 'chrome', service: ['Vehicle-miles', 'veh·mi'], resource: 'Oil', pressure: 'Exhaust', crisis: 'The Summer Smog', apps: [
+    ['van', 'Delivery vans', 'The shop comes to you.', 0], ['car', 'Commuting', 'Living here, working there.', 3000],
+    ['mall', 'Out-of-town shopping', 'Free parking. Ample parking.', 9000], ['suburb', 'Suburbs', 'A lawn each.', 25000], ['plane', 'Package holidays', 'A fortnight in the sun, by Tuesday.', 80000]] },
+  { id: 'compute', name: 'Compute', look: 'terminal', service: ['Computation', 'PFLOP'], resource: 'Power, water & chips', pressure: 'Carbon', crisis: 'The Heat Dome', apps: [
+    ['sheet', 'Spreadsheets', 'Every business, modelled.', 0], ['globe', 'The web', 'Everything, linked.', 5000], ['cloud', 'Cloud storage', 'Keep everything. Forever.', 20000],
+    ['play', 'Streaming', 'Whatever you like, whenever.', 60000], ['brain', 'Model training', 'Bigger is better, so far.', 300000]] },
+  { id: 'code', name: 'Code', look: 'agentic', service: ['Working features', 'features'], resource: 'Human attention', pressure: 'Code stock', crisis: 'The Great Outage', flow: true, apps: [
+    ['wrench', 'Internal tools', 'The spreadsheet, promoted.', 0], ['phone-app', 'Throwaway personal apps', 'Built Tuesday, forgotten Friday.', 2000],
+    ['scroll', 'Legacy rewrites', 'Same system, new bugs.', 8000], ['chatbot', 'Chatbots on everything', 'Ask the toaster.', 20000], ['robots', 'Agents writing for agents', 'Nearly unsaturable.', 60000]] },
+  { id: 'iron', name: 'Iron (no scene yet)', look: 'ledger', service: ['Iron', 't'], resource: 'Ore', pressure: 'Slag', crisis: 'The Slag Slide', apps: [
+    ['furnace', 'Blast furnaces', 'Hot blast.', 0], ['rolling-mill', 'Rolling mills', 'Rails by the mile.', 500], ['bridge', 'Iron bridges', 'Span anything.', 3000], ['mystery', 'Something new', 'Unknown icon.', 9000]] },
+];
+const LEVERS: [string, string][] = [['duty', 'Fuel duty'], ['cap', 'Hard cap'], ['sufficiency', 'Sufficiency'], ['substitution', 'Substitution'],
+  ['circularity', 'Circularity'], ['greenSpending', 'Green spending'], ['deletion', 'Deletion'], ['reviewGate', 'Review gates'], ['sharedLibs', 'Shared libraries']];
+
+interface DemoState {
+  ind: number; status: SceneApp['status'][]; adoption: number[]; stage: number; pressure: number; reserve: number; pop: number; pace: number;
+  levers: Record<string, boolean>; crises: number; reckoning: '' | 'exhausted' | 'collapse' | 'chosen'; decoupling: boolean; steadyProgress: number; steady: boolean;
+  look: string;
+}
+
+function blank(ind: number): DemoState {
+  const n = IND[ind].apps.length;
+  return { ind, status: Array.from({ length: n }, (_, i) => (i === 0 ? 'available' : 'hidden')), adoption: Array(n).fill(0), stage: 0, pressure: 0, reserve: 1,
+    pop: 0, pace: 0, levers: {}, crises: 0, reckoning: '', decoupling: false, steadyProgress: 0, steady: false, look: '' };
+}
+
+export const PRESETS: Record<string, (ind: number) => DemoState> = {
+  empty: (i) => blank(i),
+  early: (i) => ({ ...blank(i), status: IND[i].apps.map((_, k) => (k === 0 ? 'founded' : k === 1 ? 'available' : 'hidden')), adoption: IND[i].apps.map((_, k) => (k === 0 ? 0.3 : 0)), pressure: 0.05, reserve: 0.97, pop: 0.12, pace: 0.12 }),
+  mid: (i) => ({ ...blank(i), status: IND[i].apps.map((_, k) => (k < 3 ? 'founded' : k === 3 ? 'available' : 'hidden')), adoption: IND[i].apps.map((_, k) => [0.75, 0.5, 0.2][k] ?? 0), stage: 1, pressure: 0.3, reserve: 0.78, pop: 0.45, pace: 0.45 }),
+  late: (i) => ({ ...blank(i), status: IND[i].apps.map(() => 'founded'), adoption: IND[i].apps.map((_, k) => [0.97, 0.9, 0.8, 0.65, 0.5, 0.35][k] ?? 0.3), stage: 2, pressure: 0.6, reserve: 0.45, pop: 0.8, pace: 0.8, crises: 1 }),
+  crisis: (i) => ({ ...PRESETS.late(i), stage: 3, adoption: IND[i].apps.map((_, k) => [1, 0.97, 0.9, 0.8, 0.7, 0.55][k] ?? 0.5), pressure: 0.88, reserve: 0.28, pop: 0.95, pace: 1, crises: 2 }),
+  collapse: (i) => ({ ...PRESETS.crisis(i), pressure: 1.05, reserve: 0.08, crises: 3, reckoning: 'collapse' }),
+  steady: (i) => ({ ...blank(i), status: IND[i].apps.map(() => 'founded'), adoption: IND[i].apps.map((_, k) => [0.85, 0.75, 0.62, 0.5, 0.42, 0.3][k] ?? 0.3), stage: 3, pressure: 0.14, reserve: 0.55, pop: 0.7, pace: 0.35,
+    levers: { duty: true, cap: true, substitution: true, sufficiency: true, greenSpending: true, deletion: true, sharedLibs: true }, decoupling: true, steadyProgress: 1, steady: true, crises: 2 }),
+};
+
+export function viewOf(s: DemoState): SceneView {
+  const ind = IND[s.ind];
+  return {
+    sectorId: ind.id, sectorName: ind.name, look: s.look || ind.look, serviceName: ind.service[0], serviceUnit: ind.service[1],
+    resourceName: ind.resource, pressureName: ind.pressure, crisisName: ind.crisis, resourceKind: ind.flow ? 'flow' : 'stock',
+    apps: ind.apps.map(([icon, name, blurb, cost], k) => ({
+      id: `${ind.id}.${icon}`, name, icon, blurb, status: s.status[k], adoption: s.status[k] === 'founded' ? s.adoption[k] : 0,
+      demand: s.adoption[k] * 120 * Math.pow(3, k), foundCost: cost, canFound: k % 2 === 0, affordFraction: 0.6, visibleBelow: 1 / (k + 1),
+    })),
+    stage: s.stage, etaFold: Math.pow(2, s.stage * 1.5), rFold: Math.pow(16, s.pace), pace: s.pace, reserveFraction: s.reserve,
+    pressureFraction: s.pressure, nextCrisisFraction: 0.65, population: Math.exp(s.pop * Math.log(12)), popFraction: s.pop, crises: s.crises,
+    levers: LEVERS.filter(([k]) => s.levers[k]).map(([kind, name]) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name })),
+    decoupling: s.decoupling, steadyProgress: s.steadyProgress, steady: s.steady,
+    reckoning: s.reckoning ? { cause: s.reckoning, here: true } : null, year: null,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Strip mode: one industry, seven stages, frozen (for screenshots)    */
+/* ------------------------------------------------------------------ */
+function stripMode(indId: string): void {
+  const i = Math.max(0, IND.findIndex((x) => x.id === indId));
+  document.documentElement.dataset.era = IND[i].look;
+  document.documentElement.dataset.theme = IND[i].look;
+  document.body.classList.add('strip');
+  const wrap = document.getElementById('app')!;
+  wrap.innerHTML = '';
+  for (const name of ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
+    const fig = document.createElement('figure');
+    const cap = document.createElement('figcaption');
+    cap.textContent = name;
+    const host = document.createElement('div');
+    fig.append(cap, host);
+    wrap.append(fig);
+    const sc = createScene(host, { reducedMotion: true });
+    const st = PRESETS[name](i);
+    // The crisis frame shows the fog: bump crises after a first update.
+    if (name === 'crisis') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
+    sc.update(viewOf(st));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Interactive mode                                                    */
+/* ------------------------------------------------------------------ */
+function interactive(): void {
+  const app = document.getElementById('app')!;
+  const host = document.createElement('div');
+  host.className = 'scene-host';
+  const log = document.createElement('p');
+  log.className = 'log';
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  app.append(host, log, panel);
+
+  let s: DemoState = PRESETS.early(0);
+  let scene: SceneHandle = createScene(host, {
+    onSelect: (id) => { log.textContent = id ? `Selected ${id}` : 'Selection cleared'; },
+    onFound: (id) => {
+      const k = IND[s.ind].apps.findIndex(([icon]) => `${IND[s.ind].id}.${icon}` === id);
+      if (k >= 0) { s.status[k] = 'founded'; s.adoption[k] = 0.02; if (s.status[k + 1] === 'hidden') s.status[k + 1] = 'available'; render(); syncPanel(); }
+      log.textContent = `onFound(${id}) — the host would call model.foundApp`;
+    },
+  });
+  let playing = 0, t0 = 0;
+
+  const render = () => {
+    document.documentElement.dataset.era = s.look || IND[s.ind].look;
+    document.documentElement.dataset.theme = s.look || IND[s.ind].look;
+    scene.update(viewOf(s));
+  };
+
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: (Node | string)[]) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) (e as unknown as Record<string, unknown>)[k] = v;
+    e.append(...kids);
+    return e;
+  };
+  const slider = (label: string, get: () => number, set: (v: number) => void, min = 0, max = 1, step = 0.01) => {
+    const out = el('output');
+    const inp = el('input', { type: 'range', min: String(min), max: String(max), step: String(step) }) as HTMLInputElement;
+    const sync = () => { inp.value = String(get()); out.textContent = (+get()).toFixed(2); };
+    inp.addEventListener('input', () => { set(+inp.value); out.textContent = (+inp.value).toFixed(2); stop(); render(); });
+    syncers.push(sync);
+    return el('label', { className: 'row' }, el('span', {}, label), inp, out);
+  };
+  const check = (label: string, get: () => boolean, set: (v: boolean) => void) => {
+    const inp = el('input', { type: 'checkbox' }) as HTMLInputElement;
+    syncers.push(() => { inp.checked = get(); });
+    inp.addEventListener('change', () => { set(inp.checked); stop(); render(); });
+    return el('label', { className: 'chk' }, inp, label);
+  };
+  let syncers: (() => void)[] = [];
+  const syncPanel = () => syncers.forEach((f) => f());
+
+  function buildPanel(): void {
+    syncers = [];
+    panel.replaceChildren();
+    const ind = el('select') as HTMLSelectElement;
+    IND.forEach((x, i) => ind.append(el('option', { value: String(i), textContent: `${x.name} (${x.look})` })));
+    ind.value = String(s.ind);
+    ind.addEventListener('change', () => { stop(); s = PRESETS.early(+ind.value); scene.setSector(IND[s.ind].id); buildPanel(); render(); });
+    const look = el('select') as HTMLSelectElement;
+    ['', 'ledger', 'gaslight', 'chrome', 'terminal', 'agentic', 'unknown'].forEach((x) => look.append(el('option', { value: x, textContent: x || 'look: industry default' })));
+    look.value = s.look;
+    look.addEventListener('change', () => { s.look = look.value; render(); });
+    const presets = el('div', { className: 'btns' });
+    for (const name of Object.keys(PRESETS)) {
+      presets.append(el('button', { type: 'button', textContent: name, onclick: () => { stop(); s = { ...PRESETS[name](s.ind), look: s.look }; syncPanel(); render(); } }));
+    }
+    const play = el('button', { type: 'button', textContent: '▶ Auto-play a run (60 s)', className: 'play', onclick: () => start() });
+    const crisis = el('button', { type: 'button', textContent: 'Fire a crisis', onclick: () => { s.crises++; render(); } });
+    const rm = check('Reduced motion', () => !!rmOn, (v) => { rmOn = v; scene.setReducedMotion(v); });
+    const head = el('div', { className: 'grp' }, el('h3', {}, 'Industry & look'), ind, look, presets, el('div', { className: 'btns' }, play, crisis), rm);
+
+    const apps = el('div', { className: 'grp' }, el('h3', {}, 'Applications'));
+    IND[s.ind].apps.forEach(([, name], k) => {
+      const stSel = el('select') as HTMLSelectElement;
+      ['hidden', 'available', 'founded'].forEach((x) => stSel.append(el('option', { value: x, textContent: x })));
+      syncers.push(() => { stSel.value = s.status[k]; });
+      stSel.addEventListener('change', () => { s.status[k] = stSel.value as SceneApp['status']; stop(); render(); });
+      apps.append(el('div', { className: 'app' }, el('strong', {}, name), stSel, slider('adoption', () => s.adoption[k], (v) => (s.adoption[k] = v))));
+    });
+
+    const world = el('div', { className: 'grp' }, el('h3', {}, 'World'),
+      slider('machine stage', () => s.stage, (v) => (s.stage = v), 0, 3, 1),
+      slider('pressure', () => s.pressure, (v) => (s.pressure = v), 0, 1.1),
+      slider('reserve', () => s.reserve, (v) => (s.reserve = v)),
+      slider('population', () => s.pop, (v) => (s.pop = v)),
+      slider('pace (use rate)', () => s.pace, (v) => (s.pace = v)),
+      slider('steady progress', () => s.steadyProgress, (v) => (s.steadyProgress = v)),
+      check('Decoupling', () => s.decoupling, (v) => (s.decoupling = v)),
+      check('Steady State', () => s.steady, (v) => (s.steady = v)));
+    const rk = el('select') as HTMLSelectElement;
+    [['', 'No Reckoning'], ['exhausted', 'Reckoning: exhausted'], ['collapse', 'Reckoning: collapse'], ['chosen', 'Reckoning: chosen']].forEach(([v, t]) => rk.append(el('option', { value: v, textContent: t })));
+    syncers.push(() => { rk.value = s.reckoning; });
+    rk.addEventListener('change', () => { s.reckoning = rk.value as DemoState['reckoning']; stop(); render(); });
+    world.append(rk);
+    const lev = el('div', { className: 'grp' }, el('h3', {}, 'Levers in force'));
+    for (const [k, name] of LEVERS) lev.append(check(name, () => !!s.levers[k], (v) => (s.levers[k] = v)));
+    panel.append(head, apps, world, lev);
+    syncPanel();
+  }
+  let rmOn = false;
+
+  function start(): void {
+    stop();
+    s = { ...blank(s.ind), look: s.look };
+    t0 = performance.now();
+    const n = IND[s.ind].apps.length;
+    const step = () => {
+      const t = Math.min(1, (performance.now() - t0) / 60000);
+      for (let k = 0; k < n; k++) {
+        const tk = 0.02 + k * (0.75 / n);
+        s.status[k] = t >= tk ? 'founded' : t >= tk - 0.06 || k === 0 ? 'available' : 'hidden';
+        s.adoption[k] = t >= tk ? 1 / (1 + Math.exp(-(t - tk - 0.12) * 14)) : 0;
+      }
+      s.stage = Math.min(3, Math.floor(t * 4.2));
+      s.pressure = Math.min(1.05, Math.pow(t, 1.5) * 1.08);
+      s.reserve = Math.max(0.05, 1 - Math.pow(t, 1.3) * 0.95);
+      s.pop = Math.min(1, t * 1.1);
+      s.pace = Math.min(1, t * 1.2);
+      s.crises = t > 0.85 ? 3 : t > 0.65 ? 2 : t > 0.4 ? 1 : 0;
+      s.reckoning = t >= 0.99 ? 'collapse' : '';
+      render();
+      syncPanel();
+      if (t < 1) playing = window.setTimeout(step, 100); // the host calls update() ~10×/s
+    };
+    step();
+  }
+  function stop(): void { clearTimeout(playing); playing = 0; }
+
+  buildPanel();
+  render();
+  const api = {
+    set: (p: Partial<DemoState>) => { stop(); s = { ...s, ...p }; render(); syncPanel(); },
+    preset: (name: string, ind?: string) => {
+      stop();
+      const i = ind ? Math.max(0, IND.findIndex((x) => x.id === ind)) : s.ind;
+      if (i !== s.ind) scene.setSector(IND[i].id);
+      s = { ...PRESETS[name](i), look: s.look };
+      buildPanel(); render();
+    },
+    play: () => start(),
+    scene: () => scene,
+    rebuild: () => { scene.destroy(); scene = createScene(host, {}); render(); },
+  };
+  (window as unknown as { __scene: typeof api }).__scene = api;
+}
+
+const m = /strip=([\w-]+)/.exec(location.hash);
+if (m) stripMode(m[1]); else interactive();
