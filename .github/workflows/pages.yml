@@ -1,0 +1,49 @@
+name: Build and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.38
+      - name: Test
+        run: |
+          if ls src/*.test.ts >/dev/null 2>&1; then bun test; else echo "No tests yet"; fi
+      - name: Build
+        run: |
+          if [ -f src/main.ts ] && [ -f index.html ]; then
+            bun run build.ts
+          else
+            mkdir -p dist
+            printf '<!DOCTYPE html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rebound</title><body style="font-family:Georgia,serif;margin:3rem 1.5rem;max-width:34rem"><h1>Rebound</h1><p>An incremental game about Jevons paradox. The first build is on its way.</p></body></html>' > dist/index.html
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
