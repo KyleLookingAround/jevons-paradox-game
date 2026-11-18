@@ -19,6 +19,9 @@ export const DUTY_MANDATE_SHARE = 0.1;
 export const SUBSTITUTION_CAPCOST_MUL = 1.5;
 /** A hard cap leaks by up to this share once the permit price is far above the resource price. */
 export const CAP_LEAK_MAX = 0.25;
+/** A cap squeezes out at most this share of the demand that is not a floor (lock-in, drawsOn); below that it is
+ *  simply not met. Keeps the permit price finite when the cap is at or under the floor, or at capFraction 0. */
+export const CAP_SQUEEZE_MAX = 0.95;
 /** Flow eras: price saturates here; service above this utilisation is rationed (never reaches 1). */
 export const FLOW_MAX_UTILISATION = 0.98;
 /** Flow eras: effective capacity never falls below this share of nominal capacity. */
@@ -359,12 +362,24 @@ function solveEra(
   let sigma = sSigma, R = sR, prBase = sPrBase, pPre = sPre, ps = sCust, permit = 0;
 
   // hard cap (with leak)
-  if (Number.isFinite(lev.capR) && R > lev.capR) {
+  // Locked-in demand and drawsOn demand are floors that no price removes. R(p) falls towards rFloor as p → ∞, so a
+  // cap at or below it can never be met: chasing it sent the permit price (and, through m·p_s·D, income) to ~1e24.
+  // The cap binds only down to rFloor + (1 − CAP_SQUEEZE_MAX) of the squeezable use; the rest of it is not met.
+  let rFloor = 0;
+  if (Number.isFinite(lev.capR)) {
+    let dInf = extraD;
+    for (const i of active) dInf += F[i];
+    rFloor = ((1 - sigmaOf(dInf)) * dInf) / eta;
+  }
+  const rFree = R;
+  const capTarget = (capEff: number): number => Math.max(capEff, rFloor + (1 - CAP_SQUEEZE_MAX) * Math.max(0, rFree - rFloor));
+  if (Number.isFinite(lev.capR) && R > capTarget(lev.capR)) {
     const rAt = (pp: number): number => {
       const d = demand(pp);
       return ((1 - sigmaOf(d)) * d) / eta;
     };
-    const solveCap = (capEff: number): { p: number; permit: number; prBase: number } => {
+    const solveCap = (capWanted: number): { p: number; permit: number; prBase: number } => {
+      const capEff = capTarget(capWanted);
       let lo = p, hi = p * 2 + 1e-12;
       for (let k = 0; k < 80 && rAt(hi) > capEff; k++) { lo = hi; hi *= 2; }
       for (let it = 0; it < BISECT_ITERS; it++) {
@@ -391,11 +406,11 @@ function solveEra(
       let lo = 0, hi = f0;
       for (let it = 0; it < 14; it++) {
         const mid = (lo + hi) / 2;
-        const s = R > lev.capR * (1 + mid) ? solveCap(lev.capR * (1 + mid)) : { p, permit: 0, prBase };
+        const s = R > capTarget(lev.capR * (1 + mid)) ? solveCap(lev.capR * (1 + mid)) : { p, permit: 0, prBase };
         if (leakOf(s) > mid) lo = mid; else hi = mid;
       }
       const capEff = lev.capR * (1 + hi);
-      sol = R > capEff ? solveCap(capEff) : { p, permit: 0, prBase };
+      sol = R > capTarget(capEff) ? solveCap(capEff) : { p, permit: 0, prBase };
     }
     if (sol.permit > 0) {
       p = sol.p;
@@ -722,10 +737,10 @@ function step(state: GameState, content: Content, dt: number): GameState {
       if (d > ns.peakD) { ns.peakD = d; changed = true; }
       const target = lev.sufTarget;
       if (ns.satMul > target + 1e-12) {
-        ns.satMul = Math.max(target, ns.satMul - (ns.satMul - target) * Math.min(1, lev.sufRate * dt));
+        ns.satMul = Math.max(target, ns.satMul - (ns.satMul - target) * (1 - Math.exp(-lev.sufRate * dt)));
         changed = true;
       } else if (ns.satMul < target - 1e-12) {
-        ns.satMul = Math.min(target, ns.satMul + (target - ns.satMul) * Math.min(1, SUFFICIENCY_RECOVERY_RATE * dt));
+        ns.satMul = Math.min(target, ns.satMul + (target - ns.satMul) * (1 - Math.exp(-SUFFICIENCY_RECOVERY_RATE * dt)));
         changed = true;
       }
       if (!ns.available && f.ps <= a.visibleBelow) {
@@ -876,14 +891,16 @@ function step(state: GameState, content: Content, dt: number): GameState {
     break;
   }
 
-  // steady state across all five
-  const allOpen = ERA_ORDER.every((e) => eras[e]?.open);
+  // Steady State across the board. types.ts: steadyYearsAll counts years in which every OPEN era decoupled; the win
+  // (DESIGN.md, brief) needs all five open. An era that opens is not decoupling for its first DECOUPLING_MIN_OPEN
+  // seconds, so the counter restarts when the fifth era opens: the 50 years are always served with all five open.
+  const allOpen = ERA_ORDER.every((e) => state.eras[e]?.open && eras[e]?.open);
   let steadyYearsAll = state.steadyYearsAll;
   let flags = state.flags;
-  if (allOpen && allDecoupling && anyDecoupling) {
+  if (allDecoupling && anyDecoupling && opened.length === 0) {
     const before = steadyYearsAll;
     steadyYearsAll += dt * YEARS_PER_SECOND;
-    if (before < STEADY_STATE_YEARS && steadyYearsAll >= STEADY_STATE_YEARS && !flags.won) {
+    if (allOpen && steadyYearsAll >= STEADY_STATE_YEARS && !flags.won) {
       flags = { ...flags, won: true };
       items.push(headline(tmp, content, 'steadyAll', time));
     }
@@ -1323,21 +1340,61 @@ function merge(fresh: unknown, saved: unknown): unknown {
   return saved;
 }
 
+/** Map-valued fields whose keys a fresh state does not list: merge() cannot type-check their values, so do it here. */
+function levelMap(x: unknown, maxOf: (id: string) => number | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isObj(x)) return out;
+  for (const [k, v] of Object.entries(x)) {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) continue;
+    const max = maxOf(k);
+    out[k] = Math.floor(max === undefined ? v : Math.min(v, max));
+  }
+  return out;
+}
+function trueMap(x: unknown): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (isObj(x)) for (const [k, v] of Object.entries(x)) if (v === true) out[k] = true;
+  return out;
+}
+function amountMap(x: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (isObj(x)) for (const [k, v] of Object.entries(x)) if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out[k] = v;
+  return out;
+}
+
 function deserialize(text: string, content: Content): GameState | null {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return null; }
   if (!isObj(raw) || typeof raw.time !== 'number' || !Number.isFinite(raw.time) || !isObj(raw.eras)) return null;
   try {
     const savedMeta = isObj(raw.meta) ? raw.meta : {};
-    const meta = merge(freshMeta(), savedMeta) as MetaState;
+    const ix = idx(content);
+    const merged0 = merge(freshMeta(), savedMeta) as MetaState;
+    const meta: MetaState = {
+      ...merged0,
+      knowhow: levelMap(merged0.knowhow, (id) => ix.knowhow.get(id)?.maxLevel),
+      institutions: trueMap(merged0.institutions),
+      achievements: trueMap(merged0.achievements),
+      steadyEras: trueMap(merged0.steadyEras) as MetaState['steadyEras'],
+    };
     const fresh = createState(content, meta, typeof raw.seed === 'number' ? raw.seed : 1);
     // closed eras in the fresh state must not override an era the save has open, and vice versa
     const merged = merge(fresh, raw) as GameState;
     // only eras known to content
     const eras = {} as Record<EraId, EraState>;
     for (const e of ERA_ORDER) if (fresh.eras[e]) eras[e] = merged.eras[e];
+    const levers: Record<string, LeverState> = {};
+    for (const [id, ls] of Object.entries(isObj(merged.levers) ? merged.levers : {})) {
+      if (!isObj(ls) || typeof ls.level !== 'number' || typeof ls.ref !== 'number') continue;
+      const def = ix.levers.get(id);
+      const level = clamp(Math.floor(fin(ls.level)), 0, def ? def.levels.length : Infinity);
+      levers[id] = { level, ref: level > 0 ? Math.max(0, fin(ls.ref)) : 0 };
+    }
+    const runX = merged.run as RunStatsX;
     const s: GameState = {
-      ...merged, version: SAVE_VERSION, eras,
+      ...merged, version: SAVE_VERSION, eras, levers, meta,
+      upgrades: levelMap(merged.upgrades, (id) => { const u = ix.upgrades.get(id); return u ? upgradeMax(u) : undefined; }),
+      run: { ...runX, resourceUsed: amountMap(runX.resourceUsed), steadyEras: trueMap(runX.steadyEras) } as RunStatsX,
       news: Array.isArray(merged.news)
         ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number').slice(0, NEWS_MAX)
         : [],
