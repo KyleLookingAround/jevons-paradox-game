@@ -61,7 +61,7 @@ export function viewOf(s: DemoState): SceneView {
     resourceName: ind.resource, pressureName: ind.pressure, crisisName: ind.crisis, resourceKind: ind.flow ? 'flow' : 'stock',
     apps: ind.apps.map(([icon, name, blurb, cost], k) => ({
       id: `${ind.id}.${icon}`, name, icon, blurb, status: s.status[k], adoption: s.status[k] === 'founded' ? s.adoption[k] : 0,
-      demand: s.adoption[k] * 120 * Math.pow(3, k), foundCost: cost, canFound: k % 2 === 0, affordFraction: 0.6, visibleBelow: 1 / (k + 1),
+      demand: s.adoption[k] * 120 * Math.pow(3, k), foundCost: cost, canFound: cost <= 1000 || k % 2 === 0, affordFraction: 0.6, visibleBelow: 1 / (k + 1),
     })),
     stage: s.stage, etaFold: Math.pow(2, s.stage * 1.5), rFold: Math.pow(16, s.pace), pace: s.pace, reserveFraction: s.reserve,
     pressureFraction: s.pressure, nextCrisisFraction: 0.65, population: Math.exp(s.pop * Math.log(12)), popFraction: s.pop, crises: s.crises,
@@ -230,6 +230,7 @@ function interactive(): void {
   render();
   const api = {
     set: (p: Partial<DemoState>) => { stop(); s = { ...s, ...p }; render(); syncPanel(); },
+    raw: (p: Partial<DemoState>) => { s = { ...s, ...p }; render(); },
     preset: (name: string, ind?: string) => {
       stop();
       const i = ind ? Math.max(0, IND.findIndex((x) => x.id === ind)) : s.ind;

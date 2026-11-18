@@ -39,7 +39,7 @@ export const steam: Layout = {
       bprop(church, 214, 140, 0.48, 0.5, c) + bprop(poplar, 168, 136, 0.46, 0.3, c) + bprop(poplar, 177, 137, 0.44, 0.8, c) +
       bprop(cottage, 120, 144, 0.44, 0.2, c) + bprop(cottage, 300, 146, 0.44, 0.7, c) + bprop(tree, 336, 147, 0.46, 0.4, c) + bprop(tree, 366, 154, 0.48, 0.9, c);
     const mid =
-      P(valley, 'gd') + P(valley, 'tr', 'fill-opacity=".45"') + P(valley.replace(/L[\d.]+ 400Z$/, ''), 'k k2') +
+      P(valley, 'gd') + P(valley, 'tr', 'fill-opacity=".45"') + P(ridge([[0, 168], [100, 164], [200, 174], [300, 170], [400, 182], [452, 197]], 400).replace(/L[\d.]+ 400Z$/, ''), 'k k2') +
       P('M455 200C480 196 500 206 530 200S580 194 600 198V320H468Z', 'gd') + P('M455 200C480 196 500 206 530 200S580 194 600 198V320H468Z', 'tr', 'fill-opacity=".3"') + P('M455 200C480 196 500 206 530 200S580 194 600 198', 'k k2') +
       ribbon([[168, 171], [215, 188], [262, 214], [310, 240], [362, 264], [410, 286], [454, 306]], 2, 18, 'wa') +
       waterLines(270, 222, 170, 70, 14, 'river', 'k k2') +

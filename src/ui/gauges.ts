@@ -5,7 +5,7 @@
 import type { Ctx, Comp, FormulaKind } from './ctx';
 import { sectorDef, sd, ageOfSector } from './ctx';
 import { h, svg, setText, setAttr, setStyle, show, cls } from './dom';
-import { fmt, fold, pct, dur, clamp, num, lower } from './fmt';
+import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch } from './fmt';
 import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
 
@@ -91,11 +91,25 @@ export function buildGauges(ctx: Ctx): Comp {
       const t = v / 2.5, [x0, y0] = pt(t, R - 1), [x1, y1] = pt(t, R - (v === 1 ? 10 : 5));
       m += `<line class="${v === 1 ? 'tk tk-major' : 'tk'}" x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>`;
     }
-    const [lx, ly] = pt(1 / 2.5, R - 17);
-    m += `<text class="tk-l" x="${lx.toFixed(1)}" y="${(ly + 2.5).toFixed(1)}" text-anchor="middle">100%</text>`;
     ticks.innerHTML = m;
     setAttr(reb.svgEl.querySelector('.d-zone'), 'd', arc(0.4, 1));
   }
+  // The "100%" label is drawn above the needle (with a halo in the page colour) and steps to whichever side of the
+  // 100% tick the needle is not on, so the needle can never hide it.
+  const rebLbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  rebLbl.setAttribute('class', 'tk-l tk-100');
+  rebLbl.textContent = '100%';
+  reb.svgEl.querySelector('.d-hub')?.after(rebLbl);
+  let rebSide = 0;
+  const placeRebLbl = (side: number) => {
+    if (side === rebSide) return;
+    rebSide = side;
+    const t = 0.4 + side * 0.085;
+    const [lx, ly] = pt(t, R - 18);
+    rebLbl.setAttribute('x', lx.toFixed(1));
+    rebLbl.setAttribute('y', (ly + 2.5).toFixed(1));
+    rebLbl.setAttribute('text-anchor', 'middle');
+  };
 
   const dials = h('div', { class: 'dials' }, eff.box, cons.box, reb.box);
 
@@ -104,9 +118,10 @@ export function buildGauges(ctx: Ctx): Comp {
     <line class="sp-base" x1="0" x2="200" y1="20" y2="20"/>
     <polyline class="sp-bud" points=""/><polyline class="sp-prom" points=""/><polyline class="sp-eta" points=""/><polyline class="sp-r" points=""/></svg>`);
   const kBud = h('span', { class: 'k-bud', text: 'budget', hidden: true });
+  const kProm = h('span', { class: 'k-prom', text: 'promised', hidden: true });
   const sparkWrap = h('div', { class: 'spark-wrap' }, spark,
     h('div', { class: 'spark-key', 'aria-hidden': 'true' },
-      h('span', { class: 'k-r', text: 'use' }), h('span', { class: 'k-eta', text: 'efficiency' }), h('span', { class: 'k-prom', text: 'promised' }), kBud));
+      h('span', { class: 'k-r', text: 'use' }), h('span', { class: 'k-eta', text: 'efficiency' }), kProm, kBud));
 
   const resLbl = h('span', { class: 'res-lbl' });
   const resLeft = h('span', { class: 'res-left num' });
@@ -148,8 +163,8 @@ export function buildGauges(ctx: Ctx): Comp {
     const tv = (v: number) => 0.5 + Math.log(Math.max(v, 1e-12)) / (2 * Lg);
     const revealed = !!ctx.state.flags?.revealed;
 
-    if (scaleKey !== String(hi)) {
-      scaleKey = String(hi);
+    if (scaleKey !== `${hi}|${fmtEpoch()}`) {
+      scaleKey = `${hi}|${fmtEpoch()}`;
       const ts = ticksFor(hi);
       const every = ts.length > 7 ? 2 : 1;
       const mid = (ts.length - 1) / 2;
@@ -199,10 +214,12 @@ export function buildGauges(ctx: Ctx): Comp {
     setAttr(reb.svgEl.querySelector('.d-sweep'), 'd', has ? arc(0, clamp(rv, 0, 2.5) / 2.5) : '');
     rot(needle, clamp(rv, 0, 2.5) / 2.5);
     cls(reb.box, 'backfire', has && rv > 1);
+    // Needle at or right of the 100% tick: label to its left; otherwise to its right.
+    placeRebLbl(has && rv >= 0.9 ? -1 : 1);
     if (!revealed) { setText(reb.val, '?'); setText(reb.sub, 'not yet understood'); }
     else if (!has) { setText(reb.val, '—'); setText(reb.sub, 'nothing promised yet'); }
     else {
-      setText(reb.val, rv > 1 ? 'Backfire' : pct(rv, false));
+      setText(reb.val, rv > 1 ? '▲ Backfire' : pct(rv, false));
       setText(reb.sub, rv > 1 ? `${pct(rv, false)} of savings eaten` : rv > 0.5 ? 'most savings eaten' : rv > 0 ? 'some savings eaten' : 'savings kept');
     }
 
@@ -231,7 +248,10 @@ export function buildGauges(ctx: Ctx): Comp {
         const x = (t: number) => (((t - t0) / span) * 200).toFixed(1);
         setAttr(spark.querySelector('.sp-r'), 'points', pts.map((p) => `${x(p[0])},${y(p[2])}`).join(' '));
         setAttr(spark.querySelector('.sp-eta'), 'points', pts.map((p) => `${x(p[0])},${y(p[1])}`).join(' '));
-        setAttr(spark.querySelector('.sp-prom'), 'points', pts.map((p) => `${x(p[0])},${y(1 / p[1])}`).join(' '));
+        // The promised line means something only once efficiency has moved off the start.
+        const promised = pts.some((p) => p[1] > 1.001);
+        setAttr(spark.querySelector('.sp-prom'), 'points', promised ? pts.map((p) => `${x(p[0])},${y(1 / p[1])}`).join(' ') : '');
+        show(kProm, promised);
         const bud = pts.filter((p) => p[3] != null);
         setAttr(spark.querySelector('.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
         show(kBud, bud.length >= 2);
@@ -240,6 +260,7 @@ export function buildGauges(ctx: Ctx): Comp {
       } else {
         for (const c of ['.sp-r', '.sp-eta', '.sp-prom', '.sp-bud']) setAttr(spark.querySelector(c), 'points', '');
         show(kBud, false);
+        show(kProm, false);
       }
     }
 
@@ -277,12 +298,15 @@ export function buildGauges(ctx: Ctx): Comp {
       setText(budTxt, revealed ? 'No budget drawn' : '');
       cls(budTxt, 'ok', false); cls(budTxt, 'over', false);
     } else if (e?.withinBudget) {
+      // Compact, to keep the pinned header to one note line; the Budget panel below has the full sentence.
       const into = Math.floor(num(e.steadyYears) % dec);
-      setText(budTxt, e.decoupling ? `Within budget · ${into} of ${dec} years to the next decade` : 'Within budget · wellbeing below target');
+      setText(budTxt, e.decoupling ? `✓ Within budget · year ${into} of ${dec}` : '✓ Within budget · wellbeing short');
+      setAttr(budTxt, 'title', e.decoupling ? `Within budget: ${into} of ${dec} years to the next decade` : 'Within budget, but wellbeing is below the target: the years do not count');
       cls(budTxt, 'ok', !!e.decoupling); cls(budTxt, 'over', false);
     } else {
       const over = bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN;
-      setText(budTxt, `Over budget by ${pct(over, false)}`);
+      setText(budTxt, `▲ Over budget by ${pct(over, false)}`);
+      setAttr(budTxt, 'title', null);
       cls(budTxt, 'ok', false); cls(budTxt, 'over', true);
     }
     show(budTxt, !!budTxt.textContent);

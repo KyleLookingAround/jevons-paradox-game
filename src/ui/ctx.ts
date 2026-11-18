@@ -3,6 +3,8 @@ import type {
   AgeDef, Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorDef, SectorDerived, SectorId, UpgradeView,
 } from '../types';
 
+import type { AffordState } from './afford';
+
 export type FormulaKind = 'eff' | 'cons' | 'rebound' | 'price';
 
 export interface Ctx {
@@ -23,12 +25,20 @@ export interface Ctx {
   replace(s: GameState): void;
   selectSector(id: SectorId): void;
   openFormula(kind: FormulaKind): void;
-  openMenu(): void;
+  openMenu(focus?: 'keys'): void;
   openShop(): void;
   openLocked(id: SectorId): void;
   confirmReckoning(): void;
   toast(text: string, action?: { label: string; run: () => void }): void;
   save(): void;
+  /** The affordable signal (afford.ts), refreshed before the components update. */
+  afford: AffordState;
+  /** Scroll to (and focus) the first offer worth telling the player about. */
+  jumpToAffordable(): void;
+  /** Refresh views and redraw now (after a display setting changed). */
+  refreshAll(): void;
+  /** In-page confirmation before taking one arm of a fork. */
+  confirmFork(upgradeId: string, onYes: () => void): void;
 }
 
 export interface Comp {
@@ -85,6 +95,19 @@ export function sectorWarning(ctx: Ctx, id: SectorId): boolean {
   const next = e.nextCrisisFraction;
   if (pf >= 0.85 || (next != null && pf >= next - 0.06)) return true;
   return def.resourceKind === 'stock' && Number.isFinite(e.reserveFraction) && e.reserveFraction < 0.15;
+}
+
+/** Levers exist for the player once any is visible: only then does Mandate mean anything. */
+export function leversVisible(ctx: Ctx): boolean {
+  return (ctx.levs || []).some((v) => v && v.visible);
+}
+
+/**
+ * "Call a Reckoning" is offered once the run has had its reveal, or once the player has been through a Reckoning
+ * before (they know what it is). A forced Reckoning (collapse, exhaustion) is shown regardless.
+ */
+export function reckoningOffered(ctx: Ctx): boolean {
+  return !!ctx.state.flags?.revealed || (ctx.state.meta?.reckonings ?? 0) >= 1;
 }
 
 export function roman(n: number): string {

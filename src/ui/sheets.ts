@@ -2,14 +2,16 @@
 // industry checklist), plus toasts. Sheet structure is built when it opens; live numbers inside are patched while it
 // stays open.
 import type { Ctx, FormulaKind } from './ctx';
-import { sectorDef, sd, sectorIds, ageOfSector } from './ctx';
+import { sectorDef, sd, sectorIds, ageOfSector, ageDef, reckoningOffered } from './ctx';
 import type { HindsightTerms, InstitutionView, KnowhowView, ReckoningCause, SectorId } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
 import { h, svg, setText, setAttr, setStyle, show, cls, syncChildren } from './dom';
 import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money } from './fmt';
 import { UI_ICONS } from './icons';
 import { effectText } from './panels';
-import { download, copyText, readFileText } from './store';
+import { download, copyText, readFileText, isPersisted, iosInBrowser } from './store';
+import { getPrefs, setPrefs, type TextSize } from './prefs';
+import type { Notation } from './fmt';
 
 type Updater = (() => void) | void;
 interface OpenOpts { label: string; full?: boolean; blocking?: boolean; dismissable?: boolean; cls?: string }
@@ -133,6 +135,17 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       rebound: 'The shadow is this economy with no efficiency gains: same uses, same people, same scarcity. Rebound is the share of the promised saving that extra use of the same things took back. Over 100%: backfire. Growth is what new uses, more people and scarcity did on their own.',
       price: 'A thriftier engine makes the service cheaper. Cheaper service sells more of it. Levies go to the Treasury or back to households, never to you.',
     };
+    // Before the reveal the shadow (and so rebound and growth) would answer the question the run is asking: the
+    // rebound sheet says only that something is unaccounted for, and the consumption sheet leaves the shadow out.
+    const revealed = !!ctx.state.flags?.revealed;
+    if (!revealed && kind === 'rebound') {
+      b.append(h('p', { class: 'f-note', text: 'The engineers promised a saving; the coal merchants report otherwise. Nobody has yet put a figure on the difference. Perhaps someone should write a pamphlet.' }));
+      return;
+    }
+    if (!revealed && kind === 'cons') {
+      lines.cons = lines.cons.slice(0, 2);
+      notes.cons = 'Demand is a sum of uses, each a logistic curve in the service price.';
+    }
     b.append(h('div', { class: 'formula' }, ...lines[kind].map((l) => h('div', { class: 'f-line', text: l }))));
     type Row = [string, (e: NonNullable<ReturnType<typeof sd>>) => string];
     const R: Record<string, Row> = {
@@ -163,6 +176,7 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       rebound: ['fold', 'R', 'shadow', 'prom', 'rfold', 'grow', 'rb'],
       price: ['pr', 'permit', 'eta', 'c', 'sigma', 'pre', 'permitPart', 'dutyPart', 'ps', 'm', 'D', 'inc', 'levy'],
     };
+    if (!revealed) pick.cons = pick.cons.filter((k) => k !== 'grow' && k !== 'shadow');
     const rows = pick[kind].map((k) => { const v = h('dd', { class: 'num' }); return { v, row: R[k] }; });
     const dl = h('dl', { class: 'f-vals' });
     for (const r of rows) dl.append(h('div', null, h('dt', { text: r.row[0] }), r.v));
@@ -473,7 +487,7 @@ export function pendingSheet(ctx: Ctx, sheets: Sheets, onFaced: () => void): voi
   }, { label: 'The Reckoning', full: true, blocking: true, dismissable: false, cls: 'reckon-sheet pending-sheet' });
 }
 
-export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void): void {
+export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, exportText?: () => string): void {
   const lr = ctx.state.meta?.lastRun;
   sheets.open('summary', (b, close) => {
     if (!lr) { b.append(h('p', { text: 'The books are closed.' })); }
@@ -509,6 +523,13 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void): void
     b.append(h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => { shopSheet(ctx, sheets, onDone); } }, 'Spend Hindsight'),
       h('button', { class: 'btn', type: 'button', onclick: () => { close(); onDone(); } }, 'Begin the next run')));
+    // A one-tap copy of the save at the moment it is worth most. Quiet: a text button, never a prompt.
+    const dlNote = h('span', { class: 'muted small', 'aria-live': 'polite' });
+    if (exportText) b.append(h('p', { class: 'sum-dl' }, h('button', { class: 'linkish', type: 'button', onclick: () => {
+      const ok = download(`rebound-reckoning-${num(ctx.state.meta?.reckonings)}.txt`, exportText());
+      if (ok) setPrefs({ lastExport: Date.now() });
+      setText(dlNote, ok ? ' Downloaded.' : ' Download blocked; the menu has the save as text.');
+    } }, 'Download a copy of the save'), dlNote));
   }, { label: 'Run summary', full: true, blocking: true, dismissable: false, cls: 'reckon-sheet' });
 }
 
@@ -538,8 +559,13 @@ export function winSheet(ctx: Ctx, sheets: Sheets): void {
 }
 
 /** A stored save that the model could not read: offer it for export before the fresh run overwrites the slot. */
-export function unreadSaveSheet(sheets: Sheets, raw: string): void {
+export function unreadSaveSheet(sheets: Sheets, raw: string, backup?: { info: BackupInfo; restore(): boolean }): void {
   sheets.open('unread', (b, close) => {
+    if (backup) {
+      b.append(h('div', { class: 'confirm-box ok-box' },
+        h('p', { text: `A backup from Reckoning ${backup.info.reckonings} (the run had reached ${backup.info.year}) is still here.` }),
+        h('div', { class: 'm-row' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { if (backup.restore()) close(); } }, 'Restore the backup'))));
+    }
     const status = h('p', { class: 'save-status muted', 'aria-live': 'polite' });
     const ta = h('textarea', { class: 'save-ta', rows: 4, spellcheck: 'false', readonly: true, 'aria-label': 'The unreadable save' }) as HTMLTextAreaElement;
     ta.value = raw;
@@ -556,27 +582,67 @@ export function unreadSaveSheet(sheets: Sheets, raw: string): void {
 /* Menu                                                                */
 /* ------------------------------------------------------------------ */
 
-export interface MenuHooks { exportText(): string; importText(t: string): boolean; hardReset(): void; }
+export interface BackupInfo { at: number; reckonings: number; year: number }
+export interface MenuHooks {
+  exportText(): string;
+  importText(t: string): boolean;
+  hardReset(): void;
+  /** The rolling backup taken at the last Reckoning, if any. */
+  backup(): BackupInfo | null;
+  restoreBackup(): boolean;
+}
 
-export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks): void {
+/** The keyboard cheat-sheet (keys.ts implements them). */
+export const SHORTCUTS: [string, string][] = [
+  ['S', 'Sell'],
+  ['B', 'Buy the first affordable improvement in this Industry'],
+  ['A', 'Show the first thing affordable'],
+  ['1 – 9', 'Switch Industry'],
+  ['[  ]', 'Previous or next Industry'],
+  ['M', 'Open the menu'],
+  ['R', 'Call a Reckoning, once one is on offer'],
+  ['Esc', 'Close a sheet'],
+  ['?', 'This list'],
+];
+
+function daysAgo(ms: number): string {
+  const d = Math.floor(Math.max(0, Date.now() - ms) / 86400000);
+  return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+/** A radio group drawn as a segmented control. */
+function segmented<T extends string | number>(label: string, opts: [T, string, string?][], get: () => T, set: (v: T) => void): { el: HTMLElement; update(): void } {
+  const id = 'seg-' + label.toLowerCase().replace(/\W+/g, '-');
+  const btns = opts.map(([v, txt, aria]) => {
+    const b = h('button', { class: 'seg-b', type: 'button', role: 'radio', 'aria-checked': 'false', 'aria-label': aria ?? null, onclick: () => { set(v); update(); } }, txt);
+    return { v, b };
+  });
+  const el = h('div', { class: 'setting' }, h('span', { class: 'setting-k', id, text: label }),
+    h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': id }, ...btns.map((x) => x.b)));
+  function update(): void { const cur = get(); for (const x of btns) { setAttr(x.b, 'aria-checked', String(x.v === cur)); cls(x.b, 'on', x.v === cur); } }
+  update();
+  return { el, update };
+}
+
+export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'keys'): void {
   sheets.open('menu', (b, close) => {
-    // Stats
-    const stat = (k: string) => { const v = h('dd', { class: 'num' }); return [h('div', null, h('dt', { text: k }), v), v] as const; };
-    const [sYear, vYear] = stat('Year'), [sTime, vTime] = stat('This run'), [sPop, vPop] = stat('Population'),
-      [sPeak, vPeak] = stat('Peak wellbeing'), [sClicks, vClicks] = stat('Sold by hand');
-    const [lRk, vRk] = stat('Reckonings'), [lHe, vHe] = stat('Hindsight earned'), [lHb, vHb] = stat('Hindsight banked'),
-      [lTot, vTot] = stat('Time played'), [lFar, vFar] = stat('Industries reached');
-    b.append(h('section', { class: 'm-sec' }, h('h3', { text: 'This run' }), h('dl', { class: 'stats' }, sYear, sTime, sPop, sPeak, sClicks)),
-      h('section', { class: 'm-sec' }, h('h3', { text: 'All runs' }), h('dl', { class: 'stats' }, lRk, lHe, lHb, lTot, lFar)));
-
+    const statsBtn = h('button', { class: 'btn', type: 'button', onclick: () => statsSheet(ctx, sheets) }, 'Statistics');
     const shopBtn = h('button', { class: 'btn', type: 'button', onclick: () => shopSheet(ctx, sheets) }, 'Hindsight shop');
     const rkBtn = h('button', { class: 'btn', type: 'button', onclick: () => ctx.confirmReckoning() }, 'Call a Reckoning');
-    b.append(h('div', { class: 'm-row' }, shopBtn, rkBtn));
+    b.append(h('div', { class: 'm-row' }, statsBtn, shopBtn, rkBtn));
+
+    // Settings: notation and text size (kept with the UI preferences, not the save).
+    const nota = segmented<Notation>('Numbers', [['suffix', '12.3M', 'Suffixes, 12.3M'], ['sci', '1.23e7', 'Scientific, 1.23e7'], ['eng', '12.3e6', 'Engineering, 12.3e6']],
+      () => getPrefs().notation, (v) => { setPrefs({ notation: v }); ctx.refreshAll(); });
+    const size = segmented<TextSize>('Text size', [[0, 'Aa', 'Standard text'], [1, 'Aa+', 'Larger text, 115%'], [2, 'Aa++', 'Largest text, 130%']],
+      () => getPrefs().textSize, (v) => { setPrefs({ textSize: v }); ctx.refreshAll(); });
+    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el));
 
     // Achievements
     const achList = h('ul', { class: 'ach' });
-    b.append(h('section', { class: 'm-sec' }, h('h3', { text: 'Achievements' }), achList));
     const achs = ctx.content.achievements || [];
+    const achCount = h('span', { class: 'num muted' });
+    b.append(h('section', { class: 'm-sec' }, h('h3', null, 'Achievements ', achCount), achList));
     const achRows = achs.map((a) => {
       const n = h('span', { class: 'ach-n' }), d = h('span', { class: 'ach-d' });
       const li = h('li', null, n, d); achList.append(li);
@@ -588,15 +654,18 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks): void {
       };
     });
 
-    // How it works
+    // How it works. The budget and Jevons' sentence wait for the reveal: before it, they would answer the question the
+    // run is asking.
+    const howBudget = h('p', { text: 'Draw a budget line for an industry and hold its use under it, with wellbeing at the target: every ten years of that is a decade in the ledger, and fifty is Steady State.' });
+    const howQuote = h('p', { class: 'muted', text: 'W. S. Jevons, 1865: “It is wholly a confusion of ideas to suppose that the economical use of fuel is equivalent to a diminished consumption.”' });
     b.append(h('section', { class: 'm-sec how' }, h('h3', { text: 'How it works' }),
       h('div', { class: 'formula' }, h('div', { class: 'f-line', text: 'R = D(pₛ) ÷ η' }), h('div', { class: 'f-line', text: 'pₛ = pᵣ ÷ η + c (+ any levy)' })),
       h('p', { text: 'R is resource burned, D demand for the service, η efficiency, pₛ the price of the service, pᵣ the price of the resource, c everything else. Each industry runs on its own pair of these; an age is the stretch of the calendar they belong to.' }),
-      h('p', { text: 'Draw a budget line for an industry and hold its use under it, with wellbeing at the target: every ten years of that is a decade in the ledger, and fifty is Steady State.' }),
-      h('p', { class: 'muted', text: 'W. S. Jevons, 1865: “It is wholly a confusion of ideas to suppose that the economical use of fuel is equivalent to a diminished consumption.”' })));
+      howBudget, howQuote));
 
     // Save
     const status = h('p', { class: 'save-status muted', 'aria-live': 'polite' });
+    const exported = () => setPrefs({ lastExport: Date.now() });
     const ta = h('textarea', { class: 'save-ta', rows: 4, spellcheck: 'false', 'aria-label': 'Save text', placeholder: 'Paste a save here to load it.' }) as HTMLTextAreaElement;
     const file = h('input', { type: 'file', accept: '.txt,.json,text/plain', class: 'vh', id: 'save-file' }) as HTMLInputElement;
     file.addEventListener('change', async () => {
@@ -608,11 +677,42 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks): void {
     });
     const fileLbl = h('label', { class: 'btn', for: 'save-file', tabindex: '0', role: 'button' }, 'Load from file');
     fileLbl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+    const remind = h('p', { class: 'save-note' });
+    const storeLine = h('p', { class: 'save-note muted' });
+    // The browser's answer on persistence, asked after the first purchase (game.ts) and read again here.
+    void isPersisted().then((p) => {
+      const asked = getPrefs().persist;
+      setText(storeLine, p === true ? 'Storage: this browser has agreed to keep the save (persistent storage).'
+        : p === false ? (asked === 'denied' ? 'Storage: asked to keep the save for good; the browser has not agreed yet. It may, once the game is used more. Exports are the safeguard meanwhile.'
+          : 'Storage: the browser may clear the save if space runs short. Exports are the safeguard.')
+          : 'Storage: this browser does not say whether it will keep the save.');
+    });
+    const ios = h('div', { class: 'save-ios', hidden: !iosInBrowser() || getPrefs().iosHintDismissed },
+      h('p', { text: 'On iPhone and iPad, Safari can clear a site’s save after a week without a visit. Added to the Home Screen (Share, then Add to Home Screen), Rebound keeps it.' }),
+      h('button', { class: 'toast-x', type: 'button', 'aria-label': 'Dismiss this note', onclick: () => { setPrefs({ iosHintDismissed: true }); show(ios, false); } }, svg(UI_ICONS.close)));
+
+    // The rolling backup, taken at each Reckoning.
+    const bkLine = h('p', { class: 'save-note' });
+    const bkAsk = h('button', { class: 'btn small', type: 'button', onclick: () => { show(bkAsk, false); show(bkBox, true); (bkBox.querySelector('button') as HTMLButtonElement | null)?.focus(); } }, 'Restore the backup');
+    const bkQ = h('p');
+    const bkBox = h('div', { class: 'confirm-box', hidden: true }, bkQ,
+      h('div', { class: 'm-row' },
+        h('button', { class: 'btn danger', type: 'button', onclick: () => { if (hooks.restoreBackup()) { close(); ctx.toast('Backup restored.'); } else { setText(status, 'The backup could not be read.'); show(bkBox, false); show(bkAsk, true); } } }, 'Restore it'),
+        h('button', { class: 'btn', type: 'button', onclick: () => { show(bkBox, false); show(bkAsk, true); bkAsk.focus(); } }, 'Keep this run')));
+    const bk = hooks.backup();
+    if (bk) {
+      setText(bkLine, `Backup: taken at Reckoning ${bk.reckonings} (the run had reached ${bk.year}), ${daysAgo(bk.at)}.`);
+      setText(bkQ, `Go back to the start of the run that followed Reckoning ${bk.reckonings}? Everything since, this run included, is replaced.`);
+    } else { setText(bkLine, 'Backup: one is kept automatically at each Reckoning.'); show(bkAsk, false); }
+
     b.append(h('section', { class: 'm-sec save' }, h('h3', { text: 'Save' }),
+      remind,
       h('div', { class: 'm-row' },
         h('button', { class: 'btn', type: 'button', onclick: () => {
           const t = hooks.exportText();
-          setText(status, download(`rebound-${Math.floor(num(ctx.d?.year))}.txt`, t) ? 'Save downloaded.' : 'Download blocked; copy the text below instead.');
+          const ok = download(`rebound-${Math.floor(num(ctx.d?.year))}.txt`, t);
+          if (ok) exported();
+          setText(status, ok ? 'Save downloaded.' : 'Download blocked; copy the text below instead.');
           ta.value = t;
         } }, 'Download save'),
         fileLbl, file),
@@ -621,6 +721,7 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks): void {
         h('button', { class: 'btn small', type: 'button', onclick: async () => {
           if (!ta.value) ta.value = hooks.exportText();
           const ok = await copyText(ta.value);
+          if (ok) exported();
           if (!ok) { ta.focus(); ta.select(); }
           setText(status, ok ? 'Copied.' : 'Select the text and copy it by hand.');
         } }, 'Copy save text'),
@@ -629,7 +730,16 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks): void {
           if (!t) { setText(status, 'Paste a save into the box first.'); return; }
           if (hooks.importText(t)) { close(); ctx.toast('Save loaded.'); } else setText(status, 'That is not a save this game can read.');
         } }, 'Load pasted save')),
-      status));
+      status, h('div', { class: 'm-row bk-row' }, bkLine, bkAsk), bkBox, storeLine, ios));
+
+    // Keyboard shortcuts: open by default where there is a keyboard and a mouse.
+    let fine = false;
+    try { fine = matchMedia('(hover: hover) and (pointer: fine)').matches; } catch { /* ignore */ }
+    const keys = h('details', { class: 'm-sec keys', open: fine || focus === 'keys' },
+      h('summary', null, h('h3', { text: 'Keyboard shortcuts' })),
+      h('dl', { class: 'keys-dl' }, ...SHORTCUTS.map(([k, v]) => h('div', null, h('dt', null, ...k.split(/\s+/).filter(Boolean).map((x) => h('kbd', { text: x }))), h('dd', { text: v })))),
+      h('p', { class: 'muted small', text: 'They wait while you type in a box.' }));
+    b.append(keys);
 
     // Hard reset with in-page confirmation
     const resetRow = h('div', { class: 'm-row' });
@@ -642,25 +752,155 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks): void {
     resetRow.append(ask);
     b.append(h('section', { class: 'm-sec' }, h('h3', { text: 'Start over' }), resetRow, confirmBox));
     if (ctx.mock) b.append(h('p', { class: 'muted small', text: 'Running on the development stand-in model (#mock). Nothing is saved unless the address says persist.' }));
+    if (focus === 'keys') requestAnimationFrame(() => { try { keys.scrollIntoView({ block: 'start' }); } catch { /* ignore */ } });
 
     return () => {
       const s = ctx.state, m = s.meta;
-      setText(vYear, String(Math.floor(num(ctx.d?.year, 1780))));
-      setText(vTime, dur(s.time));
-      setText(vPop, fmt(s.population));
-      setText(vPeak, fmt(Math.floor(num(s.run?.peakWellbeing))));
-      setText(vClicks, fmt(num(s.run?.clicks)));
-      setText(vRk, fmt(num(m?.reckonings)));
-      setText(vHe, fmt(num(m?.hindsightEarned)));
-      setText(vHb, fmt(Math.floor(num(m?.hindsight))));
-      setText(vTot, dur(num(m?.totalSeconds) + num(s.time)));
-      const ids = sectorIds(ctx.content);
-      const reached = ids.filter((id) => m?.sectorsOpened?.[id] || s.sectors?.[id]?.open).length;
-      setText(vFar, `${reached} of ${ids.length}`);
+      const revealed = !!s.flags?.revealed;
+      show(howBudget, revealed);
+      show(howQuote, revealed);
       show(shopBtn, num(m?.reckonings) >= 1);
+      show(rkBtn, reckoningOffered(ctx) && !ctx.d?.pendingReckoning);
       for (const r of achRows) r();
+      setText(achCount, `${achs.filter((a) => m?.achievements?.[a.id]).length} of ${achs.length}`);
+      // The export reminder: plain until there is something worth losing (half an hour of play), gentle after.
+      const last = getPrefs().lastExport;
+      const played = num(m?.totalSeconds) + num(s.time);
+      const stale = !last || Date.now() - last > 7 * 86400000;
+      setText(remind, last ? `Last exported ${daysAgo(last)}.${stale ? ' A fresh copy outside this browser is the only sure backup.' : ''}`
+        : played > 1800 ? 'Never exported. A copy kept outside this browser is the only sure backup.' : 'Not exported yet.');
+      cls(remind, 'remind', stale && played > 1800);
+      cls(remind, 'muted', !(stale && played > 1800));
     };
   }, { label: 'Menu', cls: 'menu-sheet' });
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistics                                                          */
+/* ------------------------------------------------------------------ */
+
+export function statsSheet(ctx: Ctx, sheets: Sheets): void {
+  sheets.open('stats', (b) => {
+    const ups: (() => void)[] = [];
+    type Get = () => string | null;
+    /** A dl of label → value rows; a row whose getter returns null is hidden. */
+    const block = (title: string, rows: [string, Get][], when?: () => boolean, into: (() => void)[] = ups) => {
+      const dl = h('dl', { class: 'stats' });
+      const sec = h('section', { class: 'm-sec' }, h('h3', { text: title }), dl);
+      const cells = rows.map(([k, g]) => { const v = h('dd', { class: 'num' }); const row = h('div', null, h('dt', { text: k }), v); dl.append(row); return { row, v, g }; });
+      into.push(() => {
+        const on = when ? when() : true;
+        show(sec, on);
+        if (!on) return;
+        for (const c of cells) { const t = c.g(); show(c.row, t != null); if (t != null) setText(c.v, t); }
+      });
+      return sec;
+    };
+    const s = () => ctx.state, d = () => ctx.d, m = () => ctx.state.meta;
+    const ids = () => sectorIds(ctx.content);
+    const open = () => ids().filter((id) => s().sectors?.[id]?.open);
+    const revealed = () => !!s().flags?.revealed;
+    const ran = () => num(m()?.reckonings) >= 1;
+    const sum = (o: Record<string, number> | undefined) => Object.values(o || {}).reduce((a, x) => a + num(x), 0);
+
+    b.append(block('This run', [
+      ['Played', () => dur(s().time)],
+      ['Year', () => { const a = ageDef(ctx.content, d()?.age); return `${Math.floor(num(d()?.year, 1780))}${a ? ` · ${a.name}` : ''}`; }],
+      ['Capital', () => money(s().capital)],
+      ['Income', () => `${money(d()?.incomePerSec)}/s`],
+      ['Population', () => `×${fmt(s().population)} (peak ×${fmt(s().peakPopulation)})`],
+      ['Wellbeing', () => `${fmt(Math.floor(num(d()?.wellbeing)))} (peak ${fmt(Math.floor(num(s().run?.peakWellbeing)))})`],
+      ['Wellbeing-years', () => fmt(Math.round(num(s().run?.wellbeingYears)))],
+      ['Years at the target', () => fmt(Math.floor(num(s().run?.yearsAtTarget)))],
+      ['Sold by hand', () => fmt(num(s().run?.clicks))],
+      ['Improvements bought', () => fmt(sum(s().upgrades))],
+      ['Uses founded', () => fmt(open().reduce((a, id) => a + Object.values(s().sectors[id]?.apps || {}).filter((x) => x?.founded).length, 0))],
+      ['Decades within budget', () => (revealed() ? fmt(num(s().run?.budgetDecades)) : null)],
+      ['Years decoupled', () => (revealed() ? fmt(Math.floor(num(s().run?.decoupledYears))) : null)],
+      ['Hindsight on offer', () => (reckoningOffered(ctx) ? fmt(Math.floor(num(d()?.hindsightIfReckonNow))) : null)],
+    ]));
+
+    // One block per open industry.
+    const perHost = h('div', { class: 'stats-per' });
+    b.append(perHost);
+    let perKey = '';
+    let perUps: (() => void)[] = [];
+    ups.push(() => {
+      const list = open();
+      const k = list.join(',');
+      if (k === perKey) return;
+      perKey = k;
+      perHost.replaceChildren();
+      const local: (() => void)[] = [];
+      for (const id of list) {
+        const def = sectorDef(ctx, id);
+        const unit = def?.resource.unit ?? '';
+        const res = lower(def?.resource.name ?? 'resource');
+        const st = () => s().sectors?.[id];
+        const e = () => sd(ctx, id);
+        const sec = block(def?.name ?? id, [
+          ['Efficiency', () => fold(e()?.etaFold)],
+          [`${def?.resource.name ?? 'Resource'} use`, () => `${fold(e()?.rFold)} · ${fmt(num(e()?.resourceUse))} ${unit}/s`],
+          ['Peak use', () => { const x = st(); return x && x.baseR > 0 ? fold(x.peakR / x.baseR) : null; }],
+          [`${def?.resource.name ?? 'Resource'} burned`, () => `${fmt(num(s().run?.resourceUsed?.[id]))} ${unit}`],
+          [def?.resourceKind === 'flow' ? 'Capacity spare' : 'Left in the ground', () => pct(num(e()?.reserveFraction), false)],
+          ['Crises', () => fmt(num(st()?.crisesFired))],
+          ['Backfired', () => (revealed() ? (st()?.backfired ? `yes, ${res} rose with thrift` : 'not yet') : null)],
+          ['Decades in the ledger', () => (revealed() ? fmt((st()?.decadesWithin || []).length) : null)],
+          ['Open for', () => dur(num(st()?.openFor))],
+        ], undefined, local);
+        perHost.append(sec);
+      }
+      perUps = local;
+    });
+
+    b.append(block('All runs', [
+      ['Time played', () => dur(num(m()?.totalSeconds) + num(s().time))],
+      ['Reckonings', () => (ran() ? fmt(num(m()?.reckonings)) : null)],
+      ['Hindsight earned', () => (ran() ? fmt(num(m()?.hindsightEarned)) : null)],
+      ['Hindsight banked', () => (ran() ? fmt(Math.floor(num(m()?.hindsight))) : null)],
+      ['Industries reached', () => `${ids().filter((id) => m()?.sectorsOpened?.[id] || s().sectors?.[id]?.open).length} of ${ids().length}`],
+      ['Industries that backfired', () => (revealed() || ran() ? fmt(Object.keys(m()?.backfiredSectors || {}).length) : null)],
+      ['Industries at Steady State', () => (ran() || revealed() ? fmt(Object.keys(m()?.steadySectors || {}).length) : null)],
+      ['Know-how learnt', () => (ran() ? `${Object.values(m()?.knowhow || {}).filter((x) => num(x) > 0).length} of ${(ctx.content.knowhow || []).length}` : null)],
+      ['Institutions founded', () => (ran() ? `${Object.values(m()?.institutions || {}).filter((x) => num(x) > 0).length} of ${(ctx.content.institutions || []).length}` : null)],
+      ['Seats in use', () => (ran() ? `${num(d()?.slots?.used)} of ${num(d()?.slots?.total)}` : null)],
+      ['Achievements', () => { const a = ctx.content.achievements || []; return `${a.filter((x) => m()?.achievements?.[x.id]).length} of ${a.length}`; }],
+    ]));
+
+    b.append(block('The last run', [
+      ['How it ended', () => { const lr = m()?.lastRun; return lr ? causeHeadline(ctx, lr.cause, lr.causeSector) : null; }],
+      ['Length', () => (m()?.lastRun ? dur(m()!.lastRun!.seconds) : null)],
+      ['Year reached', () => (m()?.lastRun ? String(Math.floor(num(m()!.lastRun!.yearReached))) : null)],
+      ['Peak wellbeing', () => (m()?.lastRun ? fmt(Math.floor(num(m()!.lastRun!.peakWellbeing))) : null)],
+      ['Hindsight gained', () => (m()?.lastRun ? fmt(num(m()!.lastRun!.hindsightGained)) : null)],
+    ], () => !!m()?.lastRun));
+
+    return () => { for (const u of ups) u(); for (const u of perUps) u(); };
+  }, { label: 'Statistics', cls: 'stats-sheet' });
+}
+
+/* ------------------------------------------------------------------ */
+/* A fork: one arm rules out the others                                */
+/* ------------------------------------------------------------------ */
+
+export function forkSheet(ctx: Ctx, sheets: Sheets, id: string, onYes: () => void): void {
+  const ups = ctx.content.upgrades || [];
+  const def = ups.find((u) => u.id === id);
+  if (!def) { onYes(); return; }
+  // Name the other arms (both directions of `excludes`, as content lists them); the model decides what is excluded.
+  const owned = ctx.state.upgrades || {};
+  const others = ups.filter((u) => u.id !== id && !(num(owned[u.id]) > 0) && ((def.excludes || []).includes(u.id) || (u.excludes || []).includes(id)));
+  const names = others.map((u) => u.name);
+  const list = names.length <= 1 ? (names[0] ?? 'the other choice') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  sheets.open('fork', (b, close) => {
+    const cost = ctx.ups.find((v) => v.def.id === id)?.cost;
+    b.append(h('p', { class: 'confirm-q' }, 'Take ', h('b', { text: def.name }), '?'),
+      h('p', { text: `It rules out ${list} for the rest of this run.` }),
+      h('div', { class: 'sheet-foot' },
+        h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); onYes(); } }, h('span', { text: 'Take it' }), cost != null ? h('span', { class: 'num', text: ` · ${money(cost)}` }) : null),
+        h('button', { class: 'btn', type: 'button', onclick: close }, 'Not yet')));
+  }, { label: 'A choice', cls: 'small-sheet' });
 }
 
 /* ------------------------------------------------------------------ */

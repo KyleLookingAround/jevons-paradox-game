@@ -1,6 +1,6 @@
 // Pinned top bar (year and age, capital, mandate, wellbeing, menu) and the industry tabs.
 import type { Ctx, Comp } from './ctx';
-import { sectorDef, sectorWarning, openSectors, sectorIndex, roman, ageDef, lookFor } from './ctx';
+import { sectorDef, sectorWarning, openSectors, sectorIndex, roman, ageDef, lookFor, leversVisible } from './ctx';
 import type { SectorId } from '../types';
 import { h, svg, setText, setStyle, show, cls, setAttr, syncChildren } from './dom';
 import { fmt, money, num, clamp } from './fmt';
@@ -18,12 +18,15 @@ export function buildTopbar(ctx: Ctx): Comp {
   const wb = h('span', { class: 'tb-v num' });
   const wbFill = h('span', { class: 'wb-fill' });
   const wbBar = h('span', { class: 'wb-bar', 'aria-hidden': 'true' }, wbFill, h('span', { class: 'wb-tgt' }));
-  const cell = (cl: string, label: string | HTMLElement, ...kids: Node[]) =>
-    h('div', { class: 'tb-cell ' + cl }, typeof label === 'string' ? h('span', { class: 'tb-l', text: label }) : label, h('span', { class: 'tb-row' }, ...kids));
-  const cYear = cell('tb-year', ageLbl, year);
-  const cCap = cell('tb-cap', 'Capital', cap, inc);
-  const cMan = cell('tb-man', 'Mandate', man, manRate);
-  const cWb = cell('tb-wb', 'Wellbeing', wb, wbBar);
+  // A rate rides on its label's line (the label is short; the value line is not), so neither is cut off on a phone.
+  const cell = (cl: string, label: string | HTMLElement, rate: HTMLElement | null, ...kids: Node[]) =>
+    h('div', { class: 'tb-cell ' + cl },
+      h('span', { class: 'tb-lrow' }, typeof label === 'string' ? h('span', { class: 'tb-l', text: label }) : label, rate),
+      h('span', { class: 'tb-row' }, ...kids));
+  const cYear = cell('tb-year', ageLbl, null, year);
+  const cCap = cell('tb-cap', 'Capital', inc, cap);
+  const cMan = cell('tb-man', 'Mandate', manRate, man);
+  const cWb = cell('tb-wb', 'Wellbeing', null, wb, wbBar);
   const menu = h('button', { class: 'tb-menu', type: 'button', 'aria-label': 'Menu', onclick: () => ctx.openMenu() });
   menu.append(svg(UI_ICONS.menu));
   const el = h('div', { class: 'topbar' }, cYear, cCap, cMan, cWb, menu);
@@ -42,7 +45,8 @@ export function buildTopbar(ctx: Ctx): Comp {
     setText(cap, money(s.capital));
     const ip = num(d?.incomePerSec);
     setText(inc, `+${money(ip)}/s`);
-    const showMan = !!s.flags?.revealed || num(s.mandate) > 0;
+    // Mandate is spent only on levers: it appears with the first visible lever, not with the first point earned.
+    const showMan = leversVisible(ctx);
     show(cMan, showMan);
     if (showMan) {
       setText(man, fmt(Math.floor(num(s.mandate))));
@@ -51,7 +55,9 @@ export function buildTopbar(ctx: Ctx): Comp {
       cls(cMan, 'draining', mr < 0);
     }
     const w = num(d?.wellbeing), tgt = num(g?.wellbeingTarget, 1) || 1;
-    setText(wb, `${Math.floor(w)}/${fmt(tgt)}`);
+    // A tick when the target is met, so the state never rests on the bar's colour alone (the bar hides on phones).
+    setText(wb, `${Math.floor(w)}/${fmt(tgt)}${w >= tgt ? ' ✓' : ''}`);
+    setAttr(cWb, 'aria-label', `Wellbeing ${Math.floor(w)} of a target of ${fmt(tgt)}${w >= tgt ? ', met' : ''}`);
     const scale = Math.max(tgt * 1.5, w);
     setStyle(wbFill, 'width', (clamp(w / scale, 0, 1) * 100).toFixed(1) + '%');
     setStyle(wbBar, '--tgt', (clamp(tgt / scale, 0, 1) * 100).toFixed(1) + '%');
@@ -74,7 +80,8 @@ export function buildTabs(ctx: Ctx): Comp {
       b = h('button', { class: 'tab', type: 'button', 'data-look': lookFor(ctx.content, id), onclick: () => ctx.selectSector(id) },
         h('span', { class: 'tab-num', text: roman(sectorIndex(ctx.content, id)) }),
         h('span', { class: 'tab-txt' }, h('span', { class: 'tab-name', text: def?.name ?? id })),
-        h('span', { class: 'tab-dot', 'aria-hidden': 'true' }));
+        h('span', { class: 'tab-dot', 'aria-hidden': 'true', text: '!' }),
+        h('span', { class: 'tab-buy', 'aria-hidden': 'true' }));
       btns.set(id, b);
     }
     return b;
@@ -105,7 +112,13 @@ export function buildTabs(ctx: Ctx): Comp {
       const sel = id === ctx.sector;
       cls(b, 'sel', sel);
       setAttr(b, 'aria-current', sel ? 'page' : null);
-      cls(b, 'warn', sectorWarning(ctx, id));
+      const warn = sectorWarning(ctx, id);
+      cls(b, 'warn', warn);
+      // Something worth buying there (the affordable signal's no-nag rule applies); the open tab has the chip instead.
+      const buy = !sel && (ctx.afford?.bySector.get(id) ?? 0) > 0;
+      cls(b, 'can-buy', buy);
+      const nm = sectorDef(ctx, id)?.name ?? id;
+      setAttr(b, 'aria-label', `${nm}${warn ? ', under strain' : ''}${buy ? ', something affordable' : ''}`);
     }
     // Keep the selected tab in view when the row scrolls sideways (many industries on a phone).
     if (shown !== ctx.sector) {

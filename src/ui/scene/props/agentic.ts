@@ -15,7 +15,7 @@ const codeLines = (x: number, y: number, w: number, rows: number, r: () => numbe
 
 /** A floor of a tower of code. */
 export const floor: Prop = (a) => {
-  const w = 24 + a.v * 14, h = 12;
+  const w = 22 + a.v * 10, h = 12;
   return R(-w / 2, -h, w, h, 'b') + codeLines(-w / 2, -h, w, 4, a.r);
 };
 

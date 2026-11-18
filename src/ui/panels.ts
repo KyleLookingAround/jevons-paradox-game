@@ -5,7 +5,7 @@ import { sectorDef, sd } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, SectorDef, UpgradeView } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
 import { h, setText, setStyle, setAttr, show, cls, syncChildren, reducedMotion } from './dom';
-import { fmt, money, pct, num, clamp, lower } from './fmt';
+import { fmt, money, pct, num, clamp, lower, fmtEpoch } from './fmt';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
 export function effectText(ctx: Ctx, e: EffectDef): string {
@@ -59,12 +59,36 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
   const fill = h('span', { class: 'btn-fill', 'aria-hidden': 'true' });
   const cost = h('span', { class: 'btn-c num' });
   const buyLbl = kind === 'research' ? 'Commission' : 'Buy';
+  const nope = () => { if (!reducedMotion()) { buy.classList.remove('nope'); void buy.offsetWidth; buy.classList.add('nope'); } };
+  const tryBuy = (): boolean => ctx.act('buyUpgrade', (m, s, c) => m.buyUpgrade(s, c, def.id));
+  // One arm of a fork rules the others out for the run: ask first (only when the purchase would go through).
+  const forkArm = !!(def.excludes?.length || ctx.content.upgrades?.some((u) => u.excludes?.includes(def.id)));
+  let held = false;
   const buy = h('button', { class: 'btn buy', type: 'button', onclick: () => {
-    if (!ctx.act('buyUpgrade', (m, s, c) => m.buyUpgrade(s, c, def.id)) && !reducedMotion()) {
-      buy.classList.remove('nope'); void buy.offsetWidth; buy.classList.add('nope');
-    }
+    if (held) { held = false; return; } // a hold already bought; the click that ends it buys nothing more
+    if (forkArm && cur?.affordable && !cur.excludedBy) { ctx.confirmFork(def.id, () => { if (!tryBuy()) nope(); }); return; }
+    if (!tryBuy()) nope();
   } }, fill, h('span', { class: 'btn-l', text: buyLbl }), cost);
   setAttr(buy, 'aria-label', null);
+  // Hold to repeat, for repeatable cards: one ModelApi call per beat, stopping at the first refusal.
+  if (def.repeatable) {
+    let timer = 0, beat = 0;
+    const stop = () => { clearTimeout(timer); timer = 0; };
+    const step = () => {
+      if (!tryBuy()) { stop(); return; }
+      held = true; beat++;
+      timer = window.setTimeout(step, Math.max(110, 260 - beat * 30));
+    };
+    buy.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !cur?.affordable) return;
+      held = false; beat = 0; stop();
+      timer = window.setTimeout(step, 450);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel', 'blur']) buy.addEventListener(ev, stop);
+    buy.addEventListener('contextmenu', (e) => e.preventDefault());
+    buy.classList.add('holdable');
+    setAttr(buy, 'title', 'Hold to keep buying');
+  }
 
   // The promise: sign drawn separately so that a display serif's thin, low minus does not spoil it.
   const pSign = h('span', { class: 'pm-sign', 'aria-hidden': 'true' });
@@ -92,8 +116,11 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
   setText(promiseCap, `${res} per unit of ${lower(sec?.service.name ?? 'service')}`);
   setText(eff, def.effects.map((e) => effectText(ctx, e)).filter(Boolean).join(' · '));
   let reachKey = '\u0000';
+  let cur: UpgradeView | null = null;
+  el.setAttribute('data-up', def.id);
 
   function update(v: UpgradeView): void {
+    cur = v;
     setText(cost, money(v.cost));
     setAttr(buy, 'aria-disabled', v.affordable ? null : 'true');
     setStyle(fill, 'width', v.affordable ? '0%' : (clamp(num(ctx.state.capital) / Math.max(1e-9, v.cost), 0, 1) * 100).toFixed(1) + '%');
@@ -118,19 +145,21 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
       const showP = p != null && Number.isFinite(p);
       show(decade, showP);
       if (showP) {
-        setText(decV, `${pct(p as number)} ${res}`);
+        // Meaning in words and a glyph as well as colour: "▲ more coal, +8%" / "▼ less coal, −3%".
+        const pv = p as number;
+        setText(decV, pv > 0.0005 ? `▲ more ${res}, ${pct(pv)}` : pv < -0.0005 ? `▼ less ${res}, ${pct(pv)}` : `no change in ${res}`);
         cls(decade, 'worse', (p as number) > 0.0005);
         cls(decade, 'better', (p as number) < -0.0005);
       }
       const list = by ? [] : Array.isArray(v.bringsWithinReach) ? v.bringsWithinReach : [];
-      const k = list.map((r) => `${r.appId}:${pct(r.projectedChange)}`).join('|');
+      const k = list.map((r) => `${r.appId}:${pct(r.projectedChange)}`).join('|') + fmtEpoch();
       if (k !== reachKey) {
         reachKey = k;
         reach.replaceChildren(...list.map((r) => {
           const a = sec?.applications.find((x) => x.id === r.appId);
           const ch = num(r.projectedChange);
           return h('p', { class: 'reach-l' + (ch > 0.0005 ? ' worse' : ch < -0.0005 ? ' better' : '') },
-            `Brings ${a?.name ?? 'a new use'} within reach: `, h('b', { class: 'num', text: pct(ch) }), ` ${res} if founded`);
+            `Brings ${a?.name ?? 'a new use'} within reach: `, h('b', { class: 'num', text: `${ch > 0.0005 ? '▲ ' : ch < -0.0005 ? '▼ ' : ''}${pct(ch)}` }), ` ${res} if founded`);
         }));
       }
       show(reach, list.length > 0);
@@ -155,12 +184,13 @@ function forkGroups(views: UpgradeView[]): UpgradeView[][] {
 
 export function buildUpgrades(ctx: Ctx): Comp {
   const title = h('h2', { class: 'sec-t', text: 'Improvements' });
+  const badge = h('span', { class: 'afford-n num', hidden: true });
   const list = h('div', { class: 'up-list' });
   const empty = h('p', { class: 'empty' });
   const ownedSum = h('summary', null);
   const ownedList = h('ul', { class: 'owned-list' });
   const owned = h('details', { class: 'owned' }, ownedSum, ownedList);
-  const el = h('section', { class: 'upgrades', 'aria-label': 'Improvements' }, h('header', { class: 'sec-h' }, title), list, empty, owned);
+  const el = h('section', { class: 'upgrades', 'aria-label': 'Improvements' }, h('header', { class: 'sec-h' }, title, badge), list, empty, owned);
   const cards = new Map<string, UpCard>();
   const forks = new Map<string, HTMLElement>();
   let key = '', ownedKey = '';
@@ -201,6 +231,9 @@ export function buildUpgrades(ctx: Ctx): Comp {
       }));
     }
     for (const v of avail) cards.get(v.def.id)?.update(v);
+    const n = (ctx.afford?.items || []).filter((x) => x.kind === 'up' && x.sector === ctx.sector).length;
+    show(badge, n > 0);
+    setText(badge, `${n} affordable`);
     show(empty, avail.length === 0);
     setText(empty, `Nothing more to buy in ${def?.name ?? 'this industry'} for now.`);
 
@@ -316,6 +349,22 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
       raise.classList.remove('nope'); void raise.offsetWidth; raise.classList.add('nope');
     }
   } }, raiseL, raiseC);
+  // Raise as far as Mandate allows: repeated setLever calls inside one action, stopping at the first refusal.
+  const maxBtn = h('button', { class: 'btn lev-max', type: 'button', 'aria-label': `${def.name}: raise as far as Mandate allows`, onclick: () => {
+    let steps = 0;
+    const ok = ctx.act('setLever', (m, s0, c) => {
+      let s = s0;
+      for (let i = 0; i < 500; i++) {
+        const lv = num(s.levers?.[def.id]?.level);
+        const n = m.setLever(s, c, def.id, lv + 1);
+        if (n === s) break;
+        s = n; steps++;
+      }
+      return s;
+    });
+    if (ok && steps > 1) ctx.toast(`${def.name}: ${steps} steps at once.`);
+    else if (!ok && !reducedMotion()) { maxBtn.classList.remove('nope'); void maxBtn.offsetWidth; maxBtn.classList.add('nope'); }
+  } }, h('span', { class: 'btn-l', text: 'Max' }));
 
   // Revenue recycling (duty and cap levers offering more than one destination).
   const opts = v0.recycleOptions || [];
@@ -336,7 +385,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), def.catch),
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk),
     levy, next, rec,
-    h('div', { class: 'lev-btns' }, lowerBtn, raise));
+    h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
   let cur: LeverView | null = null;
   let pipKey = '';
 
@@ -357,9 +406,12 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
       setText(raiseC, v.nextCost > 0 ? `${fmt(v.nextCost)} Mandate` : 'Free');
       show(raise, true);
       setAttr(raise, 'aria-disabled', v.canRaise ? null : 'true');
+      // Offered only when there is more than one step left to take; whether the Mandate stretches is the model's call.
+      show(maxBtn, v.canRaise && max - lv >= 2);
     } else {
       setText(next, lv > 0 ? 'As far as it goes.' : '');
       show(raise, false);
+      show(maxBtn, false);
     }
     show(next, !!next.textContent);
     lowerBtn.disabled = lv <= 0;

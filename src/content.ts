@@ -225,19 +225,19 @@ const steam: SectorDef = {
   autoEtaRate: 0,
 
   resourceKind: 'stock',
-  reserve: 280_000,
+  reserve: 600_000,
   alpha: 0.6,
 
   pressureSource: 'resource',
-  pressureIntensity: 0.005,
+  pressureIntensity: 0.0013,
   absorption: 0.008,
   collapseAt: 100,
-  crisisAt: [0.6, 0.8, 0.92],
+  crisisAt: [0.4, 0.7, 0.88],
   pressureWellbeingCost: 15,
   pressureUpkeep: 0,
 
   wellbeingWeight: 12,
-  wellbeingScale: 50,
+  wellbeingScale: 70,
 
   applications: [
     {
@@ -245,9 +245,9 @@ const steam: SectorDef = {
       name: 'Mine pumping',
       blurb: 'Keeps the pit dry. Dry pits go deeper. Deeper pits need more pumping.',
       icon: 'pump',
-      halfPrice: 0.6,
-      saturation: 100,
-      steepness: 1.8,
+      halfPrice: 0.8,
+      saturation: 50,
+      steepness: 2.4,
       visibleBelow: Infinity,
       foundCost: 0,
       reserveGainPerService: 0.15,
@@ -257,54 +257,54 @@ const steam: SectorDef = {
       name: 'Cotton mills',
       blurb: 'No longer tied to a riverbank. Now they can be anywhere there is coal.',
       icon: 'mill',
-      halfPrice: 0.6,
-      saturation: 200,
-      steepness: 2,
+      halfPrice: 0.5,
+      saturation: 220,
+      steepness: 3,
       visibleBelow: 0.8,
-      foundCost: 1_200,
+      foundCost: 250,
     },
     {
       id: 'steam.winding',
       name: 'Winding engines',
       blurb: 'Haul the coal up as fast as the pumps let the men dig it. Faster, ideally.',
       icon: 'winder',
-      halfPrice: 0.4,
-      saturation: 150,
-      steepness: 2.1,
-      visibleBelow: 0.55,
-      foundCost: 1_500,
+      halfPrice: 0.3,
+      saturation: 700,
+      steepness: 3.4,
+      visibleBelow: 0.5,
+      foundCost: 380,
     },
     {
       id: 'steam.railways',
       name: 'Railways',
       blurb: 'Coal hauling coal to the people who burn coal, at a mile a minute.',
       icon: 'train',
-      halfPrice: 0.22,
-      saturation: 1_200,
-      steepness: 2.3,
-      visibleBelow: 0.42,
-      foundCost: 5_000,
+      halfPrice: 0.17,
+      saturation: 3_000,
+      steepness: 3.6,
+      visibleBelow: 0.32,
+      foundCost: 1_500,
     },
     {
       id: 'steam.steamships',
       name: 'Steamships',
       blurb: 'The trade winds are now optional. The coal bunkers are not.',
       icon: 'ship',
-      halfPrice: 0.11,
-      saturation: 3_000,
-      steepness: 2.5,
-      visibleBelow: 0.22,
-      foundCost: 12_000,
+      halfPrice: 0.095,
+      saturation: 12_000,
+      steepness: 3.8,
+      visibleBelow: 0.17,
+      foundCost: 9_000,
     },
     {
       id: 'steam.ploughing',
       name: 'Steam ploughing',
       blurb: 'An engine at each headland and a plough hauled between them on a wire rope.',
       icon: 'plough',
-      halfPrice: 0.06,
-      saturation: 4_000,
-      steepness: 2.7,
-      visibleBelow: 0.13,
+      halfPrice: 0.052,
+      saturation: 40_000,
+      steepness: 4,
+      visibleBelow: 0.09,
       foundCost: 30_000,
     },
   ],
@@ -340,7 +340,7 @@ const light: SectorDef = {
   pressureWellbeingCost: 12,
   pressureUpkeep: 0,
 
-  wellbeingWeight: 5.5,
+  wellbeingWeight: 4,
   wellbeingScale: 500,
 
   spill: { to: 'steam', rate: 0.4 },
@@ -451,8 +451,7 @@ const motion: SectorDef = {
     when: {
       all: [
         { owns: 'light.mantle', label: 'Own the Incandescent gas mantle' },
-        { stat: 'appsFounded', sector: 'light', op: '>=', value: 2, label: '2 Light applications founded' },
-        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 15_000, label: '15,000 klm·h·years of light delivered' },
+        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 4_000, label: '4,000 klm·h·years of light delivered' },
       ],
     },
   },
@@ -556,9 +555,8 @@ const compute: SectorDef = {
     minReckonings: 3,
     when: {
       all: [
-        { owns: 'motion.radial', label: 'Own Radial tyres' },
-        { stat: 'appsFounded', sector: 'motion', op: '>=', value: 2, label: '2 Motion applications founded' },
-        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 50_000, label: '50,000 veh·mi·years driven' },
+        { owns: 'motion.injection', label: 'Own Fuel injection' },
+        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 20_000, label: '20,000 veh·mi·years driven' },
       ],
     },
   },
@@ -666,8 +664,7 @@ const code: SectorDef = {
     minReckonings: 4,
     when: {
       all: [
-        { owns: 'compute.multicore', label: 'Own Multi-core chips' },
-        { stat: 'appsFounded', sector: 'compute', op: '>=', value: 2, label: '2 Compute applications founded' },
+        { owns: 'compute.virtualisation', label: 'Own Virtualisation' },
         { stat: 'serviceDelivered', sector: 'compute', op: '>=', value: 200_000, label: '200,000 PFLOP·years computed' },
       ],
     },
@@ -738,7 +735,7 @@ const code: SectorDef = {
 
 /* ---- Steam: chain to ×13; forks add up to ×2 more (max ≈ ×27, min ≈ ×19) ---- */
 const steamUpgrades: UpgradeDef[] = [
-  ...chain('steam', [600, ...ladder(4_000, 1.5, 6)], [
+  ...chain('steam', [150, 1_000, 2_200, 4_400, 10_000, 20_000, 40_000], [
     {
       id: 'steam.boilers', name: 'Better boilers', fold: 1.5,
       blurb: 'After Smeaton: lag the pipes, mend the leaks, stop heating the engine house.',
@@ -772,7 +769,7 @@ const steamUpgrades: UpgradeDef[] = [
     id: 'steam.engineReporter', sector: 'steam', kind: 'efficiency',
     name: 'Engine duty reports',
     blurb: 'A monthly league table of every engine’s duty. Efficiency becomes a sport; total coal is not scored.',
-    cost: 5_000, requires: ['steam.condenser'], effects: [eta('steam', 1.1)],
+    cost: 1_700, requires: ['steam.condenser'], effects: [eta('steam', 1.1)],
   },
 
   /* Fork 1: the genuine article on royalty, or a pirate copy. */
@@ -781,14 +778,14 @@ const steamUpgrades: UpgradeDef[] = [
       id: 'steam.bwLicence', sector: 'steam', kind: 'efficiency',
       name: 'Boulton & Watt licence',
       blurb: 'The genuine engine, for a third of the value of the coal it saves. A bigger saving, and a bigger appetite.',
-      cost: 4_500, requires: ['steam.condenser'],
+      cost: 1_600, requires: ['steam.condenser'],
       effects: [eta('steam', 1.25), margin('steam', -0.04)],
     },
     {
       id: 'steam.pirateEngine', sector: 'steam', kind: 'capital',
       name: 'Pirate engine',
       blurb: 'Nearly a Watt, from Bull or Hornblower, without the invoice. Cheaper engines, so many more engines.',
-      cost: 3_500, requires: ['steam.condenser'],
+      cost: 1_000, requires: ['steam.condenser'],
       effects: [eta('steam', 1.1), capCost('steam', 0.8)],
     },
   ),
@@ -799,14 +796,14 @@ const steamUpgrades: UpgradeDef[] = [
       id: 'steam.parliamentaryTrains', sector: 'steam', kind: 'capital',
       name: 'Parliamentary trains',
       blurb: 'Railway Regulation Act, 1844: a train each way daily at a penny a mile. Third class fills every carriage.',
-      cost: 8_000, requires: ['steam.doubleActing'],
+      cost: 3_000, requires: ['steam.doubleActing'],
       effects: [sat('steam', 1.5, 'steam.railways'), margin('steam', -0.02)],
     },
     {
       id: 'steam.firstClass', sector: 'steam', kind: 'capital',
       name: 'First-class lines',
       blurb: 'Upholstered carriages for those who can pay. Fewer passengers, fatter fares, and the fares build the next line.',
-      cost: 8_000, requires: ['steam.doubleActing'],
+      cost: 3_000, requires: ['steam.doubleActing'],
       effects: [sat('steam', 0.8, 'steam.railways'), margin('steam', 0.03)],
     },
   ),
@@ -817,14 +814,14 @@ const steamUpgrades: UpgradeDef[] = [
       id: 'steam.cornishEngine', sector: 'steam', kind: 'efficiency',
       name: 'Cornish engine',
       blurb: 'Expansive working, lagged, tuned and reported on monthly. The mines go deeper to make use of it.',
-      cost: 13_000, requires: ['steam.highPressure'],
+      cost: 6_500, requires: ['steam.highPressure'],
       effects: [eta('steam', 1.3), sat('steam', 1.5, 'steam.pumping')],
     },
     {
       id: 'steam.corliss', sector: 'steam', kind: 'efficiency',
       name: 'Corliss valve gear',
       blurb: 'Corliss, 1849: the valve shuts the moment the work is done. Cheaper mill power, and so more mills.',
-      cost: 13_000, requires: ['steam.highPressure'],
+      cost: 6_500, requires: ['steam.highPressure'],
       effects: [eta('steam', 1.2), sat('steam', 1.25, 'steam.mills')],
     },
   ),
@@ -835,42 +832,49 @@ const steamUpgrades: UpgradeDef[] = [
       id: 'steam.suez', sector: 'steam', kind: 'capital',
       name: 'Suez Canal shares',
       blurb: 'Suez, 1869: Bombay four thousand miles nearer, by steam only. A shorter voyage, so many more voyages.',
-      cost: 20_000, requires: ['steam.compound'],
+      cost: 13_000, requires: ['steam.compound'],
       effects: [sat('steam', 1.6, 'steam.steamships')],
     },
     {
       id: 'steam.auxiliarySail', sector: 'steam', kind: 'efficiency',
       name: 'Auxiliary sail',
       blurb: 'Keep the masts: steam in the calms, canvas in the trades. Less coal a voyage, so cheaper freight, so more of it.',
-      cost: 20_000, requires: ['steam.compound'],
+      cost: 13_000, requires: ['steam.compound'],
       effects: [eta('steam', 1.15), sat('steam', 0.85, 'steam.steamships')],
     },
   ),
 
   {
+    /* The growth card (genre audit rec. 2): cheap, repeatable, and itself a rebound: cheaper engines, more engines. */
+    id: 'steam.anotherEngine', sector: 'steam', kind: 'capital',
+    name: 'Another engine works',
+    blurb: 'One more engine at one more pit, each a little cheaper to build than the last. There is always room for one more.',
+    cost: 100, repeatable: true, costGrowth: 1.3, maxLevel: 25, effects: [capCost('steam', 0.97)],
+  },
+  {
     id: 'steam.lathe', sector: 'steam', kind: 'capital',
     name: 'Screw-cutting lathe',
     blurb: 'Maudslay’s lathe. Parts that fit first time make engines cheap, and cheap engines common.',
-    cost: 2_000, requires: ['steam.boilers'], effects: [capCost('steam', 0.8)],
+    cost: 500, requires: ['steam.boilers'], effects: [capCost('steam', 0.8)],
   },
   {
     id: 'steam.limitedLiability', sector: 'steam', kind: 'capital',
     name: 'Limited liability',
     blurb: 'Limited Liability Act, 1855. Other people’s money, without the debtors’ prison.',
-    cost: 15_000, requires: ['steam.highPressure'], effects: [margin('steam', 0.03)],
+    cost: 7_500, requires: ['steam.highPressure'], effects: [margin('steam', 0.03)],
   },
   {
     id: 'steam.deeperShaft', sector: 'steam', kind: 'prospect',
     name: 'Sink a deeper shaft',
     blurb: 'There is always more coal, a little further down, a little dearer.',
-    cost: 5_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
+    cost: 1_500, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('steam', 0.25)],
   },
   {
     id: 'steam.coalQuestion', sector: 'steam', kind: 'research',
     name: 'The Coal Question',
-    blurb: 'W. S. Jevons, 1865. “It is wholly a confusion of ideas to suppose that the economical use of fuel is equivalent to a diminished consumption. The very contrary is the truth.”',
-    cost: 4_000, requires: ['steam.condenser'], effects: [{ type: 'reveal' }],
+    blurb: 'A pamphlet by a young economist, 1865, asks why each engine that saves coal is followed by a larger coal bill. The clubs find the question tiresome.',
+    cost: 1_600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }],
   },
 ];
 
@@ -1482,7 +1486,7 @@ const knowhow: KnowhowDef[] = [
     id: 'kh.seedCapital', name: 'Seed capital', tree: 'general', tier: 1, branch: 'general-1',
     blurb: 'Start each run with a heavier purse. Get to the bottom of the pit faster.',
     cost: 8, costGrowth: 1.5, maxLevel: 8,
-    effects: [{ type: 'startCapitalMul', value: 1.8 }],
+    effects: [{ type: 'startCapitalMul', value: 2 }],
   },
   {
     id: 'kh.patentPool', name: 'Patent pool', tree: 'general', tier: 1, branch: 'general-1',
@@ -1570,8 +1574,21 @@ const institutions: InstitutionDef[] = [
       { effects: [{ type: 'mandateRateMul', value: 1.1 }], label: 'Monthly returns: Mandate accrues 10% faster' },
     ], [4]),
   },
+  /*
+   * Standing caps (restored in M1 balance): with steady.standingDrawYears the line is drawn across the grown economy,
+   * twelve minutes into the industry (or earlier, if the player Tightens the cap or draws a line), not at its opening.
+   */
+  leverInstitution({
+    id: 'inst.smokeAbatement', name: 'Smoke Abatement Act',
+    blurb: 'The ceiling on the borough’s coal is law before the first engine is lit. The line itself is drawn once there is a town to draw it across.',
+    cost: 30, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
+  }),
+  leverInstitution({
+    id: 'inst.gasReferees', name: 'Gas referees',
+    blurb: 'Officials who test the gas, and in time ration it. The allowance waits until the town has lamps worth counting.',
+    cost: 90, requires: ['inst.smokeAbatement'], lever: 'light.cap', leverName: 'Gas works allowance', maxLevel: 3,
+  }),
   {
-    /* Not a standing cap: a cap started at run start draws its budget on the first step, at pumping-only R (see report). */
     id: 'inst.alkaliInspectorate', name: 'Alkali Inspectorate',
     blurb: 'Alkali Act, 1863: the first inspectors of what chimneys put in the air. Steam’s smoke clears a little faster.',
     cost: 40, effects: [absorb('steam', 0.002)],
@@ -1953,6 +1970,12 @@ const sectorHeadlines: Record<SectorId, Partial<Record<HeadlineKey, string[]>>> 
       '{app} raised beside the pithead; coal owners toast the engine',
       'Shareholders in {app} promised a dividend “and smoke”',
     ],
+    /* On buying The Coal Question: Jevons's verified words (design/research/energy.md 1.6), not on the card itself. */
+    reveal: [
+      '“The very contrary is the truth”: Mr Jevons on thrifty engines',
+      'Economy of fuel “a confusion of ideas”, writes Mr Jevons',
+      'Jevons: “the whole history of the steam-engine is one of economy”',
+    ],
     backfire: [
       'Engines use half the coal; the nation burns twice as much',
       'Thrift in the engine house, extravagance at the pithead',
@@ -2141,38 +2164,42 @@ const sectorHeadlines: Record<SectorId, Partial<Record<HeadlineKey, string[]>>> 
 const global: GlobalParams = {
   startCapital: 50,
   /* Below 1 so the sell button can fade once income outgrows it (balance finding 7). */
-  clickSeconds: 0.5,
-  clickFlat: 3,
+  clickSeconds: 0.01,
+  clickFlat: 1.2,
   popGrowth: 0.000025,
   subsistence: 8,
-  wellbeingTarget: 28,
+  wellbeingTarget: 27,
   mandateRate: 0.03,
   mandateFloor: 12,
   crisisMandate: 150,
   crisisPopLoss: 0.08,
   /* Placeholder weights: the balance lane tunes these to owner decision D1. */
   hindsight: {
-    perWellbeingYear: 0.06,
+    perWellbeingYear: 0.03,
     intensityExponent: 0.5,
-    perBudgetDecade: 4,
-    perUnburnt: 30,
-    perFirstBackfire: 15,
-    perSectorReached: 6,
-    perSteadySector: 120,
+    perBudgetDecade: 1.5,
+    perUnburnt: 20,
+    perFirstBackfire: 20,
+    perSectorReached: 10,
+    perSteadySector: 60,
   },
   offlineCapSeconds: 4 * 60 * 60,
-  /* Growth peaks at W ≈ 26.5 and stops at 40; the wellbeing target (28) sits below the transition. */
+  /* Growth peaks at W ≈ 26.5 and stops at 40; the wellbeing target (27) sits below the transition. */
   demography: { transitionWellbeing: 40 },
   steady: {
     budgetDeclinePerDecade: 0.05,
+    /* A standing cap draws its line 36 model years (12 minutes) into an industry: across the grown economy. */
+    standingDrawYears: 36,
     decadeYears: 10,
     decadeEffects: [
       { type: 'mandateAdd', value: 60 },
       { type: 'capitalAdd', value: 30 },
+      /* Standing, once per decade earned this run: restraint's own reward loop against population growth. */
+      { type: 'wellbeingAdd', value: 0.3 },
     ],
     firstSteadyEffects: [{ type: 'slotAdd', value: 1 }],
   },
-  levy: { mandateShare: 0.1 },
+  levy: { mandateShare: 0.003 },
   startingSlots: 2,
 };
 

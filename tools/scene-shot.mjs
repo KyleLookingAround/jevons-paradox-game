@@ -80,7 +80,7 @@ if (!perf) {
     for (const mode of ['idle', 'update10hz']) {
       const r = await p.evaluate(async (mode) => {
         let timer = 0, k = 0;
-        if (mode === 'update10hz') timer = setInterval(() => { k++; window.__scene.set({ pressure: 0.86 + (k % 5) * 0.01, pace: 0.95 + (k % 3) * 0.02 }); }, 100);
+        if (mode === 'update10hz') timer = setInterval(() => { k++; window.__scene.raw({ pressure: 0.86 + (k % 5) * 0.01, pace: 0.95 + (k % 3) * 0.02 }); }, 100);
         const ts = [];
         await new Promise((res) => {
           const t0 = performance.now();

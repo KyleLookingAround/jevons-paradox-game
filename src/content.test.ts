@@ -341,11 +341,18 @@ describe('know-how and institutions', () => {
     }
   });
 
-  test('no institution starts a cap (a standing cap draws its budget on the first step, at the opening R)', () => {
-    const caps = new Set(C.levers.filter((l) => l.kind === 'cap').map((l) => l.id));
+  test('an institution may start a cap only where its line waits for a grown economy (standingDrawYears ≥ 20)', () => {
+    // M1 balance fix 2: a standing cap draws its budget once the sector has been open steady.standingDrawYears model
+    // years, so it is no longer frozen at the opening level. Below about 20 years (under 7 minutes) it still would be.
+    const caps = new Map(C.levers.filter((l) => l.kind === 'cap').map((l) => [l.id, l.sector]));
     for (const i of C.institutions) {
       const effs = [...i.effects, ...(i.nextLevels ?? []).flatMap((l) => l.effects)];
-      expect(effs.filter((e) => e.type === 'startLever' && caps.has(e.lever)).map(() => i.id)).toEqual([]);
+      for (const e of effs) {
+        if (e.type !== 'startLever' || !caps.has(e.lever)) continue;
+        const sector = caps.get(e.lever)!;
+        const years = C.sectors[sector].steady?.standingDrawYears ?? C.global.steady?.standingDrawYears ?? 0;
+        expect(`${i.id}: ${years}`).toBe(`${i.id}: ${Math.max(20, years)}`);
+      }
     }
   });
 

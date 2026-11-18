@@ -8,23 +8,23 @@ import { P, R, L, f, rng, hash } from '../svg';
 import { bprop } from './util';
 import { sun } from '../props/agentic';
 
-const GROUND = 322;
-const TOWERS = [446, 486, 526, 568];
+const GROUND = 336;
+const TOWERS = [442, 484, 526, 568];
 const FLOORS: Slot[] = [];
 for (let j = 0; j < 14; j++) for (let t = 0; t < TOWERS.length; t++) {
   if (j > 6 + t * 2 - (t === 2 ? 3 : 0)) continue;
-  FLOORS.push({ p: 'floor', x: TOWERS[t], y: GROUND - j * 12, s: 1, v: ((t * 13) % 10) / 10, band: 'mid' });
+  FLOORS.push({ p: 'floor', x: TOWERS[t], y: GROUND - j * 14.4, s: 1.2, v: ((t * 13) % 10) / 10, band: 'mid' });
 }
 FLOORS.sort((a, b) => (GROUND - a.y) - (GROUND - b.y));
 
 function strata(): string {
   const r = rng(hash('strata'));
   let d = '';
-  for (let y = GROUND + 6; y < 400; y += 3.2) {
+  for (let y = GROUND + 7; y < 400; y += 4.6) {
     let x = r() * 20;
-    while (x < 600) { const len = 6 + r() * 30; d += `M${f(x)} ${f(y)}h${f(len)}`; x += len + 3 + r() * 10; }
+    while (x < 600) { const len = 6 + r() * 30; d += `M${f(x)} ${f(y)}h${f(len)}`; x += len + 6 + r() * 16; }
   }
-  return P(d, 'cl');
+  return P(d, 'cl2');
 }
 
 export const code: Layout = {
@@ -32,11 +32,14 @@ export const code: Layout = {
   look: 'agentic',
   place: 'a city of software',
   bands: [230, 300],
-  depth: [150, 0.72, 372, 1.15],
+  depth: [150, 0.95, 372, 1.3],
 
   backdrop(c) {
     const sky = bprop(sun, 82, 70, 1.3, 0, c);
-    const far = L(0, 210, 600, 210, 'k k2');
+    let fl = '';
+    for (let k = 1; k < 9; k++) { const y = 210 + Math.pow(k / 9, 1.6) * (GROUND - 210); fl += `M0 ${f(y)}H600`; }
+    for (let i = -10; i <= 10; i++) fl += `M${300 + i * 22} 210L${300 + i * 64} ${GROUND}`;
+    const far = R(0, 210, 600, GROUND - 210, 'floorp') + P(fl, 'floorl') + L(0, 210, 600, 210, 'k k2');
     const mid = R(0, GROUND, 600, 2, 'd');
     const near = R(0, GROUND + 2, 600, 80, 'gd') + strata() +
       `<rect x="0" y="${GROUND + 2}" width="600" height="46" class="debt ly" style="transform-origin:50% 0"/>`;
@@ -82,15 +85,15 @@ export const code: Layout = {
     },
     {
       key: 'agents', match: ['robots'],
-      anchor: { p: 'floor', x: TOWERS[0], y: GROUND, s: 1, v: 0, band: 'mid' },
+      anchor: { p: 'floor', x: TOWERS[0], y: GROUND, s: 1.2, v: 0, band: 'mid' },
       slots: FLOORS.slice(1),
       movers: [
-        { p: 'agent', x0: 420, y0: 268, x1: 600, y1: 268, dur: 7, n: 2, s: 1.2, band: 'mid' },
-        { p: 'agent', x0: 600, y0: 244, x1: 420, y1: 244, dur: 6, n: 2, s: 1.2, from: 0.3, band: 'mid' },
+        { p: 'agent', x0: 420, y0: 282, x1: 600, y1: 282, dur: 7, n: 2, s: 1.2, band: 'mid' },
+        { p: 'agent', x0: 600, y0: 254, x1: 420, y1: 254, dur: 6, n: 2, s: 1.2, from: 0.3, band: 'mid' },
         { p: 'agent', x0: -20, y0: GROUND, x1: 620, y1: GROUND, dur: 16, n: 3, s: 1.3, from: 0.15, band: 'mid' },
         { p: 'agent', x0: 420, y0: 210, x1: 600, y1: 200, dur: 5, n: 2, s: 1.2, from: 0.6, band: 'far' },
       ],
-      hit: [424, 170, 172, 152],
+      hit: [420, 170, 176, 166],
       site: [430, 312, 50, 8],
     },
   ],

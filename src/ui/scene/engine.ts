@@ -515,23 +515,26 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const clear = v.steady ? 1 : v.decoupling ? 0.6 * v.steadyProgress : 0;
     const pfv = Math.min(1, pf) * (1 - 0.85 * clear);
     const q = (x: number) => (Math.round(x * 50) / 50).toFixed(2);
-    const rs = root.style;
-    rs.setProperty('--pf2', q(pfv));
-    rs.setProperty('--pfc', q(Math.min(1, pf)));
-    rs.setProperty('--hz1', q(Math.min(1, pfv * 0.95)));
-    rs.setProperty('--hz2', q(Math.min(1, pfv * 0.75)));
-    rs.setProperty('--hz3', q(Math.min(1, pfv * 0.55)));
+    // Fast-moving values go straight onto the few elements that use them (a custom property on the root would
+    // restyle every node of the scene); slow ones are coarsely quantised before they touch the root.
+    const q20 = (x: number) => (Math.round(x * 20) / 20).toFixed(2);
+    setOp(sky1, q(pfv)); setOp(hz1, q(Math.min(1, pfv * 0.85))); setOp(hz2, q(Math.min(1, pfv * 0.55))); setOp(hz3, q(Math.min(1, pfv * 0.32)));
+    setOp(glow, q(clamp(lightMean, 0, 1)));
+    setVarOn(skySvg, '--pf2', q20(pfv));
+    setVarOn(skySvg, '--light', q20(clamp(lightMean, 0, 1)));
+    const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * 10) / 10).toFixed(1);
+    for (const b of BANDS) setVarOn(fx[b], '--smk-a', smk);
+    const rs = { setProperty: setVar };
+    rs.setProperty('--pfc', q20(Math.min(1, pf)));
     rs.setProperty('--res', q(clamp(v.reserveFraction, 0.02, 1)));
     rs.setProperty('--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
-    rs.setProperty('--light', q(clamp(lightMean, 0, 1)));
-    rs.setProperty('--smk-a', q(0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace));
-    const wash = washFor(root.dataset.look ?? '', pfv, clear);
+    rs.setProperty('--light', q20(clamp(lightMean, 0, 1)));
+    const wash = washFor(root.dataset.look ?? '', Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5);
     if (wash) { rs.setProperty('--s-wash', wash[0]); rs.setProperty('--s-water', wash[1]); }
     const lamp = LAMP[clamp(Math.round(v.stage), 0, 3)];
     rs.setProperty('--s-lamp', lamp[0]); rs.setProperty('--s-lamprgb', lamp[1]);
     const pace = v.pace < 0.3 ? 0 : v.pace < 0.7 ? 1 : 2;
-    root.classList.remove('pace0', 'pace1', 'pace2');
-    root.classList.add('pace' + pace);
+    if (pace !== prevPace) { root.classList.remove('pace0', 'pace1', 'pace2'); root.classList.add('pace' + pace); }
     root.classList.toggle('steady', !!v.steady);
     root.classList.toggle('decoupling', !!v.decoupling);
     root.classList.toggle('halt', !!v.reckoning);
@@ -546,6 +549,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     }
     if (!prevSteady && v.steady && prevSector === v.sectorId) flash('The sky clears.', 6000);
 
+    // Refresh each plot's application from this view (plots are built once; the data moves every tick).
+    const byId = new Map(v.apps.map((a) => [a.id, a]));
+    for (const p of plots) if (p.app) p.app = byId.get(p.app.id) ?? p.app;
     // Founding moments are played only when one or two places change at once (not on a jump or a load).
     let changes = 0;
     for (const p of plots) if (p.app && p.status && p.status !== p.app.status && p.app.status === 'founded') changes++;
@@ -573,7 +579,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         prevStatus.set(p.app.id, st);
         if (p.btn) {
           p.btn.classList.toggle('avail', st === 'available');
-          p.btn.setAttribute('aria-label', placeLabel(p.app, v));
+          const lbl = placeLabel(p.app, v);
+          if (p.btn.getAttribute('aria-label') !== lbl) p.btn.setAttribute('aria-label', lbl);
         }
       } else if (p.anchorKey && p.count < 0) setOn(p.anchorKey, true);
 
@@ -625,7 +632,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     // Reckoning: the world stops.
     if (v.reckoning) {
       const cause = v.reckoning.cause;
-      const t = cause === 'exhausted' ? `The ${v.resourceName.toLowerCase()} is spent.` : cause === 'collapse' ? `${v.pressureName}: the air gives out.` : 'The books are closed.';
+      const t = cause === 'exhausted' ? `${v.resourceName}: spent.` : cause === 'collapse' ? `${v.pressureName}: past bearing.` : 'The books are closed.';
       setBanner(v.reckoning.here || cause === 'chosen' ? t : 'Elsewhere, a Reckoning.');
     } else if (captionUntil > now) {
       setBanner(captionText);
@@ -637,6 +644,21 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (s !== summaryText) { summaryText = s; summary.textContent = s; }
   }
   let smokeDirty = true;
+  const varCache = new Map<string, string>();
+  const elCache = new WeakMap<Element, Record<string, string>>();
+  function setVarOn(el: HTMLElement | SVGElement, k: string, val: string): void {
+    let c = elCache.get(el);
+    if (!c) { c = {}; elCache.set(el, c); }
+    if (c[k] === val) return;
+    c[k] = val;
+    el.style.setProperty(k, val);
+  }
+  function setOp(el: HTMLElement, val: string): void { setVarOn(el, 'opacity', val); }
+  function setVar(k: string, val: string): void {
+    if (varCache.get(k) === val) return;
+    varCache.set(k, val);
+    root.style.setProperty(k, val);
+  }
 
   function assignSmoke(): void {
     let live = 0;
@@ -680,8 +702,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (opts.card === false) return;
     const a = selected ? v.apps.find((x) => x.id === selected) : undefined;
     if (!a) {
-      sel.hidden = true; cap.hidden = false;
-      cap.textContent = caption(v);
+      if (!sel.hidden) sel.hidden = true;
+      if (cap.hidden) cap.hidden = false;
+      const t = caption(v);
+      if (cap.textContent !== t) cap.textContent = t;
       return;
     }
     sel.hidden = false; cap.hidden = true;

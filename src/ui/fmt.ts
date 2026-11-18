@@ -7,7 +7,27 @@ function trim1(x: number): string {
   return s.endsWith('.0') ? s.slice(0, -2) : s;
 }
 
-/** Plain number: up to 1 decimal under 1000, then k/M/B/T, then scientific. */
+/** Number notation from 1000 up (a player setting): k/M/B/T suffixes, scientific, or engineering. */
+export type Notation = 'suffix' | 'sci' | 'eng';
+let notation: Notation = 'suffix';
+let epoch = 0;
+export function setNotation(n: Notation): void { if (n !== notation) { notation = n; epoch++; } }
+export function getNotation(): Notation { return notation; }
+/** Bumps whenever the notation changes, for renderers that cache formatted text. */
+export function fmtEpoch(): number { return epoch; }
+
+/** 3 significant figures, exponent a multiple of 3 when `eng`: 12345 → "1.23e4" / "12.3e3". */
+function expo(a: number, eng: boolean): string {
+  let e = Math.floor(Math.log10(a));
+  if (eng) e -= ((e % 3) + 3) % 3;
+  let m = a / Math.pow(10, e);
+  let txt = m >= 100 ? m.toFixed(0) : m >= 10 ? m.toFixed(1) : m.toFixed(2);
+  // Rounding can carry past the mantissa's range (9.999e4 → "10.00").
+  if (Number(txt) >= (eng ? 1000 : 10)) { e += eng ? 3 : 1; m = a / Math.pow(10, e); txt = m >= 100 ? m.toFixed(0) : m >= 10 ? m.toFixed(1) : m.toFixed(2); }
+  return txt + 'e' + e;
+}
+
+/** Plain number: up to 1 decimal under 1000, then k/M/B/T (or the chosen notation), then scientific. */
 export function fmt(x: number | null | undefined): string {
   if (x == null || !Number.isFinite(x)) return x === Infinity ? '∞' : x === -Infinity ? MINUS + '∞' : '—';
   const neg = x < 0;
@@ -15,7 +35,9 @@ export function fmt(x: number | null | undefined): string {
   let s: string;
   if (a < 1000) {
     s = a >= 100 ? Math.round(a).toString() : trim1(a);
-    if (s === '1000') s = '1.00k';
+    if (s === '1000') s = notation === 'suffix' ? '1.00k' : '1.00e3';
+  } else if (notation !== 'suffix') {
+    s = expo(a, notation === 'eng');
   } else if (a < 1e15) {
     s = '';
     for (const [v, suf] of SUFFIX) {

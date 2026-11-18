@@ -34,3 +34,34 @@ export function readFileText(file: File): Promise<string> {
     } catch (e) { reject(e); }
   });
 }
+
+/** Ask the browser not to clear this site's storage under pressure (navigator.storage.persist), guarded. */
+export async function requestPersist(): Promise<'granted' | 'denied' | 'unsupported' | 'failed'> {
+  try {
+    const st = (navigator as Navigator & { storage?: StorageManager }).storage;
+    if (!st || typeof st.persist !== 'function') return 'unsupported';
+    if (typeof st.persisted === 'function' && (await st.persisted())) return 'granted';
+    return (await st.persist()) ? 'granted' : 'denied';
+  } catch { return 'failed'; }
+}
+
+/** Whether storage is already persistent: true/false, or null when the browser cannot say. */
+export async function isPersisted(): Promise<boolean | null> {
+  try {
+    const st = (navigator as Navigator & { storage?: StorageManager }).storage;
+    if (!st || typeof st.persisted !== 'function') return null;
+    return await st.persisted();
+  } catch { return null; }
+}
+
+/** iPhone or iPad (iPadOS reports itself as a Mac with touch), running in a browser tab rather than from the Home Screen. */
+export function iosInBrowser(): boolean {
+  try {
+    const ua = navigator.userAgent || '';
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
+    if (!ios) return false;
+    const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true
+      || (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches);
+    return !standalone;
+  } catch { return false; }
+}

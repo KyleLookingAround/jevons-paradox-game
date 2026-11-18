@@ -25,7 +25,7 @@ export const compute: Layout = {
   look: 'terminal',
   place: 'the machinery behind the screen',
   bands: [204, 300],
-  depth: [150, 0.62, 372, 1.2],
+  depth: [150, 0.7, 372, 1.25],
 
   backdrop(c) {
     const r = rng(hash('cstars'));
@@ -67,17 +67,17 @@ export const compute: Layout = {
       key: 'stream', match: ['play'],
       anchor: { p: 'hall', x: 300, y: 340, s: 1.1, band: 'near' },
       slots: weave(
-        scatter('homeScreen', [10, 318, 580, 46], 16, 'compute-homes', { from: [300, 340], gap: [26, 8] }),
+        scatter('homeScreen', [10, 318, 580, 46], 16, 'compute-homes', { from: [300, 340], gap: [30, 8], k: 1.4 }),
         [{ p: 'hall', x: 170, y: 314, s: 0.95 }, { p: 'hall', x: 430, y: 316, s: 0.95 }],
       ),
       hit: [200, 304, 200, 52],
     },
     {
       key: 'train', match: ['brain'],
-      anchor: { p: 'campus', x: 520, y: 202, s: 0.8, band: 'far' },
+      anchor: { p: 'campus', x: 520, y: 202, s: 1.05, band: 'far' },
       slots: weave(
-        scatter('campus', [420, 168, 180, 30], 4, 'compute-campus', { from: [520, 190], gap: [70, 8], k: 0.95 }),
-        scatter(['cooling', 'cooling', 'substation'], [400, 164, 196, 36], 9, 'compute-cool', { from: [540, 190], gap: [20, 6], k: 0.95 }),
+        scatter('campus', [420, 166, 180, 32], 4, 'compute-campus', { from: [520, 190], gap: [80, 8], k: 1.35 }),
+        scatter(['cooling', 'cooling', 'substation'], [400, 162, 196, 38], 9, 'compute-cool', { from: [540, 190], gap: [26, 6], k: 1.4 }),
       ),
       hit: [420, 150, 180, 56],
       site: [490, 194, 60, 6],

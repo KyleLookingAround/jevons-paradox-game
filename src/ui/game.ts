@@ -7,8 +7,12 @@ import type { Ctx } from './ctx';
 import { sectorIds } from './ctx';
 import { mountUI, type UI } from './app';
 import { showFatal, hideFatal } from './sheets';
-import { lsGet, lsSet, lsDel, download } from './store';
+import { lsGet, lsSet, lsDel, download, requestPersist } from './store';
 import { dur, money } from './fmt';
+import { applyPrefs, getPrefs, setPrefs } from './prefs';
+import { installManifest } from './install';
+import { installKeys } from './keys';
+import type { BackupInfo } from './sheets';
 
 const SAVE_KEY = 'rebound.save.v1';          // kept from v1: deserialize migrates
 const AT_KEY = 'rebound.save.v1.at';
@@ -33,6 +37,9 @@ function boot(o: GameOpts): void {
   const content: Content = mock ? mockContent : o.realContent!;
   const persist = !mock || !!mockOpts?.persist;
   const saveKey = mock ? MOCK_KEY : SAVE_KEY, atKey = saveKey + '.at';
+  // The rolling backup: one slot, rewritten at each Reckoning with the fresh run that follows it.
+  const backupKey = saveKey + '.backup';
+  applyPrefs();
 
   let halted = false;
   let lastCall = 'start-up';
@@ -113,6 +120,8 @@ function boot(o: GameOpts): void {
       const next = guard(name, () => f(model, before, content));
       if (!next || next === before) return false;
       state = next;
+      const bought = ui.afterAct(before, next);
+      if (bought.length) askPersist();
       refresh(true);
       return true;
     },
@@ -130,7 +139,19 @@ function boot(o: GameOpts): void {
     confirmReckoning: () => ui.confirmReckoning(),
     toast: (t, a) => ui.toast(t, a),
     save,
+    get afford() { return ui ? ui.afford : { items: [], bySector: new Map() }; },
+    jumpToAffordable: () => ui.jumpToAffordable(),
+    confirmFork: (id, onYes) => ui.confirmFork(id, onYes),
+    refreshAll: () => refresh(true),
   };
+
+  // Storage persistence is asked for once a session, after a purchase (so the browser sees an engaged player).
+  let persistAsked = false;
+  function askPersist(): void {
+    if (persistAsked || !persist) return;
+    persistAsked = true;
+    void requestPersist().then((r) => { if (getPrefs().persist !== r) setPrefs({ persist: r }); });
+  }
 
   function refresh(views: boolean): void {
     const nd = guard('derive', () => model.derive(state!, content));
@@ -174,17 +195,50 @@ function boot(o: GameOpts): void {
       return true;
     },
     hardReset() {
-      lsDel(saveKey); lsDel(atKey);
+      lsDel(saveKey); lsDel(atKey); lsDel(backupKey);
       const s = guard('createState', () => model.createState(content));
       if (s) replace(s);
     },
     reckon() {
       const ok = ctx.act('reckon', (m, s, c) => m.reckon(s, c));
-      if (ok) { ui.reset(); save(); }
+      if (ok) { ui.reset(); save(); writeBackup(); }
       return ok;
+    },
+    backup: readBackup,
+    restoreBackup() {
+      const b = readBackupRaw();
+      if (!b) return false;
+      const s = guard('deserialize', () => model.deserialize(b.text, content));
+      if (!s) return false;
+      replace(s);
+      // The backup is the start of a run: if it is still fresh, Hindsight can be spent before the clock starts.
+      if (d.freshRun) ui.openShopBetweenRuns();
+      return true;
     },
     resume() { last = performance.now(); acc = 0; save(); },
   });
+
+  function writeBackup(): void {
+    if (!persist) return;
+    const text = guard('serialize', () => model.serialize(state!));
+    if (text == null) return;
+    const info = { at: Date.now(), reckonings: state!.meta?.reckonings ?? 0, year: state!.meta?.lastRun?.yearReached ?? 0, text };
+    lsSet(backupKey, JSON.stringify(info));
+  }
+  function readBackupRaw(): (BackupInfo & { text: string }) | null {
+    try {
+      const o = JSON.parse(lsGet(backupKey) || 'null');
+      if (o && typeof o.text === 'string' && o.text) return { at: Number(o.at) || 0, reckonings: Number(o.reckonings) || 0, year: Math.floor(Number(o.year) || 0), text: o.text };
+    } catch { /* unreadable: no backup */ }
+    return null;
+  }
+  function readBackup(): BackupInfo | null {
+    const b = readBackupRaw();
+    return b ? { at: b.at, reckonings: b.reckonings, year: b.year } : null;
+  }
+
+  installKeys(ctx, ui);
+  void installManifest();
 
   /* ---------- time away ---------- */
   function catchUp(seconds: number, note: boolean): void {
