@@ -840,6 +840,7 @@ function step(state: GameState, content: Content, dt: number): GameState {
   mandate = fin(mandate);
 
   // era openings
+  const opened: EraId[] = [];
   let furthest = state.meta.furthestEra;
   for (let k = 1; k < ids.length; k++) {
     const e = ids[k];
@@ -851,6 +852,7 @@ function step(state: GameState, content: Content, dt: number): GameState {
     const pf = fl.eras[prev];
     if (pf && pf.ps < need.prevServicePriceBelow && state.meta.reckonings >= need.minReckonings) {
       eras[e] = freshEra(def, mods, true);
+      opened.push(e);
       furthest = Math.max(furthest, def.index);
       items.push(headline(tmp, content, 'eraOpened', time, e));
     }
@@ -890,6 +892,16 @@ function step(state: GameState, content: Content, dt: number): GameState {
     peakPopulation: Math.max(state.peakPopulation, population), eras, levers, flags, steadyYearsAll, run, meta,
     news: withNews(state.news, items),
   };
+  // A newly opened era records its baseline now, before the player can buy anything for it.
+  if (opened.length) {
+    const fo = computeFlows(next, content);
+    const eras2 = { ...next.eras };
+    for (const e of opened) {
+      const f = fo.eras[e];
+      if (f) eras2[e] = snapshotBase(eras2[e] as EraStateX, f);
+    }
+    next = { ...next, eras: eras2 };
+  }
   if (Math.floor(time / HISTORY_EVERY) > Math.floor(state.time / HISTORY_EVERY)) {
     next = { ...next, history: pushHistory(state.history, historySample(next, computeFlows(next, content))) };
   }

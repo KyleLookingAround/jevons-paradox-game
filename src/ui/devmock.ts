@@ -34,9 +34,43 @@ const light: EraDef = {
   ],
 };
 
+const motion: EraDef = {
+  ...steam, id: 'motion', index: 3, name: 'Motion', years: '1950–2000', tagline: 'Everywhere is twenty minutes away, give or take the traffic.', theme: 'chrome',
+  service: { name: 'Vehicle-miles', unit: 'vmi' }, resource: { name: 'Oil', unit: 'bbl' }, pressure: { name: 'Carbon', crisisName: 'The Long Summer' },
+  basePrice: 3, capCost: 0.2, reserve: 2e6, spill: { to: 'light', rate: 0.3 }, unlock: { prevServicePriceBelow: 0.3, minReckonings: 2 },
+  applications: [
+    app('motion.van', 'Delivery', 'van', 4, 60, 1.6, Infinity, 0, 'The shop comes to you.'),
+    app('motion.car', 'Commuting', 'car', 2, 500, 2, 2.5, 5e4, 'Live here, work there.'),
+    { ...app('motion.suburb', 'Suburbs', 'suburb', 1, 2000, 2.2, 1.2, 4e5, 'A lawn each.'), lockIn: 0.8 },
+    app('motion.plane', 'Flights', 'plane', 0.5, 4000, 2.4, 0.6, 3e6, 'Lunch in Lisbon.'),
+  ],
+};
+const compute: EraDef = {
+  ...steam, id: 'compute', index: 4, name: 'Compute', years: '2000–2025', tagline: 'Twice as thrifty every eighteen months. Ten times as busy.', theme: 'terminal',
+  service: { name: 'Operations', unit: 'Gop' }, resource: { name: 'Electricity', unit: 'MWh' }, pressure: { name: 'Carbon', crisisName: 'The Heat Dome' },
+  basePrice: 5, capCost: 0.3, reserve: 5e6, autoEtaRate: 0.01, drawsOn: undefined, unlock: { prevServicePriceBelow: 0.5, minReckonings: 3 },
+  applications: [
+    app('compute.sheet', 'Spreadsheets', 'sheet', 6, 80, 1.6, Infinity, 0, 'What if the numbers moved themselves?'),
+    app('compute.web', 'The web', 'globe', 3, 800, 2, 3, 1e5, 'Everything, linked to everything.'),
+    app('compute.play', 'Streaming', 'play', 1, 3000, 2.2, 1.5, 1e6, 'Autoplay in 5, 4, 3…'),
+    app('compute.brain', 'Model training', 'brain', 0.4, 9000, 2.4, 0.8, 1e7, 'Read everything; once more, with feeling.'),
+  ],
+};
+const code: EraDef = {
+  ...steam, id: 'code', index: 5, name: 'Code', years: '2025–', tagline: 'Software is now cheaper to write than to read.', theme: 'agentic',
+  service: { name: 'Working features', unit: 'feat' }, resource: { name: 'Attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
+  basePrice: 4, capCost: 0.2, reserve: 3e6, drawsOn: { era: 'compute', perService: 2 }, unlock: { prevServicePriceBelow: 0.2, minReckonings: 4 },
+  applications: [
+    app('code.tools', 'Internal tools', 'wrench', 5, 60, 1.6, Infinity, 0, 'A dashboard for the dashboard.'),
+    app('code.apps', 'Throwaway apps', 'phone-app', 2, 600, 2, 2.5, 1e5, 'Built Tuesday, forgotten Thursday.'),
+    app('code.legacy', 'Legacy rewrites', 'scroll', 1, 2000, 2.2, 1.2, 1e6, 'Now in a language nobody here knows either.'),
+    app('code.agents', 'Agents for agents', 'robots', 0.3, 20000, 2.6, 0.6, 1e7, 'Nobody asked. Everybody uses it.'),
+  ],
+};
+
 const E = (era: EraId, value: number) => [{ type: 'etaMul' as const, era, value }];
 export const mockContent: Content = {
-  eras: { steam, light } as Record<EraId, EraDef>,
+  eras: { steam, light, motion, compute, code } as Record<EraId, EraDef>,
   upgrades: [
     { id: 'steam.boilers', era: 'steam', name: 'Better boilers', blurb: 'Rivets, mostly.', kind: 'efficiency', cost: 30, effects: E('steam', 1.5) },
     { id: 'steam.condenser', era: 'steam', name: 'Separate condenser', blurb: 'Watt, 1769. Stop cooling the cylinder.', kind: 'efficiency', cost: 400, requires: ['steam.boilers'], effects: E('steam', 1.667) },
@@ -46,12 +80,27 @@ export const mockContent: Content = {
     { id: 'steam.foundry', era: 'steam', name: 'Ironworks', blurb: 'Cheaper engines, cheaper power.', kind: 'capital', cost: 250, effects: [{ type: 'capCostMul', era: 'steam', value: 0.7 }] },
     { id: 'steam.shaft', era: 'steam', name: 'Sink a deeper shaft', blurb: 'There is always more, further down.', kind: 'prospect', cost: 200, repeatable: true, costGrowth: 2.2, maxLevel: 6, effects: [{ type: 'reserveAdd', era: 'steam', value: 0.25 }] },
     { id: 'light.mantle', era: 'light', name: 'Gas mantle', blurb: 'Welsbach, 1885.', kind: 'efficiency', cost: 5000, effects: E('light', 3) },
+    { id: 'light.tungsten', era: 'light', name: 'Tungsten filament', blurb: 'Brighter, longer, cheaper. Leave it on.', kind: 'efficiency', cost: 40000, requires: ['light.mantle'], effects: E('light', 2) },
+    { id: 'motion.injection', era: 'motion', name: 'Fuel injection', blurb: 'Every drop, metered.', kind: 'efficiency', cost: 6000, effects: E('motion', 1.4) },
+    { id: 'motion.ring', era: 'motion', name: 'Ring roads', blurb: 'Bypass the bypass.', kind: 'capital', cost: 9000, effects: [{ type: 'capCostMul', era: 'motion', value: 0.8 }] },
+    { id: 'compute.node', era: 'compute', name: 'Die shrink', blurb: 'Half the joules per operation. Again.', kind: 'efficiency', cost: 8000, repeatable: true, costGrowth: 3, maxLevel: 8, effects: E('compute', 2) },
+    { id: 'compute.dc', era: 'compute', name: 'Hyperscale halls', blurb: 'A warehouse of warm air.', kind: 'capital', cost: 12000, effects: [{ type: 'marginAdd', era: 'compute', value: 0.05 }] },
+    { id: 'code.agent', era: 'code', name: 'Coding agent', blurb: 'It writes the tests too. Mostly.', kind: 'efficiency', cost: 9000, effects: E('code', 3) },
+    { id: 'code.fleet', era: 'code', name: 'Agent fleets', blurb: 'Forty of them, none of them sleeps.', kind: 'efficiency', cost: 90000, requires: ['code.agent'], effects: E('code', 4) },
   ],
   levers: [
     { id: 'steam.duty', era: 'steam', kind: 'duty', name: 'Fuel duty escalator', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income.',
       levels: [{ mandateCost: 60, mandateUpkeep: 0.1, value: 0.3, label: 'Hold price at 30% of the fall' }, { mandateCost: 180, mandateUpkeep: 0.2, value: 0.6, label: 'Hold price at 60% of the fall' }, { mandateCost: 540, mandateUpkeep: 0.4, value: 0.9, label: 'Hold price at 90% of the fall' }] },
     { id: 'steam.cap', era: 'steam', kind: 'cap', name: 'Smoke abatement cap', blurb: 'So much and no more.', catch: 'Permits are dear, and smoke finds the gaps.',
       levels: [{ mandateCost: 100, mandateUpkeep: 0.2, value: 0.9, label: 'Cap at 90% of today' }, { mandateCost: 300, mandateUpkeep: 0.3, value: 0.8, label: 'Cap at 80% of today' }, { mandateCost: 900, mandateUpkeep: 0.5, value: 0.6, label: 'Cap at 60% of today' }] },
+    { id: 'light.sufficiency', era: 'light', kind: 'sufficiency', name: 'Lights out by eleven', blurb: 'A civic habit.', catch: 'Fewer lamps lit, fewer shillings in the meter.',
+      levels: [{ mandateCost: 80, mandateUpkeep: 0.1, value: 0.8, value2: 0.01, label: 'Aim for 80% of today' }, { mandateCost: 240, mandateUpkeep: 0.2, value: 0.6, value2: 0.01, label: 'Aim for 60% of today' }] },
+    { id: 'motion.duty', era: 'motion', kind: 'duty', name: 'Fuel duty escalator', blurb: 'Pence on the litre, rising.', catch: 'Hauliers blockade the refineries.',
+      levels: [{ mandateCost: 60, mandateUpkeep: 0.1, value: 0.3, label: 'Hold price at 30% of the fall' }, { mandateCost: 180, mandateUpkeep: 0.2, value: 0.6, label: 'Hold price at 60% of the fall' }] },
+    { id: 'compute.cap', era: 'compute', kind: 'cap', name: 'Grid connection cap', blurb: 'Queue for the substation.', catch: 'The halls move abroad.',
+      levels: [{ mandateCost: 100, mandateUpkeep: 0.2, value: 0.9, label: 'Cap at 90% of today' }, { mandateCost: 300, mandateUpkeep: 0.3, value: 0.7, label: 'Cap at 70% of today' }] },
+    { id: 'code.deletion', era: 'code', kind: 'deletion', name: 'Deletion', blurb: 'The best code is the code you remove.', catch: 'Every hour spent deleting is an hour not shipping.',
+      levels: [{ mandateCost: 50, mandateUpkeep: 0.1, value: 0.1, value2: 1, label: 'A tenth of attention on deletion' }, { mandateCost: 150, mandateUpkeep: 0.2, value: 0.25, value2: 1, label: 'A quarter on deletion' }] },
   ],
   knowhow: [
     { id: 'kh.apprentice', name: 'Apprenticeships', blurb: 'Better engines from minute one. Funny how the coal goes quicker.', cost: 5, costGrowth: 1.6, maxLevel: 10, effects: E('steam', 1.15) },
@@ -196,7 +245,23 @@ function step(s: GameState, c: Content, dt: number): void {
   }
 }
 
-export interface MockOpts { reveal?: boolean; rich?: boolean; pending?: boolean; won?: boolean; light?: boolean; }
+export interface MockOpts { reveal?: boolean; rich?: boolean; pending?: boolean; won?: boolean; light?: boolean; all?: boolean; smog?: number; era?: EraId; }
+
+/** `#mock` or `#mock:rich,reveal,all,pending,won,smog=0.8,era=compute`. */
+export function parseMockHash(hash: string): MockOpts | null {
+  const m = /^#mock(?::(.*))?$/.exec(hash || '');
+  if (!m) return null;
+  const o: MockOpts = {};
+  for (const part of (m[1] || '').split(',')) {
+    const [k, v] = part.split('=');
+    if (k === 'rich' || k === 'reveal' || k === 'pending' || k === 'won' || k === 'light' || k === 'all') o[k] = true;
+    else if (k === 'smog') o.smog = Number(v) || 0;
+    else if (k === 'era' && (ERA_ORDER as string[]).includes(v)) o.era = v as EraId;
+  }
+  if (o.all) { o.rich = true; o.reveal = true; }
+  if (o.era && o.era !== 'steam') o.rich = true;
+  return o;
+}
 
 export function makeMockModel(opts: MockOpts = {}): ModelApi {
   const freshMeta = (): MetaState => ({ hindsight: 0, hindsightEarned: 0, reckonings: 0, knowhow: {}, institutions: {}, achievements: {}, steadyEras: {}, furthestEra: 1, totalSeconds: 0 });
@@ -220,7 +285,17 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         if (opts.reveal) { s.upgrades['steam.coalQuestion'] = 1; s.flags.revealed = true; s.mandate = 220; }
         for (let i = 0; i < 300; i++) step(s, c, 1);
         s.eras.steam.pressure = s.eras.steam.pressure + c.eras.steam.collapseAt * 0.45;
-        if (opts.light && s.eras.light) { s.eras.light.open = true; s.eras.light.baseR = 50; s.eras.light.baseD = 50; for (let i = 0; i < 30; i++) step(s, c, 1); }
+        const extra: EraId[] = opts.all ? ['light', 'motion', 'compute', 'code'] : opts.era && opts.era !== 'steam' ? ERA_ORDER.slice(1, ERA_ORDER.indexOf(opts.era) + 1) : opts.light ? ['light'] : [];
+        for (const id of extra) {
+          const es = s.eras[id];
+          if (!es) continue;
+          es.open = true;
+          for (const a of c.eras[id].applications.slice(0, 2)) es.apps[a.id] = { available: true, founded: true, satMul: 1, peakD: 0 };
+          const k = calc(s, c, id); es.baseR = k.R || 1; es.baseD = k.D || 1; es.basePs = k.ps;
+          for (const u of c.upgrades) if (u.era === id && u.kind === 'efficiency' && !u.requires) s.upgrades[u.id] = 1;
+        }
+        if (extra.length) for (let i = 0; i < 60; i++) step(s, c, 1);
+        if (opts.smog != null) for (const id of ERA_ORDER) if (s.eras[id]?.open) s.eras[id].pressure = c.eras[id].collapseAt * opts.smog;
         s.meta.lastRun = { cause: 'exhausted', causeEra: 'steam', seconds: 2100, yearReached: 1885, hindsightGained: 42, peakWellbeing: 36, eras: { steam: { etaFold: 12, peakRFold: 2.1, resourceUsed: 5.2e5 }, light: { etaFold: 3, peakRFold: 4.4, resourceUsed: 8e4 } } };
         s.meta.hindsight = 42; s.meta.reckonings = 1; s.meta.achievements = { firstReckoning: true, backfire: true };
       } else if (!meta && opts.reveal) { s.flags.revealed = true; }
