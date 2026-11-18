@@ -14,7 +14,7 @@ export function fmt(x: number | null | undefined): string {
   const a = Math.abs(x);
   let s: string;
   if (a < 1000) {
-    s = trim1(a);
+    s = a >= 100 ? Math.round(a).toString() : trim1(a);
     if (s === '1000') s = '1.00k';
   } else if (a < 1e15) {
     s = '';
@@ -41,7 +41,7 @@ export function fmtPrice(x: number | null | undefined): string {
   const a = Math.abs(x);
   if (a === 0) return '0';
   if (a < 0.01) return (x < 0 ? MINUS : '') + a.toPrecision(2);
-  if (a < 10) return (x < 0 ? MINUS : '') + a.toFixed(a < 1 ? 3 : 2);
+  if (a < 100) return (x < 0 ? MINUS : '') + String(Number(a.toPrecision(3)));
   return fmt(x);
 }
 

@@ -86,7 +86,7 @@ export function buildGauges(ctx: Ctx): Comp {
       const t = v / 2.5, [x0, y0] = pt(t, R - 1), [x1, y1] = pt(t, R - (v === 1 ? 10 : 5));
       m += `<line class="${v === 1 ? 'tk tk-major' : 'tk'}" x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>`;
     }
-    for (const [v, lbl] of [[0, '0'], [1, '100'], [2.5, '250']] as [number, string][]) {
+    for (const [v, lbl] of [[1, '100%']] as [number, string][]) {
       const [lx, ly] = pt(v / 2.5, R - 17);
       m += `<text class="tk-l" x="${lx.toFixed(1)}" y="${(ly + 2.5).toFixed(1)}" text-anchor="middle">${lbl}</text>`;
     }
@@ -231,8 +231,8 @@ export function buildGauges(ctx: Ctx): Comp {
     // Trend
     const tr = num(e?.trendR);
     setStyle(arrow, 'transform', `rotate(${(-clamp(tr * 900, -60, 60)).toFixed(1)}deg)`);
-    cls(trend, 'up', tr > 0.001);
-    cls(trend, 'downtrend', tr < -0.001);
+    cls(trend, 'rise', tr > 0.001);
+    cls(trend, 'fall', tr < -0.001);
     setText(trendTxt, Math.abs(tr) < 0.001 ? `${lower(resName)} use flat` : `${lower(resName)} use ${pct(tr)} a year`);
 
     // Decoupling

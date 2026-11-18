@@ -80,8 +80,8 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
       show(proj, showP);
       if (showP) {
         setText(projV, pct(p as number));
-        cls(proj, 'up', (p as number) > 0.0005);
-        cls(proj, 'down', (p as number) < -0.0005);
+        cls(proj, 'worse', (p as number) > 0.0005);
+        cls(proj, 'better', (p as number) < -0.0005);
       }
     }
   }
