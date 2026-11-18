@@ -42,6 +42,7 @@ export function buildSheets(): Sheets {
     current = null; upd = undefined; opts = null;
     show(el, false);
     body.replaceChildren();
+    setText(title, '');
     document.documentElement.classList.remove('sheet-open');
     for (const n of Array.from(document.querySelectorAll('#app > .cockpit, #app > .feed'))) n.removeAttribute('inert');
     if (returnFocus instanceof HTMLElement && document.contains(returnFocus) && !returnFocus.closest('[hidden]')) {

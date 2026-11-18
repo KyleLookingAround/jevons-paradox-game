@@ -506,7 +506,7 @@ async function audit() {
     if ((await st(page)).run.clicks > c0 + 2) throw new Error('holding S auto-sold');
     const n0 = Object.values((await st(page)).upgrades).reduce((a, b) => a + b, 0);
     await page.keyboard.press('b'); await page.waitForTimeout(200);
-    if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.keyboard.press('Escape');
+    if (await page.locator('.layer:not([hidden]) .sheet-t:has-text("A choice")').count()) await page.keyboard.press('Escape');
     else if (Object.values((await st(page)).upgrades).reduce((a, b) => a + b, 0) !== n0 + 1) throw new Error('B did not buy');
     await page.keyboard.press('2'); await page.waitForTimeout(200);
     if (await page.evaluate(() => window.rebound.ctx.sector) === 'steam') throw new Error('2 did not switch Industry');
@@ -539,7 +539,7 @@ async function audit() {
     await fb.scrollIntoViewIfNeeded();
     const forkBefore = JSON.stringify((await st(page)).upgrades);
     await fb.click(); await page.waitForTimeout(250);
-    if (!(await page.locator('.sheet-t:has-text("A choice")').count())) throw new Error('no fork confirmation');
+    if (!(await page.locator('.layer:not([hidden]) .sheet-t:has-text("A choice")').count())) throw new Error('no fork confirmation');
     await page.screenshot({ path: `${out}/audit-fork-confirm.png` });
     await page.click('.sheet button:has-text("Not yet")'); await page.waitForTimeout(150);
     if (JSON.stringify((await st(page)).upgrades) !== forkBefore) throw new Error('"Not yet" bought');
@@ -642,7 +642,7 @@ async function realplay() {
       for (let round = 0; round < 30 && (await founded()) < f0 + 3; round++) {
         await rich(2e3 * Math.pow(2, round)); await page.waitForTimeout(1100);
         const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
-        if (await b.count()) { await b.first().click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(200); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        if (await b.count()) { await b.first().click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(200); if (await page.locator('.layer:not([hidden]) .sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
         if (await foundOne()) await shot(`01-founded-${await founded()}`);
       }
       if ((await founded()) < f0 + 3) throw new Error(`founded only ${(await founded()) - f0}`);
@@ -654,7 +654,7 @@ async function realplay() {
         await rich(1e6); await ff(30); await page.waitForTimeout(1100);
         await foundOne().catch(() => false);
         const b = page.locator('.up:not(.up-research) .buy:not([aria-disabled="true"]):visible');
-        if (await b.count()) { await b.first().click({ timeout: 2000 }).catch(() => {}); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        if (await b.count()) { await b.first().click({ timeout: 2000 }).catch(() => {}); if (await page.locator('.layer:not([hidden]) .sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
       }
       if ((await st()).sectors.steam.crisesFired === c0) throw new Error('no crisis');
       await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(500); await shot('03-crisis');
@@ -673,7 +673,7 @@ async function realplay() {
         if (await page.evaluate(() => window.rebound.d.pendingReckoning)) break;
         await rich(1e7); await page.waitForTimeout(1100);
         const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
-        for (let i = 0; i < 4 && (await b.count()); i++) { await b.first().click().catch(() => {}); await page.waitForTimeout(150); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        for (let i = 0; i < 4 && (await b.count()); i++) { await b.first().click().catch(() => {}); await page.waitForTimeout(150); if (await page.locator('.layer:not([hidden]) .sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
         await foundOne();
       }
       if (await page.evaluate(() => window.rebound.d.pendingReckoning)) {
@@ -697,7 +697,7 @@ async function realplay() {
         await rich(1e8); await ff(30); await page.waitForTimeout(1100);
         await foundOne().catch(() => false);
         const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
-        for (let k = 0; k < 3 && (await b.count()); k++) { await b.first().click({ timeout: 2000 }).catch(() => {}); await page.waitForTimeout(120); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        for (let k = 0; k < 3 && (await b.count()); k++) { await b.first().click({ timeout: 2000 }).catch(() => {}); await page.waitForTimeout(120); if (await page.locator('.layer:not([hidden]) .sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
       }
       if ((await tabs.count()) < 2) { console.log(`  note ${T}: one industry open; tab swap not exercised`); return; }
       await tabs.nth(1).click(); await page.waitForTimeout(700); await shot('08-tab2');
