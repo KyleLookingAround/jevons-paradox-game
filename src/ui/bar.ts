@@ -1,6 +1,6 @@
 // Pinned top bar (year, capital, mandate, wellbeing, menu) and the era tabs.
 import type { Ctx, Comp } from './ctx';
-import { eraDef, eraWarning, ed, openEras } from './ctx';
+import { eraDef, eraWarning, openEras } from './ctx';
 import type { EraId } from '../types';
 import { h, svg, setText, setStyle, show, cls, setAttr, syncChildren } from './dom';
 import { fmt, money, fmtPrice, num, clamp } from './fmt';
@@ -68,7 +68,7 @@ export function buildTabs(ctx: Ctx): Comp {
     const svc = prev ? prev.service.name.toLowerCase() : 'the previous service';
     const unit = prev ? prev.service.unit : '';
     const rk = n.reckoningsNeeded > 0 ? ` and ${n.reckoningsNeeded} Reckoning${n.reckoningsNeeded === 1 ? '' : 's'} behind you (you have ${n.reckoningsHave})` : '';
-    ctx.toast(`${def?.name ?? 'The next era'} opens when ${svc} sells below ${money(n.priceNeeded).replace(/^£/, '£')}${unit ? '/' + unit : ''}${rk}.`);
+    ctx.toast(`${def?.name ?? 'The next era'} opens when ${svc} sells below £${fmtPrice(n.priceNeeded)}${unit ? '/' + unit : ''}${rk}.`);
   }
 
   function tabFor(id: EraId): HTMLButtonElement {
@@ -112,7 +112,6 @@ export function buildTabs(ctx: Ctx): Comp {
       setText(lockSub, parts.join(' · '));
       setAttr(locked, 'aria-label', `${def?.name ?? n.id}, locked: ${parts.join(', ')}`);
     }
-    void ed;
   }
   return { el, update };
 }
