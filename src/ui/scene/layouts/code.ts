@@ -37,7 +37,16 @@ function skyline(): { html: string; fx: { kind: 'blink'; x: number; y: number; b
     if (r() < 0.12 && fx.length < 5) fx.push({ kind: 'blink', x: x + w / 2, y: top - 2, band: 'far', markup: C(0, 0, 1.2, 'redl') });
     x += w + r() * 2;
   }
-  const html = P(b, 'cbfar2') + P(a, 'cbfar') + `<g class="delgap">${P(gap, 'cbfar')}</g>` + P(w1, 'cbwin') + P(w2, 'cbwin2') + P(w3, 'cbwin3');
+  // The low city between the skyline and the street, so sparse stages never show bare sky down to the pavement.
+  let low = '', lw = '';
+  let lx = -4;
+  while (lx < 606) {
+    const w = 14 + r() * 26, h = 40 + r() * 46;
+    low += `M${f(lx)} 336V${f(254 - h * 0.25)}H${f(lx + w)}V336Z`;
+    for (let k = 0; k < 3; k++) if (r() < 0.6) lw += `M${f(lx + 3 + r() * (w - 6))} ${f(270 + r() * 56)}h1.4v1.6h-1.4z`;
+    lx += w + 1;
+  }
+  const html = P(b, 'cbfar2') + P(a, 'cbfar') + P(low, 'cblow') + P(lw, 'cbwin3') + `<g class="delgap">${P(gap, 'cbfar')}</g>` + P(w1, 'cbwin') + P(w2, 'cbwin2') + P(w3, 'cbwin3');
   return { html, fx };
 }
 

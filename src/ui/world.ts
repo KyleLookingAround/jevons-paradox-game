@@ -191,6 +191,9 @@ export function buildWorld(ctx: Ctx): WorldComp {
 /* The big button                                                      */
 /* ------------------------------------------------------------------ */
 
+/** The sell button's shrink threshold (display only): taps a second a keen player manages, and the share of idle income. */
+const FAST_TAPS = 5, SHRINK_SHARE = 0.5;
+
 export function buildDock(ctx: Ctx): Comp {
   const lbl = h('span', { class: 'sell-l' });
   const val = h('span', { class: 'sell-v num' });
@@ -214,11 +217,10 @@ export function buildDock(ctx: Ctx): Comp {
     const v = num(ctx.d?.clickValue);
     setText(lbl, `Sell ${lower(def?.service.name ?? 'power')}`);
     setText(val, '+' + money(v));
-    // Shrink once a tap is worth less than half a second of income (Derived.clickValue < 0.5 × incomePerSec): tapping
-    // has become a garnish. Click value is clickFlat + clickSeconds × income, so with clickSeconds ≥ 0.5 in content this
-    // never fires; whether a click should fade is the balance lane's call (e.g. a falling clickSeconds), not the UI's.
+    // Shrink once even fast tapping is a garnish: FAST_TAPS taps a second worth less than SHRINK_SHARE of idle income
+    // (5 × clickValue < 0.5 × incomePerSec). With content's click ≈ 1.2 + 0.01 × income this falls around minutes 4–6.
     const ip = num(ctx.d?.incomePerSec);
-    cls(el, 'small', ip > 0 && v < 0.5 * ip);
+    cls(el, 'small', ip > 0 && FAST_TAPS * v < SHRINK_SHARE * ip);
   }
   return { el, update };
 }

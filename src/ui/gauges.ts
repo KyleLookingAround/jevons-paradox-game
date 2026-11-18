@@ -255,6 +255,7 @@ export function buildGauges(ctx: Ctx): Comp {
         const bud = pts.filter((p) => p[3] != null);
         setAttr(spark.querySelector('.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
         show(kBud, bud.length >= 2);
+        setText(kBud, ctx.state.sectors?.[id]?.budget?.heldAt != null ? 'budget, held' : 'budget');
         const by = y(1);
         setAttr(spark.querySelector('.sp-base'), 'y1', by); setAttr(spark.querySelector('.sp-base'), 'y2', by);
       } else {

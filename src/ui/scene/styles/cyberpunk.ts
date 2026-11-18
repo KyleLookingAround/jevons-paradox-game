@@ -90,6 +90,7 @@ export const cyberpunk: ArtStyle = {
 .scn .wet{fill:#09080f}.scn .cbfar{fill:#0c0a18}.scn .cbfar2{fill:#13102a}.scn .cbwin{fill:#5a4f9e;opacity:.55}
 .scn .cbwin2{fill:#ff4fd8;opacity:.5}.scn .cbwin3{fill:#ffb347;opacity:.45}
 .scn .star2{fill:#dfe6ff}
+.scn .cblow{fill:#0d0b19}
 .scn .pipes{stroke:none}
 .scn[data-look=cyberpunk] .rain{position:absolute;left:-12%;width:124%;top:-90px;height:calc(100% + 90px);background-repeat:repeat;will-change:transform;transform:translate3d(0,0,0)}
 .scn[data-look=cyberpunk] .rain.r1{background-image:${RAIN_TILE(0.28, 14)};background-size:60px 90px;opacity:.9}

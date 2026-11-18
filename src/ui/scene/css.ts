@@ -204,5 +204,5 @@ export function injectSceneCss(doc: Document = document): void {
 }
 
 /** The whole stylesheet as one string (base + every style registered so far), for hosts that prefer to ship it. */
-export const SCENE_CSS: string = BASE;
 export function sceneCss(): string { return BASE + allStyles().map((s) => s.css).join('\n'); }
+export const SCENE_CSS: string = sceneCss();

@@ -29,12 +29,13 @@ export const steam: Layout = {
     const fore = ridge([[0, 300], [120, 304], [260, 310], [380, 316], [446, 320]], 372);
     const sky =
       // Stipple sky, denser towards the top, as the engraver would lay it.
-      `<rect x="0" y="0" width="600" height="60" fill="${c.u('stip1')}" opacity=".5"/><rect x="0" y="60" width="600" height="50" fill="${c.u('stip2')}" opacity=".35"/>` +
       engravedSun(512, 48, 14) +
       `<g class="nosteady">` +
       P('M60 50c6-9 18-9 22-2c5-6 16-4 17 4c7 0 9 8 3 10H58c-6-2-5-11 2-12z', 'k k2', 'style="fill:var(--s-paper);fill-opacity:.6"') +
       P('M300 30c5-7 15-7 18-1c4-5 13-3 14 3c6 0 7 7 2 8H298c-5-2-4-9 2-10z', 'k k2', 'style="fill:var(--s-paper);fill-opacity:.6"') + '</g>';
     const far =
+      // Stipple sky (in a static layer, so it never repaints with the weather), denser towards the top.
+      `<rect x="0" y="0" width="600" height="60" fill="${c.u('stip1')}" opacity=".5"/><rect x="0" y="60" width="600" height="50" fill="${c.u('stip2')}" opacity=".35"/>` +
       P(farRidge, 'tr', 'fill-opacity=".34"') + P(farRidge.replace(/L[\d.]+ 230Z$/, ''), 'k k2') +
       P('M448 121L600 120V222H470C462 190 458 150 448 121Z', 'wa') + L(448, 120.5, 600, 120.5, 'k') + waterLines(458, 124, 142, 74, 34, 'sea') +
       P(midRidge, 'tr', 'fill-opacity=".55"') + P(midRidge, 'hz', `fill="${c.hatch(0.4)}" opacity=".3"`) + P(midRidge.replace(/L[\d.]+ 260Z$/, ''), 'k k2') +

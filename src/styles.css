@@ -649,6 +649,8 @@ html[data-look='agentic'] .reach-l { font-family: var(--f-mono); font-size: calc
 .pip-wrap { display: inline-flex; align-items: center; gap: 4px; }
 .pips i.rep { border-style: dashed; }
 .pip-more { font-size: calc(11px * var(--ts)); color: var(--muted); }
+.lev-noline { font-size: calc(13px * var(--ts)); font-style: italic; color: var(--muted); border-left: 2px solid var(--rule-2); padding-left: 8px; }
+.bud-line.held { color: var(--good); }
 .lev-levy { font-size: calc(13px * var(--ts)); color: var(--muted); }
 .recycle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; font-size: calc(13px * var(--ts)); }
 .rec-k { color: var(--muted); }

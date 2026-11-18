@@ -510,10 +510,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * 10) / 10).toFixed(1);
     for (const b of BANDS) setVarOn(fx[b], '--smk-a', smk);
     const rs = { setProperty: setVar };
-    rs.setProperty('--pfc', q20(Math.min(1, pf)));
+    setVarOn(st.near, '--pfc', q20(Math.min(1, pf)));
     rs.setProperty('--res', q(clamp(v.reserveFraction, 0.02, 1)));
     rs.setProperty('--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
-    rs.setProperty('--light', q20(clamp(lightMean, 0, 1)));
+    setVarOn(st.near, '--light', q20(clamp(lightMean, 0, 1)));
     const wash = style?.wash?.(Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5) ?? null;
     if (wash) { rs.setProperty('--s-wash', wash[0]); rs.setProperty('--s-water', wash[1]); }
     const lamp = LAMP[clamp(Math.round(v.stage), 0, 3)];

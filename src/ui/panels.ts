@@ -295,14 +295,22 @@ export function buildBudget(ctx: Ctx): Comp {
     const dec = num(g?.steady?.decadeYears, 10) || 10;
     const bR = e?.budgetR;
     const has = bR != null;
-    if (!has) setText(status, `No line drawn for ${def?.name ?? 'this industry'}. Nothing counts towards Steady State until one is.`);
+    // A standing cap (from an Institution) is in force but draws its line only after the industry has been open
+    // standingDrawYears; the years remaining are not exposed by derive(), so the total is given, not a countdown.
+    const standing = !has && (ctx.levs || []).some((v) => v?.def?.sector === ctx.sector && v.def.kind === 'cap' && num(v.level) > 0);
+    const drawYrs = def?.steady?.standingDrawYears ?? g?.steady?.standingDrawYears;
+    if (standing) setText(status, `A standing cap is in force, with no line to hold it to yet. The line is drawn once ${def?.name ?? 'the industry'} has been open ${drawYrs ? `${fmt(drawYrs)} years` : 'a while'}; drawing it, or tightening the cap, draws it now.`);
+    else if (!has) setText(status, `No line drawn for ${def?.name ?? 'this industry'}. Nothing counts towards Steady State until one is.`);
     else if (e?.withinBudget) setText(status, e.decoupling ? `Within budget · ${Math.floor(num(e.steadyYears) % dec)} of ${dec} years to the next decade` : 'Within budget, but wellbeing is below target: the years do not count.');
     else setText(status, `Over budget by ${pct(bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN, false)}`);
     cls(status, 'ok', !!e?.decoupling);
     cls(status, 'over', has && !e?.withinBudget);
     const decline = def?.steady?.declinePerDecade ?? g?.steady?.budgetDeclinePerDecade ?? 0.05;
     const b = ctx.state.sectors?.[ctx.sector]?.budget;
-    setText(line, has ? `The line: ${fmt(bR)} ${unit}/s today, drawn in ${b?.drawnYear ?? '—'}, falling ${pct(decline, false)} a decade.` : '');
+    // A line held at Steady State (BudgetState.heldAt) no longer falls.
+    const held = b?.heldAt != null;
+    setText(line, has ? `The line: ${fmt(bR)} ${unit}/s, drawn in ${b?.drawnYear ?? '—'}, ${held ? 'held level since Steady State' : `falling ${pct(decline, false)} a decade`}.` : '');
+    cls(line, 'held', held);
     show(line, has);
     setText(draw, has ? 'Redraw the line' : 'Draw the line');
     setAttr(draw, 'aria-disabled', num(e?.resourceUse) > 0 && !ctx.d?.pendingReckoning ? null : 'true');
@@ -340,6 +348,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
   const next = h('div', { class: 'lev-next' });
   const upk = h('span', { class: 'lev-upk num' });
   const levy = h('p', { class: 'lev-levy num' });
+  const noLineEl = h('p', { class: 'lev-noline', hidden: true });
   const lowerBtn = h('button', { class: 'btn lev-lower', type: 'button', onclick: () => {
     const lv = num(cur?.level);
     if (lv > 0) ctx.act('setLever', (m, s, c) => m.setLever(s, c, def.id, lv - 1));
@@ -387,7 +396,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     h('p', { class: 'lev-blurb', text: def.blurb }),
     h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), def.catch),
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk),
-    levy, next, rec,
+    levy, noLineEl, next, rec,
     h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
   let cur: LeverView | null = null;
   let pipKey = '';
@@ -419,6 +428,13 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     show(next, !!next.textContent);
     lowerBtn.disabled = lv <= 0;
     cls(el, 'active', lv > 0);
+    // A cap in force with no budget line yet does nothing until the line is drawn (standingDrawYears, or a Tighten).
+    const noLine = def.kind === 'cap' && lv > 0 && !ctx.state.sectors?.[def.sector]?.budget;
+    show(noLineEl, noLine);
+    if (noLine) {
+      const yrs = sectorDef(ctx, def.sector)?.steady?.standingDrawYears ?? ctx.content.global?.steady?.standingDrawYears;
+      setText(noLineEl, `No line yet, so the cap holds nothing back. One is drawn once the industry has been open ${yrs ? `${fmt(yrs)} years` : 'a while'}; tightening draws it now.`);
+    }
     // Levy revenue (never income) for duty and cap levers in force.
     const isLevy = def.kind === 'duty' || def.kind === 'cap';
     const lr = num(sd(ctx, def.sector)?.levyRevenue);

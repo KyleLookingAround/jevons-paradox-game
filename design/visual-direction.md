@@ -111,3 +111,41 @@ noon dissolving into Light's town at dusk). It sells "the same country, later".
   generic fallback covers them meanwhile.
 - A visible "lock-in" for Motion (suburbs that stay when demand falls) and a visible "indirect rebound" link between
   industries (Light's glow appearing in Steam's sky).
+
+## Art styles by Age
+
+The owner: "slightly different art styles throughout would be cool. eventually a cyberpunk world." The game's history
+is told by its drawing style as well as its contents: each Industry is drawn the way its period pictured itself, so
+leafing through the tabs is leafing through 250 years of illustration. What stays constant so it reads as one game:
+the 600 × 400 picture with a horizon in its upper third, far/mid/near bands with haze between them, the cut-away strip
+under the ground, places that grow outward from a landmark as adoption rises, survey stakes for a site to found,
+weather as pressure, the frozen grey world at a Reckoning, and the same tap behaviour. In code a style is an
+`ArtStyle` (`src/ui/scene/style.ts`); an Industry's `Layout` names its style. A new Age gets a style; a new Industry
+in an Age reuses it with a new place.
+
+Built (Act I and the Attention Age):
+
+| Industry (era) | Style id | Idiom | What makes it that idiom |
+|---|---|---|---|
+| Steam | `ledger` | Steel engraving from an illustrated paper, 1840s | Ink line, hatch and cross-hatch chosen by depth, stipple sky, engraved sun, a double-ruled plate border and a legend under the picture ("Plate I. — The coal valley, looking towards the sea.") |
+| Light & Current | `gaslight` | Chromolithograph poster, 1890s | Flat inked silhouettes with a dark keyline, a stepped (not smooth) dusk sky, glow printed as three halftone screens, a lettered title band, lettered shop fascias (TEAS, DRAPER, OYSTERS…) |
+| Motion | `chrome` | Mid-century travel poster and airbrushed motoring advert | Airbrushed gradient hills, ground and sky, a haloed sun, glossy cars, an italic headline ("THE OPEN ROAD — by motor, to everywhere"); contrails accumulate across the optimistic sky as flying spreads, then the haze |
+| Compute | `terminal` | Vector display and early CAD, 1980s | Phosphor wireframe, scanlines, a perspective floor grid, isometric extrusions, text-mode labels on landmarks (`[ SHEETS.01 ]`, `[ TRAIN/CLUSTER ]`), HUD brackets and headers |
+| Code | `cyberpunk` | Night megacity in rain | Dense verticals, magenta/cyan/amber neon on near-black (tube plus halo, no blur), invented signage, holographic hoarding, wet reflections, rain, signal noise as pressure, pipework growing up from the street as debt |
+
+Proposed for the planned Industries (`design/long-game.md`), in calendar order:
+
+| Industry / Age | Proposed style | Why it fits, and what it would do |
+|---|---|---|
+| Iron & Steel (Act I, beside Steam) | **Foundry lithograph** (S–M, reuses `ledger` props) | Same Age as Steam, so the same engraved family, but tinted lithograph: two printed colours (furnace orange over ink), heavier blacks. The Black Country at night: blast furnaces whose glow is a flat orange plate, slag heaps as the cut-away. Shares the valley's geography (the viaduct seen from the other side). |
+| Plenty (Act II) | **Seed catalogue / agricultural print, 1910s–50s** | Flat bright stone-litho colour with registration slightly off, crop rows as decorative bands, a scale-and-diagram feel (cut-away of groundwater and roots). The Dust Bowl as the paper itself yellowing and the colour plates drifting out of register. |
+| Comfort (Act II) | **Appliance catalogue, 1950s–60s** | Cutaway house in clean pastel airbrush with callout lines and catalogue numbers, every room filling with fridges and heaters; ozone as a cold sky band. Shares `chrome`'s airbrush engine with a different palette (mint, cream, chrome trim) and an interior rather than a landscape. |
+| Freight & Flight (Act II) | **Airline route map and nautical chart, 1960s–70s** | Top-down, unlike every other scene: a coast and ocean drawn as a chart (soundings, rhumb lines), arcs of routes multiplying, container ships as moving glyphs, airports as roundels. The "two ledgers" mechanic suits a map that shows where things are made and where they are used. (Fishing, if it is added, belongs here too: the same chart with banks and quotas.) |
+| Proof-of-work (Attention Age, beside Compute) | **Terminal, red-shifted** | Same vector display as Compute but in amber-red on black, warehouses of rigs as dense hatched blocks, a hash-rate oscilloscope as the sky. A deliberately ugly sibling. |
+| Transition (2020–2100) | **Solarpunk, but not naive: risograph** | After cyberpunk the obvious move is solarpunk (greenery, light, community), and the owner will expect it; I would draw it as a two- or three-colour risograph zine (fluoro pink, teal, yellow on off-white, visible grain), which keeps it handmade and slightly rough. That matters: the Transition's pressure is critical minerals, so the bright clean city needs visible mines in the cut-away and a horizon of extraction, or the art lectures. Steady State there should look like maintenance, not utopia. |
+| Long Now / post-game | **Archive plate** | The whole history recapitulated: each Industry's scene reprinted small, in its own style, on one archival sheet, with the player's own peaks marked. |
+
+What each new style needs: a `styles/<id>.ts` (tokens, class treatments, defs, plate or legend, washes, weather
+weights), a props file for its distinctive props (the shared props render acceptably in any style meanwhile), and a
+layout per Industry. Rough sizes: a style in an existing family (Iron, Proof-of-work) is S–M; a new family (Plenty,
+Freight & Flight's top-down chart, Transition) is L.

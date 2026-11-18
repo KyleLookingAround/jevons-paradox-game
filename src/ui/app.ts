@@ -92,6 +92,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
 
   let look = '', accent: string | null | undefined;
   let knownOpen: Set<SectorId> | null = null;
+  let knownSteady: Set<SectorId> | null = null;
   let wasWon = !!ctx.state.flags?.won;
   let onboardState: 'show' | 'fading' | 'gone' | '' = '';
 
@@ -131,7 +132,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       unreadSaveSheet(sheets, raw, info ? { info, restore: () => hooks.restoreBackup() } : undefined);
     },
     blocking: () => sheets.blocking(),
-    reset() { world.reset(); knownOpen = null; wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
+    reset() { world.reset(); knownOpen = null; knownSteady = null; wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
     afterAct: (before, after) => afford.afterAct(before, after),
     afford: afford.state,
     jumpToAffordable,
@@ -151,6 +152,14 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       }
     }
     knownOpen = new Set(open);
+    // Steady State in an industry: the scene clears its sky; the page says so too, once, with the line now held.
+    const ss = ctx.state.run?.steadySectors || {};
+    if (knownSteady) for (const id of Object.keys(ss)) if (ss[id] && !knownSteady.has(id)) {
+      const def = sectorDef(ctx, id);
+      toasts.push(`Steady State in ${def?.name ?? 'an industry'}: fifty years of a decent life inside the line. The line holds level from here.`,
+        id !== ctx.sector ? { label: 'Go there', run: () => ctx.selectSector(id) } : undefined, 12000);
+    }
+    knownSteady = new Set(Object.keys(ss).filter((k) => ss[k]));
 
     const lk = lookFor(ctx.content, ctx.sector);
     const ac = accentFor(ctx.content, ctx.sector);
