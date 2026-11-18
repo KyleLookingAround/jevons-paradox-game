@@ -24,6 +24,7 @@ export const compute: Layout = {
   id: 'compute',
   look: 'terminal',
   place: 'the machinery behind the screen',
+  caption: 'grid.map --live',
   bands: [204, 300],
   depth: [150, 0.7, 372, 1.25],
 
@@ -47,25 +48,25 @@ export const compute: Layout = {
     { key: 'town', driver: 'population', slots: scatter('office', [150, 156, 300, 22], 14, 'compute-town', { from: [300, 170], gap: [18, 5], k: 0.7 }) },
     {
       key: 'sheets', match: ['sheet'],
-      anchor: { p: 'office', x: 92, y: 290, s: 1.15, v: 0.7 },
+      anchor: { p: 'officeL', x: 92, y: 290, s: 1.15, v: 0.7 },
       slots: scatter('office', [8, 206, 196, 86], 8, 'compute-offices', { from: [92, 260], gap: [26, 10] }),
       hit: [30, 196, 130, 98],
     },
     {
       key: 'web', match: ['globe'],
-      anchor: { p: 'exchange', x: NODES[0][0], y: NODES[0][1], s: 1 },
+      anchor: { p: 'exchangeL', x: NODES[0][0], y: NODES[0][1], s: 1 },
       slots: weave(NODES.slice(1).map(([x, y]): Slot => ({ p: 'exchange', x, y, k: 0.9 })), LINKS),
       hit: [200, 200, 220, 70],
     },
     {
       key: 'cloud', match: ['cloud'],
-      anchor: { p: 'storage', x: 486, y: 292, s: 1.1, v: 0.6 },
+      anchor: { p: 'storageL', x: 486, y: 292, s: 1.1, v: 0.6 },
       slots: scatter('storage', [410, 224, 186, 64], 5, 'compute-sheds', { from: [486, 270], gap: [70, 14] }),
       hit: [420, 250, 170, 50],
     },
     {
       key: 'stream', match: ['play'],
-      anchor: { p: 'hall', x: 300, y: 340, s: 1.1, band: 'near' },
+      anchor: { p: 'hallL', x: 300, y: 340, s: 1.1, band: 'near' },
       slots: weave(
         scatter('homeScreen', [10, 318, 580, 46], 16, 'compute-homes', { from: [300, 340], gap: [30, 8], k: 1.4 }),
         [{ p: 'hall', x: 170, y: 314, s: 0.95 }, { p: 'hall', x: 430, y: 316, s: 0.95 }],
@@ -74,12 +75,12 @@ export const compute: Layout = {
     },
     {
       key: 'train', match: ['brain'],
-      anchor: { p: 'campus', x: 520, y: 202, s: 1.05, band: 'far' },
+      anchor: { p: 'campusL', x: 512, y: 210, s: 1.45, band: 'far' },
       slots: weave(
-        scatter('campus', [420, 166, 180, 32], 4, 'compute-campus', { from: [520, 190], gap: [80, 8], k: 1.35 }),
-        scatter(['cooling', 'cooling', 'substation'], [400, 162, 196, 38], 9, 'compute-cool', { from: [540, 190], gap: [26, 6], k: 1.4 }),
+        scatter('campus', [420, 168, 180, 36], 4, 'compute-campus', { from: [520, 196], gap: [90, 8], k: 1.6 }),
+        scatter(['cooling', 'cooling', 'substation'], [396, 160, 204, 44], 9, 'compute-cool', { from: [540, 196], gap: [30, 6], k: 1.8 }),
       ),
-      hit: [420, 150, 180, 56],
+      hit: [410, 136, 190, 76],
       site: [490, 194, 60, 6],
     },
   ],

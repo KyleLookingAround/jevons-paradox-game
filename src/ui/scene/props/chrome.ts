@@ -9,7 +9,7 @@ export const car: Prop = (a) => {
   const c = carCls(a.v);
   const wh = (x: number, r = 1.7) => C(x, -1.7, r, 'tyre');
   switch (a.stage) {
-    case 0: return P('M-8 -2.5Q-8 -6 -4 -6.5Q-2 -10 2 -10Q6 -10 7.5 -6Q9 -5.5 9 -2.5Z', c) + P('M-2.6 -6.6Q-1.2 -9 1.8 -9Q4.6 -9 5.6 -6.6Z', 'glass') + wh(-4.5) + wh(5.5);
+    case 0: return P('M-8 -2.5Q-8 -6 -4 -6.5Q-2 -10 2 -10Q6 -10 7.5 -6Q9 -5.5 9 -2.5Z', c) + P('M-2.6 -6.6Q-1.2 -9 1.8 -9Q4.6 -9 5.6 -6.6Z', 'glass') + wh(-4.5) + wh(5.5) + P('M-3 -9.2Q0 -10.6 3 -9.6', 'gloss');
     case 1: return P('M-8.5 -2.5V-6.2L-4.5 -6.6L-2.6 -9.6H4.6L6.8 -6.4L9 -6V-2.5Z', c) + P('M-1.8 -8.8H1.2V-6.6H-3.4ZM2 -8.8H4.2L5.6 -6.6H2Z', 'glass') + wh(-5) + wh(5.6);
     case 2: return P('M-8.5 -2.5V-5.8L-1 -9.4H4L8.8 -5.4V-2.5Z', c) + P('M-0.4 -8.6H3.6L6.6 -5.8H-3.6Z', 'glass') + wh(-5) + wh(5.6);
     default: return P('M-8 -2.5V-5.4Q-6 -6 -2.5 -9.6H3Q6.5 -9.4 8.6 -5.2V-2.5Z', c) + P('M-1.6 -8.8H2.8Q5 -8.6 6.4 -5.8H-4.2Z', 'glass') + wh(-5) + wh(5.4) + C(0, -4.2, 0.9, 'volt');
@@ -61,7 +61,14 @@ export const suburb: Prop = (a) => {
 /** A modern slab block (the town grows upward). */
 export const slab: Prop = (a) => {
   const w = 12 + a.v * 10, h = 20 + a.v * 34;
-  return R(-w / 2, -h, w, h, 'b') + R(-w / 2, -h, w, 3, 'rf') + grid(-w / 2 + 2, -h + 5, Math.floor((w - 3) / 3.4), Math.floor((h - 7) / 4.4), 3.4, 4.4, 2, 2.4);
+  return R(-w / 2, -h, w, h, 'b') + R(-w / 2, -h, w, 3, 'rf') + grid(-w / 2 + 2, -h + 5, Math.floor((w - 3) / 3.4), Math.floor((h - 7) / 4.4), 3.4, 4.4, 2, 2.4) +
+    R(-w / 2, -h, w * 0.6, h, 'gl', `style="fill:${a.u('airb')}"`);
+};
+
+/** A contrail across the sky, origin left, w = length; soft core and wide haze. */
+export const contrail: Prop = (a) => {
+  const w = a.w || 160, d = `M0 0Q${f(w * 0.5)} ${f(-w * 0.08)} ${f(w)} ${f(-w * 0.2)}`;
+  return P(d, 'trail3') + P(d, 'trail2');
 };
 
 /** Out-of-town shopping: a big box and a sign on a pylon. */
@@ -151,6 +158,6 @@ export const cloudPuff: Prop = (a) => {
 };
 
 export const CHROME: Record<string, Prop> = {
-  car, van, lorry, depot, lanes, motorway, suburb, slab, mall, carpark, airport, plane, derrick, tanks, petrol, gantry, cycle,
+  contrail, car, van, lorry, depot, lanes, motorway, suburb, slab, mall, carpark, airport, plane, derrick, tanks, petrol, gantry, cycle,
   scrapyard, tree, turbines, cloudPuff,
 };

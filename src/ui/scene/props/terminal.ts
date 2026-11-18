@@ -3,6 +3,14 @@
 import type { Prop } from '../layout';
 import { P, R, C, L, f } from '../svg';
 
+/** Isometric hint: the right-hand face of a box, receding up and to the right. */
+const iso = (x: number, y: number, w: number, h: number, dx = 5, dy = 3.5) =>
+  P(`M${f(x + w)} ${f(y + h)}l${dx} ${-dy}V${f(y - dy)}l${-dx} ${dy}M${f(x)} ${f(y)}l${dx} ${-dy}H${f(x + w + dx)}`, 'k iso');
+/** Text-mode label above a landmark: [ NAME ]. */
+const label = (y: number, t: string) => `<text x="0" y="${f(y)}" text-anchor="middle" class="tlab">[ ${t} ]</text>`;
+/** Wrap a prop with a text-mode label (used for landmarks). */
+const tagged = (p: Prop, t: string, dy: number): Prop => (a, o) => p(a, o) + label(dy, t);
+
 /** An office tower: every lit cell a spreadsheet. */
 export const office: Prop = (a) => {
   const w = 16 + a.v * 12, h = 30 + a.v * 36;
@@ -11,7 +19,7 @@ export const office: Prop = (a) => {
     const d = `M${f(x)} ${f(y)}h2.4v2.6h-2.4z`;
     if (a.r() < 0.4) lit += d; else dim += d;
   }
-  return R(-w / 2, -h, w, h, 'b') + P(dim, 'w') + P(lit, 'lit') + L(0, -h, 0, -h - 6, 'k');
+  return iso(-w / 2, -h, w, h) + R(-w / 2, -h, w, h, 'b') + P(dim, 'w') + P(lit, 'lit') + L(0, -h, 0, -h - 6, 'k');
 };
 
 /** An exchange: low building, mast, blinking light. */
@@ -52,7 +60,7 @@ export const storage: Prop = (a) => {
   const w = 56 + a.v * 26, h = 16;
   let d = '';
   for (let x = -w / 2 + 3; x < w / 2; x += 3) d += `M${f(x)} ${-h + 1}V-1`;
-  return R(-w / 2, -h, w, h, 'b') + P(d, 'k k2 dim') + P('M-6 -7q0-4 4-4q1-3 5-2q4 0 4 4q3 0 3 2.5h-16z', 'k');
+  return iso(-w / 2, -h, w, h, 8, 5) + R(-w / 2, -h, w, h, 'b') + P(d, 'k k2 dim') + P('M-6 -7q0-4 4-4q1-3 5-2q4 0 4 4q3 0 3 2.5h-16z', 'k');
 };
 
 /** A training campus: long halls with roof chillers. */
@@ -60,7 +68,7 @@ export const campus: Prop = (a) => {
   const w = 70 + a.v * 30, h = 18;
   let fans = '';
   for (let x = -w / 2 + 5; x < w / 2 - 4; x += 7) fans += C(x, -h - 1.6, 1.6, 'k');
-  return R(-w / 2, -h, w, h, 'b') + P(`M${f(-w / 2)} ${-h / 2}H${f(w / 2)}`, 'k k2') + fans + R(-4, -6, 8, 6, 'lit');
+  return iso(-w / 2, -h, w, h, 10, 6) + R(-w / 2, -h, w, h, 'b') + P(`M${f(-w / 2)} ${-h / 2}H${f(w / 2)}`, 'k k2') + fans + R(-4, -6, 8, 6, 'lit');
 };
 
 /** Cooling tower with a vapour plume. */
@@ -81,4 +89,8 @@ export const solar: Prop = () => {
   return P(d, 'b') + P('M-20 -4.5h40', 'k k2');
 };
 
-export const TERMINAL: Record<string, Prop> = { office, exchange, link, hall, homeScreen, storage, campus, cooling, substation, pylon, solar };
+export const TERMINAL: Record<string, Prop> = {
+  office, exchange, link, hall, homeScreen, storage, campus, cooling, substation, pylon, solar,
+  officeL: tagged(office, 'SHEETS.01', -78), exchangeL: tagged(exchange, 'EXCH-A', -40), storageL: tagged(storage, 'COLD STORE', -26),
+  hallL: tagged(hall, 'STREAM-HALL', -26), campusL: tagged(campus, 'TRAIN/CLUSTER', -30),
+};

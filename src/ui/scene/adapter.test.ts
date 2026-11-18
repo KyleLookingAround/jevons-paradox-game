@@ -1,3 +1,4 @@
+// @ts-ignore bun:test types are not in the project tsconfig (types: [])
 import { describe, expect, test } from 'bun:test';
 import { sceneViewFrom, machineStage } from './adapter';
 import type { Content, GameState, Derived } from '../../types';

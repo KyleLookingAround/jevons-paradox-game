@@ -626,10 +626,13 @@ async function realplay() {
     const foundOne = async () => {
       const p = page.locator('.scn-place.avail').first();
       if (!(await p.count())) return false;
-      await p.scrollIntoViewIfNeeded(); await p.click(); await page.waitForTimeout(150);
+      // Centre it: the pinned header and the dock would otherwise cover a plot scrolled just into view.
+      await p.evaluate((el) => el.scrollIntoView({ block: 'center' })); await page.waitForTimeout(150);
+      await p.click({ timeout: 3000 }); await page.waitForTimeout(150);
       const f = page.locator('.scn-found:not([aria-disabled="true"]):visible');
       if (!(await f.count())) return false;
-      await f.click(); await page.waitForTimeout(400); return true;
+      await f.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await f.click({ timeout: 3000 }); await page.waitForTimeout(400); return true;
     };
     await page.goto(url); await page.waitForTimeout(1200);
     if (await page.evaluate(() => window.rebound?.ctx?.mock)) { console.log(`REALPLAY ${sz.tag}: fell back to the mock`); }
@@ -639,7 +642,7 @@ async function realplay() {
       for (let round = 0; round < 30 && (await founded()) < f0 + 3; round++) {
         await rich(2e3 * Math.pow(2, round)); await page.waitForTimeout(1100);
         const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
-        if (await b.count()) { await b.first().click().catch(() => {}); await page.waitForTimeout(200); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        if (await b.count()) { await b.first().click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(200); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
         if (await foundOne()) await shot(`01-founded-${await founded()}`);
       }
       if ((await founded()) < f0 + 3) throw new Error(`founded only ${(await founded()) - f0}`);
@@ -647,7 +650,12 @@ async function realplay() {
     });
     await step('a crisis (fast-forward until one fires)', async () => {
       const c0 = (await st()).sectors.steam.crisesFired;
-      for (let i = 0; i < 40 && (await st()).sectors.steam.crisesFired === c0 && !(await page.evaluate(() => window.rebound.d.pendingReckoning)); i++) { await rich(1e5); await ff(20); await page.waitForTimeout(120); }
+      for (let i = 0; i < 40 && (await st()).sectors.steam.crisesFired === c0 && !(await page.evaluate(() => window.rebound.d.pendingReckoning)); i++) {
+        await rich(1e6); await ff(30); await page.waitForTimeout(1100);
+        await foundOne().catch(() => false);
+        const b = page.locator('.up:not(.up-research) .buy:not([aria-disabled="true"]):visible');
+        if (await b.count()) { await b.first().click({ timeout: 2000 }).catch(() => {}); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+      }
       if ((await st()).sectors.steam.crisesFired === c0) throw new Error('no crisis');
       await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(500); await shot('03-crisis');
     });
@@ -685,6 +693,12 @@ async function realplay() {
     await step('switch Industry tabs: scenes swap cleanly', async () => {
       // Open a second industry through the console if the run has none yet (the unlock is the model's business).
       const tabs = page.locator('.tab:not(.locked)');
+      for (let i = 0; i < 30 && (await tabs.count()) < 2 && !(await page.evaluate(() => window.rebound.d.pendingReckoning)); i++) {
+        await rich(1e8); await ff(30); await page.waitForTimeout(1100);
+        await foundOne().catch(() => false);
+        const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
+        for (let k = 0; k < 3 && (await b.count()); k++) { await b.first().click({ timeout: 2000 }).catch(() => {}); await page.waitForTimeout(120); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+      }
       if ((await tabs.count()) < 2) { console.log(`  note ${T}: one industry open; tab swap not exercised`); return; }
       await tabs.nth(1).click(); await page.waitForTimeout(700); await shot('08-tab2');
       const n = await page.locator('.world-mount .scn').count();

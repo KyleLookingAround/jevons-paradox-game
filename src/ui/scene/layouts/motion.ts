@@ -2,7 +2,7 @@
 // a mall and its car park, an airport whose planes climb away, nodding donkeys on the oilfield, and in front a
 // motorway whose lanes widen with commuting and then fill again. Under it, the oil reservoir shrinking.
 import type { Layout, Slot } from '../layout';
-import { scatter } from '../layout';
+import { scatter, weave } from '../layout';
 import { P, R, L, ridge, rng, hash, f } from '../svg';
 import { bprop } from './util';
 import { derrick, tanks, tree, cloudPuff } from '../props/chrome';
@@ -30,21 +30,22 @@ export const motion: Layout = {
   id: 'motion',
   look: 'chrome',
   place: 'a market town and its roads',
+  caption: 'The open road',
   bands: [200, 300],
   depth: [120, 0.66, 372, 1.25],
 
   backdrop(c) {
-    const sky = `<g class="sunf">${P('M492 70m-24 0a24 24 0 1 0 48 0a24 24 0 1 0 -48 0', 'sun')}</g>`;
+    const sky = `<g class="sunf"><circle cx="492" cy="96" r="70" fill="${c.u('sunhalo')}"/>${P('M492 96m-24 0a24 24 0 1 0 48 0a24 24 0 1 0 -48 0', 'sun')}</g>`;
     const far =
-      P(ridge([[0, 142], [100, 126], [220, 140], [340, 120], [460, 136], [600, 124]], 260), 'hill1') +
-      P(ridge([[0, 170], [120, 160], [260, 172], [400, 162], [600, 174]], 260), 'hill2') +
+      P(ridge([[0, 142], [100, 126], [220, 140], [340, 120], [460, 136], [600, 124]], 260), 'hill1', `style="fill:${c.u('hillg1')}"`) +
+      P(ridge([[0, 170], [120, 160], [260, 172], [400, 162], [600, 174]], 260), 'hill2', `style="fill:${c.u('hillg2')}"`) +
       bprop(derrick, 34, 186, 0.75, 0.2, c) + bprop(derrick, 86, 190, 0.7, 0.5, c) + bprop(derrick, 140, 188, 0.65, 0.8, c) +
       bprop(tanks, 178, 192, 0.8, 0.5, c) + bprop(tree, 230, 184, 0.7, 0.3, c) + bprop(tree, 244, 186, 0.6, 0.8, c);
     const mid =
-      P('M0 186Q300 178 600 188V400H0Z', 'gd') + fields() +
+      P('M0 186Q300 178 600 188V400H0Z', 'gd', `style="fill:${c.u('groundg')}"`) + fields() +
       R(-10, 258, 620, 8, 'road') + P('M-10 262H610', 'dash') +
       bprop(tree, 20, 300, 0.9, 0.4, c) + bprop(tree, 236, 290, 0.9, 0.7, c) + bprop(tree, 252, 292, 0.8, 0.2, c);
-    const near = R(-10, 300, 620, 40, 'gd') + R(-10, 326, 620, 3, 'verge');
+    const near = R(-10, 300, 620, 40, 'gd', `style="fill:${c.u('nearg')}"`) + R(-10, 326, 620, 3, 'verge');
     const cut =
       R(0, 372, 600, 28, 'stra1') + P('M0 380Q150 378 300 381T600 380', 'k k2') + R(0, 386, 600, 14, 'stra2') +
       `<path d="M20 394Q120 380 250 394Z" class="oil rx" style="transform-origin:28% 50%"/>` + P('M20 394Q120 380 250 394', 'k k2') +
@@ -96,7 +97,12 @@ export const motion: Layout = {
     {
       key: 'flights', match: ['plane'],
       anchor: { p: 'airport', x: 370, y: 196, s: 1, w: 230, band: 'far' },
-      slots: [{ p: 'slab', x: 458, y: 194, s: 0.6, v: 0.1, band: 'far' }, { p: 'airport', x: 400, y: 182, s: 0.6, w: 280, band: 'far' }],
+      // Contrails accumulate over the optimistic sky as flying spreads.
+      slots: weave(
+        [{ p: 'slab', x: 458, y: 194, s: 0.6, v: 0.1, band: 'far' }, { p: 'airport', x: 400, y: 182, s: 0.6, w: 280, band: 'far' }],
+        ([[300, 120, 160], [180, 96, 220], [420, 70, 200], [60, 132, 180], [240, 58, 240], [520, 110, 120], [120, 84, 200], [360, 40, 230]] as [number, number, number][])
+          .map(([x, y, w]): Slot => ({ p: 'contrail', x, y, w, s: 1, band: 'far' })),
+      ),
       movers: [{ p: 'plane', x0: 470, y0: 186, x1: 720, y1: 90, dur: 13, n: 3, s: 1, band: 'far' }],
       hit: [380, 130, 220, 70],
       site: [440, 186, 80, 6],

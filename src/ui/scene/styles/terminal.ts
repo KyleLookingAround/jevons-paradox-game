@@ -15,6 +15,10 @@ export const terminal: ArtStyle = {
 }
 
 .scn[data-look=terminal]{--s-btxt:#9ff08f}
+.scn .tlab{font-family:var(--f-mono,monospace);font-size:7px;fill:#e9b44a;letter-spacing:.04em}
+.scn .thud{font-family:var(--f-mono,monospace);font-size:9px;fill:#7fd474;letter-spacing:.06em}
+.scn .thud.dimt{fill:#3f6e3a}
+.scn .iso{stroke:#3f7a39!important}
 .scn[data-look=terminal] .b,.scn[data-look=terminal] .rf,.scn[data-look=terminal] .b2{fill:#070b08;stroke:#7fd474;stroke-width:calc(.9px*var(--sw))}
 .scn[data-look=terminal] .band-far .b,.scn[data-look=terminal] .band-far .rf{stroke:#4f8a48}
 .scn[data-look=terminal] .k{stroke:#7fd474}
@@ -35,4 +39,10 @@ export const terminal: ArtStyle = {
 `,
   defs: (p) => ([[0, 3], [1, 4], [2, 5.5], [3, 7]] as const).map(([i, sp]) => lineHatch(p, `h${i}`, sp, sp * 0.18, 0, 0.5) + lineHatch(p, `x${i}`, sp * 0.8, sp * 0.18, 0, 0.75)).join('') + glowDefs(p),
   props: TERMINAL,
+  plate: (c) =>
+    // HUD: corner brackets and text-mode headers, the way a vector display framed its picture.
+    '<path d="M8 22V8H22M578 8H592V22M592 378V392H578M22 392H8V378" fill="none" stroke="#7fd474" stroke-width="1.2"/>' +
+    `<text x="28" y="20" class="thud">${(c.name || 'COMPUTE').toUpperCase()} // ${c.caption || 'MAP'}</text>` +
+    '<text x="572" y="20" text-anchor="end" class="thud">VEC-DISPLAY  F1:HELP</text>' +
+    '<text x="28" y="388" class="thud dimt">X 000.0  Y 000.0  Z 1:1</text>',
 };

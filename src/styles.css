@@ -60,15 +60,16 @@ html[data-look='terminal'] {
   --radius: 0; --btn-radius: 0; --chip-radius: 0;
 }
 html[data-look='agentic'] {
-  color-scheme: light;
-  --bg: #f2f1ed; --bg-solid: #f2f1ed;
-  --bg-img: radial-gradient(rgba(24, 25, 27, .07) 1px, transparent 1px) 0 0 / 16px 16px;
-  --surface: #ffffff; --surface-2: #f6f5f1; --ink: #18191b; --muted: #65696e; --rule: #dddbd3; --rule-2: #b9b6ac;
-  --accent: var(--acc-l, #e0592a); --accent-ink: #ffffff; --bad: #cf222e; --good: #17722f; --track: rgba(24, 25, 27, .07); --focus: #e0592a;
-  --smog: 140, 140, 150; --water: #3474d4;
+  /* Code: a cyberpunk night city. Near-black ground, magenta first, cyan and amber after; the same three families. */
+  color-scheme: dark;
+  --bg: #0b0a12; --bg-solid: #0b0a12;
+  --bg-img: radial-gradient(110% 45% at 50% -10%, rgba(255, 79, 209, .16), transparent 60%), linear-gradient(rgba(56, 225, 255, .045) 1px, transparent 1px) 0 0 / 100% 24px;
+  --surface: #14121f; --surface-2: #1d1a2e; --ink: #ece8f6; --muted: #a59dc2; --rule: rgba(236, 232, 246, .14); --rule-2: rgba(255, 79, 209, .45);
+  --accent: var(--acc-d, #ff4fd1); --accent-ink: #0b0a12; --bad: #ff6b5e; --good: #3ff0c2; --track: rgba(236, 232, 246, .09); --focus: #ffc23d;
+  --smog: 120, 46, 140; --water: #38e1ff;
   --display: var(--f-grot); --body: var(--f-grot); --numf: var(--f-mono); --labelf: var(--f-mono);
   --display-wt: 700; --display-stretch: 100%; --display-case: none; --display-track: -.02em;
-  --radius: 6px; --btn-radius: 6px; --chip-radius: 6px;
+  --radius: 4px; --btn-radius: 4px; --chip-radius: 4px;
 }
 
 
@@ -78,7 +79,7 @@ html[data-accent='iron'] { --acc-l: #2c4a5a; --acc-d: #a9c2d4; --smog: 70, 62, 5
 html[data-accent='gas'] { --acc-l: #8f6110; --acc-d: #f2b544; --smog: 38, 34, 30; }
 html[data-accent='chrome'] { --acc-l: #0a6763; --acc-d: #55c4bd; --smog: 118, 112, 104; }
 html[data-accent='phosphor'] { --acc-l: #6d5a12; --acc-d: #e9b44a; --smog: 64, 34, 22; }
-html[data-accent='diff'] { --acc-l: #ad4318; --acc-d: #ff8a5c; --smog: 140, 140, 150; }
+html[data-accent='diff'] { --acc-l: #ad4318; --acc-d: #ff4fd1; --smog: 140, 140, 150; }
 
 /* ------------------------------------------------------------------ */
 /* Base                                                                */
@@ -547,15 +548,24 @@ html[data-look='terminal'] .tb-v, html[data-look='terminal'] .dial-val { font-we
 html[data-look='agentic'] .sec-t { font-family: var(--f-mono); font-size: calc(15px * var(--ts)); font-weight: 600; letter-spacing: 0; }
 html[data-look='agentic'] .sec-t::after { content: '/'; color: var(--muted); }
 html[data-look='agentic'] .proj { display: block; font-family: var(--f-mono); font-size: calc(12.5px * var(--ts)); padding: 3px 8px; border-radius: 4px; }
-html[data-look='agentic'] .proj.worse { background: #ffebe9; border-left: 3px solid var(--bad); }
+html[data-look='agentic'] .proj.worse { background: rgba(255, 107, 94, .12); border-left: 3px solid var(--bad); }
 html[data-look='agentic'] .proj.worse::before { content: '+ '; font-weight: 700; }
-html[data-look='agentic'] .proj.better { background: #dafbe1; border-left: 3px solid var(--good); }
+html[data-look='agentic'] .proj.better { background: rgba(63, 240, 194, .1); border-left: 3px solid var(--good); }
 html[data-look='agentic'] .promise { color: var(--good); font-size: calc(50px * var(--ts)); }
 html[data-look='agentic'] .up-blurb, html[data-look='agentic'] .shop-k { font-style: normal; }
-html[data-look='agentic'] .tab.sel { background: var(--ink); }
-html[data-look='agentic'] .sell { background: var(--ink); color: #fff; font-family: var(--f-mono); font-weight: 600; font-size: calc(16px * var(--ts)); }
-html[data-look='agentic'] .sell-v { color: var(--accent); opacity: 1; }
-html[data-look='agentic'] .up-research { box-shadow: 3px 3px 0 var(--ink); border-radius: 6px; }
+html[data-look='agentic'] .tab.sel { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+html[data-look='agentic'] .sell { background: linear-gradient(90deg, #ff4fd1, #b44dff); color: #0b0a12; font-family: var(--f-mono); font-weight: 600; font-size: calc(16px * var(--ts)); box-shadow: 0 0 18px -4px rgba(255, 79, 209, .6), 0 2px 0 rgba(0, 0, 0, .4); }
+html[data-look='agentic'] .sell-v { color: #0b0a12; opacity: .85; }
+html[data-look='agentic'] .dial-val, html[data-look='agentic'] .promise { text-shadow: 0 0 14px rgba(255, 79, 209, .35); }
+html[data-look='agentic'] .d-sweep { filter: drop-shadow(0 0 2.5px rgba(255, 79, 209, .55)); }
+html[data-look='agentic'] .dial-cons .d-sweep { filter: none; }
+html[data-look='agentic'] .tk-l { fill: #a59dc2; }
+html[data-look='agentic'] .up, html[data-look='agentic'] .lever { border-color: rgba(56, 225, 255, .22); }
+html[data-look='agentic'] .up.afford { border-color: rgba(255, 79, 209, .55); }
+html[data-look='agentic'] .news-head { border-top-color: rgba(56, 225, 255, .5); }
+html[data-look='agentic'] .afford-chip { border-color: #38e1ff; color: #38e1ff; }
+html[data-look='agentic'] .btn.primary, html[data-look='agentic'] .up.afford .buy { background: var(--ink); color: var(--bg-solid); }
+html[data-look='agentic'] .up-research { box-shadow: 3px 3px 0 #38e1ff; border-radius: 4px; }
 
 
 /* ------------------------------------------------------------------ */
@@ -725,6 +735,7 @@ html[data-look='agentic'] .reach-l { font-family: var(--f-mono); font-size: calc
   box-shadow: 0 4px 12px -8px rgba(0, 0, 0, .6); touch-action: manipulation;
   animation: chip-in .35s ease-out;
 }
+.dock.small .afford-chip { bottom: 100%; }
 .chip-n { font-weight: 800; font-size: calc(15px * var(--ts)); }
 .chip-l { overflow: hidden; text-overflow: ellipsis; }
 @keyframes chip-in { from { opacity: 0; transform: translateY(4px); } }
