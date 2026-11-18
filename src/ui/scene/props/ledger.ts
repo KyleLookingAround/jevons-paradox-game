@@ -108,7 +108,8 @@ export const viaduct: Prop = (a) => {
     d += `M${f(x0)} 0V-26H${f(x1)}V0H${f(x1 - 3)}V-12A${f(r)} ${f(r)} 0 0 0 ${f(x0 + 3)} -12V0Z`;
     u += `M${f(x1 - 3)} -12A${f(r)} ${f(r)} 0 0 0 ${f(x0 + 3)} -12V-14.5A${f(r)} ${f(r)} 0 0 1 ${f(x1 - 3)} -14.5Z`;
   }
-  return P(d, 'b') + P(u, 'hz', `fill="${a.hatch(1)}"`) + R(0, -30, w, 4, 'b') + L(0, -31, w, -31, 'k') +
+  // Engraved dark: the whole body takes a hatch so it holds its shape through the smog.
+  return P(d, 'b') + P(d, 'hz', `fill="${a.hatch(0)}"`) + P(u, 'hz', `fill="${a.hatch(1)}"`) + P(u, 'hz', `fill="${a.hatch(1)}"`) + R(0, -30, w, 4, 'b') + L(0, -31, w, -31, 'k K') +
     P(`M0 -26H${f(w)}`, 'k k2');
 };
 

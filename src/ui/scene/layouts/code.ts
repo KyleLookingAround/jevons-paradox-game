@@ -1,113 +1,179 @@
-// Code: a city of software. Workshops of internal tools on the left, a scatter of throwaway apps (some already
-// abandoned), the legacy temple being rewritten in scaffolding, towers of agents writing for agents on the right,
-// chat bubbles over everything, maintenance debt as clutter on the ground and as strata of old code underneath.
-// The sun is attention: it shrinks as the day is spoken for. Deletion visibly clears ground.
+// Code: a night megacity in rain, the end of the Attention Age.
+//   - population: the city's towers;  chat assistants: cold machine light in their windows, a hologram hoarding;
+//   - human attention (the scarce resource): the few warm windows with somebody in them, dwindling;
+//   - internal tools: lit workshops under the arcades;  throwaway apps: kiosks and blade signs, many already dead;
+//   - legacy rewrite: the old concrete tower in scaffolding beside its glass replacement, floor by floor;
+//   - agents writing for agents: towers that build themselves, cranes and drones;
+//   - maintenance debt: cables, lean-tos, dead neon and pipework growing up from the street into the lower third;
+//   - pressure: smog-glow and signal noise;  deletion: demolition that lets sky (and stars) back in;
+//   - Steady State: the rain stops, the sky clears to stars, the city is quiet and maintained.
 import type { Layout, Slot } from '../layout';
-import { scatter, weave } from '../layout';
-import { P, R, L, f, rng, hash } from '../svg';
-import { bprop } from './util';
-import { sun } from '../props/agentic';
+import { scatter, row, weave } from '../layout';
+import { P, R, C, L, f, rng, hash } from '../svg';
 
-const GROUND = 336;
-const TOWERS = [442, 484, 526, 568];
-const FLOORS: Slot[] = [];
-for (let j = 0; j < 14; j++) for (let t = 0; t < TOWERS.length; t++) {
-  if (j > 6 + t * 2 - (t === 2 ? 3 : 0)) continue;
-  FLOORS.push({ p: 'floor', x: TOWERS[t], y: GROUND - j * 14.4, s: 1.2, v: ((t * 13) % 10) / 10, band: 'mid' });
+const STREET = 334;
+const AG = [524, 568];
+const AGENT_FLOORS: Slot[] = [];
+for (let j = 0; j < 17; j++) for (let t = 0; t < AG.length; t++) {
+  if (t === 1 && j > 13) continue;
+  AGENT_FLOORS.push({ p: 'cfloor', x: AG[t], y: 318 - j * 12, s: 1.05, v: t * 0.6, band: 'mid' });
 }
-FLOORS.sort((a, b) => (GROUND - a.y) - (GROUND - b.y));
+const GLASS: Slot[] = Array.from({ length: 11 }, (_, j): Slot => ({ p: 'glassFloor', x: 466, y: 318 - j * 12, s: 1, band: 'mid' }));
 
-function strata(): string {
-  const r = rng(hash('strata'));
-  let d = '';
-  for (let y = GROUND + 7; y < 400; y += 4.6) {
-    let x = r() * 20;
-    while (x < 600) { const len = 6 + r() * 30; d += `M${f(x)} ${f(y)}h${f(len)}`; x += len + 6 + r() * 16; }
+function skyline(): { html: string; fx: { kind: 'blink'; x: number; y: number; band: 'far'; markup: string }[] } {
+  const r = rng(hash('cb-skyline'));
+  let a = '', b = '', gap = '', w1 = '', w2 = '', w3 = '';
+  const fx: { kind: 'blink'; x: number; y: number; band: 'far'; markup: string }[] = [];
+  let x = -6;
+  while (x < 606) {
+    const w = 10 + r() * 22, h = 50 + r() * 150, top = 256 - h;
+    const d = `M${f(x)} 256V${f(top)}H${f(x + w)}V256Z` + (r() < 0.3 ? `M${f(x + w / 2 - 1)} ${f(top)}V${f(top - 10 - r() * 14)}h2V${f(top)}Z` : '');
+    if (x > 250 && x < 360) gap += d; else if (r() < 0.5) a += d; else b += d;
+    for (let k = 0; k < h / 9; k++) {
+      const wx = x + 2 + r() * (w - 4), wy = top + 4 + r() * (h - 8), q = r();
+      const sq = `M${f(wx)} ${f(wy)}h1.4v1.6h-1.4z`;
+      if (q < 0.55) w1 += sq; else if (q < 0.7) w2 += sq; else if (q < 0.8) w3 += sq;
+    }
+    if (r() < 0.12 && fx.length < 5) fx.push({ kind: 'blink', x: x + w / 2, y: top - 2, band: 'far', markup: C(0, 0, 1.2, 'redl') });
+    x += w + r() * 2;
   }
-  return P(d, 'cl2');
+  const html = P(b, 'cbfar2') + P(a, 'cbfar') + `<g class="delgap">${P(gap, 'cbfar')}</g>` + P(w1, 'cbwin') + P(w2, 'cbwin2') + P(w3, 'cbwin3');
+  return { html, fx };
+}
+
+function stars(): string {
+  const r = rng(hash('cb-stars'));
+  let d = '', d2 = '';
+  for (let i = 0; i < 70; i++) d += `M${f(r() * 600)} ${f(r() * 170)}h.9v.9h-.9z`;
+  for (let i = 0; i < 26; i++) d2 += `M${f(250 + r() * 110)} ${f(60 + r() * 150)}h.9v.9h-.9z`;
+  return `<g class="stdy">${P(d, 'star2')}${C(486, 54, 9, 'warm', 'opacity=".85"')}</g><g class="delstars">${P(d2, 'star2')}</g>`;
+}
+
+function street(): string {
+  const r = rng(hash('cb-street'));
+  let refl = '';
+  const cols = ['nm', 'nc', 'na', 'nv'];
+  for (let i = 0; i < 22; i++) {
+    const x = r() * 600, w = 2 + r() * 8, c = cols[Math.floor(r() * 4)];
+    refl += R(x, STREET + 4 + r() * 6, w, 10 + r() * 20, `rfl ${c}`, `opacity="${(0.05 + r() * 0.1).toFixed(2)}"`);
+  }
+  return R(0, STREET, 600, 400 - STREET, 'wet') + L(0, STREET, 600, STREET, 'k') + refl +
+    P(`M0 ${STREET + 22}H600`, 'nt nc', 'opacity=".12" stroke-dasharray="10 14"') +
+    pipework();
+}
+
+/** Pipework undergrowth: irregular runs, risers and elbows, scaled up from the street by maintenance debt. */
+function pipework(): string {
+  const r = rng(hash('cb-pipes'));
+  let d = '', hi = '', v = '';
+  for (let i = 0; i < 46; i++) {
+    const x = r() * 600, y0 = 372, y1 = 300 + r() * 66, x1 = x + (r() - 0.5) * 70;
+    d += `M${f(x)} ${y0}V${f(y1 + 4)}Q${f(x)} ${f(y1)} ${f(x + Math.sign(x1 - x) * 4)} ${f(y1)}H${f(x1)}` + (r() < 0.5 ? `V${f(y1 + 10 + r() * 20)}` : '');
+    if (r() < 0.4) hi += `M${f(x)} ${f(y1 + 6)}v${f(8 + r() * 10)}`;
+    if (r() < 0.3) v += `M${f(x1 - 2)} ${f(y1 - 2)}h4v4h-4z`;
+  }
+  return `<g class="ly" style="transform-origin:50% 100%">${P(d, 'pipeb')}${P(d, 'pipe')}${P(hi, 'pipeh')}${P(v, 'rustf')}</g>`;
 }
 
 export const code: Layout = {
   id: 'code',
-  look: 'agentic',
-  place: 'a city of software',
-  bands: [230, 300],
-  depth: [150, 0.95, 372, 1.3],
+  look: 'cyberpunk',
+  place: 'a night city of software, in rain',
+  caption: 'The stack, by night',
+  bands: [258, 326],
+  depth: [150, 0.95, 372, 1.15],
 
   backdrop(c) {
-    const sky = bprop(sun, 82, 70, 1.3, 0, c);
-    let fl = '';
-    for (let k = 1; k < 9; k++) { const y = 210 + Math.pow(k / 9, 1.6) * (GROUND - 210); fl += `M0 ${f(y)}H600`; }
-    for (let i = -10; i <= 10; i++) fl += `M${300 + i * 22} 210L${300 + i * 64} ${GROUND}`;
-    const far = R(0, 210, 600, GROUND - 210, 'floorp') + P(fl, 'floorl') + L(0, 210, 600, 210, 'k k2');
-    const mid = R(0, GROUND, 600, 2, 'd');
-    const near = R(0, GROUND + 2, 600, 80, 'gd') + strata() +
-      `<rect x="0" y="${GROUND + 2}" width="600" height="46" class="debt ly" style="transform-origin:50% 0"/>`;
-    return { sky, far, mid, near };
+    const sk = skyline();
+    const pipesUrl = c.u('pipes');
+    return {
+      sky: stars(),
+      far: sk.html,
+      near: street().replace('url(#PIPES)', pipesUrl),
+      cut: R(0, 372, 600, 28, 'wet') + P('M0 380H600M0 388H600M0 394H600', 'pipe', 'opacity=".55"') + P('M0 384H600', 'nt nc', 'opacity=".25"'),
+      fx: sk.fx,
+    };
   },
 
   plots: [
-    { key: 'town', driver: 'population', slots: scatter('block', [140, 186, 300, 24], 14, 'code-town', { from: [290, 200], gap: [18, 5], k: 0.8, band: 'far' }) },
     {
-      key: 'debt', driver: 'pressure', curve: 0.85,
-      slots: weave(
-        scatter('clutter', [6, GROUND - 4, 588, 8], 26, 'code-clutter', { gap: [16, 3], band: 'near' }),
-        scatter('clutter', [6, 236, 420, 60], 14, 'code-clutter2', { gap: [20, 6], k: 0.9 }),
-      ),
+      key: 'city', driver: 'population', curve: 0.8,
+      slots: [
+        { p: 'ctower', x: 200, y: 312, v: 0.31, w: 40 }, { p: 'ctower', x: 340, y: 314, v: 0.72, w: 44 }, { p: 'ctower', x: 120, y: 306, v: 0.12, w: 36 },
+        { p: 'ctower', x: 262, y: 300, v: 0.55, w: 30 }, { p: 'ctower', x: 30, y: 314, v: 0.84, w: 50 }, { p: 'ctower', x: 400, y: 300, v: 0.43, w: 30 },
+        { p: 'ctower', x: 160, y: 296, v: 0.66, w: 28 }, { p: 'ctower', x: 300, y: 292, v: 0.21, w: 26 }, { p: 'ctower', x: 80, y: 294, v: 0.93, w: 30 },
+        { p: 'ctower', x: 604, y: 302, v: 0.05, w: 44 }, { p: 'ctower', x: 230, y: 288, v: 0.49, w: 24 }, { p: 'ctower', x: 368, y: 288, v: 0.37, w: 24 },
+        { p: 'ctower', x: 4, y: 290, v: 0.27, w: 30 }, { p: 'ctower', x: 496, y: 290, v: 0.61, w: 28 },
+      ].map((s) => ({ ...s, s: 1, band: 'mid' as const })),
+    },
+    { key: 'attention', driver: 'reserve', overlayOf: 'city', overlayProp: 'ctowerWarm', curve: 1, slots: [] },
+    {
+      key: 'bots', match: ['chatbot'], overlayOf: 'city', overlayProp: 'ctowerCold', curve: 0.8,
+      anchor: { p: 'hoarding', x: 340, y: 236, s: 1.05, band: 'near' },
+      slots: [],
+      hit: [296, 196, 92, 50],
     },
     {
       key: 'tools', match: ['wrench'],
-      anchor: { p: 'shed', x: 76, y: GROUND, s: 1.15, v: 0.6, band: 'mid' },
-      slots: scatter('shed', [8, 244, 190, 58], 7, 'code-sheds', { from: [80, 290], gap: [36, 9] }),
-      hit: [20, 250, 120, 72],
+      anchor: { p: 'workshop', x: 70, y: STREET, s: 1.1, v: 0.1, band: 'near' },
+      slots: row('workshop', 20, STREET, 236, STREET, 6, 'cb-tools', 0.2, { band: 'near' }).filter((s) => Math.abs(s.x - 70) > 30).slice(0, 4),
+      hit: [24, 296, 130, 46],
     },
     {
       key: 'apps', match: ['phone-app'],
-      anchor: { p: 'kiosk', x: 220, y: GROUND, s: 1.2, v: 0.2, band: 'mid' },
-      slots: scatter('kiosk', [150, 236, 190, 82], 18, 'code-apps', { from: [220, 300], gap: [12, 6] }),
-      hit: [160, 244, 110, 78],
+      anchor: { p: 'kiosk', x: 268, y: STREET + 2, s: 1.15, v: 0.15, band: 'near' },
+      slots: weave(
+        scatter('kiosk', [150, STREET - 2, 300, 8], 8, 'cb-kiosks', { from: [268, STREET], gap: [18, 4], band: 'near' }),
+        scatter('blade', [90, 200, 300, 90], 12, 'cb-blades', { from: [270, 260], gap: [22, 10], band: 'near' }),
+      ),
+      hit: [226, 290, 90, 50],
     },
     {
       key: 'legacy', match: ['scroll'],
-      anchor: { p: 'temple', x: 350, y: GROUND, s: 1.25, band: 'mid' },
-      slots: [
-        { p: 'scaffoldBay', x: 330, y: GROUND, s: 1, band: 'mid' }, { p: 'scaffoldBay', x: 370, y: GROUND, s: 1, band: 'mid' },
-        { p: 'newTower', x: 398, y: GROUND, s: 1, v: 0.3, band: 'mid' }, { p: 'scaffoldBay', x: 350, y: GROUND, s: 1.1, v: 0.9, band: 'mid' },
-        { p: 'newTower', x: 304, y: GROUND, s: 0.9, v: 0.7, band: 'mid' }, { p: 'towerCrane', x: 410, y: GROUND - 60, s: 0.9, band: 'mid' },
-      ],
-      hit: [300, 260, 110, 62],
-    },
-    {
-      key: 'bots', match: ['chatbot'],
-      anchor: { p: 'bubble', x: 230, y: 228, s: 1.1 },
-      slots: scatter('bubble', [20, 160, 400, 70], 16, 'code-bubbles', { from: [230, 210], gap: [26, 10], k: 1 }),
-      hit: [150, 180, 180, 56],
+      anchor: { p: 'oldTower', x: 430, y: 320, s: 1, band: 'mid' },
+      slots: weave(GLASS, [{ p: 'scaffoldC', x: 404, y: 320, s: 1, v: 0.9, band: 'mid' }, { p: 'scaffoldC', x: 456, y: 320, s: 1, v: 0.5, band: 'mid' },
+        { p: 'scaffoldC', x: 430, y: 320, s: 1, v: 0.2, band: 'mid' }]),
+      hit: [400, 160, 82, 160],
     },
     {
       key: 'agents', match: ['robots'],
-      anchor: { p: 'floor', x: TOWERS[0], y: GROUND, s: 1.2, v: 0, band: 'mid' },
-      slots: FLOORS.slice(1),
+      anchor: { p: 'cfloor', x: AG[0], y: 318, s: 1.05, v: 0, band: 'mid' },
+      slots: [...AGENT_FLOORS.slice(1), { p: 'towerCraneC', x: AG[0], y: 114, s: 1, band: 'mid' }, { p: 'towerCraneC', x: AG[1], y: 150, s: 1, band: 'mid' }],
       movers: [
-        { p: 'agent', x0: 420, y0: 282, x1: 600, y1: 282, dur: 7, n: 2, s: 1.2, band: 'mid' },
-        { p: 'agent', x0: 600, y0: 254, x1: 420, y1: 254, dur: 6, n: 2, s: 1.2, from: 0.3, band: 'mid' },
-        { p: 'agent', x0: -20, y0: GROUND, x1: 620, y1: GROUND, dur: 16, n: 3, s: 1.3, from: 0.15, band: 'mid' },
-        { p: 'agent', x0: 420, y0: 210, x1: 600, y1: 200, dur: 5, n: 2, s: 1.2, from: 0.6, band: 'far' },
+        { p: 'drone', x0: 610, y0: 200, x1: 470, y1: 170, dur: 9, n: 2, s: 1.1, band: 'mid' },
+        { p: 'drone', x0: 470, y0: 250, x1: 610, y1: 230, dur: 8, n: 2, s: 1.1, from: 0.25, band: 'mid' },
+        { p: 'drone', x0: 620, y0: 120, x1: -20, y1: 140, dur: 18, n: 3, s: 1, from: 0.5, band: 'far' },
       ],
-      hit: [420, 170, 176, 166],
-      site: [430, 312, 50, 8],
+      hit: [500, 110, 100, 210],
+      site: [506, 312, 50, 8],
+    },
+    {
+      key: 'debt', driver: 'pressure', curve: 0.85,
+      slots: weave(
+        scatter('clutterC', [0, STREET - 1, 600, 6], 22, 'cb-clutter', { gap: [18, 3], band: 'near', k: 1.1 }),
+        scatter('cables', [10, 230, 580, 70], 9, 'cb-cables', { gap: [50, 10], w: [40, 90], band: 'near' }),
+        scatter('clutterC', [0, 304, 600, 18], 12, 'cb-clutter2', { gap: [24, 6], band: 'near' }),
+      ),
+    },
+    {
+      key: 'traffic', driver: 'light', slots: [],
+      movers: [
+        { p: 'skycar', x0: -30, y0: 150, x1: 630, y1: 146, dur: 11, n: 3, s: 1, band: 'far' },
+        { p: 'skycar', x0: 630, y0: 176, x1: -30, y1: 180, dur: 13, n: 3, s: 0.9, from: 0.3, band: 'far' },
+      ],
     },
   ],
 
-  spares: [[20, 196, 110, 40], [250, 190, 100, 40], [130, 330, 120, 30]],
+  spares: [[150, 340, 100, 28], [330, 340, 110, 28], [10, 340, 120, 28]],
 
   restraint: {
-    deletion: { p: 'bulldozer', x: 250, y: 352, s: 1.3, band: 'near' },
-    reviewGate: { p: 'gate', x: 140, y: GROUND, s: 1.1, band: 'mid' },
-    sharedLibs: { p: 'library', x: 60, y: 356, s: 1.1, band: 'near' },
-    sufficiency: { p: 'bench', x: 420, y: 356, s: 1.1, band: 'near' },
-    duty: { p: 'customs', x: 520, y: 360, s: 0.9, band: 'near' },
-    cap: { p: 'permits', x: 340, y: 360, s: 0.9, band: 'near' },
-    substitution: { p: 'solar', x: 560, y: 210, s: 0.8, band: 'far' },
+    deletion: { p: 'demolition', x: 300, y: 368, s: 1.15, band: 'near' },
+    reviewGate: { p: 'gateC', x: 168, y: 366, s: 1.15, band: 'near' },
+    sharedLibs: { p: 'libraryC', x: 380, y: 368, s: 1.05, band: 'near' },
+    sufficiency: { p: 'gardenC', x: 460, y: 368, s: 1.1, band: 'near' },
+    duty: { p: 'tollC', x: 560, y: 368, s: 1, band: 'near' },
+    cap: { p: 'permitC', x: 232, y: 368, s: 1, band: 'near' },
+    substitution: { p: 'solarC', x: 120, y: 206, s: 0.9, band: 'far' },
   },
-  restraintSpare: [{ p: 'notice', x: 160, y: 360 }, { p: 'notice', x: 470, y: 360 }],
+  restraintSpare: [{ p: 'notice', x: 90, y: 368 }, { p: 'notice', x: 520, y: 368 }],
 };

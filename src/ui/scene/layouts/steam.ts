@@ -18,6 +18,7 @@ export const steam: Layout = {
   id: 'steam',
   look: 'ledger',
   place: 'a coal valley running down to the sea',
+  caption: 'The coal valley, looking towards the sea',
   bands: [200, 264],
   depth: [110, 0.4, 372, 1.15],
 
@@ -27,10 +28,12 @@ export const steam: Layout = {
     const valley = ridge([[0, 168], [100, 164], [200, 174], [300, 170], [400, 182], [450, 196], [470, 214], [478, 300]], 400);
     const fore = ridge([[0, 300], [120, 304], [260, 310], [380, 316], [446, 320]], 372);
     const sky =
+      // Stipple sky, denser towards the top, as the engraver would lay it.
+      `<rect x="0" y="0" width="600" height="60" fill="${c.u('stip1')}" opacity=".5"/><rect x="0" y="60" width="600" height="50" fill="${c.u('stip2')}" opacity=".35"/>` +
       engravedSun(512, 48, 14) +
       `<g class="nosteady">` +
-      P('M60 50c6-9 18-9 22-2c5-6 16-4 17 4c7 0 9 8 3 10H58c-6-2-5-11 2-12z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') +
-      P('M300 30c5-7 15-7 18-1c4-5 13-3 14 3c6 0 7 7 2 8H298c-5-2-4-9 2-10z', 'k k2', 'fill="var(--s-paper)" fill-opacity=".6"') + '</g>';
+      P('M60 50c6-9 18-9 22-2c5-6 16-4 17 4c7 0 9 8 3 10H58c-6-2-5-11 2-12z', 'k k2', 'style="fill:var(--s-paper);fill-opacity:.6"') +
+      P('M300 30c5-7 15-7 18-1c4-5 13-3 14 3c6 0 7 7 2 8H298c-5-2-4-9 2-10z', 'k k2', 'style="fill:var(--s-paper);fill-opacity:.6"') + '</g>';
     const far =
       P(farRidge, 'tr', 'fill-opacity=".34"') + P(farRidge.replace(/L[\d.]+ 230Z$/, ''), 'k k2') +
       P('M448 121L600 120V222H470C462 190 458 150 448 121Z', 'wa') + L(448, 120.5, 600, 120.5, 'k') + waterLines(458, 124, 142, 74, 34, 'sea') +
@@ -67,19 +70,19 @@ export const steam: Layout = {
       key: 'town', driver: 'population',
       slots: weave(
         scatter('terrace', [150, 178, 290, 62], 18, 'steam-town', { from: [262, 200], gap: [36, 9] }),
-        scatter(['cottage', 'terrace'], [8, 236, 120, 22], 4, 'steam-town2', { from: [100, 246], gap: [26, 8] }),
+        scatter(['cottage'], [8, 240, 100, 18], 2, 'steam-town2', { from: [100, 246], gap: [30, 8] }),
       ),
     },
     {
       key: 'pump', match: ['pump'],
       anchor: { p: 'engine', x: SHAFT_X, y: 284, s: 1.1 },
-      slots: scatter('engine', [10, 176, 180, 56], 4, 'steam-pumps', { from: [100, 210], gap: [46, 10], k: 0.95 }),
+      slots: scatter('engine', [0, 172, 210, 40], 3, 'steam-pumps', { from: [110, 190], gap: [64, 14], k: 0.9 }),
       hit: [20, 196, 100, 92],
     },
     {
       key: 'winder', match: ['winder'],
       anchor: { p: 'headframe', x: 162, y: 290, s: 1.05 },
-      slots: scatter('headframe', [4, 186, 210, 90], 7, 'steam-winders', { from: [150, 250], gap: [30, 9], k: 0.95 }),
+      slots: scatter('headframe', [0, 196, 230, 70], 5, 'steam-winders', { from: [160, 250], gap: [48, 14], k: 0.95 }),
       hit: [128, 230, 70, 64],
     },
     {

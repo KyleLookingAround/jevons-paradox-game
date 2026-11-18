@@ -60,7 +60,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const gauges = buildGauges(ctx);
   const dock = buildDock(ctx);
   const news = buildNews(ctx);
-  const world = buildWorld(ctx);
+  const world = buildWorld(ctx) as ReturnType<typeof buildWorld> & { reset(): void };
   const ups = buildUpgrades(ctx);
   const budget = buildBudget(ctx);
   const levs = buildLevers(ctx);
@@ -83,7 +83,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
 
   const cockpit = h('div', { class: 'cockpit' }, topbar.el, tabs.el, gauges.el, dock.el);
   // Improvements sit above the world so that a phone shows the first purchase above the fold.
-  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, onboard, news.el, ups.el, world.el, budget.el, levs.el, foot);
+  // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
+  // improvements (the affordable chip by the sell button covers the rest).
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, onboard, world.el, news.el, ups.el, budget.el, levs.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, toasts.el, live);
 
   const comps: Comp[] = [topbar, tabs, gauges, dock, news, world, ups, budget, levs];
@@ -99,8 +101,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     const it = afford.state.items[0];
     if (!it) return;
     if (it.sector !== ctx.sector) ctx.selectSector(it.sector);
-    const sel = it.kind === 'up' ? `.upgrades .up[data-up="${CSS.escape(it.id)}"]` : `.apps .app[data-app="${CSS.escape(it.id)}"]`;
-    const el = document.querySelector<HTMLElement>(sel) ?? document.querySelector<HTMLElement>(it.kind === 'up' ? '.upgrades' : '.apps');
+    const el = it.kind === 'up'
+      ? document.querySelector<HTMLElement>(`.upgrades .up[data-up="${CSS.escape(it.id)}"]`) ?? ups.el
+      : world.focusApp(it.id);
     if (!el) return;
     // Clear the pinned header on a phone; on the two-column desk layout the header sits beside the feed.
     const cr = cockpit.getBoundingClientRect(), fr = feed.getBoundingClientRect();
@@ -110,7 +113,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     // One brief mark on the card (not a loop), and keyboard focus on its button.
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 1800);
-    const btn = el.querySelector<HTMLButtonElement>('.buy, .found');
+    const btn = el.querySelector<HTMLButtonElement>('.buy, .scn-found:not([hidden])');
     try { btn?.focus({ preventScroll: true }); } catch { /* ignore */ }
   }
 
@@ -128,7 +131,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       unreadSaveSheet(sheets, raw, info ? { info, restore: () => hooks.restoreBackup() } : undefined);
     },
     blocking: () => sheets.blocking(),
-    reset() { knownOpen = null; wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
+    reset() { world.reset(); knownOpen = null; wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
     afterAct: (before, after) => afford.afterAct(before, after),
     afford: afford.state,
     jumpToAffordable,

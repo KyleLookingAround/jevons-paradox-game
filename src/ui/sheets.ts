@@ -10,7 +10,7 @@ import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money } from './fmt';
 import { UI_ICONS } from './icons';
 import { effectText } from './panels';
 import { download, copyText, readFileText, isPersisted, iosInBrowser } from './store';
-import { getPrefs, setPrefs, type TextSize } from './prefs';
+import { getPrefs, setPrefs, type TextSize, type Motion } from './prefs';
 import type { Notation } from './fmt';
 
 type Updater = (() => void) | void;
@@ -636,7 +636,9 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
       () => getPrefs().notation, (v) => { setPrefs({ notation: v }); ctx.refreshAll(); });
     const size = segmented<TextSize>('Text size', [[0, 'Aa', 'Standard text'], [1, 'Aa+', 'Larger text, 115%'], [2, 'Aa++', 'Largest text, 130%']],
       () => getPrefs().textSize, (v) => { setPrefs({ textSize: v }); ctx.refreshAll(); });
-    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el));
+    const motion = segmented<Motion>('Motion', [['system', 'System', 'Follow the system setting'], ['reduce', 'Still', 'Still: no animation'], ['full', 'Moving', 'Moving: animate']],
+      () => getPrefs().motion, (v) => { setPrefs({ motion: v }); ctx.refreshAll(); });
+    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el, motion.el));
 
     // Achievements
     const achList = h('ul', { class: 'ach' });

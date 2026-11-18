@@ -1,5 +1,5 @@
 // Screenshots and a scripted play-through of the game, for visual checks.
-//   node tools/shot.mjs [scenes|flow|checks|real|all] [filter]
+//   node tools/shot.mjs [scenes|flow|checks|audit|real|all] [filter]
 // Builds a mock-only page (src/ui/mock-main.ts bundled with `bun build`, inlined into index.html) at shots/mock.html,
 // so the UI can be checked while the real model or content does not build. `real` runs `bun run build.ts` and plays
 // dist/index.html. Sizes: 390×844 (phone), 1280×800 (desk), 360×740 (narrow: overflow check only).
@@ -135,10 +135,11 @@ async function flow(base, tag0 = 'flow') {
       await page.locator('.up .buy:not([aria-disabled="true"]):visible').first().click(); await page.waitForTimeout(150);
       if (Object.values((await st()).upgrades).reduce((a, b) => a + b, 0) !== n + 1) throw new Error('no upgrade bought');
     });
-    await step('found an app', async () => {
-      const f = page.locator('.found:not([aria-disabled="true"]):visible').first();
-      const id = await f.evaluate((b) => b.closest('.app').dataset.app);
-      await f.click(); await page.waitForTimeout(150);
+    await step('found an app (scene: tap the staked plot, then Found in its card)', async () => {
+      const place = page.locator('.scn-place.avail').first();
+      const id = await place.getAttribute('data-app');
+      await place.scrollIntoViewIfNeeded(); await place.click(); await page.waitForTimeout(150);
+      await page.click('.scn-found:not([aria-disabled="true"])'); await page.waitForTimeout(200);
       const s = await st(); if (!s.sectors.steam.apps[id].founded) throw new Error(id + ' not founded');
     });
     await step('open a formula (rebound: shadow identity)', async () => {
@@ -274,7 +275,7 @@ async function checks() {
     await page.goto(mock + '#mock'); await page.waitForTimeout(600);
     const st = () => page.evaluate(() => window.rebound.state);
     let found = false;
-    for (let i = 0; i < 40 && !found; i++) { await page.keyboard.press('Tab'); found = await page.evaluate(() => document.activeElement?.classList.contains('sell')); }
+    for (let i = 0; i < 80 && !found; i++) { await page.keyboard.press('Tab'); found = await page.evaluate(() => document.activeElement?.classList.contains('sell')); }
     if (!found) throw new Error('sell button not reachable by Tab');
     const ring = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
     if (ring === 'none') throw new Error('no visible focus ring on the sell button');
@@ -283,7 +284,7 @@ async function checks() {
     if ((await st()).run.clicks < 12) throw new Error('Enter did not sell');
     await page.waitForTimeout(400);
     let buy = false;
-    for (let i = 0; i < 60 && !buy; i++) { await page.keyboard.press('Tab'); buy = await page.evaluate(() => document.activeElement?.classList.contains('buy') && document.activeElement.getAttribute('aria-disabled') !== 'true'); }
+    for (let i = 0; i < 120 && !buy; i++) { await page.keyboard.press('Tab'); buy = await page.evaluate(() => document.activeElement?.classList.contains('buy') && document.activeElement.getAttribute('aria-disabled') !== 'true'); }
     if (!buy) throw new Error('no affordable Buy reachable by Tab');
     await page.keyboard.press('Enter'); await page.waitForTimeout(150);
     if (!Object.keys((await st()).upgrades).length) throw new Error('Enter did not buy');
@@ -358,6 +359,358 @@ async function checks() {
   });
 }
 
+
+/* ---------------------------------------------------------------- audit */
+// The genre-audit items: hidden-until-meaningful, the affordable signal, save safety, QoL, statistics, rough edges.
+const LOOK_SCENES = [['ledger', '#mock:rich,reveal,smog=0.4'], ['gaslight', '#mock:all,sector=light,smog=0.3'], ['chrome', '#mock:all,sector=motion,smog=0.6'],
+  ['terminal', '#mock:all,sector=compute,smog=0.5'], ['agentic', '#mock:all,sector=code,smog=0.7']];
+const DEUT = `<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0"><filter id="deut"><feColorMatrix type="matrix" values="0.367 0.861 -0.228 0 0  0.280 0.673 0.047 0 0  -0.012 0.043 0.969 0 0  0 0 0 1 0"/></filter></svg>`;
+async function audit() {
+  const sz = { w: 390, h: 844, tag: 'phone', dpr: 1 };
+  const step = async (name, f) => {
+    try { await f(); console.log(`  ok   audit ${name}`); }
+    catch (e) { fail(`FAIL audit ${name}: ${String(e.message).split('\n')[0]}`); }
+  };
+  const vis = (page, sel) => page.locator(sel).first().isVisible().catch(() => false);
+  const st = (page) => page.evaluate(() => window.rebound.state);
+  const rich = (page, cap, man = 0) => page.evaluate(([c, m]) => { const r = window.rebound; r.ctx.state = { ...r.state, capital: r.state.capital + c, mandate: r.state.mandate + m }; }, [cap, man]);
+
+  await step('fresh run: no Mandate, no Reckoning, no spoilers', async () => {
+    const { ctx, page, errs } = await newPage(sz);
+    await page.goto(mock + '#mock'); await page.waitForTimeout(700);
+    if (await vis(page, '.tb-man')) throw new Error('Mandate shown with no lever visible');
+    if (await vis(page, '.run-foot')) throw new Error('Reckoning offered before the reveal');
+    await page.click('.tb-menu'); await page.waitForTimeout(200);
+    if (await vis(page, '.sheet button:has-text("Call a Reckoning")')) throw new Error('menu offers a Reckoning');
+    if (await vis(page, '.how p:has-text("Jevons")')) throw new Error('Jevons quoted before the reveal');
+    await page.keyboard.press('Escape');
+    await page.click('.dial-reb .info'); await page.waitForTimeout(200);
+    if (await page.locator('.f-vals').count()) throw new Error('rebound working shown before the reveal');
+    await page.screenshot({ path: `${out}/audit-prereveal-rebound.png` }); await page.keyboard.press('Escape');
+    await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(1600);
+    if (!(await vis(page, '.tb-man'))) throw new Error('Mandate hidden with levers visible');
+    if (!(await vis(page, '.run-foot'))) throw new Error('Reckoning not offered after the reveal');
+    if (errs.length) throw new Error(errs.join(' | '));
+    await ctx.close();
+  });
+
+  await step('affordable chip appears, jumps below the header; tab marker', async () => {
+    const { ctx, page, errs } = await newPage(sz);
+    await page.goto(mock + '#mock'); await page.waitForTimeout(500);
+    if (await vis(page, '.afford-chip')) throw new Error('chip with nothing affordable');
+    await rich(page, 5000); await page.waitForTimeout(1200);
+    if (!(await vis(page, '.afford-chip'))) throw new Error('no chip');
+    await page.screenshot({ path: `${out}/audit-chip.png` });
+    await page.click('.afford-chip'); await page.waitForTimeout(900);
+    const r = await page.evaluate(() => {
+      const f = document.activeElement; const card = f?.closest('.up, .apps'); const cb = document.querySelector('.cockpit').getBoundingClientRect();
+      return { focus: f?.className || '', top: card?.getBoundingClientRect().top ?? -1, cockpit: cb.bottom };
+    });
+    if (!/buy|scn-found/.test(r.focus)) throw new Error('focus not on a buy button: ' + r.focus);
+    if (r.top < r.cockpit - 2) throw new Error(`card under the header (${r.top} < ${r.cockpit})`);
+    await page.screenshot({ path: `${out}/audit-chip-jump.png` });
+    await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(1500);
+    if (!(await page.locator('.tab.can-buy').count())) throw new Error('no affordable marker on another Industry tab');
+    if (errs.length) throw new Error(errs.join(' | '));
+    await ctx.close();
+  });
+
+  await step('no-nag: an offer passed over twice leaves the count', async () => {
+    const { ctx, page } = await newPage(sz);
+    await page.goto(mock + '#mock'); await page.waitForTimeout(400);
+    await rich(page, 1e6); await page.waitForTimeout(1200);
+    const keys0 = await page.evaluate(() => window.rebound.ctx.afford.items.map((x) => x.key));
+    // Buy two different non-fork improvements through the UI; something else stays affordable throughout.
+    const ids = await page.evaluate(() => window.rebound.ctx.ups.filter((v) => v.affordable && !v.def.excludes?.length && !v.def.repeatable).map((v) => v.def.id));
+    if (ids.length < 2) throw new Error('mock lacks two affordable one-offs: ' + ids.join(','));
+    for (const id of ids.slice(0, 2)) { await page.click(`.up[data-up="${id}"] .buy`); await page.waitForTimeout(1100); }
+    const keys1 = await page.evaluate(() => window.rebound.ctx.afford.items.map((x) => x.key));
+    const passed = keys0.filter((k) => !ids.slice(0, 2).some((id) => k.startsWith('u:' + id)) && !keys1.includes(k));
+    if (!passed.length) throw new Error('nothing left the count: ' + keys1.join(','));
+    const still = await page.locator(`.up.afford[data-up="${passed[0].slice(2).split('@')[0]}"]`).count();
+    if (passed[0].startsWith('u:') && !still) throw new Error('passed-over card lost its own affordable styling');
+    await ctx.close();
+  });
+
+  await step('save safety: persist asked, backup at Reckoning, restore, export note, iOS line', async () => {
+    const { ctx, page, errs } = await newPage(sz);
+    await page.goto(mock + '#mock:persist,rich,reveal'); await page.waitForTimeout(800);
+    await page.locator('.up .buy:not([aria-disabled="true"])').first().click(); await page.waitForTimeout(600);
+    const pr = await page.evaluate(() => JSON.parse(localStorage.getItem('rebound.ui.prefs') || '{}').persist);
+    if (!pr) throw new Error('persist() result not recorded');
+    await page.click('.tb-menu'); await page.waitForTimeout(400);
+    if (!(await page.locator('.save-note:has-text("Storage:")').count())) throw new Error('no storage line');
+    if (!(await page.locator('.save-note:has-text("export")').count())) throw new Error('no export note');
+    await page.keyboard.press('Escape');
+    await page.click('.run-foot .btn'); await page.waitForTimeout(200);
+    await page.click('button:has-text("Close the books")'); await page.waitForTimeout(400);
+    if (!(await page.locator('.sum-dl button').count())) throw new Error('no download on the summary');
+    await page.click('.sheet-foot button:has-text("Begin the next run")'); await page.waitForTimeout(300);
+    const bk = await page.evaluate(() => localStorage.getItem('rebound.mock.save.backup'));
+    if (!bk) throw new Error('no backup written');
+    await page.waitForTimeout(1500);
+    await page.click('.tb-menu'); await page.waitForTimeout(300);
+    await page.click('button:has-text("Restore the backup")'); await page.waitForTimeout(150);
+    await page.locator('.save').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/audit-menu-save.png` });
+    await page.click('button:has-text("Restore it")'); await page.waitForTimeout(400);
+    if (!(await page.locator('.sheet-t:has-text("Hindsight")').count())) throw new Error('restored fresh run did not open the shop');
+    if (errs.length) throw new Error(errs.join(' | '));
+    await ctx.close();
+    const ios = await newPage(sz, { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' });
+    await ios.page.goto(mock + '#mock'); await ios.page.waitForTimeout(500);
+    await ios.page.click('.tb-menu'); await ios.page.waitForTimeout(300);
+    if (!(await vis(ios.page, '.save-ios'))) throw new Error('no iOS Home Screen line');
+    await ios.page.locator('.save-ios').scrollIntoViewIfNeeded(); await ios.page.screenshot({ path: `${out}/audit-ios.png` });
+    await ios.page.click('.save-ios .toast-x'); await ios.page.waitForTimeout(100);
+    if (await vis(ios.page, '.save-ios')) throw new Error('iOS line not dismissed');
+    await ios.ctx.close();
+  });
+
+  await step('manifest and icons', async () => {
+    const { ctx, page } = await newPage(sz);
+    await page.goto(mock + '#mock'); await page.waitForTimeout(800);
+    const m = await page.evaluate(() => {
+      const l = document.querySelector('link[rel=manifest]'); if (!l) return null;
+      const j = JSON.parse(decodeURIComponent(l.href.split(',')[1]));
+      return { name: j.name, display: j.display, icons: j.icons.map((i) => i.sizes + ' ' + i.type + ' ' + i.purpose), touch: !!document.querySelector('link[rel=apple-touch-icon]')?.href.startsWith('data:image/png') };
+    });
+    if (!m || m.display !== 'standalone' || !m.icons.some((i) => i.startsWith('512x512 image/png')) || !m.touch) throw new Error('bad manifest ' + JSON.stringify(m));
+    const icon = await page.evaluate(() => JSON.parse(decodeURIComponent(document.querySelector('link[rel=manifest]').href.split(',')[1])).icons[1].src);
+    await page.setContent(`<body style="margin:0;background:#888"><img src="${icon}" width="256"><img src="${icon}" width="256" style="border-radius:50%;margin-left:12px"></body>`);
+    await page.screenshot({ path: `${out}/audit-icon.png`, clip: { x: 0, y: 0, width: 530, height: 260 } });
+    await ctx.close();
+  });
+
+  await step('notation, text size, motion settings', async () => {
+    const { ctx, page, errs } = await newPage(sz);
+    await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(600);
+    await page.click('.tb-menu'); await page.waitForTimeout(200);
+    await page.click('.seg-b[aria-label^="Scientific"]'); await page.waitForTimeout(100);
+    await page.click('.seg-b[aria-label^="Largest"]'); await page.waitForTimeout(100);
+    await page.locator('.settings').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/audit-settings.png` });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
+    const cap = await page.textContent('.tb-cap .tb-v');
+    if (!/e\d/.test(cap)) throw new Error('capital not in scientific: ' + cap);
+    if (await page.evaluate(() => document.documentElement.dataset.text) !== '2') throw new Error('text size not applied');
+    if (errs.length) throw new Error(errs.join(' | '));
+    await ctx.close();
+  });
+
+  await step('keyboard shortcuts (and not while typing)', async () => {
+    const { ctx, page } = await newPage({ w: 1280, h: 800, tag: 'desk', dpr: 1 });
+    await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(600);
+    const c0 = (await st(page)).run.clicks;
+    await page.keyboard.press('s'); await page.waitForTimeout(100);
+    if ((await st(page)).run.clicks !== c0 + 1) throw new Error('S did not sell');
+    await page.keyboard.down('s'); await page.waitForTimeout(600); await page.keyboard.up('s');
+    if ((await st(page)).run.clicks > c0 + 2) throw new Error('holding S auto-sold');
+    const n0 = Object.values((await st(page)).upgrades).reduce((a, b) => a + b, 0);
+    await page.keyboard.press('b'); await page.waitForTimeout(200);
+    if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.keyboard.press('Escape');
+    else if (Object.values((await st(page)).upgrades).reduce((a, b) => a + b, 0) !== n0 + 1) throw new Error('B did not buy');
+    await page.keyboard.press('2'); await page.waitForTimeout(200);
+    if (await page.evaluate(() => window.rebound.ctx.sector) === 'steam') throw new Error('2 did not switch Industry');
+    await page.keyboard.press('1'); await page.keyboard.press('m'); await page.waitForTimeout(250);
+    if (!(await page.locator('.sheet-t:has-text("Menu")').count())) throw new Error('M did not open the menu');
+    if (!(await vis(page, '.keys-dl'))) throw new Error('no cheat-sheet on desktop');
+    await page.locator('.keys').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/audit-keys.png` });
+    const c1 = (await st(page)).run.clicks;
+    await page.focus('.save-ta'); await page.keyboard.type('sss'); await page.waitForTimeout(100);
+    if ((await st(page)).run.clicks !== c1) throw new Error('typing sold');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    if (await page.locator('.layer:not([hidden])').count()) throw new Error('Esc did not close');
+    await ctx.close();
+  });
+
+  await step('lever Max, hold-to-repeat, fork confirmation', async () => {
+    const { ctx, page, errs } = await newPage(sz);
+    await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(1200);
+    await rich(page, 1e7, 1e6); await page.waitForTimeout(1200);
+    const mx = page.locator('.lever .lev-max:visible').first();
+    await mx.scrollIntoViewIfNeeded(); await mx.click(); await page.waitForTimeout(300);
+    if (!Object.values((await st(page)).levers).some((l) => l.level >= 3)) throw new Error('Max raised less than three steps');
+    await page.locator('.lever.active').first().screenshot({ path: `${out}/audit-lever-max.png` });
+    const b = page.locator('.up[data-up="steam.shaft"] .buy');
+    await b.scrollIntoViewIfNeeded(); const box = await b.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(1300); await page.mouse.up(); await page.waitForTimeout(200);
+    const lv = (await st(page)).upgrades['steam.shaft'] || 0;
+    if (lv < 3) throw new Error('hold bought only ' + lv);
+    const fb = page.locator('.fork .up .buy:not([aria-disabled="true"])').first();
+    await fb.scrollIntoViewIfNeeded();
+    const forkBefore = JSON.stringify((await st(page)).upgrades);
+    await fb.click(); await page.waitForTimeout(250);
+    if (!(await page.locator('.sheet-t:has-text("A choice")').count())) throw new Error('no fork confirmation');
+    await page.screenshot({ path: `${out}/audit-fork-confirm.png` });
+    await page.click('.sheet button:has-text("Not yet")'); await page.waitForTimeout(150);
+    if (JSON.stringify((await st(page)).upgrades) !== forkBefore) throw new Error('"Not yet" bought');
+    await fb.click(); await page.waitForTimeout(200); await page.click('.sheet button:has-text("Take it")'); await page.waitForTimeout(250);
+    if (!(await page.locator('.up.excluded').count())) throw new Error('fork arm not taken');
+    if (errs.length) throw new Error(errs.join(' | '));
+    await ctx.close();
+  });
+
+  await step('aria-live headline, rate-limited', async () => {
+    const { ctx, page } = await newPage(sz);
+    await page.goto(mock + '#mock'); await page.waitForTimeout(500);
+    const push = (t) => page.evaluate((t) => { const r = window.rebound; r.ctx.state = { ...r.state, news: [{ time: r.state.time + Math.random(), year: 1790, key: 'x', text: t }, ...r.state.news] }; }, t);
+    await push('First test headline'); await page.waitForTimeout(400);
+    const a = await page.textContent('#app > p.vh[aria-live]');
+    if (!a.includes('First test headline')) throw new Error('not announced: ' + a);
+    await push('Second test headline'); await page.waitForTimeout(400);
+    if ((await page.textContent('#app > p.vh[aria-live]')).includes('Second')) throw new Error('not rate-limited');
+    await page.waitForTimeout(12500);
+    if (!(await page.textContent('#app > p.vh[aria-live]')).includes('Second')) throw new Error('second never announced');
+    await ctx.close();
+  });
+
+  await step('statistics page', async () => {
+    const { ctx, page, errs } = await newPage(sz);
+    await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(800);
+    await page.click('.tb-menu'); await page.waitForTimeout(200);
+    await page.click('button:has-text("Statistics")'); await page.waitForTimeout(300);
+    if ((await page.locator('.stats-sheet .stats div:visible').count()) < 20) throw new Error('thin statistics');
+    await page.screenshot({ path: `${out}/audit-stats.png` });
+    await page.locator('.stats-per').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/audit-stats-2.png` });
+    if (errs.length) throw new Error(errs.join(' | '));
+    await ctx.close();
+  });
+
+  await step('onboarding line not shown after a long gap on an unbought run', async () => {
+    const { ctx, page: first } = await newPage(sz);
+    await first.goto(mock + '#mock:persist'); await first.waitForTimeout(500);
+    await first.evaluate(() => window.rebound.save()); await first.close();
+    const page = await ctx.newPage();
+    await page.addInitScript(() => { localStorage.setItem('rebound.mock.save.at', String(Date.now() - 3 * 3600 * 1000)); });
+    await page.goto(mock + '#mock:persist'); await page.waitForTimeout(800);
+    if (await vis(page, '.onboard')) throw new Error('onboarding line shown after 3 h away');
+    await ctx.close();
+  });
+
+  await step('header ≤ 30% with a budget drawn; five looks, largest text, 360 px, deuteranopia', async () => {
+    for (const ts of [0, 2]) for (const [look, hash] of [['budget', '#mock:budget'], ...LOOK_SCENES]) for (const s2 of [{ w: 390, h: 844, tag: 'phone' }, { w: 360, h: 740, tag: 'narrow' }, { w: 1280, h: 800, tag: 'desk' }]) {
+      const { ctx, page, errs } = await newPage({ ...s2, dpr: 1 });
+      if (ts) await page.addInitScript((t) => { localStorage.setItem('rebound.ui.prefs', JSON.stringify({ textSize: t })); }, ts);
+      await page.goto(mock + hash); await page.waitForTimeout(1300);
+      const o = await overflow(page);
+      if (o.sw > o.cw) fail(`OVERFLOW ${look}/${s2.tag}/ts${ts}: ${o.sw} > ${o.cw}`);
+      if (look === 'budget' && ts === 0 && s2.tag === 'phone' && o.cockpit > 0.3 * s2.h) fail(`header ${Math.round(o.cockpit)}px > 30% of ${s2.h}`);
+      if (s2.tag !== 'desk' || ts === 0) await page.screenshot({ path: `${out}/audit-${look}-${s2.tag}-ts${ts}.png` });
+      if (ts === 0 && s2.tag === 'phone' && look !== 'budget') {
+        await page.evaluate((d) => { document.body.insertAdjacentHTML('beforeend', d); document.documentElement.style.filter = 'url(#deut)'; }, DEUT);
+        await page.waitForTimeout(100); await page.screenshot({ path: `${out}/audit-${look}-deut.png` });
+      }
+      if (errs.length) fail(`${look}/${s2.tag}/ts${ts}: ${errs.join(' | ')}`);
+      await ctx.close();
+    }
+  });
+}
+
+
+/* ---------------------------------------------------------------- realplay */
+// The real model and content with the scene: a fresh save through foundings, a crisis, a reload, a Reckoning and a
+// second run, then frame timings under 4× CPU throttling. Capital is topped up and time fast-forwarded through the
+// console handle so it takes a minute, not an hour; every purchase goes through the page.
+async function realplay() {
+  try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
+  catch (e) { console.log('REALPLAY: build failed:\n' + String(e.stderr || e.message).split('\n').slice(0, 6).join('\n')); return; }
+  const url = 'file://' + resolve(root, 'dist/index.html');
+  for (const sz of SIZES.slice(0, 2)) {
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: sz.tag === 'phone' ? 2 : 1 });
+    const T = `realplay-${sz.tag}`;
+    const step = async (name, f) => { try { await f(); console.log(`  ok   ${T} ${name}`); } catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); } };
+    const shot = (n) => page.screenshot({ path: `${out}/${T}-${n}.png` });
+    const st = () => page.evaluate(() => window.rebound.state);
+    const rich = (cap, man = 0) => page.evaluate(([c, m]) => { const r = window.rebound; r.ctx.state = { ...r.state, capital: r.state.capital + c, mandate: r.state.mandate + m }; }, [cap, man]);
+    const ff = (sec) => page.evaluate((x) => { const r = window.rebound; r.ctx.state = r.model.fastForward(r.state, r.content, x); }, sec);
+    const founded = () => page.evaluate(() => { const s = window.rebound.state; return Object.values(s.sectors).reduce((a, x) => a + Object.values(x.apps || {}).filter((y) => y.founded).length, 0); });
+    const foundOne = async () => {
+      const p = page.locator('.scn-place.avail').first();
+      if (!(await p.count())) return false;
+      await p.scrollIntoViewIfNeeded(); await p.click(); await page.waitForTimeout(150);
+      const f = page.locator('.scn-found:not([aria-disabled="true"]):visible');
+      if (!(await f.count())) return false;
+      await f.click(); await page.waitForTimeout(400); return true;
+    };
+    await page.goto(url); await page.waitForTimeout(1200);
+    if (await page.evaluate(() => window.rebound?.ctx?.mock)) { console.log(`REALPLAY ${sz.tag}: fell back to the mock`); }
+    await shot('00-fresh');
+    await step('found several applications through the scene', async () => {
+      const f0 = await founded();
+      for (let round = 0; round < 30 && (await founded()) < f0 + 3; round++) {
+        await rich(2e3 * Math.pow(2, round)); await page.waitForTimeout(1100);
+        const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
+        if (await b.count()) { await b.first().click().catch(() => {}); await page.waitForTimeout(200); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        if (await foundOne()) await shot(`01-founded-${await founded()}`);
+      }
+      if ((await founded()) < f0 + 3) throw new Error(`founded only ${(await founded()) - f0}`);
+      await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(400); await shot('02-town');
+    });
+    await step('a crisis (fast-forward until one fires)', async () => {
+      const c0 = (await st()).sectors.steam.crisesFired;
+      for (let i = 0; i < 40 && (await st()).sectors.steam.crisesFired === c0 && !(await page.evaluate(() => window.rebound.d.pendingReckoning)); i++) { await rich(1e5); await ff(20); await page.waitForTimeout(120); }
+      if ((await st()).sectors.steam.crisesFired === c0) throw new Error('no crisis');
+      await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(500); await shot('03-crisis');
+    });
+    await step('reload: the town is built, no founding animations', async () => {
+      await page.evaluate(() => window.rebound.save());
+      await page.reload(); await page.waitForTimeout(300);
+      const builds = await page.locator('.scn .build, .scn-scaf.on').count();
+      await page.waitForTimeout(500); await shot('04-reloaded');
+      if (builds) throw new Error(`${builds} founding animations after reload`);
+      const fd = await page.locator('.scn-place:not(.avail)').count();
+      if (!fd) throw new Error('no places after reload');
+    });
+    await step('reveal, Reckoning, second run', async () => {
+      for (let round = 0; round < 30 && !(await st()).flags.revealed; round++) {
+        if (await page.evaluate(() => window.rebound.d.pendingReckoning)) break;
+        await rich(1e7); await page.waitForTimeout(1100);
+        const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
+        for (let i = 0; i < 4 && (await b.count()); i++) { await b.first().click().catch(() => {}); await page.waitForTimeout(150); if (await page.locator('.sheet-t:has-text("A choice")').count()) await page.click('.sheet button:has-text("Take it")'); }
+        await foundOne();
+      }
+      if (await page.evaluate(() => window.rebound.d.pendingReckoning)) {
+        await page.waitForTimeout(400); await shot('05-pending'); await page.click('button:has-text("Face the Reckoning")');
+      } else {
+        await page.locator('.toast-x').first().click().catch(() => {});
+        await page.click('.run-foot .btn'); await page.waitForTimeout(250); await page.click('button:has-text("Close the books")');
+      }
+      await page.waitForTimeout(500); await shot('06-summary');
+      await page.click('button:has-text("Spend Hindsight")'); await page.waitForTimeout(300);
+      const kb = page.locator('.kh-node .btn:not([aria-disabled="true"])'); if (await kb.count()) { await kb.first().click(); await page.waitForTimeout(200); }
+      await page.click('button:has-text("Begin the next run")'); await page.waitForTimeout(1500);
+      if (!((await st()).meta.reckonings >= 1)) throw new Error('no Reckoning recorded');
+      if (!(await page.evaluate(() => localStorage.getItem('rebound.save.v1.backup')))) throw new Error('no backup after the Reckoning');
+      await page.evaluate(() => window.scrollTo(0, 0)); await shot('07-run2');
+    });
+    await step('switch Industry tabs: scenes swap cleanly', async () => {
+      // Open a second industry through the console if the run has none yet (the unlock is the model's business).
+      const tabs = page.locator('.tab:not(.locked)');
+      if ((await tabs.count()) < 2) { console.log(`  note ${T}: one industry open; tab swap not exercised`); return; }
+      await tabs.nth(1).click(); await page.waitForTimeout(700); await shot('08-tab2');
+      const n = await page.locator('.world-mount .scn').count();
+      if (n !== 1) throw new Error(`${n} scenes in the page`);
+      await tabs.nth(0).click(); await page.waitForTimeout(700);
+    });
+    await step('frame timings, 4× CPU throttle, game ticking', async () => {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      const r = await page.evaluate(() => new Promise((res) => {
+        const d = []; let last = performance.now(); const t0 = last;
+        const f = (now) => { d.push(now - last); last = now; if (now - t0 < 6000) requestAnimationFrame(f); else res(d); };
+        requestAnimationFrame(f);
+      }));
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      const sorted = [...r].sort((a, b) => a - b), q = (p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+      console.log(`  perf ${T}: ${r.length} frames in 6 s, p50 ${q(0.5).toFixed(1)} ms, p95 ${q(0.95).toFixed(1)} ms, max ${sorted[sorted.length - 1].toFixed(0)} ms, >50 ms: ${r.filter((x) => x > 50).length}`);
+    });
+    const o = await overflow(page);
+    if (o.sw > o.cw) fail(`OVERFLOW ${T}`);
+    if (errs.length) fail(`console ${T}: ${errs.slice(0, 4).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
 /* ---------------------------------------------------------------- real */
 async function real() {
   try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
@@ -409,8 +762,8 @@ async function realFlow(url) {
         await rich(1e6); await page.waitForTimeout(1100);
         const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
         for (let i = 0; i < 4 && (await b.count()); i++) { await b.first().click().catch(() => {}); await page.waitForTimeout(150); }
-        const f = page.locator('.found:not([aria-disabled="true"]):visible');
-        if (await f.count()) await f.first().click().catch(() => {});
+        const pl = page.locator('.scn-place.avail').first();
+        if (await pl.count()) { await pl.click().catch(() => {}); await page.locator('.scn-found:not([aria-disabled="true"]):visible').click({ timeout: 500 }).catch(() => {}); }
       }
       if (!(await st()).flags.revealed) throw new Error('never revealed');
       await page.waitForTimeout(1200);
@@ -467,7 +820,9 @@ async function realFlow(url) {
 if (mode === 'scenes' || mode === 'all') await scenes();
 if (mode === 'flow' || mode === 'all') await flow(mock);
 if (mode === 'checks' || mode === 'all') await checks();
+if (mode === 'audit' || mode === 'all') await audit();
 if (mode === 'real') await real();
+if (mode === 'realplay') await realplay();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

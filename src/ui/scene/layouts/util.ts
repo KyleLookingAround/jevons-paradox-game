@@ -59,7 +59,7 @@ export function engravedSun(x: number, y: number, r: number): string {
     const t = (i / 24) * Math.PI * 2, r0 = r + 3, r1 = r + (i % 2 ? 7 : 12);
     d += `M${f(x + Math.cos(t) * r0)} ${f(y + Math.sin(t) * r0)}L${f(x + Math.cos(t) * r1)} ${f(y + Math.sin(t) * r1)}`;
   }
-  return `<g class="sunf"><circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" fill="var(--s-sun)" fill-opacity=".55" class="k"/>${P(d, 'k k2')}</g>`;
+  return `<g class="sunf"><circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" style="fill:var(--s-sun);fill-opacity:.55" class="k"/>${P(d, 'k k2')}</g>`;
 }
 
 /** A flock of birds (Steady State) as one mover prop. */

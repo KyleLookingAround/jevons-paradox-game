@@ -225,15 +225,15 @@ const steam: SectorDef = {
   autoEtaRate: 0,
 
   resourceKind: 'stock',
-  reserve: 600_000,
-  alpha: 0.6,
+  reserve: 380_000,
+  alpha: 0.25,
 
   pressureSource: 'resource',
-  pressureIntensity: 0.0013,
+  pressureIntensity: 0.0010,
   absorption: 0.008,
   collapseAt: 100,
   crisisAt: [0.4, 0.7, 0.88],
-  pressureWellbeingCost: 15,
+  pressureWellbeingCost: 40,
   pressureUpkeep: 0,
 
   wellbeingWeight: 12,
@@ -279,9 +279,9 @@ const steam: SectorDef = {
       name: 'Railways',
       blurb: 'Coal hauling coal to the people who burn coal, at a mile a minute.',
       icon: 'train',
-      halfPrice: 0.17,
+      halfPrice: 0.15,
       saturation: 3_000,
-      steepness: 3.6,
+      steepness: 4,
       visibleBelow: 0.32,
       foundCost: 1_500,
     },
@@ -293,8 +293,8 @@ const steam: SectorDef = {
       halfPrice: 0.095,
       saturation: 12_000,
       steepness: 3.8,
-      visibleBelow: 0.17,
-      foundCost: 9_000,
+      visibleBelow: 0.15,
+      foundCost: 8_000,
     },
     {
       id: 'steam.ploughing',
@@ -340,10 +340,10 @@ const light: SectorDef = {
   pressureWellbeingCost: 12,
   pressureUpkeep: 0,
 
-  wellbeingWeight: 4,
+  wellbeingWeight: 2.5,
   wellbeingScale: 500,
 
-  spill: { to: 'steam', rate: 0.1 },
+  spill: { to: 'steam', rate: 0.4 },
   unlock: {
     minReckonings: 1,
     when: {
@@ -360,9 +360,9 @@ const light: SectorDef = {
       name: 'Street lamps',
       blurb: 'A lamplighter, a ladder and a parish that has decided to be modern.',
       icon: 'lamp',
-      halfPrice: 0.7,
+      halfPrice: 0.8,
       saturation: 300,
-      steepness: 1.8,
+      steepness: 2.4,
       visibleBelow: Infinity,
       foundCost: 0,
     },
@@ -371,10 +371,10 @@ const light: SectorDef = {
       name: 'Night shifts',
       blurb: 'The machines need not rest once the foreman can see them.',
       icon: 'factory-night',
-      halfPrice: 0.35,
-      saturation: 3_000,
-      steepness: 2.3,
-      visibleBelow: 0.75,
+      halfPrice: 0.45,
+      saturation: 1_500,
+      steepness: 3,
+      visibleBelow: 0.7,
       foundCost: 8_000,
     },
     {
@@ -384,8 +384,8 @@ const light: SectorDef = {
       icon: 'tram',
       halfPrice: 0.25,
       saturation: 6_000,
-      steepness: 2.4,
-      visibleBelow: 0.55,
+      steepness: 3.4,
+      visibleBelow: 0.4,
       foundCost: 20_000,
     },
     {
@@ -393,10 +393,10 @@ const light: SectorDef = {
       name: 'Lit homes',
       blurb: 'Reading after dark, once a luxury, is now a reasonable expectation.',
       icon: 'house',
-      halfPrice: 0.17,
-      saturation: 15_000,
-      steepness: 2.5,
-      visibleBelow: 0.4,
+      halfPrice: 0.15,
+      saturation: 25_000,
+      steepness: 3.6,
+      visibleBelow: 0.24,
       foundCost: 40_000,
     },
     {
@@ -404,10 +404,10 @@ const light: SectorDef = {
       name: 'Shop signs',
       blurb: 'Light that illuminates nothing in particular, all night, on purpose.',
       icon: 'sign',
-      halfPrice: 0.07,
-      saturation: 40_000,
-      steepness: 2.7,
-      visibleBelow: 0.18,
+      halfPrice: 0.08,
+      saturation: 100_000,
+      steepness: 3.8,
+      visibleBelow: 0.13,
       foundCost: 150_000,
     },
   ],
@@ -451,6 +451,8 @@ const motion: SectorDef = {
     when: {
       all: [
         { owns: 'light.mantle', label: 'Own the Incandescent gas mantle' },
+        /* M1 balance: no new age opens into a choking one (Motion would otherwise die with Steam within minutes). */
+        { stat: 'pressureFraction', sector: 'steam', op: '<', value: 0.5, label: 'Steam’s smog under half of collapse' },
         { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 2_000, label: '2,000 klm·h·years of light delivered' },
       ],
     },
@@ -533,7 +535,7 @@ const compute: SectorDef = {
   capCost: 0.02,
   margin: 0.15,
   baseEta: 1,
-  autoEtaRate: 0.0046,
+  autoEtaRate: 0.002,
 
   resourceKind: 'stock',
   reserve: 60_000_000,
@@ -735,7 +737,7 @@ const code: SectorDef = {
 
 /* ---- Steam: chain to ×13; forks add up to ×2 more (max ≈ ×27, min ≈ ×19) ---- */
 const steamUpgrades: UpgradeDef[] = [
-  ...chain('steam', [150, 1_000, 2_200, 4_400, 10_000, 20_000, 40_000], [
+  ...chain('steam', [180, 1_000, 2_200, 4_400, 14_000, 28_000, 56_000], [
     {
       id: 'steam.boilers', name: 'Better boilers', fold: 1.5,
       blurb: 'After Smeaton: lag the pipes, mend the leaks, stop heating the engine house.',
@@ -822,7 +824,7 @@ const steamUpgrades: UpgradeDef[] = [
       name: 'Corliss valve gear',
       blurb: 'Corliss, 1849: the valve shuts the moment the work is done. Cheaper mill power, and so more mills.',
       cost: 6_500, requires: ['steam.highPressure'],
-      effects: [eta('steam', 1.2), sat('steam', 1.25, 'steam.mills')],
+      effects: [eta('steam', 1.25), sat('steam', 1.25, 'steam.mills')],
     },
   ),
 
@@ -832,15 +834,15 @@ const steamUpgrades: UpgradeDef[] = [
       id: 'steam.suez', sector: 'steam', kind: 'capital',
       name: 'Suez Canal shares',
       blurb: 'Suez, 1869: Bombay four thousand miles nearer, by steam only. A shorter voyage, so many more voyages.',
-      cost: 13_000, requires: ['steam.compound'],
-      effects: [sat('steam', 1.6, 'steam.steamships')],
+      cost: 16_000, requires: ['steam.compound'],
+      effects: [sat('steam', 1.3, 'steam.steamships')],
     },
     {
       id: 'steam.auxiliarySail', sector: 'steam', kind: 'efficiency',
       name: 'Auxiliary sail',
       blurb: 'Keep the masts: steam in the calms, canvas in the trades. Less coal a voyage, so cheaper freight, so more of it.',
-      cost: 13_000, requires: ['steam.compound'],
-      effects: [eta('steam', 1.15), sat('steam', 0.85, 'steam.steamships')],
+      cost: 16_000, requires: ['steam.compound'],
+      effects: [eta('steam', 1.15), sat('steam', 1.1, 'steam.steamships')],
     },
   ),
 
@@ -849,7 +851,7 @@ const steamUpgrades: UpgradeDef[] = [
     id: 'steam.anotherEngine', sector: 'steam', kind: 'capital',
     name: 'Another engine works',
     blurb: 'One more engine at one more pit, each a little cheaper to build than the last. There is always room for one more.',
-    cost: 100, repeatable: true, costGrowth: 1.3, maxLevel: 25, effects: [capCost('steam', 0.97)],
+    cost: 200, repeatable: true, costGrowth: 1.3, maxLevel: 25, effects: [capCost('steam', 0.97)],
   },
   {
     id: 'steam.lathe', sector: 'steam', kind: 'capital',
@@ -1486,7 +1488,7 @@ const knowhow: KnowhowDef[] = [
     id: 'kh.seedCapital', name: 'Seed capital', tree: 'general', tier: 1, branch: 'general-1',
     blurb: 'Start each run with a heavier purse. Get to the bottom of the pit faster.',
     cost: 8, costGrowth: 1.5, maxLevel: 8,
-    effects: [{ type: 'startCapitalMul', value: 2 }],
+    effects: [{ type: 'startCapitalMul', value: 3 }],
   },
   {
     id: 'kh.patentPool', name: 'Patent pool', tree: 'general', tier: 1, branch: 'general-1',
@@ -1581,12 +1583,12 @@ const institutions: InstitutionDef[] = [
   leverInstitution({
     id: 'inst.smokeAbatement', name: 'Smoke Abatement Act',
     blurb: 'The ceiling on the borough’s coal is law before the first engine is lit. The line itself is drawn once there is a town to draw it across.',
-    cost: 60, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
+    cost: 110, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
   }),
   leverInstitution({
     id: 'inst.gasReferees', name: 'Gas referees',
     blurb: 'Officials who test the gas, and in time ration it. The allowance waits until the town has lamps worth counting.',
-    cost: 90, requires: ['inst.smokeAbatement'], lever: 'light.cap', leverName: 'Gas works allowance', maxLevel: 3,
+    cost: 160, requires: ['inst.smokeAbatement'], lever: 'light.cap', leverName: 'Gas works allowance', maxLevel: 3,
   }),
   {
     id: 'inst.alkaliInspectorate', name: 'Alkali Inspectorate',
@@ -2162,13 +2164,13 @@ const sectorHeadlines: Record<SectorId, Partial<Record<HeadlineKey, string[]>>> 
 /* ------------------------------------------------------------------ */
 
 const global: GlobalParams = {
-  startCapital: 50,
+  startCapital: 10,
   /* Below 1 so the sell button can fade once income outgrows it (balance finding 7). */
   clickSeconds: 0.01,
   clickFlat: 1.2,
   popGrowth: 0.000025,
   subsistence: 8,
-  wellbeingTarget: 27,
+  wellbeingTarget: 34,
   mandateRate: 0.03,
   mandateFloor: 12,
   crisisMandate: 150,
@@ -2176,16 +2178,16 @@ const global: GlobalParams = {
   /* Placeholder weights: the balance lane tunes these to owner decision D1. */
   hindsight: {
     perWellbeingYear: 0.03,
-    intensityExponent: 0.5,
+    intensityExponent: 0,
     perBudgetDecade: 1.5,
     perUnburnt: 20,
-    perFirstBackfire: 20,
+    perFirstBackfire: 30,
     perSectorReached: 10,
     perSteadySector: 60,
   },
   offlineCapSeconds: 4 * 60 * 60,
-  /* Growth peaks at W ≈ 26.5 and stops at 40; the wellbeing target (27) sits below the transition. */
-  demography: { transitionWellbeing: 40 },
+  /* Growth peaks at W ≈ 29.9 and stops at 46; the wellbeing target (34) sits below the transition. */
+  demography: { transitionWellbeing: 46 },
   steady: {
     budgetDeclinePerDecade: 0.05,
     /* A standing cap draws its line 36 model years (12 minutes) into an industry: across the grown economy. */

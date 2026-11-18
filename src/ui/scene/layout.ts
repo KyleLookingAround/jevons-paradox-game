@@ -77,10 +77,11 @@ export interface MoverDef {
  *   'population' houses, density = popFraction;
  *   'pressure'   clutter / sprawl, density = pressureFraction;
  *   'depletion'  spoil heaps and the like, density = 1 − reserveFraction;
+ *   'reserve'    what is left, density = reserveFraction (Code: the few warm windows with a person in them);
  *   'light'      mean adoption of founded applications (Light's sky glow, lamps of any kind);
  *   'always'     scenery that is always there.
  */
-export type Driver = 'app' | 'population' | 'pressure' | 'depletion' | 'light' | 'always';
+export type Driver = 'app' | 'population' | 'pressure' | 'depletion' | 'reserve' | 'light' | 'always';
 
 export interface PlotDef {
   key: string;
@@ -126,8 +127,10 @@ export interface Backdrop {
 
 export interface Layout {
   id: string;
-  /** Look the art is drawn for (CSS class lk-<look>); the scene still renders under any page look. */
+  /** Art style id (see style.ts / styles/): the drawing idiom of this place's Age. 'generic' follows the page look. */
   look: string;
+  /** A caption the style may letter on or under the picture (plate legend, poster title). */
+  caption?: string;
   /** One line describing the place, for the text alternative ("a coal valley"). */
   place: string;
   backdrop(c: BackdropCtx): Backdrop;

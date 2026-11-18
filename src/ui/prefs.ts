@@ -5,11 +5,14 @@ import { lsGet, lsSet } from './store';
 import { setNotation, type Notation } from './fmt';
 
 export type TextSize = 0 | 1 | 2;
+export type Motion = 'system' | 'reduce' | 'full';
 export type PersistResult = 'granted' | 'denied' | 'unsupported' | 'failed';
 
 export interface Prefs {
   notation: Notation;
   textSize: TextSize;
+  /** Animation: follow prefers-reduced-motion, or force still / moving. */
+  motion: Motion;
   /** Wall-clock ms of the last save export (download or copy); 0 = never. */
   lastExport: number;
   /** Result of navigator.storage.persist(), once asked. */
@@ -23,7 +26,7 @@ export interface Prefs {
 export const PREFS_KEY = 'rebound.ui.prefs';
 export const TEXT_SCALE = [1, 1.15, 1.3] as const;
 
-const DEFAULTS: Prefs = { notation: 'suffix', textSize: 0, lastExport: 0, persist: null, iosHintDismissed: false, passed: { run: '', ids: {} } };
+const DEFAULTS: Prefs = { notation: 'suffix', textSize: 0, motion: 'system', lastExport: 0, persist: null, iosHintDismissed: false, passed: { run: '', ids: {} } };
 
 let prefs: Prefs = load();
 
@@ -35,6 +38,7 @@ function load(): Prefs {
     if (o && typeof o === 'object') {
       if (o.notation === 'suffix' || o.notation === 'sci' || o.notation === 'eng') p.notation = o.notation;
       if (o.textSize === 0 || o.textSize === 1 || o.textSize === 2) p.textSize = o.textSize;
+      if (o.motion === 'reduce' || o.motion === 'full') p.motion = o.motion;
       if (typeof o.lastExport === 'number' && Number.isFinite(o.lastExport)) p.lastExport = o.lastExport;
       if (['granted', 'denied', 'unsupported', 'failed'].includes(o.persist)) p.persist = o.persist;
       p.iosHintDismissed = o.iosHintDismissed === true;
@@ -63,4 +67,6 @@ export function applyPrefs(): void {
   const want = prefs.textSize ? String(prefs.textSize) : null;
   if (want == null) html.removeAttribute('data-text');
   else if (html.getAttribute('data-text') !== want) html.setAttribute('data-text', want);
+  if (prefs.motion === 'system') html.removeAttribute('data-motion');
+  else if (html.getAttribute('data-motion') !== prefs.motion) html.setAttribute('data-motion', prefs.motion);
 }

@@ -315,7 +315,8 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     for (const e of ORDER) {
       const x = d.sectors[e];
       if (!x || x.budgetR === null) continue;
-      const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5);
+      // Tighten too when the held line would empty the reserve within 20 minutes (a finite stock)
+      const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5) || x.secondsLeft < 1200;
       const capViews = views.filter((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
       const sufViews = views.filter((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible);
       const capOn = capViews.find((l) => l.level > 0);

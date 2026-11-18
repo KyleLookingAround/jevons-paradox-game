@@ -6,9 +6,11 @@
 import type { SceneView, SceneOptions, SceneHandle, SceneApp } from './types';
 import type { Layout, PlotDef, Slot, Band, FxKind, PropArgs, PropOut, Prop, MoverDef } from './layout';
 import { depthScale } from './layout';
-import { injectSceneCss, KNOWN_LOOKS } from './css';
+import { injectSceneCss } from './css';
 import { hash, rng, f, clamp, esc, mix } from './svg';
-import { layoutFor, propFor, washFor } from './registry';
+import { layoutFor, propFor } from './registry';
+import { styleFor } from './styles/index';
+import type { ArtStyle } from './style';
 import { scaffold, survey } from './props/common';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -50,40 +52,6 @@ const num0 = (v: number): string => {
   while (x >= 1000 && i < u.length - 1) { x /= 1000; i++; }
   return (v < 0 ? '−' : '') + (x < 100 ? x.toFixed(x < 10 ? 2 : 1) : x.toFixed(0)) + u[i];
 };
-
-function defsFor(look: string, p: string): string {
-  // Hatch at four densities (so tone reads the same at every depth), a cross-hatch, glows.
-  const lines = (id: string, sp: number, sw: number, ang: number, op: number) =>
-    `<pattern id="${p}${id}" patternUnits="userSpaceOnUse" width="${sp}" height="${sp}" patternTransform="rotate(${ang})">` +
-    `<line x1="0" y1="0" x2="0" y2="${sp}" stroke="var(--s-hatch)" stroke-width="${sw}" stroke-opacity="${op}"/></pattern>`;
-  const cross = (id: string, sp: number, sw: number, op: number) =>
-    `<pattern id="${p}${id}" patternUnits="userSpaceOnUse" width="${sp}" height="${sp}" patternTransform="rotate(45)">` +
-    `<path d="M0 0V${sp}M0 0H${sp}" stroke="var(--s-hatch)" stroke-width="${sw}" stroke-opacity="${op}" fill="none"/></pattern>`;
-  const flat = (id: string, c: string) => `<pattern id="${p}${id}" patternUnits="userSpaceOnUse" width="4" height="4"><rect width="4" height="4" fill="${c}"/></pattern>`;
-  let d = '';
-  if (look === 'ledger' || look === 'generic') {
-    [[0, 2.6], [1, 3.6], [2, 5], [3, 7]].forEach(([i, sp]) => {
-      d += lines(`h${i}`, sp, sp * 0.24, 45, 0.6) + cross(`x${i}`, sp, sp * 0.2, 0.55);
-    });
-  } else if (look === 'terminal') {
-    [[0, 3], [1, 4], [2, 5.5], [3, 7]].forEach(([i, sp]) => {
-      d += lines(`h${i}`, sp, sp * 0.18, 0, 0.5) + lines(`x${i}`, sp * 0.8, sp * 0.18, 0, 0.75);
-    });
-  } else if (look === 'agentic') {
-    [[0, 3], [1, 4], [2, 5], [3, 6.5]].forEach(([i, sp]) => {
-      d += lines(`h${i}`, sp, sp * 0.14, 45, 0.28) + lines(`x${i}`, sp * 0.7, sp * 0.16, 45, 0.4);
-    });
-  } else {
-    const c1 = look === 'gaslight' ? 'rgba(4,8,20,.38)' : 'rgba(20,40,45,.13)';
-    const c2 = look === 'gaslight' ? 'rgba(4,8,20,.55)' : 'rgba(20,40,45,.22)';
-    for (let i = 0; i < 4; i++) d += flat(`h${i}`, c1) + flat(`x${i}`, c2);
-  }
-  d += `<radialGradient id="${p}glow"><stop offset="0" stop-color="rgb(var(--s-glow))" stop-opacity=".95"/><stop offset=".35" stop-color="rgb(var(--s-glow))" stop-opacity=".45"/><stop offset="1" stop-color="rgb(var(--s-glow))" stop-opacity="0"/></radialGradient>`;
-  d += `<radialGradient id="${p}pool"><stop offset="0" stop-color="rgb(var(--s-glow))" stop-opacity=".5"/><stop offset="1" stop-color="rgb(var(--s-glow))" stop-opacity="0"/></radialGradient>`;
-  d += `<radialGradient id="${p}cyan"><stop offset="0" stop-color="#5fd0e0" stop-opacity=".9"/><stop offset="1" stop-color="#5fd0e0" stop-opacity="0"/></radialGradient>`;
-  d += `<linearGradient id="${p}fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--s-hatch)" stop-opacity=".0"/><stop offset="1" stop-color="var(--s-hatch)" stop-opacity=".25"/></linearGradient>`;
-  return d;
-}
 
 function hatchLevel(s: number): number {
   // on-screen spacing ≈ constant: denser pattern for near (large) props, sparser for far (small) ones
@@ -131,7 +99,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   const mist1 = div('scn-hz mist'), mist2 = div('scn-hz mist m2');
   const hz1 = div('scn-hz smog h1'), hz2 = div('scn-hz smog h2'), hz3 = div('scn-hz smog h3');
   const fog = div('scn-fog');
-  world.append(defs, sky0, sky1, sky2, glow, skySvg, st.far, fx.far, mist1, hz1, st.mid, fx.mid, mist2, hz2, st.near, fx.near, hz3, fog);
+  const noiseSvg = svgEl('scn-l scn-noise');
+  const extraLayer = div('scn-extra');
+  const plateSvg = svgEl('scn-l scn-plate');
+  world.append(defs, sky0, sky1, sky2, glow, skySvg, st.far, fx.far, mist1, hz1, st.mid, fx.mid, mist2, hz2, st.near, fx.near, hz3, extraLayer, noiseSvg, fog, plateSvg);
   const places = div('scn-places');
   const banner = div('scn-banner');
   banner.setAttribute('aria-hidden', 'true');
@@ -159,7 +130,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   sel.append(selN, selX, selM, selB, found);
   card.append(cap, sel);
   card.setAttribute('aria-live', 'polite');
-  root.append(stage);
+  const legend = document.createElement('p');
+  legend.className = 'scn-legend';
+  legend.hidden = true;
+  root.append(stage, legend);
   if (opts.card !== false) root.append(card);
   root.append(summary);
   host.appendChild(root);
@@ -182,6 +156,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   let summaryText = '';
   let destroyed = false;
   let steadyMoverEls: Element[] = [];
+  let style: ArtStyle | undefined;
 
   const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const rm = () => (rmOverride ?? !!mq?.matches);
@@ -289,13 +264,23 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   }
 
   function build(v: SceneView): void {
-    const look = KNOWN_LOOKS.has(v.look) ? v.look : 'generic';
     const l = layoutFor(v.sectorId, v.apps.length);
     layout = l;
+    // The art style belongs to the layout (its Age); a generic layout follows the page look.
+    const pick = (k: string) => { const st = styleFor(k); return st && st.css ? st : undefined; };
+    style = (l.look !== 'generic' ? pick(l.look) : undefined) ?? pick(v.look) ?? pick('generic');
+    const look = style?.id ?? 'generic';
     root.dataset.look = look;
     root.dataset.layout = l.id;
     root.classList.remove('live');
-    defs.innerHTML = `<defs>${defsFor(look, id)}</defs>`;
+    defs.innerHTML = `<defs>${style ? style.defs(id) : ''}</defs>`;
+    const pctx = { caption: l.caption ?? '', name: v.sectorName, u: (x: string) => `url(#${id}${x})` };
+    let plate = '', leg = '';
+    try { plate = style?.plate?.(pctx) ?? ''; leg = style?.legend?.(pctx) ?? ''; } catch (e) { console.warn('scene plate', e); }
+    plateSvg.innerHTML = plate;
+    legend.textContent = leg; legend.hidden = !leg;
+    extraLayer.innerHTML = style?.layers ?? '';
+    noiseSvg.innerHTML = style?.noise ?? '';
     const items: Item[] = [];
     const fxBand: Record<Band, string[]> = { far: [], mid: [], near: [] };
     const stageN = clamp(Math.round(v.stage), 0, 3);
@@ -331,14 +316,36 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       const idx = plots.length;
       const rt: PlotRt = { def, idx, app, keys: [], anchorKey: null, movers: [], moverDefs: [], overlayBase: null, overlayOrder: [], count: -1, mcount: -1, status: '', btn: null, ghost: null, svy: null, scaf: null };
       const seedBase = `${l.id}:${def.key}`;
+      // Landmark (and, for applications, its ghost, scaffold and survey stakes).
+      if (def.anchor) {
+        const key = `${idx}:a`;
+        const it = renderSlot(l, look, def.anchor, key, 'sl0 anc', stageN, `${seedBase}:a`);
+        it.ord = uid++;
+        baseOrd.set(key, it.ord);
+        items.push(it);
+        rt.anchorKey = key;
+        if ((def.driver ?? 'app') === 'app') {
+          const g = renderSlot(l, look, def.anchor, `${idx}:g`, 'ghost', stageN, `${seedBase}:a`);
+          g.ord = uid++;
+          items.push(g);
+          const sc = def.anchor.s ?? depthScale(l, def.anchor.y);
+          const site = def.site ?? siteFromHit(def);
+          const bw = Math.min(site ? site[2] : 50, 70) / sc;
+          items.push({ y: def.anchor.y + 0.01, ord: uid++, band: def.anchor.band ?? bandOf(l, def.anchor.y), html: `<g class="scaf" data-k="${idx}:f" transform="translate(${f(def.anchor.x)} ${f(def.anchor.y)}) scale(${Math.round(sc * 1000) / 1000})">${scaffold(bw, 46)}</g>`, fx: [] });
+        }
+      }
+      if ((def.driver ?? 'app') === 'app') {
+        const site = def.site ?? siteFromHit(def);
+        if (site) items.push({ y: site[1] + site[3], ord: uid++, band: bandOf(l, site[1] + site[3]), html: `<g class="svy" data-k="${idx}:s" transform="translate(${f(site[0])} ${f(site[1] + site[3])})">${survey(site[2], site[3])}</g>`, fx: [] });
+      }
       if (def.overlayOf) {
+        // Overlay: this plot's prop drawn over another plot's slots (same places, same seeds), e.g. lit windows.
         const base = plots.find((p) => p.def.key === def.overlayOf) ?? null;
         rt.overlayBase = base;
         if (base) {
           base.def.slots.forEach((sl, i) => {
             const key = `${idx}:${i}`;
-            const it = renderSlot(l, look, sl, key, 'sl0 ov', stageN, `${l.id}:${base.def.key}:${i}:ov`, true, def.overlayProp ?? sl.p);
-            // sit right after the base element
+            const it = renderSlot(l, look, sl, key, 'sl0 ov', stageN, `${l.id}:${base.def.key}:${i}:ov:${def.key}`, true, def.overlayProp ?? sl.p);
             it.ord = (baseOrd.get(`${base.idx}:${i}`) ?? uid++) + 0.5;
             items.push(it);
             rt.keys.push(key);
@@ -346,32 +353,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           const r = rng(hash(seedBase + ':order'));
           rt.overlayOrder = base.def.slots.map((_, i) => i).sort(() => r() - 0.5);
         }
-        if (def.site && (def.driver ?? 'app') === 'app') {
-          const site = def.site;
-          items.push({ y: site[1] + site[3], ord: uid++, band: bandOf(l, site[1] + site[3]), html: `<g class="svy" data-k="${idx}:s" transform="translate(${f(site[0])} ${f(site[1] + site[3])})">${survey(site[2], site[3])}</g>`, fx: [] });
-        }
       } else {
-        if (def.anchor) {
-          const key = `${idx}:a`;
-          const it = renderSlot(l, look, def.anchor, key, 'sl0 anc', stageN, `${seedBase}:a`);
-          it.ord = uid++;
-          baseOrd.set(key, it.ord);
-          items.push(it);
-          rt.anchorKey = key;
-          if ((def.driver ?? 'app') === 'app') {
-            const g = renderSlot(l, look, def.anchor, `${idx}:g`, 'ghost', stageN, `${seedBase}:a`);
-            g.ord = uid++;
-            items.push(g);
-            const sc = def.anchor.s ?? depthScale(l, def.anchor.y);
-            const site = def.site ?? siteFromHit(def);
-            const bw = Math.min(site ? site[2] : 50, 70) / sc;
-            items.push({ y: def.anchor.y + 0.01, ord: uid++, band: def.anchor.band ?? bandOf(l, def.anchor.y), html: `<g class="scaf" data-k="${idx}:f" transform="translate(${f(def.anchor.x)} ${f(def.anchor.y)}) scale(${Math.round(sc * 1000) / 1000})">${scaffold(bw, 46)}</g>`, fx: [] });
-          }
-        }
-        if ((def.driver ?? 'app') === 'app') {
-          const site = def.site ?? siteFromHit(def);
-          if (site) items.push({ y: site[1] + site[3], ord: uid++, band: bandOf(l, site[1] + site[3]), html: `<g class="svy" data-k="${idx}:s" transform="translate(${f(site[0])} ${f(site[1] + site[3])})">${survey(site[2], site[3])}</g>`, fx: [] });
-        }
         def.slots.forEach((sl, i) => {
           const key = `${idx}:${i}`;
           const it = renderSlot(l, look, sl, key, 'sl0', stageN, `${seedBase}:${i}`);
@@ -380,16 +362,16 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           items.push(it);
           rt.keys.push(key);
         });
-        (def.movers ?? []).forEach((m, mi) => {
-          for (let i = 0; i < m.n; i++) {
-            const key = `${idx}:m${mi}.${i}`;
-            const mm = moverMarkup(l, look, m, i, key, stageN, `${seedBase}:m${mi}:${i}`);
-            fxBand[mm.band].push(mm.html);
-            rt.moverDefs.push({ el: null as unknown as Element, dur: mm.dur, phase: mm.phase });
-            (rt as PlotRt & { mkeys?: string[] }).mkeys = [...((rt as PlotRt & { mkeys?: string[] }).mkeys ?? []), key];
-          }
-        });
       }
+      (def.movers ?? []).forEach((m, mi) => {
+        for (let i = 0; i < m.n; i++) {
+          const key = `${idx}:m${mi}.${i}`;
+          const mm = moverMarkup(l, look, m, i, key, stageN, `${seedBase}:m${mi}:${i}`);
+          fxBand[mm.band].push(mm.html);
+          rt.moverDefs.push({ el: null as unknown as Element, dur: mm.dur, phase: mm.phase });
+          (rt as PlotRt & { mkeys?: string[] }).mkeys = [...((rt as PlotRt & { mkeys?: string[] }).mkeys ?? []), key];
+        }
+      });
       plots.push(rt);
     }
     baseOrd.clear();
@@ -500,6 +482,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       case 'population': return 0.1 + 0.9 * v.popFraction;
       case 'pressure': return clamp(v.pressureFraction, 0, 1);
       case 'depletion': return 1 - v.reserveFraction;
+      case 'reserve': return v.reserveFraction;
       case 'light': return lightMean;
       case 'always': return 1;
       default: return 0;
@@ -518,7 +501,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     // Fast-moving values go straight onto the few elements that use them (a custom property on the root would
     // restyle every node of the scene); slow ones are coarsely quantised before they touch the root.
     const q20 = (x: number) => (Math.round(x * 20) / 20).toFixed(2);
-    setOp(sky1, q(pfv)); setOp(hz1, q(Math.min(1, pfv * 0.85))); setOp(hz2, q(Math.min(1, pfv * 0.55))); setOp(hz3, q(Math.min(1, pfv * 0.32)));
+    setOp(sky1, q(pfv)); const hzk = style?.weather?.hz ?? [0.85, 0.55, 0.32];
+    setOp(hz1, q(Math.min(1, pfv * hzk[0]))); setOp(hz2, q(Math.min(1, pfv * hzk[1]))); setOp(hz3, q(Math.min(1, pfv * hzk[2])));
+    setOp(noiseSvg as unknown as HTMLElement, q(Math.min(1, Math.min(1, pf) * (style?.weather?.noise ?? 0))));
     setOp(glow, q(clamp(lightMean, 0, 1)));
     setVarOn(skySvg, '--pf2', q20(pfv));
     setVarOn(skySvg, '--light', q20(clamp(lightMean, 0, 1)));
@@ -529,7 +514,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     rs.setProperty('--res', q(clamp(v.reserveFraction, 0.02, 1)));
     rs.setProperty('--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
     rs.setProperty('--light', q20(clamp(lightMean, 0, 1)));
-    const wash = washFor(root.dataset.look ?? '', Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5);
+    const wash = style?.wash?.(Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5) ?? null;
     if (wash) { rs.setProperty('--s-wash', wash[0]); rs.setProperty('--s-water', wash[1]); }
     const lamp = LAMP[clamp(Math.round(v.stage), 0, 3)];
     rs.setProperty('--s-lamp', lamp[0]); rs.setProperty('--s-lamprgb', lamp[1]);
@@ -626,6 +611,12 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
 
     // Restraint.
     const inForce = new Set(v.levers.map((x) => x.kind));
+    const lvKey = [...inForce].sort().join(',');
+    if (lvKey !== leverKey) {
+      for (const c of Array.from(root.classList)) if (c.startsWith('lv-')) root.classList.remove(c);
+      for (const k of inForce) if (/^[\w-]+$/.test(k)) root.classList.add('lv-' + k);
+      leverKey = lvKey;
+    }
     restraintEls.forEach((els, k) => els.forEach((el) => el.classList.toggle('on', inForce.has(k))));
     steadyMoverEls.forEach((el) => el.classList.toggle('on', !!v.steady));
 
@@ -644,6 +635,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (s !== summaryText) { summaryText = s; summary.textContent = s; }
   }
   let smokeDirty = true;
+  let leverKey = '\u0000';
   const varCache = new Map<string, string>();
   const elCache = new WeakMap<Element, Record<string, string>>();
   function setVarOn(el: HTMLElement | SVGElement, k: string, val: string): void {

@@ -2,150 +2,18 @@
 // --display, --body, --numf) are read with fallbacks; everything scene-specific is a --s-* token set per look.
 // Every animation is transform/opacity on small elements, paused off-screen, and removed under reduced motion.
 
-const LOOKS = `
-.scn[data-look=ledger]{
-  --s-paper:var(--bg-solid,#efe6d0);--s-ink:#2a1f15;--s-b:#f4ecd6;--s-b2:#e6d9b9;--s-rf:#d8c7a2;--s-w:#3b2d1f;--s-lit:#e8ae3c;
-  --s-tr:var(--s-wash,#a9b585);--s-wa:var(--s-water,#a7bcc0);--s-gd:#ddd1ab;--s-gd2:#cdbd92;--s-sp:#7a6e5d;--s-ac:#a3231a;--s-ac2:#24473a;
-  --s-mt:#8e8a80;--s-smk:58,48,38;--s-hz:122,102,74;--s-mist:239,230,208;--s-sun:#e9c46a;
-  --s-sky0:#f3ecd9;--s-sky0b:#e9e0c6;--s-sky1:#b49f7c;--s-sky1b:#d8c8a4;--s-sky2:#dfe8e4;--s-sky2b:#f1eedc;
-  --s-sv:#a3231a;--s-hatch:#2a1f15;--s-glow:255,206,110;--s-frame:#2a1f15;--s-fog:46,36,26;
-}
-.scn[data-look=gaslight]{
-  --s-paper:#141d33;--s-ink:#0a0f1e;--s-b:#1b2645;--s-b2:#16203b;--s-rf:#121a31;--s-w:#0c1222;--s-lit:var(--s-lamp,#f6c65b);
-  --s-tr:#14203d;--s-wa:#22325c;--s-gd:#1a2443;--s-gd2:#1f2b4e;--s-sp:#1b2440;--s-ac:#f2b544;--s-ac2:#e8664a;
-  --s-mt:#2b3962;--s-smk:52,46,40;--s-hz:96,72,52;--s-mist:40,54,92;--s-sun:#f4e7c5;
-  --s-sky0:#0b1430;--s-sky0b:#3a3f6b;--s-sky1:#2a2420;--s-sky1b:#6b5038;--s-sky2:#101d44;--s-sky2b:#2d4f7c;
-  --s-fog:26,22,20;--s-sv:#f2b544;--s-hatch:#0a0f1e;--s-glow:var(--s-lamprgb,246,198,91);--s-frame:#f2b544;
-}
-.scn[data-look=chrome]{
-  --s-paper:#f3eee2;--s-ink:#1a2a2d;--s-b:#fbf8f0;--s-b2:#e4ddcc;--s-rf:#0e7c77;--s-w:#2c3e40;--s-lit:#f0c35a;
-  --s-tr:#7fa98a;--s-wa:#86bccb;--s-gd:#cfdcb8;--s-gd2:#e6d49a;--s-sp:#8a8f86;--s-ac:#e07a5f;--s-ac2:#e9b949;
-  --s-mt:#b9c0c0;--s-smk:110,100,92;--s-hz:150,128,104;--s-mist:243,238,226;--s-sun:#f0c35a;
-  --s-sky0:#bfe0dc;--s-sky0b:#f3eee2;--s-sky1:#b8a891;--s-sky1b:#e5d6bb;--s-sky2:#a8dbe0;--s-sky2b:#f6f1e4;
-  --s-fog:92,72,56;--s-sv:#e07a5f;--s-hatch:#1a2a2d;--s-glow:240,195,90;--s-frame:#1a2a2d;
-}
-.scn[data-look=terminal]{
-  --s-paper:#070b08;--s-ink:#9ff08f;--s-b:#070b08;--s-b2:#0b140d;--s-rf:#0b140d;--s-w:#16301a;--s-lit:#e9b44a;
-  --s-tr:#0b140d;--s-wa:#071618;--s-gd:#08100a;--s-gd2:#0b160d;--s-sp:#102016;--s-ac:#e9b44a;--s-ac2:#5fd0e0;
-  --s-mt:#5c9a55;--s-smk:120,160,120;--s-hz:150,90,30;--s-mist:7,11,8;--s-sun:#e9b44a;
-  --s-sky0:#040705;--s-sky0b:#0a1a0e;--s-sky1:#1a0d04;--s-sky1b:#4a2a0c;--s-sky2:#030806;--s-sky2b:#0c2a22;
-  --s-fog:70,24,6;--s-sv:#e9b44a;--s-hatch:#5c9a55;--s-glow:233,180,74;--s-frame:#3d6b37;
-}
-.scn[data-look=agentic]{
-  --s-paper:#f2f1ed;--s-ink:#18191b;--s-b:#ffffff;--s-b2:#f1efe9;--s-rf:#e6e3da;--s-w:#d6d3ca;--s-lit:#1a7f37;
-  --s-tr:#d7e8d5;--s-wa:#dbe7f7;--s-gd:#ebe9e2;--s-gd2:#e2dfd5;--s-sp:#c9c6bc;--s-ac:#e0592a;--s-ac2:#1a7f37;
-  --s-mt:#b9b6ac;--s-smk:140,140,150;--s-hz:150,148,160;--s-mist:242,241,237;--s-sun:#e0592a;
-  --s-sky0:#f7f6f2;--s-sky0b:#efeee9;--s-sky1:#cfcdd2;--s-sky1b:#e4e2e3;--s-sky2:#f7f9f6;--s-sky2b:#eef4ee;
-  --s-fog:38,38,44;--s-sv:#e0592a;--s-hatch:#18191b;--s-glow:224,89,42;--s-frame:#dddbd3;
-}
-.scn[data-look=generic]{
-  --s-paper:var(--bg-solid,#efe6d0);--s-ink:var(--ink,#2a1f15);--s-b:var(--surface,#f6efdc);--s-b2:var(--surface-2,#e8dcc0);
-  --s-rf:var(--surface-2,#d8c7a2);--s-w:var(--ink,#3b2d1f);--s-lit:var(--accent,#e8ae3c);--s-tr:var(--good,#7fa98a);
-  --s-wa:var(--water,#a7bcc0);--s-gd:var(--surface-2,#ddd1ab);--s-gd2:var(--surface,#cdbd92);--s-sp:var(--muted,#7a6e5d);
-  --s-ac:var(--accent,#a3231a);--s-ac2:var(--good,#24473a);--s-mt:var(--muted,#8e8a80);--s-smk:var(--smog,90,80,70);
-  --s-hz:var(--smog,110,95,75);--s-mist:200,200,200;--s-sun:var(--accent,#e9c46a);
-  --s-sky0:var(--surface,#f3ecd9);--s-sky0b:var(--bg-solid,#e9e0c6);--s-sky1:var(--muted,#b49f7c);--s-sky1b:var(--surface-2,#d8c8a4);
-  --s-sky2:var(--surface,#f4efdc);--s-sky2b:var(--bg-solid,#dde7d8);--s-sv:var(--bad,#a3231a);--s-hatch:var(--ink,#2a1f15);
-  --s-glow:255,206,110;--s-frame:var(--rule-2,#2a1f15);
-}
-`;
-
-const LOOK_EXTRA = `
-.scn[data-look=gaslight]{--s-ink:#33426f;--s-btxt:#f4e7c5}
-.scn[data-look=gaslight] .scn-glow{display:none;background:radial-gradient(80% 45% at 50% 62%,rgba(var(--s-glow),.6),rgba(var(--s-glow),.18) 55%,rgba(var(--s-glow),0) 80%)}
-.scn[data-look=gaslight] .band-far .b,.scn[data-look=gaslight] .band-far .rf{fill:#25345f;stroke:none}
-.scn[data-look=gaslight] .band-far .b2{fill:#1f2c52;stroke:none}
-.scn[data-look=gaslight] .sil0{fill:#1d2a4f}
-.scn[data-look=gaslight] .band-mid .b,.scn[data-look=gaslight] .band-mid .rf{fill:#18223f;stroke:#2a3863}
-.scn[data-look=gaslight] .sil1{fill:#141d36!important;stroke:none!important}
-.scn[data-look=gaslight] .band-near .b,.scn[data-look=gaslight] .band-near .rf{fill:#10172c;stroke:#2a3760}
-.scn[data-look=gaslight] .gd{fill:#121a31;stroke:none}.scn[data-look=gaslight] .gd2{fill:#0f1529}
-.scn[data-look=gaslight] .pave{fill:#0b1120!important}
-.scn[data-look=gaslight] .post{stroke:#4a5a8c;stroke-width:calc(1px*var(--sw))}
-.scn[data-look=gaslight] .k{stroke:#3a4a7a}
-.scn .star{fill:#f4e7c5}
-.scn .moon{fill:#f4e7c5;stroke:none;opacity:.9}
-.scn .refl{opacity:var(--light,0)}
-.scn .neon{fill:#2a1420;stroke:#e8664a;stroke-width:calc(1px*var(--sw))}
-.scn .neonk{stroke:#ff9a7a!important;stroke-width:calc(1.2px*var(--sw))!important}
-.scn .lettr{stroke:#2a1a05!important;stroke-width:calc(1.2px*var(--sw))!important;opacity:.8}
-`;
-
-const CHROME_CSS = `
-.scn[data-look=chrome]{--s-btxt:#fbf8f0}
-.scn[data-look=chrome] .b,.scn[data-look=chrome] .rf,.scn[data-look=chrome] .b2{stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
-.scn[data-look=chrome] .k{stroke:#1a2a2d}
-.scn .hill1{fill:#b4cda8}.scn .hill2{fill:#9cbe94}
-.scn[data-look=chrome] .gd{fill:#c6d7ab;stroke:none}
-.scn .sun{fill:var(--s-sun);stroke:none}
-.scn .road{fill:#8a9496;stroke:none}.scn .edge{stroke:#f6f1e4;stroke-width:calc(.8px*var(--sw));fill:none}
-.scn .dash{stroke:#f6f1e4;stroke-width:calc(.9px*var(--sw));stroke-dasharray:4 5;fill:none}
-.scn .verge{fill:#7fa98a;stroke:none}.scn .lawn{fill:#93c08e;stroke:none}
-.scn .r2{fill:#e07a5f;stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
-.scn .r3{fill:#e9b949;stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
-.scn .c0{fill:#e07a5f}.scn .c1{fill:#0e7c77}.scn .c2{fill:#e9b949}.scn .c3{fill:#5b8fb9}.scn .c4{fill:#f3eee2;stroke:#1a2a2d;stroke-width:.5px}
-.scn .glass{fill:#cfe7ea;stroke:none}.scn .tyre{fill:#1a2a2d;stroke:none}
-.scn .vn{fill:#fbf8f0;stroke:rgba(26,42,45,.6);stroke-width:calc(.6px*var(--sw))}.scn .vs{fill:#0e7c77}.scn .volts,.scn .volt{fill:#e9b949}
-.scn .door{fill:#c9c2b0;stroke:rgba(26,42,45,.4);stroke-width:.5px}
-.scn .oil{fill:#1d1a17;stroke:none}.scn .stra1{fill:#e3d3b0}.scn .stra2{fill:#cdb48a}
-.scn .fd1{fill:#d9cf8f}.scn .fd2{fill:#b8cf96}.scn .fd3{fill:#cfd9a6}
-.scn .cyc{fill:#0e7c77;opacity:.6}
-.scn .trail{fill:none;stroke:rgba(255,255,255,.85);stroke-width:2.2;vector-effect:none!important}
-.scn .cloud{fill:#fbf8f0;stroke:none;opacity:.92}
-`;
-
-const TERM_CSS = `
-.scn[data-look=terminal]{--s-btxt:#9ff08f}
-.scn[data-look=terminal] .b,.scn[data-look=terminal] .rf,.scn[data-look=terminal] .b2{fill:#070b08;stroke:#7fd474;stroke-width:calc(.9px*var(--sw))}
-.scn[data-look=terminal] .band-far .b,.scn[data-look=terminal] .band-far .rf{stroke:#4f8a48}
-.scn[data-look=terminal] .k{stroke:#7fd474}
-.scn[data-look=terminal] .band-far .k{stroke:#4f8a48}
-.scn[data-look=terminal] .w{fill:none;stroke:#2f5a2b;stroke-width:.6px}
-.scn[data-look=terminal] .wa{fill:rgba(95,208,224,.08);stroke:#5fd0e0;stroke-width:.7px}
-.scn[data-look=terminal] .wl{stroke:#5fd0e0}
-.scn[data-look=terminal] .gd{fill:#050906;stroke:none}
-.scn[data-look=terminal] .tr{fill:none;stroke:#5c9a55}
-.scn[data-look=terminal] .ac{fill:#e9b44a;stroke:none}
-.scn[data-look=terminal] .scn-stage::after{content:'';position:absolute;inset:0;pointer-events:none;
-  background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 3px)}
-.scn .cy{fill:#5fd0e0;stroke:none}
-.scn .grid{fill:none;stroke:rgba(127,212,116,.13);stroke-width:.6px}
-.scn .hzn{fill:none;stroke:#7fd474;stroke-width:1.2px;opacity:.7}
-.scn .dim{opacity:.45}
-.scn .lnk{stroke:rgba(127,212,116,.28)!important;stroke-width:.7px!important;fill:none}
-`;
-
-const AGENT_CSS = `
-.scn[data-look=agentic]{--s-btxt:#ffffff}
-.scn .cl{fill:none;stroke:#c3c0b6;stroke-width:calc(1.1px*var(--sw))}
-.scn .cl2{fill:none;stroke:#dad7ce;stroke-width:calc(1px*var(--sw))}
-.scn .dg{fill:#1a7f37;stroke:none}.scn .dr{fill:#cf222e;stroke:none}.scn .dgf{fill:#2da44e}.scn .blu{fill:#3474d4}
-.scn .aband{fill:#f6f5f1;stroke:#9a978e;stroke-width:.8px;stroke-dasharray:2 2}
-.scn .scf2{stroke:#8a877e}
-.scn .note{fill:#f3dd6d;stroke:#b9a43b;stroke-width:.5px}
-.scn .tangle{stroke:#6e6b64}.scn .dead{stroke:#a3a097}
-.scn .clear{fill:none;stroke:#1a7f37;stroke-width:1px;stroke-dasharray:3 2}
-.scn .okk{fill:none;stroke:#1a7f37;stroke-width:1.4px}
-.scn .eye{fill:#fff}
-.scn .bub{stroke:#fff;stroke-width:1.4px}
-.scn .far{stroke:#c9c6bc!important;fill:#f7f6f2!important}
-.scn .floorp{fill:#ecebe5;stroke:none}.scn .floorl{fill:none;stroke:#dcdad2;stroke-width:.6px}
-.scn .debt{fill:#8d8a82;opacity:.28}
-.scn .rsun{transform-box:fill-box;transform-origin:50% 50%;transform:scale(calc(.35 + var(--res,1)*.65));transition:transform 1.5s}
-.scn .asun{fill:#e0592a;stroke:none;opacity:.9}
-.scn[data-look=agentic] .gd{fill:#ebe9e2;stroke:none}
-`;
+import { allStyles } from './styles/index';
 
 const BASE = `
 .scn{position:relative;font-family:var(--body,Georgia,serif);color:var(--ink,#2a1f15);--sw:1;}
 .scn.wide{--sw:1.35}
 .scn-stage{position:relative;width:100%;aspect-ratio:3/2;overflow:hidden;background:var(--s-paper);isolation:isolate;
   border:1px solid var(--s-frame);contain:layout paint;-webkit-user-select:none;user-select:none;touch-action:manipulation}
-.scn[data-look=ledger] .scn-stage{outline:1px solid var(--s-frame);outline-offset:3px;margin:4px 0 8px}
-.scn[data-look=chrome] .scn-stage{border-radius:14px;border-color:rgba(26,42,45,.25)}
-.scn[data-look=agentic] .scn-stage{border-radius:6px}
-.scn[data-look=gaslight] .scn-stage{border-color:rgba(242,181,68,.45);box-shadow:0 0 0 3px #141d33,0 0 0 4px rgba(242,181,68,.25)}
-.scn-world,.scn-l,.scn-sky,.scn-hz,.scn-fog,.scn-places,.scn-glow{position:absolute;inset:0;width:100%;height:100%}
+.scn-world,.scn-l,.scn-sky,.scn-hz,.scn-fog,.scn-places,.scn-glow,.scn-extra{position:absolute;inset:0;width:100%;height:100%}
+.scn-extra,.scn-plate,.scn-noise{pointer-events:none}
+.scn-noise{opacity:0}
+.scn-extra{overflow:hidden}
+.scn-legend{margin:2px 0 4px;text-align:center;font:italic 13px/1.3 var(--f-serif,Georgia,serif);letter-spacing:.06em;color:var(--muted,#6f5f4a);font-variant:small-caps}
 .scn-l{display:block;overflow:hidden}
 .scn-defs{position:absolute;width:0;height:0;overflow:hidden}
 .scn-sky{background:linear-gradient(to bottom,var(--s-sky0),var(--s-sky0b) 52%)}
@@ -309,16 +177,32 @@ const BASE = `
 .scn.rm *{animation:none!important;transition:none!important}
 `;
 
-let injected = false;
+/** Inject the base CSS and every registered style once; styles registered later are appended on demand. */
+const done = new WeakMap<Document, Set<string>>();
 export function injectSceneCss(doc: Document = document): void {
-  if (injected && doc.getElementById('scn-css')) return;
-  if (doc.getElementById('scn-css')) { injected = true; return; }
-  const el = doc.createElement('style');
-  el.id = 'scn-css';
-  el.textContent = LOOKS + LOOK_EXTRA + CHROME_CSS + TERM_CSS + AGENT_CSS + BASE;
-  doc.head.appendChild(el);
-  injected = true;
+  let set = done.get(doc);
+  if (!set) {
+    set = new Set();
+    done.set(doc, set);
+    if (!doc.getElementById('scn-css')) {
+      const el = doc.createElement('style');
+      el.id = 'scn-css';
+      el.textContent = BASE;
+      doc.head.appendChild(el);
+    }
+  }
+  for (const st of allStyles()) {
+    if (set.has(st.id)) continue;
+    set.add(st.id);
+    const id = 'scn-css-' + st.id;
+    if (doc.getElementById(id)) continue;
+    const el = doc.createElement('style');
+    el.id = id;
+    el.textContent = st.css;
+    doc.head.appendChild(el);
+  }
 }
 
-export const SCENE_CSS = LOOKS + LOOK_EXTRA + CHROME_CSS + TERM_CSS + AGENT_CSS + BASE;
-export const KNOWN_LOOKS = new Set(['ledger', 'gaslight', 'chrome', 'terminal', 'agentic']);
+/** The whole stylesheet as one string (base + every style registered so far), for hosts that prefer to ship it. */
+export const SCENE_CSS: string = BASE;
+export function sceneCss(): string { return BASE + allStyles().map((s) => s.css).join('\n'); }

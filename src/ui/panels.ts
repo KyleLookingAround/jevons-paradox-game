@@ -79,12 +79,15 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
       held = true; beat++;
       timer = window.setTimeout(step, Math.max(110, 260 - beat * 30));
     };
+    // The card may be re-sorted (moved in the DOM) between beats, so the hold ends on the window's pointerup, not on
+    // events of the button itself.
+    const end = () => { stop(); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end); };
     buy.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !cur?.affordable) return;
       held = false; beat = 0; stop();
       timer = window.setTimeout(step, 450);
+      window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
     });
-    for (const ev of ['pointerup', 'pointerleave', 'pointercancel', 'blur']) buy.addEventListener(ev, stop);
     buy.addEventListener('contextmenu', (e) => e.preventDefault());
     buy.classList.add('holdable');
     setAttr(buy, 'title', 'Hold to keep buying');

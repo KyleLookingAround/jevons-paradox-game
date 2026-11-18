@@ -71,6 +71,13 @@ export function syncChildren(parent: Element, nodes: Node[]): void {
   while (parent.childNodes.length > nodes.length) parent.lastChild!.remove();
 }
 
+/** The player's motion setting (html[data-motion]): true = still, false = moving, null = follow the system. */
+export function motionOverride(): boolean | null {
+  const m = document.documentElement.getAttribute('data-motion');
+  return m === 'reduce' ? true : m === 'full' ? false : null;
+}
 export const reducedMotion = (): boolean => {
+  const o = motionOverride();
+  if (o != null) return o;
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 };

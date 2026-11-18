@@ -37,6 +37,7 @@ export const light: Layout = {
   id: 'light',
   look: 'gaslight',
   place: 'a town at dusk, lighting up',
+  caption: 'The town by gaslight',
   bands: [206, 300],
   depth: [130, 0.62, 372, 1.15],
 
@@ -44,8 +45,8 @@ export const light: Layout = {
     const id = c.u('dusk').slice(5, -1);
     const sky =
       `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9845a" stop-opacity="0"/><stop offset=".7" stop-color="#c9845a" stop-opacity=".55"/><stop offset="1" stop-color="#e8a35e" stop-opacity=".75"/></linearGradient></defs>` +
-      `<rect x="0" y="70" width="600" height="110" fill="url(#${id})" class="nosteady"/>` +
-      stars(70, 'stars') + bprop(GAS_MOON, 92, 48, 1.4, 0, c);
+
+      stars(70, 'stars') + bprop(GAS_MOON, 92, 66, 1.4, 0, c);
     const farHills = ridge([[0, 150], [90, 136], [180, 146], [280, 130], [380, 144], [470, 136], [600, 150]], 260);
     let via = '';
     for (let x = 60; x < 360; x += 15) via += `M${x} 196V184H${x + 15}V196H${x + 12}V190A4.5 4.5 0 0 0 ${x + 3} 190V196Z`;
