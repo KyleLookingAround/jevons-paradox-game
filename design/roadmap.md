@@ -343,3 +343,52 @@ To paste in once steps 1–2 are merged.
 >    Archive. Stop and evaluate.
 > 6. **M4–M8**: Act I complete → the World (Treaty) → the Great Acceleration → the Attention Age (Long Now) → the
 >    post-game. See `design/long-game.md` for structure and hour targets.
+
+---
+
+## Amendments from the genre audit (18 Nov 2026)
+
+`design/genre-audit.md` scored this plan against what makes long incrementals work. These changes are adopted; where they
+conflict with the text above, they win. Vocabulary has also changed since this document was written: the unit of play is
+an Industry (a `Sector` in code) and the period is an Age; "era" above means Industry.
+
+**M1 (in progress).**
+
+- The paradox must be felt at the first cards: boilers raise coal use within a minute and the condenser roughly doubles it
+  within two. These are the first balance tests.
+- Purchase cadence: at least 12 purchases in the first 10 minutes, no gap over 90 s in the first 15 minutes, none over
+  3 minutes in run 1. One repeatable growth card per Industry supplies the cadence.
+- Clicking fades: worth at least 1.5× idle income at 0:30, at most 0.25× by the reveal.
+- The Coal Question card poses the question; the answer arrives only once it is bought.
+- UI: nothing shown before it can be used (Mandate, Call a Reckoning); an "affordable" signal on the first screen; save
+  safety (persistent storage, a backup at each Reckoning, export reminder, installable); notation, hotkeys, text size,
+  fork confirmation, colour never the only signal.
+
+**M2.**
+
+- Offline time never collapses a run: `fastForward` stops one step before a collapse or crisis and the return note says
+  why. Base offline cap 8 hours. Contract: `GlobalParams.offline { capSeconds, holdBefore }`, `GameState.lastOffline`.
+- Know-how can be re-chosen between runs: `ModelApi.respecKnowhow`. Permanent forks with no respec become "look up the
+  one right build".
+- Each decade within budget offers a choice of two dividends (`steady.decadeChoices`, `chooseDecadeDividend`), so holding
+  a budget is a string of decisions and not a timewall. This is the audit's second-biggest risk.
+- Exit criterion tightened from "no stretch of more than 10 minutes with nothing to buy or decide" to at most 3 minutes
+  of active play in hour 1 and at most 5 minutes in hours 1–10.
+- Run 2 must differ from run 1 in kind, not degree (the audit's biggest risk: "the joke lands once"). Settlement, the
+  Commons and standing orders carry this; if M1 playtests show hours 1–2 are thin, pull the first automation (the Market)
+  forward to 45–75 minutes.
+
+**M3.**
+
+- Ship a real ending: credits on the Act I Steady State, at about 15–20 active hours. The true ending stays later.
+- Something new at least every 2 active hours up to hour 20. The Light phase (hours 7–13) currently has one mechanic in
+  six hours and needs a second.
+- Rules for Histories, written before any exist: their rewards are options and never required to progress; no
+  quality-of-life feature is locked behind one; the stacking ladder is post-game and capped.
+
+**M5 onwards.** The second prestige layer (Treaty) lands at 14–20 hours. The audit's third risk is replay and challenge
+fatigue in hours 20–60: the Treaty must not make the player replay Act I at length (the 15-minute bound in D2 stands),
+and no ending may be promised that the game does not deliver.
+
+**Deliberately not adopted.** The audit lists where genre wisdom should be ignored because of what this game is about;
+see its last section before "fixing" any of those.

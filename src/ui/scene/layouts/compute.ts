@@ -1,3 +1,98 @@
-import type { Layout } from '../layout';
-import { genericLayout } from './generic';
-export const compute: Layout = { ...genericLayout(5), id: 'compute' };
+// Compute: the infrastructure behind the screen, drawn as a vector display. Office towers full of spreadsheets on
+// the left, exchanges strung together with arcs of packets in the middle, cloud sheds on the right, a training
+// campus with cooling towers on the far right, a reservoir behind a dam whose water drops, glowing homes in front.
+import type { Layout, Slot } from '../layout';
+import { scatter, weave } from '../layout';
+import { P, R, L, f, rng, hash } from '../svg';
+import { bprop } from './util';
+import { pylon } from '../props/terminal';
+
+const NODES: [number, number][] = [[300, 262], [236, 236], [366, 230], [196, 258], [414, 254], [272, 214], [338, 210], [440, 222]];
+const LINKS: Slot[] = NODES.slice(1).map(([x, y], i) => {
+  const [fx, fy] = i % 3 === 2 ? NODES[i] : NODES[0];
+  return { p: 'link', x: fx, y: fy, w: x - fx, h: y - fy, s: 1, band: 'mid' as const };
+});
+
+function floor(): string {
+  let d = '';
+  for (let i = -12; i <= 12; i++) d += `M300 150L${f(300 + i * 60)} 400`;
+  for (let k = 0; k < 9; k++) { const y = 150 + Math.pow(k / 8, 1.8) * 250; d += `M0 ${f(y)}H600`; }
+  return P(d, 'grid');
+}
+
+export const compute: Layout = {
+  id: 'compute',
+  look: 'terminal',
+  place: 'the machinery behind the screen',
+  bands: [204, 300],
+  depth: [150, 0.62, 372, 1.2],
+
+  backdrop(c) {
+    const r = rng(hash('cstars'));
+    let st = '';
+    for (let i = 0; i < 40; i++) st += `M${f(r() * 600)} ${f(r() * 130)}h.8`;
+    const sky = P(st, 'k k2 dim') + P('M0 150H600', 'hzn');
+    let wires = '';
+    const px = [20, 110, 200, 290, 380, 470, 560];
+    for (let i = 0; i < px.length - 1; i++) wires += `M${px[i] - 7} 147Q${(px[i] + px[i + 1]) / 2} 156 ${px[i + 1] - 7} 147M${px[i] + 7} 147Q${(px[i] + px[i + 1]) / 2} 156 ${px[i + 1] + 7} 147`;
+    const far = floor() + px.map((x) => bprop(pylon, x, 174, 0.8, 0.5, c)).join('') + P(wires, 'k k2') +
+      P('M14 192L30 164H150L160 192Z', 'b') + `<g class="ry">${R(32, 166, 116, 24, 'wa')}${P('M36 172H144M36 178H144M36 184H144', 'k k2 wl')}</g>` + P('M150 164L160 192', 'k');
+    const near = R(0, 300, 600, 72, 'gd', 'opacity=".55"');
+    const cut = R(0, 372, 600, 28, 'b') + L(0, 372, 600, 372, 'k') + P('M0 380H600M0 386H600M0 392H600', 'k k2 dim') +
+      P('M0 383H600', 'k lnk');
+    return { sky, far, near, cut };
+  },
+
+  plots: [
+    { key: 'town', driver: 'population', slots: scatter('office', [150, 156, 300, 22], 14, 'compute-town', { from: [300, 170], gap: [18, 5], k: 0.7 }) },
+    {
+      key: 'sheets', match: ['sheet'],
+      anchor: { p: 'office', x: 92, y: 290, s: 1.15, v: 0.7 },
+      slots: scatter('office', [8, 206, 196, 86], 8, 'compute-offices', { from: [92, 260], gap: [26, 10] }),
+      hit: [30, 196, 130, 98],
+    },
+    {
+      key: 'web', match: ['globe'],
+      anchor: { p: 'exchange', x: NODES[0][0], y: NODES[0][1], s: 1 },
+      slots: weave(NODES.slice(1).map(([x, y]): Slot => ({ p: 'exchange', x, y, k: 0.9 })), LINKS),
+      hit: [200, 200, 220, 70],
+    },
+    {
+      key: 'cloud', match: ['cloud'],
+      anchor: { p: 'storage', x: 486, y: 292, s: 1.1, v: 0.6 },
+      slots: scatter('storage', [410, 224, 186, 64], 5, 'compute-sheds', { from: [486, 270], gap: [70, 14] }),
+      hit: [420, 250, 170, 50],
+    },
+    {
+      key: 'stream', match: ['play'],
+      anchor: { p: 'hall', x: 300, y: 340, s: 1.1, band: 'near' },
+      slots: weave(
+        scatter('homeScreen', [10, 318, 580, 46], 16, 'compute-homes', { from: [300, 340], gap: [26, 8] }),
+        [{ p: 'hall', x: 170, y: 314, s: 0.95 }, { p: 'hall', x: 430, y: 316, s: 0.95 }],
+      ),
+      hit: [200, 304, 200, 52],
+    },
+    {
+      key: 'train', match: ['brain'],
+      anchor: { p: 'campus', x: 520, y: 202, s: 0.8, band: 'far' },
+      slots: weave(
+        scatter('campus', [420, 168, 180, 30], 4, 'compute-campus', { from: [520, 190], gap: [70, 8], k: 0.95 }),
+        scatter(['cooling', 'cooling', 'substation'], [400, 164, 196, 36], 9, 'compute-cool', { from: [540, 190], gap: [20, 6], k: 0.95 }),
+      ),
+      hit: [420, 150, 180, 56],
+      site: [490, 194, 60, 6],
+    },
+  ],
+
+  spares: [[180, 270, 110, 26], [20, 150, 110, 30], [300, 150, 100, 30]],
+
+  restraint: {
+    duty: { p: 'customs', x: 560, y: 368, s: 0.9, band: 'near' },
+    cap: { p: 'permits', x: 40, y: 368, s: 0.9, band: 'near' },
+    sufficiency: { p: 'allotments', x: 120, y: 368, s: 0.9, band: 'near' },
+    substitution: { p: 'solar', x: 190, y: 200, s: 1, band: 'far' },
+    circularity: { p: 'kiln', x: 490, y: 368, s: 0.8, band: 'near' },
+    greenSpending: { p: 'park', x: 420, y: 368, s: 0.9, band: 'near' },
+  },
+  restraintSpare: [{ p: 'notice', x: 220, y: 368 }, { p: 'notice', x: 380, y: 368 }],
+};

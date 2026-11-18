@@ -1,7 +1,7 @@
 // M1 mechanisms (briefs/m1-core.md, "Required tests"), against src/fixture.ts.
 // @ts-ignore — bun-types are not installed (see model.test.ts)
 import { describe, expect, test } from 'bun:test';
-import { model, evalCond, statValue } from './model';
+import { model, evalCond, statValue, substitute } from './model';
 import { fixture as C, FOUNDED, STEAM_EFFICIENCY, STEAM_REFERENCE } from './fixture';
 import { CALENDAR_LATE_RATE, START_YEAR, STEADY_STATE_YEARS, YEARS_PER_SECOND } from './types';
 import type { Cond, Content, GameState, MetaState, SectorId, SectorState, StatKey } from './types';
@@ -812,7 +812,8 @@ describe('calendar (P14)', () => {
     const crisis = c.news.find((n) => n.key === 'crisis')!;
     expect(crisis.text).toBe(`Steam crisis 1 in ${crisis.year}`); // sectorHeadlines win over headlines
     const found = c.news.find((n) => n.key === 'appFounded') ?? model.foundApp({ ...model.tick(model.buyUpgrade({ ...model.createState(C), capital: 1e6 }, C, 'steam.boilers'), C, 1), capital: 1e6 }, C, 'steam.mills').news[0];
-    expect(found.text).toBe(`appFounded: Steam The Coal Age steam.mills steam resource steam service ${found.year} #`);
+    // M1 balance fix: {age} lower-cases a leading "The" mid-sentence (case-aware substitution; was "The Coal Age").
+    expect(found.text).toBe(`appFounded: Steam the Coal Age steam.mills steam resource steam service ${found.year} #`);
   });
 });
 
@@ -933,4 +934,122 @@ describe('long play', () => {
       expect(model.serialize(go())).toBe(model.serialize(s));
     }, 120_000);
   }
+});
+
+/* ---------------- 16. M1 balance fixes ---------------- */
+
+describe('M1 balance fix 1: the budget line holds once Steady State is earned', () => {
+  const withSteady = (c: Content, patch: Partial<NonNullable<Content['global']['steady']>>): Content =>
+    ({ ...c, global: { ...c.global, steady: { ...c.global.steady!, ...patch } } });
+  /** CALM with a reserve that lasts for centuries. */
+  const DEEP: Content = { ...CALM, sectors: { ...CALM.sectors, steam: { ...CALM.sectors.steam, reserve: 1e12 } } };
+  test('the line declines until the streak crosses 50 years, then holds level for the rest of the run', () => {
+    let s = patchSector(decoupling(DEEP), 'steam', { steadyYears: STEADY_STATE_YEARS - 5 });
+    const b0 = s.sectors.steam.budget!;
+    s = run(s, 99, DEEP);
+    expect(s.sectors.steam.budget!.heldAt).toBeUndefined();
+    s = run(s, 3, DEEP);
+    const heldAt = s.sectors.steam.budget!.heldAt!;
+    expect(heldAt).toBeGreaterThan(b0.since);
+    const heldLevel = b0.r0 * Math.pow(0.95, ((heldAt - b0.since) * YEARS_PER_SECOND) / 10);
+    expect(heldLevel).toBeLessThan(b0.r0);
+    expect(steamD(s, DEEP).budgetR!).toBeCloseTo(heldLevel, 9);
+    const much = run(s, 2000, DEEP); // 100 more model years
+    expect(much.time).toBe(s.time + 2000);
+    expect(steamD(much, DEEP).budgetR!).toBeCloseTo(heldLevel, 9);
+    expect(much.sectors.steam.steadyYears).toBeGreaterThan(STEADY_STATE_YEARS + 100);
+  });
+  test('a held line survives a broken streak; a redraw starts a new, declining line', () => {
+    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01 });
+    s = model.tick(s, CALM, 1);
+    const held = s.sectors.steam.budget!;
+    expect(held.heldAt).toBeDefined();
+    const C2: Content = { ...CALM, global: { ...CALM.global, wellbeingTarget: 1000 } };
+    const broken = run(s, 400, C2);
+    expect(broken.sectors.steam.steadyYears).toBe(0);
+    expect(steamD(broken, C2).budgetR!).toBeCloseTo(steamD(s, C2).budgetR!, 9);
+    const redrawn = model.drawBudget(broken, C2, 'steam');
+    expect(redrawn.sectors.steam.budget!.heldAt).toBeUndefined();
+    const r0 = redrawn.sectors.steam.budget!.r0;
+    const later = run(redrawn, 100, C2);
+    expect(steamD(later, C2).budgetR!).toBeCloseTo(r0 * Math.pow(0.95, ((later.time - redrawn.time) * YEARS_PER_SECOND) / 10), 9);
+    expect(later.time).toBeGreaterThan(redrawn.time);
+  });
+  test('budgetFloor stops the decline at a fraction of r0 (global, with a sector override)', () => {
+    const s = model.drawBudget(rich(run(steamAt(1), 2)), C, 'steam');
+    const r0 = s.sectors.steam.budget!.r0;
+    const later = run(s, 4000); // 20 decades: 0.95^20 ≈ 0.36
+    expect(steamD(later).budgetR!).toBeCloseTo(r0 * Math.pow(0.95, 20), 6);
+    const F = withSteady(C, { budgetFloor: 0.6 });
+    expect(steamD(later, F).budgetR!).toBeCloseTo(r0 * 0.6, 9);
+    expect(steamD(run(s, 200), F).budgetR!).toBeCloseTo(r0 * 0.95, 9); // above the floor: unchanged
+    const F2: Content = { ...F, sectors: { ...F.sectors, steam: { ...F.sectors.steam, steady: { budgetFloor: 0.5 } } } };
+    expect(steamD(later, F2).budgetR!).toBeCloseTo(r0 * 0.5, 9);
+  });
+  test('a heldAt in a save round-trips', () => {
+    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01 });
+    s = model.tick(s, CALM, 1);
+    const back = model.deserialize(model.serialize(s), CALM)!;
+    expect(back.sectors.steam.budget).toEqual(s.sectors.steam.budget);
+  });
+});
+
+describe('M1 balance fix 2: a standing cap draws its line across a grown economy', () => {
+  const meta = (): MetaState => ({ ...model.createState(C).meta, institutions: { 'inst.capStanding': 1 }, loadout: ['inst.capStanding'] });
+  const LATE: Content = { ...C, global: { ...C.global, steady: { ...C.global.steady!, standingDrawYears: 20 } } };
+  test('with standingDrawYears the cap waits that many model years, then draws at the R of that moment', () => {
+    let s = model.createState(LATE, meta());
+    expect(s.levers['steam.cap'].level).toBe(1);
+    s = run(s, 400, LATE); // 20 years open; the next step draws
+    expect(s.sectors.steam.budget).toBeNull();
+    expect(steamD(s, LATE).permitPrice).toBe(0); // no line, no cap
+    const rNow = steamD(s, LATE).resourceUse;
+    s = run(s, 1, LATE);
+    expect(s.sectors.steam.budget).not.toBeNull();
+    expect(s.sectors.steam.budget!.r0).toBeCloseTo(rNow, 6);
+    expect(count(s, 'budgetDrawn')).toBe(1);
+  });
+  test('a sector override of standingDrawYears wins over the global one', () => {
+    const O: Content = { ...LATE, sectors: { ...LATE.sectors, steam: { ...LATE.sectors.steam, steady: { standingDrawYears: 0 } } } };
+    expect(model.tick(model.createState(O, meta()), O, 1).sectors.steam.budget).not.toBeNull();
+  });
+  test('before that, Tightening the standing cap (or drawing explicitly) draws the line at once', () => {
+    let s = rich(run(model.createState(LATE, meta()), 10, LATE));
+    expect(s.sectors.steam.budget).toBeNull();
+    const t = model.setLever(s, LATE, 'steam.cap', 2);
+    expect(t.sectors.steam.budget!.r0).toBeCloseTo(steamD(s, LATE).resourceUse, 9);
+    const u = model.drawBudget(s, LATE, 'steam');
+    expect(u.sectors.steam.budget!.r0).toBeCloseTo(steamD(s, LATE).resourceUse, 9);
+  });
+  test('any lever raise draws a missing budget (not only from level 0); an existing budget is never redrawn by a lever', () => {
+    let s = rich(run(steamAt(1), 2));
+    s = { ...s, levers: { ...s.levers, 'steam.circularity': { level: 1, ref: 0 } } };
+    expect(s.sectors.steam.budget).toBeNull();
+    const a = model.setLever(s, C, 'steam.circularity', 2);
+    expect(a.sectors.steam.budget!.r0).toBeCloseTo(steamD(s).resourceUse, 12);
+    const b = model.setLever(run(a, 10), C, 'steam.circularity', 3);
+    expect(b.sectors.steam.budget).toEqual(a.sectors.steam.budget);
+  });
+});
+
+describe('M1 balance fix 3: case-aware headline placeholders', () => {
+  test('common nouns lower-case mid-sentence and stay as authored at the start of a sentence', () => {
+    const v = { resource: 'Coal', service: 'Motive power', app: 'Cotton mills', sector: 'Steam', age: 'The Coal Age', year: '1850', n: '2' };
+    expect(substitute('Efficiency gains to ease demand for {resource}, experts agree', v)).toBe('Efficiency gains to ease demand for coal, experts agree');
+    expect(substitute('{resource} runs dry; price “no longer meaningful”', v)).toBe('Coal runs dry; price “no longer meaningful”');
+    expect(substitute('Cheap {service} makes {app} a going concern', v)).toBe('Cheap motive power makes cotton mills a going concern');
+    expect(substitute('“{app}” opens. {resource} orders double', v)).toBe('“Cotton mills” opens. Coal orders double');
+    expect(substitute('Investors flock to {sector}; nobody mentions {resource}', v)).toBe('Investors flock to Steam; nobody mentions coal');
+    expect(substitute('Welcome to {age}. Mind the step', v)).toBe('Welcome to the Coal Age. Mind the step');
+    expect(substitute('{age} begins, by most accounts, in {year}', v)).toBe('The Coal Age begins, by most accounts, in 1850');
+    expect(substitute('Ledger: {sector} at {n}, {unknown}', v)).toBe('Ledger: Steam at 2, {unknown}');
+  });
+  test('acronyms and later proper nouns survive', () => {
+    expect(substitute('Rush for {resource}', { resource: 'GPU time' })).toBe('Rush for GPU time');
+    expect(substitute('Rush for {resource}', { resource: 'Power from Kent' })).toBe('Rush for power from Kent');
+  });
+  test('real headlines go through it', () => {
+    const s = model.foundApp({ ...model.tick(model.buyUpgrade({ ...model.createState(C), capital: 1e6 }, C, 'steam.boilers'), C, 1), capital: 1e6 }, C, 'steam.mills');
+    expect(s.news[0].text).not.toMatch(/\{\w+\}/);
+  });
 });

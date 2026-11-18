@@ -338,14 +338,17 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           base.def.slots.forEach((sl, i) => {
             const key = `${idx}:${i}`;
             const it = renderSlot(l, look, sl, key, 'sl0 ov', stageN, `${l.id}:${base.def.key}:${i}:ov`, true, def.overlayProp ?? sl.p);
-            it.ord = (base.def.slots.length > 0 ? 0 : 0) + uid++ + 0.5;
             // sit right after the base element
-            it.ord = (baseOrd.get(`${base.idx}:${i}`) ?? it.ord) + 0.5;
+            it.ord = (baseOrd.get(`${base.idx}:${i}`) ?? uid++) + 0.5;
             items.push(it);
             rt.keys.push(key);
           });
           const r = rng(hash(seedBase + ':order'));
           rt.overlayOrder = base.def.slots.map((_, i) => i).sort(() => r() - 0.5);
+        }
+        if (def.site && (def.driver ?? 'app') === 'app') {
+          const site = def.site;
+          items.push({ y: site[1] + site[3], ord: uid++, band: bandOf(l, site[1] + site[3]), html: `<g class="svy" data-k="${idx}:s" transform="translate(${f(site[0])} ${f(site[1] + site[3])})">${survey(site[2], site[3])}</g>`, fx: [] });
         }
       } else {
         if (def.anchor) {
@@ -359,14 +362,15 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
             const g = renderSlot(l, look, def.anchor, `${idx}:g`, 'ghost', stageN, `${seedBase}:a`);
             g.ord = uid++;
             items.push(g);
+            const sc = def.anchor.s ?? depthScale(l, def.anchor.y);
             const site = def.site ?? siteFromHit(def);
-            if (site) {
-              items.push({ y: site[1] + site[3], ord: uid++, band: bandOf(l, site[1] + site[3]), html: `<g class="svy" data-k="${idx}:s" transform="translate(${f(site[0])} ${f(site[1] + site[3])})">${survey(site[2], site[3])}</g>`, fx: [] });
-              const sc = def.anchor.s ?? depthScale(l, def.anchor.y);
-              const bw = Math.min(site[2], 70) / sc;
-              items.push({ y: def.anchor.y + 0.01, ord: uid++, band: def.anchor.band ?? bandOf(l, def.anchor.y), html: `<g class="scaf" data-k="${idx}:f" transform="translate(${f(def.anchor.x)} ${f(def.anchor.y)}) scale(${Math.round(sc * 1000) / 1000})">${scaffold(bw, 46)}</g>`, fx: [] });
-            }
+            const bw = Math.min(site ? site[2] : 50, 70) / sc;
+            items.push({ y: def.anchor.y + 0.01, ord: uid++, band: def.anchor.band ?? bandOf(l, def.anchor.y), html: `<g class="scaf" data-k="${idx}:f" transform="translate(${f(def.anchor.x)} ${f(def.anchor.y)}) scale(${Math.round(sc * 1000) / 1000})">${scaffold(bw, 46)}</g>`, fx: [] });
           }
+        }
+        if ((def.driver ?? 'app') === 'app') {
+          const site = def.site ?? siteFromHit(def);
+          if (site) items.push({ y: site[1] + site[3], ord: uid++, band: bandOf(l, site[1] + site[3]), html: `<g class="svy" data-k="${idx}:s" transform="translate(${f(site[0])} ${f(site[1] + site[3])})">${survey(site[2], site[3])}</g>`, fx: [] });
         }
         def.slots.forEach((sl, i) => {
           const key = `${idx}:${i}`;

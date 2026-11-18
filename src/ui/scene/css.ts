@@ -50,6 +50,90 @@ const LOOKS = `
 }
 `;
 
+const LOOK_EXTRA = `
+.scn[data-look=gaslight]{--s-ink:#33426f;--s-btxt:#f4e7c5}
+.scn[data-look=gaslight] .scn-glow{background:radial-gradient(80% 45% at 50% 62%,rgba(var(--s-glow),.6),rgba(var(--s-glow),.18) 55%,rgba(var(--s-glow),0) 80%)}
+.scn[data-look=gaslight] .band-far .b,.scn[data-look=gaslight] .band-far .rf{fill:#25345f;stroke:none}
+.scn[data-look=gaslight] .band-far .b2{fill:#1f2c52;stroke:none}
+.scn[data-look=gaslight] .sil0{fill:#1d2a4f}
+.scn[data-look=gaslight] .band-mid .b,.scn[data-look=gaslight] .band-mid .rf{fill:#18223f;stroke:#2a3863}
+.scn[data-look=gaslight] .sil1{fill:#141d36!important;stroke:none!important}
+.scn[data-look=gaslight] .band-near .b,.scn[data-look=gaslight] .band-near .rf{fill:#10172c;stroke:#2a3760}
+.scn[data-look=gaslight] .gd{fill:#121a31;stroke:none}.scn[data-look=gaslight] .gd2{fill:#0f1529}
+.scn[data-look=gaslight] .pave{fill:#0b1120!important}
+.scn[data-look=gaslight] .post{stroke:#4a5a8c;stroke-width:calc(1px*var(--sw))}
+.scn[data-look=gaslight] .k{stroke:#3a4a7a}
+.scn .star{fill:#f4e7c5}
+.scn .moon{fill:#f4e7c5;stroke:none;opacity:.9}
+.scn .refl{opacity:var(--light,0)}
+.scn .neon{fill:#2a1420;stroke:#e8664a;stroke-width:calc(1px*var(--sw))}
+.scn .neonk{stroke:#ff9a7a!important;stroke-width:calc(1.2px*var(--sw))!important}
+.scn .lettr{stroke:#2a1a05!important;stroke-width:calc(1.2px*var(--sw))!important;opacity:.8}
+`;
+
+const CHROME_CSS = `
+.scn[data-look=chrome]{--s-btxt:#fbf8f0}
+.scn[data-look=chrome] .b,.scn[data-look=chrome] .rf,.scn[data-look=chrome] .b2{stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
+.scn[data-look=chrome] .k{stroke:#1a2a2d}
+.scn .hill1{fill:#b4cda8}.scn .hill2{fill:#9cbe94}
+.scn[data-look=chrome] .gd{fill:#c6d7ab;stroke:none}
+.scn .sun{fill:var(--s-sun);stroke:none}
+.scn .road{fill:#8a9496;stroke:none}.scn .edge{stroke:#f6f1e4;stroke-width:calc(.8px*var(--sw));fill:none}
+.scn .dash{stroke:#f6f1e4;stroke-width:calc(.9px*var(--sw));stroke-dasharray:4 5;fill:none}
+.scn .verge{fill:#7fa98a;stroke:none}.scn .lawn{fill:#93c08e;stroke:none}
+.scn .r2{fill:#e07a5f;stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
+.scn .r3{fill:#e9b949;stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
+.scn .c0{fill:#e07a5f}.scn .c1{fill:#0e7c77}.scn .c2{fill:#e9b949}.scn .c3{fill:#5b8fb9}.scn .c4{fill:#f3eee2;stroke:#1a2a2d;stroke-width:.5px}
+.scn .glass{fill:#cfe7ea;stroke:none}.scn .tyre{fill:#1a2a2d;stroke:none}
+.scn .vn{fill:#fbf8f0;stroke:rgba(26,42,45,.6);stroke-width:calc(.6px*var(--sw))}.scn .vs{fill:#0e7c77}.scn .volts,.scn .volt{fill:#e9b949}
+.scn .door{fill:#c9c2b0;stroke:rgba(26,42,45,.4);stroke-width:.5px}
+.scn .oil{fill:#1d1a17;stroke:none}.scn .stra1{fill:#e3d3b0}.scn .stra2{fill:#cdb48a}
+.scn .fd1{fill:#d9cf8f}.scn .fd2{fill:#b8cf96}.scn .fd3{fill:#cfd9a6}
+.scn .cyc{fill:#0e7c77;opacity:.6}
+.scn .trail{fill:none;stroke:rgba(255,255,255,.85);stroke-width:2.2;vector-effect:none!important}
+.scn .cloud{fill:#fbf8f0;stroke:none;opacity:.92}
+`;
+
+const TERM_CSS = `
+.scn[data-look=terminal]{--s-btxt:#9ff08f}
+.scn[data-look=terminal] .b,.scn[data-look=terminal] .rf,.scn[data-look=terminal] .b2{fill:#070b08;stroke:#7fd474;stroke-width:calc(.9px*var(--sw))}
+.scn[data-look=terminal] .band-far .b,.scn[data-look=terminal] .band-far .rf{stroke:#4f8a48}
+.scn[data-look=terminal] .k{stroke:#7fd474}
+.scn[data-look=terminal] .band-far .k{stroke:#4f8a48}
+.scn[data-look=terminal] .w{fill:none;stroke:#2f5a2b;stroke-width:.6px}
+.scn[data-look=terminal] .wa{fill:rgba(95,208,224,.08);stroke:#5fd0e0;stroke-width:.7px}
+.scn[data-look=terminal] .wl{stroke:#5fd0e0}
+.scn[data-look=terminal] .gd{fill:#050906;stroke:none}
+.scn[data-look=terminal] .tr{fill:none;stroke:#5c9a55}
+.scn[data-look=terminal] .ac{fill:#e9b44a;stroke:none}
+.scn[data-look=terminal] .scn-stage::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 3px)}
+.scn .cy{fill:#5fd0e0;stroke:none}
+.scn .grid{fill:none;stroke:rgba(127,212,116,.13);stroke-width:.6px}
+.scn .hzn{fill:none;stroke:#7fd474;stroke-width:1.2px;opacity:.7}
+.scn .dim{opacity:.45}
+.scn .lnk{stroke:rgba(127,212,116,.28)!important;stroke-width:.7px!important;fill:none}
+`;
+
+const AGENT_CSS = `
+.scn[data-look=agentic]{--s-btxt:#ffffff}
+.scn .cl{fill:none;stroke:#c3c0b6;stroke-width:calc(1.1px*var(--sw))}
+.scn .dg{fill:#1a7f37;stroke:none}.scn .dr{fill:#cf222e;stroke:none}.scn .dgf{fill:#2da44e}.scn .blu{fill:#3474d4}
+.scn .aband{fill:#f6f5f1;stroke:#9a978e;stroke-width:.8px;stroke-dasharray:2 2}
+.scn .scf2{stroke:#8a877e}
+.scn .note{fill:#f3dd6d;stroke:#b9a43b;stroke-width:.5px}
+.scn .tangle{stroke:#6e6b64}.scn .dead{stroke:#a3a097}
+.scn .clear{fill:none;stroke:#1a7f37;stroke-width:1px;stroke-dasharray:3 2}
+.scn .okk{fill:none;stroke:#1a7f37;stroke-width:1.4px}
+.scn .eye{fill:#fff}
+.scn .bub{stroke:#fff;stroke-width:1.4px}
+.scn .far{stroke:#c9c6bc!important;fill:#f7f6f2!important}
+.scn .debt{fill:#8d8a82;opacity:.28}
+.scn .rsun{transform-box:fill-box;transform-origin:50% 50%;transform:scale(calc(.35 + var(--res,1)*.65));transition:transform 1.5s}
+.scn .asun{fill:#e0592a;stroke:none;opacity:.9}
+.scn[data-look=agentic] .gd{fill:#ebe9e2;stroke:none}
+`;
+
 const BASE = `
 .scn{position:relative;font-family:var(--body,Georgia,serif);color:var(--ink,#2a1f15);--sw:1;}
 .scn.wide{--sw:1.35}
@@ -193,7 +277,7 @@ const BASE = `
   animation:scn-ping 2.2s ease-out infinite}
 @keyframes scn-ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.5);opacity:0}}
 .scn-banner{position:absolute;left:0;right:0;top:38%;transform:translateY(-50%);text-align:center;pointer-events:none;
-  font-family:var(--display,Georgia,serif);font-weight:700;font-size:clamp(15px,4.2vw,26px);color:var(--s-paper);
+  font-family:var(--display,Georgia,serif);font-weight:700;font-size:clamp(15px,4.2vw,26px);color:var(--s-btxt,var(--s-paper));
   text-shadow:0 1px 0 rgba(0,0,0,.25);opacity:0;transition:opacity 1s;padding:8px 12px}
 .scn-banner span{display:inline-block;padding:6px 14px;background:rgba(var(--s-smk),.82);border-top:1px solid currentColor;border-bottom:1px solid currentColor}
 .scn-banner.on{opacity:1}
@@ -229,10 +313,10 @@ export function injectSceneCss(doc: Document = document): void {
   if (doc.getElementById('scn-css')) { injected = true; return; }
   const el = doc.createElement('style');
   el.id = 'scn-css';
-  el.textContent = LOOKS + BASE;
+  el.textContent = LOOKS + LOOK_EXTRA + CHROME_CSS + TERM_CSS + AGENT_CSS + BASE;
   doc.head.appendChild(el);
   injected = true;
 }
 
-export const SCENE_CSS = LOOKS + BASE;
+export const SCENE_CSS = LOOKS + LOOK_EXTRA + CHROME_CSS + TERM_CSS + AGENT_CSS + BASE;
 export const KNOWN_LOOKS = new Set(['ledger', 'gaslight', 'chrome', 'terminal', 'agentic']);

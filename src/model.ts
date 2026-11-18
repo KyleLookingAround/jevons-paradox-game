@@ -430,12 +430,17 @@ function leverNetUpkeep(def: LeverDef, level: number, instLevel: number): number
 /* Budget line                                                         */
 /* ------------------------------------------------------------------ */
 
+/** M1 balance: the line declines until held (Steady State reached on it), never below floor × r0. */
 function budgetROf(es: SectorState | undefined, def: SectorDef, content: Content, time: number): number | null {
   const b = es?.budget;
   if (!b) return null;
   const d = def.steady?.declinePerDecade ?? steadyCfg(content).decline;
-  return fin(b.r0 * Math.pow(Math.max(0, 1 - d), ((time - b.since) * YEARS_PER_SECOND) / 10));
+  const floor = clamp(fin(def.steady?.budgetFloor ?? content.global?.steady?.budgetFloor ?? 0), 0, 1);
+  const until = b.heldAt !== undefined && Number.isFinite(b.heldAt) ? Math.min(time, b.heldAt) : time;
+  return fin(Math.max(floor * b.r0, b.r0 * Math.pow(Math.max(0, 1 - d), ((until - b.since) * YEARS_PER_SECOND) / 10)));
 }
+const standingDrawYearsOf = (def: SectorDef, content: Content): number =>
+  Math.max(0, fin(def.steady?.standingDrawYears ?? content.global?.steady?.standingDrawYears ?? 0));
 const isWithin = (R: number, budgetR: number | null): boolean => budgetR !== null && R <= budgetR * (1 + BUDGET_TOLERANCE);
 
 /* ------------------------------------------------------------------ */
@@ -834,6 +839,27 @@ const FALLBACK: Record<HeadlineKey, string> = {
   budgetBroken: '{sector} breaks its budget',
 };
 
+/** Common-noun placeholders: lower-cased mid-sentence (see Content.headlines). */
+const COMMON_NOUNS = new Set(['app', 'resource', 'service']);
+/** True when `before` ends where a sentence starts: nothing yet, or . ! ? and a space (opening quotes allowed). */
+const atSentenceStart = (before: string): boolean => /(^|[.!?]\s+)[\s“‘"'(]*$/.test(before);
+/** Lower-case the first letter of a common noun, unless it opens with an acronym ("AI models", "GPU time"). */
+function lowerFirst(name: string): string {
+  if (name.length < 2 || /^\p{Lu}[\p{Lu}\d]/u.test(name)) return name;
+  return name.charAt(0).toLowerCase() + name.slice(1);
+}
+/** Placeholder substitution, case-aware (M1 balance fix): "demand for coal", "Coal runs dry", "welcome to the Coal Age". */
+export function substitute(text: string, values: Record<string, string>): string {
+  return text.replace(/\{(\w+)\}/g, (whole, key: string, offset: number) => {
+    const v = values[key];
+    if (v === undefined) return whole;
+    if (atSentenceStart(text.slice(0, offset))) return v;
+    if (COMMON_NOUNS.has(key)) return lowerFirst(v);
+    if (key === 'age') return v.replace(/^The\b/, 'the');
+    return v;
+  });
+}
+
 interface HeadlineCtx { year: number; app?: string; n?: number }
 function headline(state: GameState, content: Content, key: HeadlineKey, time: number, ctx: HeadlineCtx, sector?: SectorId): NewsItem {
   const own = sector ? content.sectorHeadlines?.[sector]?.[key] : undefined;
@@ -843,14 +869,11 @@ function headline(state: GameState, content: Content, key: HeadlineKey, time: nu
   const def = sector ? content.sectors[sector] : undefined;
   const age = sector ? idx(content).ageOf.get(sector) ?? currentAge(state, content) : currentAge(state, content);
   const year = Math.floor(ctx.year);
-  text = text
-    .replace(/\{sector\}|\{era\}/g, def?.name ?? '')
-    .replace(/\{age\}/g, age?.name ?? '')
-    .replace(/\{app\}/g, ctx.app ?? '')
-    .replace(/\{resource\}/g, def?.resource.name ?? '')
-    .replace(/\{service\}/g, def?.service.name ?? '')
-    .replace(/\{year\}/g, String(year))
-    .replace(/\{n\}/g, ctx.n !== undefined ? String(ctx.n) : '');
+  text = substitute(text, {
+    sector: def?.name ?? '', era: def?.name ?? '', age: age?.name ?? '', app: ctx.app ?? '',
+    resource: def?.resource.name ?? '', service: def?.service.name ?? '', year: String(year),
+    n: ctx.n !== undefined ? String(ctx.n) : '',
+  });
   const item: NewsItem = { time, year, key, text };
   if (sector) item.sector = sector;
   return item;
@@ -1296,7 +1319,8 @@ function step(state: GameState, content: Content, dt: number, lite = false): Gam
     }
 
     // budget auto-draw for an active cap
-    if (Number.isFinite(lev.capFrac) && !es0.budget && f.D > 0 && f.R > 0) {
+    if (Number.isFinite(lev.capFrac) && !es0.budget && f.D > 0 && f.R > 0
+      && es0.openFor * YEARS_PER_SECOND >= standingDrawYearsOf(def, content) - 1e-9) {
       es.budget = { r0: f.R, since: state.time, drawnYear: Math.floor(year) };
       items.push(headline(tmp, content, 'budgetDrawn', time, hc, s));
     }
@@ -1324,6 +1348,8 @@ function step(state: GameState, content: Content, dt: number, lite = false): Gam
         }
       }
       if (before < STEADY_STATE_YEARS && after >= STEADY_STATE_YEARS) {
+        // M1 balance: Steady State earned on this line holds it level from now on.
+        if (es.budget && es.budget.heldAt === undefined) es.budget = { ...es.budget, heldAt: state.time };
         if (!runSteady[s]) {
           runSteady = { ...runSteady, [s]: true };
           grant('steadyState');
@@ -1784,7 +1810,7 @@ function setLever(state: GameState, content: Content, leverId: string, level: nu
   if (cur.level === 0 || !(ref > 0)) ref = def.kind === 'duty' && f && f.D > 0 ? f.pPre + f.permitPart : 0;
   const items: NewsItem[] = [];
   let sectors = state.sectors;
-  if (cur.level === 0 && !state.sectors[def.sector]?.budget && f && f.R > 0) sectors = drawBudgetAt(state, content, def.sector, f.R, items);
+  if (!state.sectors[def.sector]?.budget && f && f.R > 0) sectors = drawBudgetAt(state, content, def.sector, f.R, items);
   items.push(headline(state, content, 'leverEnacted', state.time, { year: calendarYear(state, content) }, def.sector));
   return {
     ...state, mandate: state.mandate - cost, sectors,
@@ -2208,7 +2234,8 @@ function validBudget(x: unknown): BudgetState | null {
   if (!isObj(x)) return null;
   const r0 = numOr(x.r0, NaN), since = numOr(x.since, NaN), drawnYear = numOr(x.drawnYear, NaN);
   if (!(r0 > 0) || !Number.isFinite(since) || !Number.isFinite(drawnYear)) return null;
-  return { r0, since, drawnYear };
+  const heldAt = numOr(x.heldAt, NaN);
+  return Number.isFinite(heldAt) ? { r0, since, drawnYear, heldAt } : { r0, since, drawnYear };
 }
 
 function deserialize(text: string, content: Content): GameState | null {

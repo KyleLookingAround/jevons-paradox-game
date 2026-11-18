@@ -152,6 +152,12 @@ export interface Content {
    * `{sector}` sector name (on screen an industry), `{age}` age name, `{app}` application name, `{resource}`,
    * `{service}`, `{year}` calendar year (integer), `{n}` an event count (the decade number for 'decade', the crisis
    * number for 'crisis', else empty). Variant choice is deterministic from state.seed, time and the news count.
+   * M1 balance: substitution is case-aware. `{app}`, `{resource}` and `{service}` are common nouns: away from the start
+   * of a sentence their first letter is lower-cased ("demand for coal"), unless the name starts with an acronym ("AI
+   * models") — only the first letter is touched, so later proper nouns survive. `{age}` lower-cases a leading "The"
+   * mid-sentence ("Welcome to the Coal Age"). `{sector}` is the proper name of an industry and is kept as authored.
+   * A sentence starts at the beginning of the template or after . ! or ? and a space (opening quotes allowed).
+   * Content should therefore author those names in sentence case with any proper noun after the first word.
    */
   headlines: Record<HeadlineKey, string[]>;
   /**
@@ -250,7 +256,16 @@ export interface GlobalParams {
   /**
    * M1: budgets and Steady State (see SectorState.budget, SectorDerived.decoupling). Default when absent:
    * { budgetDeclinePerDecade: 0.05, decadeYears: 10, decadeEffects: [], firstSteadyEffects: [] }.
-   *   budgetDeclinePerDecade  budgetR(t) = r0 · (1 − d)^(model years since drawn / 10). A sector may override.
+   *   budgetDeclinePerDecade  budgetR(t) = max(floor · r0, r0 · (1 − d)^(y / 10)), y = model years since drawn,
+   *                           counted only until the line is HELD (BudgetState.heldAt). A sector may override.
+   *                           M1 BALANCE CHANGE: the line declines until the sector reaches Steady State on it, then
+   *                           holds level for the rest of the run (until redrawn). Steady State is earned by real
+   *                           decline (50 streak years ≥ five decades of it); once earned it is keepable indefinitely.
+   *   budgetFloor             M1 BALANCE: the line never falls below this fraction of r0. Default 0 (no floor).
+   *   standingDrawYears       M1 BALANCE: an active cap with no budget (an institution's standing cap) draws its line
+   *                           automatically only once the sector has been open this many model years (on the first step
+   *                           with demand after that), so it is drawn across a grown economy rather than the opening
+   *                           one. Default 0 (the first step with demand). A sector may override.
    *   decadeYears             streak length of one "decade within budget" (milestone). Default 10.
    *   decadeEffects           applied each time any sector completes a decade within budget (unless it overrides).
    *                           One-off effects pay at that moment; standing effects stay for the rest of the run, once
@@ -260,6 +275,8 @@ export interface GlobalParams {
    */
   steady?: {
     budgetDeclinePerDecade: number;
+    budgetFloor?: number;
+    standingDrawYears?: number;
     decadeYears?: number;
     decadeEffects: EffectDef[];
     firstSteadyEffects?: EffectDef[];
@@ -391,9 +408,9 @@ export interface SectorDef {
   /**
    * M1: per-sector overrides of GlobalParams.steady. Default: absent (global values).
    * declinePerDecade replaces budgetDeclinePerDecade; decadeEffects replaces the global decadeEffects for decades
-   * this sector completes.
+   * this sector completes; budgetFloor and standingDrawYears replace the global ones (M1 balance).
    */
-  steady?: { declinePerDecade?: number; decadeEffects?: EffectDef[] };
+  steady?: { declinePerDecade?: number; decadeEffects?: EffectDef[]; budgetFloor?: number; standingDrawYears?: number };
 
   applications: ApplicationDef[];
 }
@@ -499,7 +516,8 @@ export type LeverKind =
   | 'duty'
   /** M1 CHANGE: hard ceiling capR = value × budgetR(t) — a fraction of the sector's declining BUDGET LINE, not of
    *  "R when enacted". The tightest cap of a sector applies. If the sector has no budget when a cap is active, one is
-   *  drawn at the current R on the first step with demand. A permit price is added to p_r until R meets the cap.
+   *  drawn at the current R on the first step with demand once the sector has been open steady.standingDrawYears
+   *  (M1 balance; default 0); until then the cap has no line and does nothing. A permit price is added to p_r until R meets the cap.
    *  Leak: when permit > value2 × p_r (leakAbove), the effective cap rises by up to 25%:
    *    leak = 0.25 × clamp(permit / (leakAbove × p_r) − 1, 0, 1), solved self-consistently; value2 absent = no leak.
    *  Squeeze limit: a cap never squeezes out more than 95% of the demand above the floors (lock-in floors and drawsOn
@@ -712,9 +730,11 @@ export interface GameState {
 }
 
 /**
- * M1: a sector's budget line. budgetR(t) = r0 × (1 − d)^((t − since) × YEARS_PER_SECOND / 10), d = the sector's decline
- * per decade. Drawn (when absent) by: drawBudget(); the player raising any lever of the sector from level 0
- * (setLever); or an active cap lever on the first step with demand. drawBudget() on a sector that has one REDRAWS it at
+ * M1: a sector's budget line. budgetR(t) = max(floor × r0, r0 × (1 − d)^((min(t, heldAt) − since) × YEARS_PER_SECOND / 10)),
+ * d = the sector's decline per decade, floor = steady.budgetFloor (default 0), heldAt absent = ∞.
+ * Drawn (when absent) by: drawBudget(); the player raising any lever of the sector (setLever; M1 balance: any raise,
+ * not only from level 0, so Tightening a standing cap draws its line); or an active cap lever on the first step with
+ * demand once the sector has been open steady.standingDrawYears. drawBudget() on a sector that has one REDRAWS it at
  * the current R and resets the sector's streak (steadyYears 0); decades already earned are kept.
  */
 export interface BudgetState {
@@ -724,6 +744,11 @@ export interface BudgetState {
   since: number;
   /** Calendar year when drawn (for the ledger). */
   drawnYear: number;
+  /**
+   * M1 balance: run time at which the line stopped declining because the sector reached Steady State on it (its streak
+   * crossed STEADY_STATE_YEARS). Absent while the line still declines. A redraw starts a new, declining line.
+   */
+  heldAt?: number;
 }
 
 /** M1 CHANGE (was EraState). */
@@ -1142,10 +1167,10 @@ export interface ModelApi {
    * Each step (all open sectors, in sectorOrder): η, applications (availability, sufficiency drift, peaks), reserve,
    * pressure and crises, baseline, trend, serviceDelivered, backfire (direct rebound > 1, first time this run:
    * SectorState.backfired, 'backfire' headline and achievement, meta.backfiredSectors and run.firstBackfires if new),
-   * budget auto-draw for active caps, decoupling streak (steadyYears += dt × YEARS_PER_SECOND while decoupling, else
+   * budget auto-draw for active caps (after steady.standingDrawYears), decoupling streak (steadyYears += dt × YEARS_PER_SECOND while decoupling, else
    * reset — a reset of a streak holding ≥ 1 decade emits 'budgetBroken'; each time the streak crosses a multiple of
    * decadeYears a decade is recorded: decadesWithin, run.budgetDecades, decade effects, 'decade' headline; crossing
-   * STEADY_STATE_YEARS sets run.steadySectors / meta.steadySectors, achievement 'steadyState', 'steadySector' headline
+   * STEADY_STATE_YEARS holds the sector's budget line (BudgetState.heldAt) and sets run.steadySectors / meta.steadySectors, achievement 'steadyState', 'steadySector' headline
    * (once per sector per run) and, if the sector is new to meta.steadySectors, firstSteadyEffects); then population,
    * Mandate and lapses, sector unlocks ('sectorOpened', and 'ageBegins' when it is the first open sector of its age,
    * meta.sectorsOpened), steadyYearsAll and the win, run stats (wellbeingYears, yearsAtTarget, decoupledYears,
@@ -1168,8 +1193,8 @@ export interface ModelApi {
   foundApp(state: GameState, content: Content, appId: string): GameState;
   /**
    * Raise or lower a lever to `level` (0 … maxLevel). Raising charges Mandate (levels at or below an institution's
-   * startLever level are free); lowering is free and immediate. Raising a lever from 0 snapshots duty's ref, and draws
-   * the sector's budget at the current R if it has none.
+   * startLever level are free); lowering is free and immediate. Raising a lever from 0 snapshots duty's ref; raising any
+   * lever (M1 balance: from any level) draws the sector's budget at the current R if it has none.
    */
   setLever(state: GameState, content: Content, leverId: string, level: number): GameState;
   /** M1: choose where a duty or cap lever's revenue goes. Refused for options the lever does not offer. Free. */

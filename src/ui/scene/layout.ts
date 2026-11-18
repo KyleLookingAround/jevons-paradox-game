@@ -9,7 +9,8 @@ export type FxKind =
   | 'spin'    // markup rotates about its own (0,0): winding wheels, flywheels, windmill sails
   | 'rock'    // markup rocks ±a few degrees about its (0,0): beam engines, nodding donkeys
   | 'blink'   // markup blinks: LEDs, aircraft lights, typing dots
-  | 'flow';   // markup is a path whose dashes run along it: packets on a cable
+  | 'flow'    // markup is a path whose dashes run along it: packets on a cable
+  | 'drift';  // markup drifts slowly to and fro: clouds
 
 export interface PropArgs {
   /** Slot scale (perspective). Props use it to pick a hatch density that reads the same at every depth. */
