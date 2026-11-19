@@ -11,6 +11,10 @@ import { code } from './layouts/code';
 import { genericLayout } from './layouts/generic';
 import { birds } from './layouts/util';
 import { styleFor, allStyles, addProps } from './styles/index';
+import { M3_TERMINAL, M3_CHROME } from './props/m3';
+
+addProps('terminal', M3_TERMINAL);
+addProps('chrome', M3_CHROME);
 
 const SHARED: Record<string, Prop> = { ...COMMON, ...CIVIC, birds };
 

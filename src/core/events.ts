@@ -7,7 +7,7 @@ import { EVENTS_MAX } from '../types';
 import type { Actor, EventKind, GameEvent, GameState, HeadlineKey, SectorId } from '../types';
 
 /** An event before it has a seq, a time and a year. */
-export interface EvDraft { kind: EventKind; sector?: SectorId; id?: string; n?: number; by?: Actor }
+export interface EvDraft { kind: EventKind; sector?: SectorId; id?: string; n?: number; by?: Actor; first?: boolean; label?: string }
 
 /** The event kind a headline stands for, where both exist (the step emits them together). */
 export const HEADLINE_EVENT: Partial<Record<HeadlineKey, EventKind>> = {
@@ -29,6 +29,8 @@ export function pushEvents(events: GameEvent[], seq: number, drafts: EvDraft[], 
     if (d.id !== undefined) e.id = d.id;
     if (d.n !== undefined) e.n = d.n;
     if (d.by !== undefined) e.by = d.by;
+    if (d.first) e.first = true;
+    if (d.label !== undefined) e.label = d.label;
     out.push(e);
   }
   return { events: out.length > EVENTS_MAX ? out.slice(out.length - EVENTS_MAX) : out, seq };

@@ -4,11 +4,17 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { SAVE_VERSION, START_YEAR, YEARS_PER_SECOND } from '../types';
-import { EVENTS_MAX, PENDING_DIVIDENDS_MAX, RUN_HISTORY_MAX, OPENING_MAX } from '../types';
+import { EVENTS_MAX, PENDING_DIVIDENDS_MAX, RUN_HISTORY_MAX, OPENING_MAX, ANSWERED_MAX, MODIFIERS_MAX, MILESTONES_MAX, LOAD_HOURS } from '../types';
 import type {
-  AppState, BudgetState, Content, GameEvent, GameState, LeverRecycle, LeverState, MetaState, OpeningAction, OpeningRecord,
-  PendingDividend, RunSummary, SectorId, SectorState, SettledState,
+  ActiveModifier, AnsweredDispatch, AppState, BudgetState, Content, EndingRecord, FiledReturn, GameEvent, GameState, LeverRecycle,
+  LeverState, MetaState, OpeningAction, OpeningRecord, PendingDispatch, PendingDividend, RunSummary, SectorId, SectorState, SettledState,
 } from '../types';
+import { DISPATCH_QUEUE_MAX } from './constants';
+import { dispatchFirstAt, dispatchGap } from './dispatchClock';
+import { unlockNotes } from './archive';
+import { endingRecord } from './ending';
+import { milestone } from './milestones';
+import { validReturn } from './returns';
 import { NEWS_MAX, HISTORY_MAX } from './constants';
 import { calendarYear } from './calendar';
 import { drawOffer } from './charters';
@@ -205,15 +211,59 @@ function migrateV2(raw: Record<string, unknown>, content: Content): Record<strin
   return r;
 }
 
+/** M3: v3 → v4 steps 1–5 (types.ts SAVE_VERSION), on a JSON copy. Steps 6–7 run once the state is built. */
+function migrateV3(raw: Record<string, unknown>, content: Content): Record<string, unknown> {
+  const r: Record<string, unknown> = JSON.parse(JSON.stringify(raw));
+  // 1
+  r.modifiers = [];
+  r.ambientLast = {};
+  r.orderLog = {};
+  r.historyLifted = false;
+  r.dispatch = { pending: [], queue: [], answered: [], offered: [], draws: 0, standing: [], nextAt: -1 };
+  // 2
+  const sectors = isObj(r.sectors) ? r.sectors : {};
+  for (const es of Object.values(sectors)) {
+    if (!isObj(es)) continue;
+    es.seamsSunk = 0;
+    if (isObj(es.settled)) { delete es.settled.load; delete es.settled.travel; delete es.settled.appPriceSeen; }
+  }
+  // 3
+  const run: Record<string, unknown> = isObj(r.run) ? r.run : {};
+  r.run = run;
+  run.dispatchesAnswered = 0;
+  run.dispatchesDefaulted = 0;
+  // 4
+  const meta: Record<string, unknown> = isObj(r.meta) ? r.meta : {};
+  r.meta = meta;
+  Object.assign(meta, {
+    dispatches: { seen: {}, arms: {}, playerArms: {} }, history: null, histories: {}, unlocks: {}, returns: {}, archive: {},
+    flags: {}, endings: {}, bankedSeconds: 0,
+  });
+  const ms: Record<string, { run: number; at: number; year: number }> = {};
+  const early = { run: 0, at: 0, year: 0 };
+  const ids = idx(content).ids;
+  const keyed = (rec: unknown, prefix: string) => { if (isObj(rec)) for (const s of ids) if (rec[s] === true) ms[`${prefix}:${s}`] = { ...early }; };
+  keyed(meta.sectorsOpened, 'sectorOpened');
+  keyed(meta.steadySectors, 'steady');
+  keyed(meta.backfiredSectors, 'backfire');
+  meta.milestones = ms;
+  if (isObj(meta.orders)) meta.orders.dispatch = { on: false, cast: {} };
+  // 5: RunSummary entries keep their M3 optional fields absent
+  r.version = 4;
+  return r;
+}
+
 /* ---- element-by-element validation of the M2 map- and array-valued fields ---- */
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
-const ACTORS = new Set(['player', 'market', 'civilService', 'treasury', 'default']);
+const ACTORS = new Set(['player', 'market', 'civilService', 'treasury', 'default', 'dispatch']);
 const EVENT_KINDS = new Set([
   'appAvailable', 'appFounded', 'upgradeBought', 'stageReached', 'leverEnacted', 'leverLapsed', 'budgetDrawn',
   'budgetBroken', 'decade', 'dividendChosen', 'clearSkies', 'steadyState', 'settled', 'unsettled', 'crisis', 'collapse',
   'exhausted', 'backfire', 'reveal', 'sectorOpened', 'ageBegins', 'commonsBuilt', 'charterChosen', 'won', 'reckoning',
   'featureUnlocked',
+  'seamSunk', 'biteBack', 'dispatchArrived', 'dispatchAnswered', 'modifierEnded', 'historyChosen', 'historyCleared', 'returnFiled',
+  'returnPublished', 'returnWithdrawn', 'archiveUnlocked', 'ending', 'bankUsed',
 ]);
 function validEvents(x: unknown, maxSeq: number): GameEvent[] {
   if (!Array.isArray(x)) return [];
@@ -227,6 +277,8 @@ function validEvents(x: unknown, maxSeq: number): GameEvent[] {
     if (typeof e.id === 'string') ev.id = e.id;
     if (isNum(e.n)) ev.n = e.n;
     if (typeof e.by === 'string' && ACTORS.has(e.by)) ev.by = e.by as GameEvent['by'];
+    if (e.first === true) ev.first = true;
+    if (typeof e.label === 'string') ev.label = e.label;
     out.push(ev);
     last = e.seq;
   }
@@ -263,6 +315,19 @@ function validOpening(x: unknown): OpeningRecord | undefined {
   if (typeof x.charter === 'string') r.charter = x.charter;
   return r;
 }
+const ORDER_OUTCOMES = new Set(['bought', 'none', 'cash', 'payback']);
+function validOrderLog(x: unknown, content: Content): GameState['orderLog'] {
+  const out: GameState['orderLog'] = {};
+  if (!isObj(x)) return out;
+  const ix = idx(content);
+  for (const [k, v] of Object.entries(x)) {
+    if (!ix.pos.has(k) || !isObj(v) || !isNum(v.t) || typeof v.outcome !== 'string' || !ORDER_OUTCOMES.has(v.outcome)) continue;
+    out[k] = { t: v.t, outcome: v.outcome as 'bought' };
+    if (typeof v.id === 'string') out[k].id = v.id;
+    if (isNum(v.payback)) out[k].payback = v.payback;
+  }
+  return out;
+}
 const validSummary = (x: unknown): x is RunSummary =>
   isObj(x) && typeof x.cause === 'string' && isNum(x.seconds) && isNum(x.hindsightGained) && isObj(x.sectors);
 function validSettled(x: unknown): SettledState | null {
@@ -274,6 +339,112 @@ function validSettled(x: unknown): SettledState | null {
     pPre: x.pPre as number, income: x.income as number, P: x.P as number, eta: x.eta as number, defect: x.defect as number,
     N0: x.N0 as number, spillMul0: x.spillMul0 as number, extraD0: x.extraD0 as number,
     appD: amountMap(x.appD), appAdoption: amountMap(x.appAdoption),
+    ...m3Settled(x),
+  };
+}
+function m3Settled(x: Record<string, unknown>): Partial<SettledState> {
+  const out: Partial<SettledState> = {};
+  const l = x.load;
+  if (isObj(l) && isNum(l.factor) && isNum(l.capCostEff) && Array.isArray(l.hours) && l.hours.length === LOAD_HOURS && l.hours.every(isNum)) {
+    out.load = { factor: l.factor, hours: (l.hours as number[]).slice(), capCostEff: l.capCostEff };
+  }
+  const t = x.travel;
+  if (isObj(t) && isNum(t.speed) && isNum(t.hoursPerHead) && isNum(t.roads) && isNum(t.sprawl)) out.travel = { speed: t.speed, hoursPerHead: t.hoursPerHead, roads: t.roads, sprawl: t.sprawl };
+  if (isObj(x.appPriceSeen)) out.appPriceSeen = amountMap(x.appPriceSeen);
+  return out;
+}
+
+/* ---- M3 validation ---- */
+function validModifiers(x: unknown, content: Content): ActiveModifier[] {
+  if (!Array.isArray(x)) return [];
+  const ix = idx(content);
+  const out: ActiveModifier[] = [];
+  for (const m of x) {
+    if (!isObj(m) || typeof m.source !== 'string' || !isNum(m.arm) || !isNum(m.since) || !isNum(m.until)) continue;
+    if (!ix.dispatches.get(m.source)?.arms[m.arm]?.modifier) continue;
+    out.push({ source: m.source, arm: m.arm, since: m.since, until: m.until });
+  }
+  return out.slice(-MODIFIERS_MAX);
+}
+function validDispatch(x: unknown, content: Content, fresh: GameState['dispatch']): GameState['dispatch'] {
+  if (!isObj(x)) return fresh;
+  const ix = idx(content);
+  const known = (id: unknown): id is string => typeof id === 'string' && ix.dispatches.has(id);
+  const pending: PendingDispatch[] = (Array.isArray(x.pending) ? x.pending : [])
+    .filter((p): p is Record<string, unknown> => isObj(p) && known(p.id) && isNum(p.arrivedAt) && isNum(p.expiresAt))
+    .map((p) => ({ id: p.id as string, arrivedAt: p.arrivedAt as number, expiresAt: p.expiresAt as number })).slice(0, 3);
+  const answered: AnsweredDispatch[] = (Array.isArray(x.answered) ? x.answered : [])
+    .filter((a): a is Record<string, unknown> => isObj(a) && known(a.id) && isNum(a.arm) && isNum(a.t) && typeof a.by === 'string' && ACTORS.has(a.by))
+    .map((a) => ({ id: a.id as string, arm: a.arm as number, t: a.t as number, by: a.by as AnsweredDispatch['by'] })).slice(-ANSWERED_MAX);
+  const standing: [string, number][] = (Array.isArray(x.standing) ? x.standing : [])
+    .filter((e): e is [string, number] => Array.isArray(e) && e.length === 2 && known(e[0]) && isNum(e[1]) && !!ix.dispatches.get(e[0])?.arms[e[1]])
+    .map((e) => [e[0], e[1]]);
+  return {
+    pending, answered, standing,
+    queue: (Array.isArray(x.queue) ? x.queue : []).filter(known).slice(-DISPATCH_QUEUE_MAX),
+    offered: (Array.isArray(x.offered) ? x.offered : []).filter(known),
+    draws: isNum(x.draws) && x.draws >= 0 ? Math.floor(x.draws) : 0,
+    nextAt: isNum(x.nextAt) ? x.nextAt : fresh.nextAt,
+  };
+}
+function armCounts(x: unknown, content: Content): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  if (!isObj(x)) return out;
+  const ix = idx(content);
+  for (const [k, v] of Object.entries(x)) if (ix.dispatches.has(k) && Array.isArray(v)) out[k] = v.map((n) => (isNum(n) && n >= 0 ? Math.floor(n) : 0));
+  return out;
+}
+function validMeta3(m: Record<string, unknown>, content: Content): Partial<MetaState> {
+  const ix = idx(content);
+  const d = isObj(m.dispatches) ? m.dispatches : {};
+  const seen: Record<string, number> = {};
+  if (isObj(d.seen)) for (const [k, v] of Object.entries(d.seen)) if (ix.dispatches.has(k) && isNum(v) && v > 0) seen[k] = Math.floor(v);
+  const histories: MetaState['histories'] = {};
+  if (isObj(m.histories)) {
+    for (const [k, v] of Object.entries(m.histories)) {
+      if (!ix.histories.has(k) || !isObj(v)) continue;
+      histories[k] = { runs: isNum(v.runs) && v.runs >= 0 ? Math.floor(v.runs) : 0, cleared: v.cleared === true, best: isNum(v.best) ? v.best : null };
+    }
+  }
+  const unlocks: Record<string, true> = {};
+  if (isObj(m.unlocks)) {
+    for (const [k, v] of Object.entries(m.unlocks)) {
+      if (v !== true) continue;
+      if (k.startsWith('cosmetic:') || k.startsWith('title:') || ix.commons.has(k) || ix.charters.has(k) || ix.upgrades.has(k) || ix.levers.has(k)) unlocks[k] = true;
+    }
+  }
+  const returns: Record<string, FiledReturn> = {};
+  if (isObj(m.returns)) {
+    for (const [k, v] of Object.entries(m.returns)) {
+      if (!isObj(v)) continue;
+      const ok = validReturn({ id: k, figures: v.figures });
+      if (!ok) continue;
+      returns[k] = {
+        figures: ok.figures, run: isNum(v.run) ? Math.floor(v.run) : 0, at: isNum(v.at) ? v.at : 0, published: v.published === true,
+        template: isNum(v.template) && v.template >= 0 ? Math.floor(v.template) : null,
+      };
+    }
+  }
+  const archive: Record<string, number> = {};
+  if (isObj(m.archive)) for (const [k, v] of Object.entries(m.archive)) if (ix.archive.has(k) && isNum(v)) archive[k] = v;
+  const endings: Record<string, EndingRecord> = {};
+  if (isObj(m.endings)) {
+    for (const [k, v] of Object.entries(m.endings)) {
+      if (isObj(v) && isNum(v.run) && isNum(v.runSeconds) && isNum(v.totalSeconds) && isNum(v.year)) endings[k] = { run: v.run, runSeconds: v.runSeconds, totalSeconds: v.totalSeconds, year: v.year };
+    }
+  }
+  const milestones: MetaState['milestones'] = {};
+  if (isObj(m.milestones)) {
+    for (const [k, v] of Object.entries(m.milestones)) {
+      if (Object.keys(milestones).length >= MILESTONES_MAX) break;
+      if (isObj(v) && isNum(v.run) && isNum(v.at) && isNum(v.year)) milestones[k] = { run: v.run, at: v.at, year: v.year };
+    }
+  }
+  return {
+    dispatches: { seen, arms: armCounts(d.arms, content), playerArms: armCounts(d.playerArms, content) },
+    history: typeof m.history === 'string' && ix.histories.has(m.history) ? m.history : null,
+    histories, unlocks, returns, archive, flags: trueMap(m.flags), endings, milestones,
+    bankedSeconds: Math.max(0, numOr(m.bankedSeconds, 0)),
   };
 }
 
@@ -309,6 +480,7 @@ export function deserialize(text: string, content: Content): GameState | null {
       raw = raw0;
     }
     if (version < 3) raw = migrateV2(raw, content);
+    if (version < 4) raw = migrateV3(raw, content);
   } catch { return null; }
   try {
     const ix = idx(content);
@@ -353,6 +525,7 @@ export function deserialize(text: string, content: Content): GameState | null {
       slots,
       loadout,
       // the unfolding: known feature ids with finite stamps; a save from before it (no features object) is grandfathered
+      ...validMeta3(merged0 as unknown as Record<string, unknown>, content),
       features: isObj(savedMeta.features)
         ? Object.fromEntries(Object.entries(savedMeta.features).filter(([k, v]) => FEATURE_SET.has(k) && typeof v === 'number' && Number.isFinite(v)))
         : grandfathered(content, merged0, isObj(raw.flags) && raw.flags.revealed === true),
@@ -371,8 +544,10 @@ export function deserialize(text: string, content: Content): GameState | null {
         apps[id] = { ...(a as unknown as AppState), peakAdoption: clamp(numOr(a.peakAdoption, 0), 0, 1) };
       }
       const settled = es.open ? validSettled(es.settled) : null;
+      const nSeams = content.sectors[s].resourceKind === 'stock' ? content.sectors[s].seams?.length ?? 0 : 0;
       sectors[s] = {
         ...es,
+        seamsSunk: clamp(Math.floor(numOr(es.seamsSunk, 0)), 0, nSeams),
         apps,
         budget: validBudget(es.budget, content, s),
         decadesWithin,
@@ -387,6 +562,8 @@ export function deserialize(text: string, content: Content): GameState | null {
       const def = ix.levers.get(id);
       const level = clamp(Math.floor(fin(ls.level)), 0, def ? leverMaxLevel(def) : Infinity);
       const out: LeverState = { level, ref: level > 0 ? Math.max(0, fin(ls.ref)) : 0 };
+      if (typeof ls.bite === 'number' && Number.isFinite(ls.bite) && ls.bite > 0) out.bite = clamp(ls.bite, 0, 1);
+      if (ls.bitten === true) out.bitten = true;
       if (def && typeof ls.recycle === 'string' && recycleOptions(def).includes(ls.recycle as LeverRecycle)) out.recycle = ls.recycle as LeverRecycle;
       levers[id] = out;
     }
@@ -412,6 +589,11 @@ export function deserialize(text: string, content: Content): GameState | null {
       },
       charterOffer: Array.isArray(merged.charterOffer) ? merged.charterOffer.filter((c): c is string => typeof c === 'string' && ix.charters.has(c)).slice(0, 2) : [],
       lastOffline: isObj(merged.lastOffline) ? merged.lastOffline : null,
+      modifiers: validModifiers(merged.modifiers, content),
+      dispatch: validDispatch(merged.dispatch, content, fresh.dispatch),
+      ambientLast: amountMap(merged.ambientLast),
+      orderLog: validOrderLog(merged.orderLog, content),
+      historyLifted: merged.historyLifted === true,
       news: Array.isArray(merged.news)
         ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number')
           .map((n) => (typeof n.year === 'number' ? n : { ...n, year: Math.floor(START_YEAR + n.time * YEARS_PER_SECOND) }))
@@ -450,6 +632,16 @@ export function deserialize(text: string, content: Content): GameState | null {
         }
       }
       if (s2) s = { ...s, sectors: s2 };
+    }
+    // M3 (v3 → v4) step 6: a won flag gets the ending record and the milestone, no event (nothing is replayed)
+    if (version < 4) {
+      const year = calendarYear(s, content);
+      let meta = s.meta;
+      if (s.flags.won && !meta.endings.steadyAll) meta = milestone({ ...meta, endings: { ...meta.endings, steadyAll: endingRecord(s, year) } }, 'won', null, year);
+      // step 7: the next draw not at once; archive notes for what the loaded state owns or has seen, no event
+      s = { ...s, meta, dispatch: { ...s.dispatch, nextAt: Math.max(dispatchFirstAt(content), s.time + dispatchGap(s.seed, 0, content)) } };
+      const m2 = unlockNotes(s, content, s.meta);
+      if (m2 !== s.meta) s = { ...s, meta: m2 };
     }
     // sanity: must be computable
     const d = computeFlows(s, content);

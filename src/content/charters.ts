@@ -82,4 +82,24 @@ export const charters: CharterDef[] = [
     blurb: 'The works close at noon on Saturdays. Everyone is a little better off, and the excursion trains are full every weekend once there are any.',
     effects: [{ type: 'wellbeingAdd', value: 1.5 }, sat('steam', 1.1, 'steam.railways'), margin('steam', -0.01)],
   },
+  /* ---- M3: locked Charters, History rewards (histories.ts) ----
+   * Left out of the draw until a History unlocks them (CharterDef.locked); each also `requires` its History cleared,
+   * which an M2 core reads as false, so no save's offers change. Appended: never reorder what is above. */
+  {
+    /* Supply-side rebound, deeper: the dear coal is within reach from the start. */
+    id: 'charter.deepPits', name: 'The Deep Pits', sector: 'steam', landmark: 'deepShaft', locked: true,
+    blurb: 'Shafts sunk past the Low Main by the last owners and left to flood. The deep coal is half paid for, and dearer to raise.',
+    effects: [
+      { type: 'costMulOf', id: 'steam.seam.lowMain', value: 0.5 }, { type: 'costMulOf', id: 'steam.seam.hutton', value: 0.5 },
+      { type: 'resourcePriceMul', sector: 'steam', value: 1.05 },
+    ],
+    requires: { owns: 'history.islandNation' },
+  },
+  {
+    /* Economy-wide rebound: the dividend is spent, and the town grows on it. */
+    id: 'charter.dividendTown', name: 'The Dividend Town', sector: 'steam', landmark: 'chapel', locked: true,
+    blurb: 'A coal duty from the first year, and every penny of it paid back to the households. The town is content, and larger every census.',
+    effects: [startLever('steam.duty', 1), { type: 'wellbeingAdd', value: 1 }, { type: 'popGrowthMul', value: 1.1 }],
+    requires: { owns: 'history.feeAndDividend' },
+  },
 ];

@@ -92,6 +92,8 @@ const REPEAT: Record<LeverKind, { valueStep: number; costGrowth: number; upkeepG
   deletion: { valueStep: 0.05, costGrowth: 1.5, upkeepGrowth: 1.35, maxSteps: 8 },
   reviewGate: { valueStep: 0.1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 5 },
   sharedLibs: { valueStep: 0.05, costGrowth: 1.5, upkeepGrowth: 1.3, maxSteps: 6 },
+  /* M3: a measure's level value is how many times its effects apply (1, 2, 3 authored; each Tighten one more). */
+  measure: { valueStep: 1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 3 },
 };
 
 /** Authored levels cost 1 : 3 : 9 in Mandate and 1 : 2.5 : 6.25 in upkeep, as in v1. */
@@ -125,6 +127,10 @@ interface LeverSpec {
   /** M2: per-option wording for this lever's recycle choices (LeverDef.recycleBlurb). */
   recycleBlurb?: Partial<Record<LeverRecycle, string>>;
   requires?: string[];
+  /** M3: the standing effects of a 'measure' lever (× its level value). */
+  effects?: EffectDef[];
+  /** M3: a lever that bites back (LeverDef.sideEffects). */
+  sideEffects?: LeverDef['sideEffects'];
 }
 
 export function lever(s: LeverSpec): LeverDef {
@@ -157,6 +163,8 @@ export function lever(s: LeverSpec): LeverDef {
   if (s.recycle) def.recycle = s.recycle;
   if (s.recycleBlurb) def.recycleBlurb = s.recycleBlurb;
   if (s.requires) def.requires = s.requires;
+  if (s.effects) def.effects = s.effects;
+  if (s.sideEffects) def.sideEffects = s.sideEffects;
   return def;
 }
 
@@ -170,12 +178,43 @@ export const RECYCLE: LeverRecycle[] = ['treasury', 'dividend', 'commons'];
 /* STAGES AND DECADE CHOICES (M2)                                      */
 /* ------------------------------------------------------------------ */
 
-/** Set UpgradeDef.stage on the named cards (the scene's machine generation, 1–3). Unknown ids are an error. */
-export function withStages(upgrades: UpgradeDef[], stages: Record<string, number>): UpgradeDef[] {
+/**
+ * Set UpgradeDef.stage on the named cards (the scene's machine generation, 1–3) and, M3, the display name of the
+ * machine that stage shows (UpgradeDef.machine, carried on 'stageReached' events). Unknown ids are an error.
+ */
+export function withStages(upgrades: UpgradeDef[], stages: Record<string, [stage: number, machine: string]>): UpgradeDef[] {
   for (const id of Object.keys(stages)) {
     if (!upgrades.some((u) => u.id === id)) throw new Error(`withStages: no upgrade ${id}`);
   }
-  return upgrades.map((u) => (stages[u.id] ? { ...u, stage: stages[u.id] } : u));
+  return upgrades.map((u) => (stages[u.id] ? { ...u, stage: stages[u.id][0], machine: stages[u.id][1] } : u));
+}
+
+/* ------------------------------------------------------------------ */
+/* M3 MECHANICS: staging                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * M3 STAGING KNOB (for the balance lane). The four mechanic kinds (seams, load, travel, priceSeen) are always in the
+ * data, but a few numbers only make sense once the core solves them, and would rebalance the M2 game if the M2 core
+ * read them first:
+ *   - Light's capCost is divided by its opening load term so that its opening price is as before (LoadDef);
+ *   - Motion's roads are finite (congestion) and the motorway card raises the free speed (travelMul speed);
+ *   - Compute's advertising card sets the free price (priceSeen) instead of M2's halfPriceMul 1.4.
+ * false = the M2 numbers (every M3 field is present but solves as M2: roads effectively infinite, no speed effect, M2's
+ * capCost and halfPriceMul). Set true once src/core solves the M3 mechanics, then run the balance pass.
+ */
+export const MECHANICS_LIVE = false;
+
+/** M3: the load term c_eff / c for a set of profiles weighted by demand (see LoadDef), for compensating capCost. */
+export function loadTerm(profiles: number[][], weights: number[], fixedShare: number, floor = 0.05): number {
+  const hours = Array.from({ length: 24 }, () => 0);
+  profiles.forEach((w, i) => {
+    const sum = w.reduce((a, b) => a + b, 0);
+    w.forEach((x, h) => { hours[h] += weights[i] * (sum > 0 ? (24 * x) / sum : 1); });
+  });
+  const mean = hours.reduce((a, b) => a + b, 0) / 24;
+  const lf = mean > 0 ? mean / Math.max(...hours) : 1;
+  return (1 - fixedShare) + fixedShare / Math.max(floor, lf);
 }
 
 /**

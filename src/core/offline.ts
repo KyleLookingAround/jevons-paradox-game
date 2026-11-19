@@ -16,18 +16,22 @@ import { hindsightTerms, termsSum } from './hindsight';
 import { sectorSteady } from './steady';
 import { step } from './step';
 import { fin, clamp } from './util';
+import { calendarYear } from './calendar';
+import { emit } from './events';
+import { featureOn } from './features';
 
 /** GlobalParams.offline with its defaults (the deprecated offlineCapSeconds only when `offline` is absent). */
-export function offlineCfg(content: Content): { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null; hindsightRate: number } {
+export function offlineCfg(content: Content): { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null; hindsightRate: number; bankRate: number; bankMax: number } {
   const g = content.global;
   if (g.offline) {
     const h = g.offline.holdBefore;
     return {
       capSeconds: Math.max(0, fin(g.offline.capSeconds, DEFAULT_OFFLINE_CAP)), holdBefore: h === 'crisis' || h === 'collapse' ? h : null,
       hindsightRate: clamp(fin(g.offline.hindsightRate ?? 1, 1), 0, 1),
+      bankRate: clamp(fin(g.offline.bankRate ?? 0), 0, 1), bankMax: Math.max(0, fin(g.offline.bankMax ?? 0)),
     };
   }
-  return { capSeconds: Math.max(0, fin(g.offlineCapSeconds ?? DEFAULT_OFFLINE_CAP, DEFAULT_OFFLINE_CAP)), holdBefore: 'collapse', hindsightRate: 1 };
+  return { capSeconds: Math.max(0, fin(g.offlineCapSeconds ?? DEFAULT_OFFLINE_CAP, DEFAULT_OFFLINE_CAP)), holdBefore: 'collapse', hindsightRate: 1, bankRate: 0, bankMax: 0 };
 }
 /** Derived.offlineCapSeconds: the base cap plus every standing offlineCapAdd. */
 export const offlineCapOf = (content: Content, mods: Mods): number => Math.max(0, offlineCfg(content).capSeconds + mods.offlineCapAdd);
@@ -35,16 +39,45 @@ export const offlineCapOf = (content: Content, mods: Mods): number => Math.max(0
 export function fastForward(state: GameState, content: Content, seconds: number): GameState {
   const requested = Math.max(0, fin(seconds));
   if (!(requested > 0)) return state;
+  const s = catchUp(state, content, requested, true);
+  const report = s.lastOffline!;
+  // M3: banked time, after a catch-up that stopped short because of a hold or the cap (never 'pending'); feature 'bank'
+  const cfg = offlineCfg(content);
+  const short = requested - report.simulated;
+  if (report.heldBy !== null && report.heldBy !== 'pending' && short > 0 && cfg.bankRate > 0 && cfg.bankMax > 0 && featureOn(content, s.meta, 'bank')) {
+    const before = s.meta.bankedSeconds ?? 0;
+    const after = Math.min(cfg.bankMax, before + cfg.bankRate * short);
+    const banked = fin(Math.max(0, after - before));
+    return { ...s, meta: { ...s.meta, bankedSeconds: Math.max(before, after) }, lastOffline: { ...report, banked } };
+  }
+  return s;
+}
+
+/** M3: ModelApi.useBank: simulate min(seconds, bank) with the away rules and the holds, without the cap; subtract what
+ *  was simulated; 'bankUsed'; no lastOffline. */
+export function useBank(state: GameState, content: Content, seconds: number): GameState {
+  if (!featureOn(content, state.meta, 'bank')) return state;
+  const want = Math.min(Math.max(0, fin(seconds)), Math.max(0, state.meta.bankedSeconds ?? 0));
+  if (!(want > 0) || computeFlows(state, content).pending) return state;
+  const s = catchUp(state, content, want, false);
+  const sim = s.lastOffline!.simulated;
+  const out: GameState = { ...s, lastOffline: state.lastOffline, meta: { ...s.meta, bankedSeconds: Math.max(0, fin((s.meta.bankedSeconds ?? 0) - sim)) } };
+  return emit(out, [{ kind: 'bankUsed', n: sim }], out.time, calendarYear(out, content));
+}
+
+/** The catch-up loop shared by fastForward (capped) and useBank (uncapped): the holds, the away rules, the report
+ *  (returned as lastOffline). */
+function catchUp(state: GameState, content: Content, requested: number, capped: boolean): GameState {
   const ix = idx(content);
   const cfg = offlineCfg(content);
   const report: OfflineReport = {
     requested, simulated: 0, heldBy: null, from: state.time, to: state.time, capital: 0, mandate: 0, population: 0,
     decades: 0, dividends: 0, crises: 0, marketBuys: 0, civilServiceRaises: 0, treasuryBuys: 0, lapsed: [], opened: [],
     unsettled: [], lines: {}, fromSeq: state.meta.eventSeq ?? 0, toSeq: state.meta.eventSeq ?? 0,
-    dividendsForgone: 0, hindsight: 0, hindsightRate: cfg.hindsightRate,
+    dividendsForgone: 0, hindsight: 0, hindsightRate: cfg.hindsightRate, dispatchesDefaulted: 0,
   };
   if (computeFlows(state, content).pending) return { ...state, lastOffline: { ...report, heldBy: 'pending' } };
-  const total = Math.min(requested, offlineCapOf(content, modsOf(state, content)));
+  const total = capped ? Math.min(requested, offlineCapOf(content, modsOf(state, content))) : requested;
   const broken = new Set<SectorId>();
   const unsettled = new Set<SectorId>();
   // QA fix (B6): a budget line does not decline while the proprietor is away. Before each step every line still
@@ -100,6 +133,7 @@ export function fastForward(state: GameState, content: Content, seconds: number)
           case 'leverLapsed': if (e.id) report.lapsed.push(e.id); break;
           case 'sectorOpened': if (e.sector) report.opened.push(e.sector); break;
           case 'unsettled': if (e.sector) { report.unsettled.push(e.sector); unsettled.add(e.sector); } break;
+          case 'dispatchAnswered': if (e.by === 'default') report.dispatchesDefaulted!++; break;
           default: break;
         }
       }

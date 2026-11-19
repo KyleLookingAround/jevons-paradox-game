@@ -139,10 +139,11 @@ export const cyberpunk: ArtStyle = {
 .scn .emgm{display:none}.scn .emr{fill:#ff2a3a}.scn .emp{fill:#ff2a3a;opacity:.1}
 .scn[data-look=cyberpunk].stress .emgm,.scn[data-look=cyberpunk].halt .emgm{display:inline}
 /* Under strain the grid sheds load: towers' machine light goes out block by block, in turn; signs fail. */
-.scn.live[data-look=cyberpunk].stress .band-mid .ov{animation:cb-shed 12s steps(1,end) infinite}
-.scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(3n+1){animation-delay:-4s}
-.scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(3n+2){animation-delay:-8s}
-@keyframes cb-shed{0%{opacity:1}30%{opacity:.06}52%{opacity:1}}
+   The engine steps a phase class (ph0–ph2) on the mid band every four seconds while under strain (one restyle and
+   one repaint of that band per step), instead of a CSS animation inside the drawing, which repainted it every frame. */
+.scn[data-look=cyberpunk].stress .bw-mid.ph0 .ov:nth-child(3n),.scn[data-look=cyberpunk].stress .bw-mid.ph1 .ov:nth-child(3n+1),
+.scn[data-look=cyberpunk].stress .bw-mid.ph2 .ov:nth-child(3n+2){opacity:.06}
+/* fixed losses */
 .scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(5n){opacity:.06}
 .scn[data-look=cyberpunk].stress .band-near .sg.nv,.scn[data-look=cyberpunk].stress .band-near .nt.nv{fill:#3a3450;stroke:#39334f}
 .scn[data-look=cyberpunk].stress .nh.nv{opacity:0}

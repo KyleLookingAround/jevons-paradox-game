@@ -5,9 +5,17 @@ import { describe, expect, test } from 'bun:test';
 import { content } from './index';
 import type { Cond, EffectDef, HeadlineKey, StatKey } from '../types';
 import { FEATURE_IDS } from '../types';
+import { MECHANICS_LIVE } from './helpers';
 
 const C = content;
 const sectorIds = Object.keys(C.sectors);
+/* M3 */
+const seams = sectorIds.flatMap((s) => (C.sectors[s].seams ?? []).map((x) => ({ ...x, sector: s })));
+const histories = C.histories ?? [];
+const castDefs = C.cast ?? [];
+const dispatches = C.dispatches ?? [];
+const ambient = C.ambient ?? [];
+const archive = C.archive ?? [];
 const apps = sectorIds.flatMap((s) => C.sectors[s].applications.map((a) => ({ ...a, sector: s })));
 const appSector = new Map(apps.map((a) => [a.id, a.sector]));
 const upgradeIds = new Set(C.upgrades.map((u) => u.id));
@@ -22,10 +30,17 @@ const charters = C.charters ?? [];
 const divIds = new Set(dividends.map((d) => d.id));
 const commonsIds = new Set(commons.map((c) => c.id));
 const charterIds = new Set(charters.map((c) => c.id));
-/** Everything a Cond `owns` leaf may name (M2: Commons projects, Charters, dividends, and sector ids). */
+const seamIds = new Set(seams.map((x) => x.id));
+const historyIds = new Set(histories.map((h) => h.id));
+const castIds = new Set(castDefs.map((c) => c.id));
+const dispatchIds = new Set(dispatches.map((d) => d.id));
+const archiveIds = new Set(archive.map((a) => a.id));
+/** Everything a Cond `owns` leaf may name (M2: Commons projects, Charters, dividends, and sector ids; M3: seams,
+ *  Histories, Archive notes). */
 const ownable = new Set([
   ...upgradeIds, ...apps.map((a) => a.id), ...leverIds, ...instIds, ...khIds, ...achIds,
   ...divIds, ...commonsIds, ...charterIds, ...sectorIds,
+  ...seamIds, ...historyIds, ...archiveIds,
 ]);
 
 const ALL_KEYS: HeadlineKey[] = [
@@ -34,13 +49,24 @@ const ALL_KEYS: HeadlineKey[] = [
   'ageBegins', 'budgetDrawn', 'decade', 'budgetBroken',
   'clearSkies', 'settled', 'unsettled', 'commonsBuilt', 'charter',
 ];
+/** M3 keys that print variants (the others take their text from a def: dispatch, answered, ambient, return, …). */
+const M3_KEYS: HeadlineKey[] = ['seamSunk', 'biteBack', 'history', 'ending'];
 const SECTOR_SCOPED: StatKey[] = [
   'etaFold', 'rFold', 'frontierFold', 'peakRFold', 'rebound', 'resourceUse', 'demand', 'servicePrice',
   'serviceDelivered', 'reserveFraction', 'pressureFraction', 'crises', 'steadyYears', 'budgetDecades',
   'withinBudget', 'appsFounded',
   'settled', 'clear', 'clearYears',
+  /* M3 */
+  'seamsSunk', 'loadFactor', 'travelHours', 'sprawl', 'bite',
 ];
 const APP_SCOPED: StatKey[] = ['adoption', 'appDemand'];
+/** Every StatKey there is (an unknown key evaluates false in the core: a typo would silently never hold). */
+const ALL_STATS = new Set<string>([
+  'time', 'year', 'wellbeing', 'population', 'capital', 'mandate', 'reckonings', 'steadyYearsAll', 'clicks',
+  'decisions', 'automated', 'commonsLevels', 'sectorsSettled', 'leanDecades', 'fullDecades',
+  'steadySectors', 'dispatchesAnswered', 'historiesCleared', 'totalHours', 'bankedSeconds',
+  ...SECTOR_SCOPED, ...APP_SCOPED,
+]);
 
 /** Every effect anywhere in content, with where it came from. */
 function allEffects(): { where: string; e: EffectDef }[] {
@@ -59,6 +85,18 @@ function allEffects(): { where: string; e: EffectDef }[] {
   for (const c of commons) for (const e of c.effects ?? []) out.push({ where: c.id, e });
   for (const c of charters) for (const e of c.effects) out.push({ where: c.id, e });
   for (const s of sectorIds) for (const e of C.sectors[s].settle?.dividend ?? []) out.push({ where: `${s}.settle`, e });
+  /* M3 */
+  for (const l of C.levers) {
+    for (const e of l.effects ?? []) out.push({ where: l.id, e });
+    for (const e of l.sideEffects?.effects ?? []) out.push({ where: `${l.id}.sideEffects`, e });
+  }
+  for (const h of histories) for (const e of h.effects) out.push({ where: h.id, e });
+  for (const d of dispatches) {
+    d.arms.forEach((a, i) => {
+      for (const e of a.effects ?? []) out.push({ where: `${d.id}[${i}]`, e });
+      for (const e of a.modifier?.effects ?? []) out.push({ where: `${d.id}[${i}].modifier`, e });
+    });
+  }
   return out;
 }
 
@@ -76,6 +114,18 @@ function allConds(): { where: string; c: Cond }[] {
   for (const c of commons) if (c.requires) walk(c.id, c.requires);
   for (const c of charters) if (c.requires) walk(c.id, c.requires);
   for (const [id, f] of Object.entries(C.features ?? {})) if (f) walk(`feature.${id}`, f.when);
+  /* M3 */
+  for (const u of C.upgrades) if (u.when) walk(u.id, u.when);
+  for (const l of C.levers) if (l.sideEffects?.unless) walk(`${l.id}.unless`, l.sideEffects.unless);
+  for (const x of seams) if (x.requires) walk(x.id, x.requires);
+  for (const h of histories) {
+    walk(`${h.id}.goal`, h.goal);
+    if (h.requires) walk(`${h.id}.requires`, h.requires);
+    if (h.forbidUntil) walk(`${h.id}.forbidUntil`, h.forbidUntil);
+  }
+  for (const c of castDefs) if (c.when) walk(c.id, c.when);
+  for (const d of dispatches) if (d.when) walk(d.id, d.when);
+  for (const a of ambient) walk(a.id, a.when);
   return out;
 }
 
@@ -86,6 +136,10 @@ const NON_TEXT_KEYS = new Set([
   'recycle',
   /* M2 */
   'landmark', 'order', 'decadeChoices', 'holdBefore', 'decadeWellbeing', 'pace',
+  /* M3: ids and keys, never shown; `voice` is a note to writers; a source's `cite` and `url` are quoted verbatim (titles
+   * keep their own spelling and quotes). */
+  'profile', 'defaultProfile', 'apps', 'subject', 'cast', 'next', 'leverKind', 'suspend', 'unlock', 'cosmetic',
+  'figure', 'voice', 'cite', 'url', 'grade', 'key', 'direction', 'answered', 'returned', 'machine',
 ]);
 
 /** Every player-facing string (with a path for error messages). Headline keys and sector keys are not text. */
@@ -102,7 +156,7 @@ function playerText(): { path: string; text: string }[] {
 }
 
 /** Placeholders like {sector} are substituted before display; strip them before checking words. */
-const stripPlaceholders = (t: string) => t.replace(/\{[a-z]+\}/g, '');
+const stripPlaceholders = (t: string) => t.replace(/\{[a-zA-Z]+\}/g, '');
 
 describe('ids', () => {
   test('unique across the whole game', () => {
@@ -111,6 +165,8 @@ describe('ids', () => {
       ...C.levers.map((l) => l.id), ...C.knowhow.map((k) => k.id), ...C.institutions.map((i) => i.id),
       ...C.achievements.map((a) => a.id),
       ...dividends.map((d) => d.id), ...commons.map((c) => c.id), ...charters.map((c) => c.id),
+      ...seams.map((x) => x.id), ...histories.map((h) => h.id), ...dispatches.map((d) => d.id),
+      ...castDefs.map((c) => c.id), ...ambient.map((a) => a.id), ...archive.map((a) => a.id),
     ];
     const seen = new Set<string>();
     const dupes = all.filter((id) => (seen.has(id) ? true : (seen.add(id), false)));
@@ -206,6 +262,9 @@ describe('sectors and ages', () => {
   });
 });
 
+/** Permanent flags content can set (the one-off metaFlag effect), which Cond { flag } may read. */
+const metaFlags = ['proprietor', ...allEffects().flatMap(({ e }) => (e.type === 'metaFlag' ? [e.flag] : []))];
+
 describe('references resolve', () => {
   test('upgrades: sector, requires, excludes', () => {
     for (const u of C.upgrades) {
@@ -227,7 +286,7 @@ describe('references resolve', () => {
   test('effects name real sectors, applications, levers and lockable ids', () => {
     for (const { where, e } of allEffects()) {
       const ctx = `${where}: ${JSON.stringify(e)}`;
-      if ('sector' in e) expect(sectorIds.includes(e.sector) ? '' : ctx).toBe('');
+      if ('sector' in e && e.sector !== undefined) expect(sectorIds.includes(e.sector) ? '' : ctx).toBe('');
       if ((e.type === 'satMul' || e.type === 'halfPriceMul') && e.app) {
         expect(appSector.get(e.app) === e.sector ? '' : ctx).toBe('');
       }
@@ -238,11 +297,32 @@ describe('references resolve', () => {
         const max = inst ? 1 + (inst.nextLevels ?? []).length : 0;
         expect(inst && e.level >= 1 && e.level <= max && Number.isInteger(e.level) ? '' : ctx).toBe('');
       }
-      if (e.type === 'orderUnlock') expect(['market', 'civilService', 'treasury'].includes(e.order) ? '' : ctx).toBe('');
+      if (e.type === 'orderUnlock') expect(['market', 'civilService', 'treasury', 'dispatch'].includes(e.order) ? '' : ctx).toBe('');
       if (e.type === 'unlock') {
-        const target = C.upgrades.find((u) => u.id === e.id) ?? C.levers.find((l) => l.id === e.id);
+        const target = C.upgrades.find((u) => u.id === e.id) ?? C.levers.find((l) => l.id === e.id)
+          ?? commons.find((c) => c.id === e.id) ?? charters.find((c) => c.id === e.id);
         expect(target?.locked ? '' : ctx).toBe('');
       }
+      /* M3 */
+      if (e.type === 'priceSeen') {
+        if (e.app) expect(appSector.get(e.app) === e.sector ? '' : ctx).toBe('');
+        expect(e.share >= 0 && e.share <= 1 && (e.flat ?? 0) >= 0 ? '' : ctx).toBe('');
+      }
+      if (e.type === 'travelMul') expect(C.sectors[e.sector]?.travel && (e.speed ?? 1) > 0 && (e.roads ?? 1) > 0 ? '' : ctx).toBe('');
+      if (e.type === 'resourcePriceMul' || e.type === 'intensityMul' || e.type === 'incomeMul') expect(e.value > 0 ? '' : ctx).toBe('');
+      if (e.type === 'costMulOf') {
+        const ok = upgradeIds.has(e.id) || appSector.has(e.id) || commonsIds.has(e.id) || seamIds.has(e.id) || sectorIds.includes(e.id);
+        expect(ok && e.value > 0 ? '' : ctx).toBe('');
+      }
+      if (e.type === 'forbid') {
+        const KINDS = ['duty', 'cap', 'sufficiency', 'substitution', 'circularity', 'greenSpending', 'deletion', 'reviewGate', 'sharedLibs', 'measure'];
+        const ok = e.id !== undefined
+          ? upgradeIds.has(e.id) || appSector.has(e.id) || seamIds.has(e.id) || commonsIds.has(e.id) || leverIds.has(e.id)
+          : e.leverKind !== undefined && KINDS.includes(e.leverKind);
+        expect(ok ? '' : ctx).toBe('');
+      }
+      if (e.type === 'pressureAdd') expect(Math.abs(e.value) <= 1 ? '' : ctx).toBe('');
+      if (e.type === 'populationMul') expect(e.value > 0 ? '' : ctx).toBe('');
     }
   });
 
@@ -295,7 +375,17 @@ describe('references resolve', () => {
         if (APP_SCOPED.includes(c.stat)) expect(c.app && appSector.has(c.app) ? '' : ctx).toBe('');
         else if (c.app !== undefined) expect(appSector.has(c.app) ? '' : ctx).toBe('');
       }
-      if ('flag' in c) expect(['revealed', 'won']).toContain(c.flag);
+      if ('flag' in c) expect(['revealed', 'won', ...metaFlags].includes(c.flag) ? '' : ctx).toBe('');
+      /* M3 */
+      if ('stat' in c) expect(ALL_STATS.has(c.stat) ? '' : `${ctx}: unknown stat`).toBe('');
+      if ('stat' in c && c.stat === 'loadFactor') expect(c.sector && C.sectors[c.sector]?.load ? '' : ctx).toBe('');
+      if ('stat' in c && (c.stat === 'travelHours' || c.stat === 'sprawl')) expect(c.sector && C.sectors[c.sector]?.travel ? '' : ctx).toBe('');
+      if ('answered' in c) {
+        expect(dispatchIds.has(c.answered) ? '' : ctx).toBe('');
+        const d = dispatches.find((x) => x.id === c.answered);
+        if (d && c.arm !== undefined) expect(c.arm >= 0 && c.arm < d.arms.length ? '' : ctx).toBe('');
+      }
+      if ('returned' in c) expect(c.returned === 'household' ? '' : ctx).toBe('');
     }
   });
 });
@@ -322,6 +412,7 @@ describe('levers', () => {
     const range: Record<string, [number, number]> = {
       duty: [0, 0.999], cap: [0.05, 1.5], sufficiency: [0.05, 1], substitution: [0, 1], greenSpending: [0, 1],
       reviewGate: [0, 1], circularity: [0, 0.95], sharedLibs: [0, 0.95], deletion: [0, 0.9],
+      measure: [0, Infinity],
     };
     for (const l of C.levers) {
       const vs = l.levels.map((x) => x.value);
@@ -677,7 +768,7 @@ describe('house style', () => {
 /* M2: dividends, paces, clear skies, Settlement, the Commons, Charters, orders, stages, words                        */
 /* ------------------------------------------------------------------ */
 
-const effectSectors = (effs: EffectDef[]): string[] => effs.flatMap((e) => ('sector' in e ? [e.sector] : []));
+const effectSectors = (effs: EffectDef[]): string[] => effs.flatMap((e) => ('sector' in e && e.sector !== undefined ? [e.sector] : []));
 const ONE_OFF = ['mandateAdd', 'capitalAdd', 'slotAdd'];
 
 describe('M2: decade dividends', () => {
@@ -818,8 +909,8 @@ describe('M2: the Commons', () => {
     }
   });
 
-  test('a small wellbeing term: each project 0.3–4 points, all together under 12', () => {
-    for (const c of commons) expect(c.wellbeing.max >= 0.3 && c.wellbeing.max <= 4 ? '' : c.id).toBe('');
+  test('a small wellbeing term: each project 0.3–4 points (a locked History reward 0.2–4), all together under 12', () => {
+    for (const c of commons) expect(c.wellbeing.max >= (c.locked ? 0.2 : 0.3) && c.wellbeing.max <= 4 ? '' : c.id).toBe('');
     expect(commons.reduce((a, c) => a + c.wellbeing.max, 0)).toBeLessThan(12);
   });
 
@@ -882,7 +973,7 @@ describe('M2: Charters', () => {
 
 describe('M2: orders, offline, Institutions, Know-how trees', () => {
   test('offline: a night from the start, holding before a crisis, Hindsight away at a reduced rate; the v2 field is gone', () => {
-    expect(C.global.offline).toEqual({ capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15 });
+    expect(C.global.offline).toEqual({ capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15, bankRate: 0, bankMax: 0 });
     expect(C.global.offlineCapSeconds).toBeUndefined();
   });
 
@@ -966,18 +1057,27 @@ describe('M2: words', () => {
     ]).toEqual([]);
   });
 
-  test('{name} appears only in the commonsBuilt and charter headlines, at the start or after a colon', () => {
+  test('{name} appears only where a name is given (commonsBuilt, charter; M3: seamSunk, biteBack, history), at the start or after a colon', () => {
+    const NAMED = ['commonsBuilt', 'charter', 'seamSunk', 'biteBack', 'history'];
+    const SECTOR_NAMED = ['seamSunk', 'biteBack', 'history'];
     const bad: string[] = [];
     for (const [k, v] of Object.entries(C.headlines)) {
       for (const h of v) {
         if (!h.includes('{name}')) continue;
-        if (k !== 'commonsBuilt' && k !== 'charter') bad.push(`${k}: ${h}`);
-        if (!/^\{name\}|: \{name\}/.test(h)) bad.push(`${k}: ${h}`);
+        if (!NAMED.includes(k)) bad.push(`${k}: ${h}`);
+        // a seam's name has no article ("Hutton seam"), so it reads anywhere; other names are proper names
+        if (k !== 'seamSunk' && !/^\{name\}|: \{name\}/.test(h)) bad.push(`${k}: ${h}`);
       }
     }
     for (const hs of Object.values(C.sectorHeadlines ?? {})) {
-      for (const h of Object.values(hs).flat() as string[]) if (h.includes('{name}')) bad.push(h);
+      for (const [k, v] of Object.entries(hs)) {
+        for (const h of v as string[]) {
+          if (!h.includes('{name}')) continue;
+          if (!SECTOR_NAMED.includes(k) || (k !== 'seamSunk' && !/^\{name\}|: \{name\}/.test(h))) bad.push(`${k}: ${h}`);
+        }
+      }
     }
+    expect(seams.filter((x) => /^The /.test(x.name)).map((x) => x.id)).toEqual([]);
     expect(bad).toEqual([]);
   });
 
@@ -1029,17 +1129,20 @@ describe('volume floors (roadmap M2)', () => {
 /* ---------------- the unfolding ---------------- */
 
 describe('the unfolding (Content.features)', () => {
-  test('every feature is defined, with an intro in house style (but the reveal\'s own) and a name', () => {
+  test('every feature is defined, with an intro in house style (but those introduced by their own first item) and a name', () => {
+    // The reveal has its own card and headline; ambient news, letters and the bite are introduced by their first item.
+    const OWN_INTRO = ['reboundMeter', 'ambient', 'dispatches', 'sideEffects'];
     for (const id of FEATURE_IDS) {
       const f = C.features?.[id];
       expect(`${id} ${!!f}`).toBe(`${id} true`);
       expect(f!.name?.length ?? 0).toBeGreaterThan(0);
-      if (id === 'reboundMeter') continue;
+      if (OWN_INTRO.includes(id)) { expect(`${id} ${f!.intro ?? ''}`).toBe(`${id} `); continue; }
       const t = f!.intro ?? '';
       expect(`${id} ${t.length > 0 && t.length <= 70}`).toBe(`${id} true`);
       expect(t).not.toMatch(/[.!?]$/);
       expect(t).not.toMatch(/\byou\b/i);
-      expect(t.charAt(0)).toBe(t.charAt(0).toUpperCase());
+      // Compute's paper is a system log: its lines start with a lower-case level ("info: …").
+      if (!/^(info|notice|warn|error|fatal): /.test(t)) expect(t.charAt(0)).toBe(t.charAt(0).toUpperCase());
     }
   });
   test('levers gated by a feature name a real one; every cap waits for the budget', () => {
@@ -1048,5 +1151,349 @@ describe('the unfolding (Content.features)', () => {
   test('a gap between arrivals, and the Commons\' floor agrees with its feature', () => {
     expect(C.global.featureGapSeconds ?? 0).toBeGreaterThanOrEqual(300);
     expect(C.global.commons?.fromReckoning).toBe(3);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M3: mechanics, levers that bite back, Histories, the feature schedule, and the other lanes' data                 */
+/* ------------------------------------------------------------------ */
+
+const LOAD_HOURS = 24;
+const ONE_OFFS_M3 = ['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag'];
+/** Condition leaves of a Cond, flattened. */
+const leaves = (c: Cond): Cond[] => ('all' in c ? c.all.flatMap(leaves) : 'any' in c ? c.any.flatMap(leaves) : 'not' in c ? leaves(c.not) : [c]);
+const rkFloor = (c: Cond): number | null => {
+  // the least `reckonings ≥ n` an `all` requires at its top level (null if none)
+  const top = 'all' in c ? c.all : [c];
+  const ns = top.flatMap((x) => ('stat' in x && x.stat === 'reckonings' && (x.op === '>=' || x.op === '>') ? [x.op === '>' ? x.value + 1 : x.value] : []));
+  return ns.length ? Math.max(...ns) : null;
+};
+const timeFloor = (c: Cond): number => {
+  const top = 'all' in c ? c.all : [c];
+  return Math.max(0, ...top.flatMap((x) => ('stat' in x && x.stat === 'time' && x.op === '>=' ? [x.value] : [])));
+};
+
+describe('M3: one mechanic per Industry', () => {
+  test('every Industry names its mechanic (name, rebound, blurb)', () => {
+    for (const s of sectorIds) {
+      const m = C.sectors[s].mechanic;
+      expect(m && m.name.length > 0 && m.name.length <= 28 && m.rebound.length > 0 && m.blurb.length >= 30 && m.blurb.length <= 140 ? '' : s).toBe('');
+    }
+  });
+
+  test('Steam, Light, Motion and Compute carry their mechanic’s data', () => {
+    expect((C.sectors.steam.seams ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(C.sectors.light.load).toBeDefined();
+    expect(C.sectors.motion.travel).toBeDefined();
+    // Compute: free at the point of use, set by a card (a priceSeen effect) or on a use
+    const free = C.upgrades.some((u) => u.sector === 'compute' && u.effects.some((e) => e.type === 'priceSeen' && e.share === 0))
+      || C.sectors.compute.applications.some((a) => a.priceSeen?.share === 0);
+    // staged (helpers.ts MECHANICS_LIVE): until the core solves the mechanics the advertising card keeps M2's numbers
+    expect(free).toBe(MECHANICS_LIVE);
+  });
+
+  test('seams: ids unique, stock Industries only, dearer and deeper in order, positive tons and rising costs', () => {
+    for (const s of sectorIds) {
+      const list = C.sectors[s].seams ?? [];
+      if (!list.length) continue;
+      expect(C.sectors[s].resourceKind).toBe('stock');
+      list.forEach((x, i) => {
+        const ctx = x.id;
+        expect(x.id.startsWith(`${s}.seam.`) && x.name.length > 0 && x.name.length <= 24 ? '' : ctx).toBe('');
+        expect(x.tons > 0 && x.cost > 0 && x.priceMul >= 1 ? '' : ctx).toBe('');
+        if (x.depth !== undefined) expect(/^\d[\d,]* fathoms$/.test(x.depth) ? '' : ctx).toBe('');
+        if (i) {
+          const p = list[i - 1];
+          expect(x.priceMul >= p.priceMul ? '' : `${ctx}: priceMul falls`).toBe('');
+          expect((x.reachBelow ?? Infinity) <= (p.reachBelow ?? Infinity) ? '' : `${ctx}: reachBelow rises`).toBe('');
+          expect(x.cost >= p.cost ? '' : `${ctx}: cheaper than the seam above`).toBe('');
+        }
+      });
+    }
+    expect(new Set(seams.map((x) => x.id)).size).toBe(seams.length);
+  });
+
+  test('load: 24 non-negative hourly weights per profile, a default that exists, fixedShare in (0, 1), known app profiles', () => {
+    for (const s of sectorIds) {
+      const l = C.sectors[s].load;
+      if (!l) { expect(C.sectors[s].applications.filter((a) => a.profile).map((a) => a.id)).toEqual([]); continue; }
+      for (const [k, w] of Object.entries(l.profiles)) {
+        expect(w.length === LOAD_HOURS && w.every((x) => Number.isFinite(x) && x >= 0) && w.some((x) => x > 0) ? '' : `${s}.${k}`).toBe('');
+      }
+      expect(l.profiles[l.defaultProfile]).toBeDefined();
+      expect(l.fixedShare > 0 && l.fixedShare < 1).toBe(true);
+      expect((l.floor ?? 0.05) > 0 && (l.floor ?? 0.05) <= 1).toBe(true);
+      for (const a of C.sectors[s].applications) if (a.profile) expect(l.profiles[a.profile] ? '' : a.id).toBe('');
+    }
+  });
+
+  test('travel: roads and scale positive, travel uses belong to the Industry; sprawl decays only where it is locked in', () => {
+    for (const s of sectorIds) {
+      const t = C.sectors[s].travel;
+      for (const a of C.sectors[s].applications) {
+        if (a.lockInDecay !== undefined) expect(a.lockInDecay > 0 && a.lockInDecay < 0.01 && (a.lockIn ?? 0) > 0 ? '' : a.id).toBe('');
+        if (a.priceSeen) expect(a.priceSeen.share >= 0 && a.priceSeen.share <= 1 && (a.priceSeen.flat ?? 0) >= 0 ? '' : a.id).toBe('');
+      }
+      if (!t) continue;
+      expect(t.roads > 0 && t.hoursScale > 0 && (t.exponent ?? 4) >= 1).toBe(true);
+      const own = new Set(C.sectors[s].applications.map((a) => a.id));
+      for (const id of t.apps ?? []) expect(own.has(id) ? '' : `${s}: ${id}`).toBe('');
+    }
+  });
+
+  test('every staged card names its machine', () => {
+    expect(C.upgrades.filter((u) => u.stage && !(u.machine && u.machine.length <= 24)).map((u) => u.id)).toEqual([]);
+  });
+});
+
+describe('M3: levers that bite back', () => {
+  test('every Industry has a lever that bites back, with its pairing, its line and a catch that names the risk', () => {
+    for (const s of sectorIds) {
+      const biting = C.levers.filter((l) => l.sector === s && l.sideEffects);
+      expect(`${s} ${biting.length >= 1}`).toBe(`${s} true`);
+    }
+    for (const l of C.levers.filter((x) => x.sideEffects)) {
+      const se = l.sideEffects!;
+      const ctx = l.id;
+      expect(se.effects.length > 0 && se.rampYears > 0 && (se.decayYears ?? se.rampYears) > 0 ? '' : ctx).toBe('');
+      expect(se.unless ? '' : `${ctx}: no pairing`).toBe('');
+      expect(/^unless /.test(se.unlessLabel ?? '') && (se.unlessLabel ?? '').length <= 60 ? '' : `${ctx}: unlessLabel`).toBe('');
+      // the "bites back" line: one sentence, short
+      expect(se.blurb.length > 10 && se.blurb.length <= 80 && /\.$/.test(se.blurb) && (se.blurb.match(/\. /g) ?? []).length === 0 ? '' : `${ctx}: blurb`).toBe('');
+      expect(l.catch.length > 20 ? '' : `${ctx}: catch`).toBe('');
+      // side effects are standing effects (× bite × level); a one-off would never fire
+      expect(se.effects.filter((e) => ONE_OFFS_M3.includes(e.type)).length).toBe(0);
+    }
+  });
+
+  test('measures act through effects; only measures carry effects', () => {
+    for (const l of C.levers) {
+      if (l.kind === 'measure') expect((l.effects ?? []).length > 0 ? '' : l.id).toBe('');
+      else expect((l.effects ?? []).length === 0 ? '' : l.id).toBe('');
+      expect((l.effects ?? []).filter((e) => ONE_OFFS_M3.includes(e.type)).length).toBe(0);
+    }
+  });
+
+  test('one green-paradox lever (a side effect that cheapens the resource), paired', () => {
+    const gp = C.levers.filter((l) => l.sideEffects?.effects.some((e) => e.type === 'resourcePriceMul' && e.value < 1));
+    expect(gp.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('new M3 levers wait for a system the player has met (none in runs 1–2 beside the M2 levers)', () => {
+    // runs 1–2 are levers only, and the scripted restraint player raises any visible lever there: an M3 lever must wait
+    // for the budget (run 3), for a mechanic's feature, or for an Industry that opens in run 4 or later.
+    const late = (l: (typeof C.levers)[number]) => (l.requires ?? []).some((r) => ['budget', 'load', 'travel', 'freeAtUse', 'seams', 'sideEffects'].includes(r))
+      || (C.sectors[l.sector].unlock?.minReckonings ?? 0) >= 3;
+    const m3 = C.levers.filter((l) => l.kind === 'measure' || l.sideEffects);
+    expect(m3.filter((l) => !late(l)).map((l) => l.id)).toEqual([]);
+  });
+});
+
+describe('M3: Histories (the History rules)', () => {
+  const lockedCommons = commons.filter((c) => c.locked).map((c) => c.id);
+  const lockedCharters = charters.filter((c) => c.locked).map((c) => c.id);
+
+  test('ten Histories, each with its words, a goal in words and a rebound', () => {
+    expect(histories.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(histories.map((h) => h.id)).size).toBe(histories.length);
+    for (const h of histories) {
+      expect(h.id.startsWith('history.') && h.name.length > 0 && h.name.length <= 28 ? '' : h.id).toBe('');
+      expect(h.blurb.length >= 40 && h.blurb.length <= 160 ? '' : `${h.id} blurb ${h.blurb.length}`).toBe('');
+      expect(h.goalLabel.length > 0 && h.goalLabel.length <= 80 && h.rebound.length > 0 ? '' : h.id).toBe('');
+      expect(h.effects.length > 0 || (h.suspend ?? []).length > 0 ? '' : h.id).toBe('');
+      for (const x of h.suspend ?? []) expect(['knowhow', 'institutions', 'charter', 'market']).toContain(x);
+    }
+  });
+
+  test('rule 1: rewards are options only (locked Commons projects or Charters, a title, a cosmetic, an achievement)', () => {
+    for (const h of histories) {
+      const keys = Object.keys(h.reward);
+      expect(keys.filter((k) => !['unlock', 'achievement', 'cosmetic', 'title'].includes(k))).toEqual([]);
+      for (const id of h.reward.unlock ?? []) expect([...lockedCommons, ...lockedCharters].includes(id) ? '' : `${h.id}: ${id}`).toBe('');
+      if (h.reward.achievement) expect(achIds.has(h.reward.achievement) ? '' : h.id).toBe('');
+      if (h.reward.title) expect(h.reward.title.length <= 28).toBe(true);
+      if (h.reward.cosmetic) expect(/^[a-z]+\.[a-zA-Z]+$/.test(h.reward.cosmetic) ? '' : h.id).toBe('');
+    }
+  });
+
+  test('rule 2: no quality of life or automation behind a History; nothing a History unlocks is needed elsewhere', () => {
+    const QOL = ['orderUnlock', 'offlineCapAdd', 'slotAdd'];
+    const rewardIds = new Set(histories.flatMap((h) => h.reward.unlock ?? []));
+    for (const id of rewardIds) {
+      const def = commons.find((c) => c.id === id) ?? charters.find((c) => c.id === id)!;
+      expect((def.effects ?? []).filter((e) => QOL.includes(e.type)).map((e) => `${id}: ${e.type}`)).toEqual([]);
+    }
+    for (const h of histories) {
+      // one-offs are ignored on a History; QoL never belongs in one
+      expect(h.effects.filter((e) => QOL.includes(e.type) || ONE_OFFS_M3.includes(e.type)).map((e) => `${h.id}: ${e.type}`)).toEqual([]);
+    }
+    // every locked project and Charter is some History's reward, and only that History's
+    for (const id of [...lockedCommons, ...lockedCharters]) {
+      expect(`${id} ${histories.filter((h) => (h.reward.unlock ?? []).includes(id)).length}`).toBe(`${id} 1`);
+    }
+    // no condition anywhere names a reward, except the reward's own `requires` (its History cleared)
+    for (const { where, c } of allConds()) {
+      if ('owns' in c && rewardIds.has(c.owns)) expect(where).toBe(c.owns);
+    }
+    // a locked reward also requires its History cleared (an M2 core, which ignores `locked`, then never offers it)
+    for (const id of rewardIds) {
+      const def = commons.find((c) => c.id === id) ?? charters.find((c) => c.id === id)!;
+      const h = histories.find((x) => (x.reward.unlock ?? []).includes(id))!;
+      expect(JSON.stringify(def.requires ?? {})).toContain(`"owns":"${h.id}"`);
+    }
+  });
+
+  test('rule 3: one History at a time (nothing stacks); a History does not unlock another', () => {
+    for (const h of histories) if (h.requires) expect(leaves(h.requires).filter((x) => 'owns' in x && historyIds.has(x.owns))).toEqual([]);
+  });
+
+  test('forbid effects name things that exist; a History that forbids levers lifts with a condition or forbids few', () => {
+    for (const h of histories) {
+      const kinds = h.effects.filter((e) => e.type === 'forbid' && e.leverKind).length;
+      if (kinds >= 3) expect(h.forbidUntil ? '' : h.id).toBe('');
+    }
+  });
+});
+
+describe('M3: the feature schedule (the unfolding, continued)', () => {
+  const F = C.features ?? {};
+  const M3_FEATURES = ['archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey', 'histories', 'bank'] as const;
+
+  test('every M3 feature has an entry; nothing M3 arrives in run 1', () => {
+    for (const id of M3_FEATURES) {
+      const f = F[id];
+      expect(`${id} ${!!f}`).toBe(`${id} true`);
+      if (['survey', 'histories', 'bank'].includes(id)) continue;
+      expect(`${id} ${(rkFloor(f!.when) ?? 0) >= 1}`).toBe(`${id} true`);
+    }
+  });
+
+  test('mid-run arrivals keep clear of the Reckoning-anchored M2 arrivals and of run 3 (the budget’s unfolding)', () => {
+    // run 2: the Archive at five minutes, more levers (M2) at about ten, the letters from fifteen and no later (a burning
+    // run 2 collapses at about 21 minutes: an arrival in its last five would push the Charters out of run 3)
+    expect(timeFloor(F.dispatches!.when)).toBe(900);
+    // ambient news, the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding)
+    for (const id of ['ambient', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse'] as const) expect(`${id} ${rkFloor(F[id]!.when)}`).toBe(`${id} 3`);
+  });
+
+  test('the survey from hour 6 with the Civil Service; Histories from hour 8 after a Steady State; the bank never', () => {
+    const hours = (c: Cond) => Math.max(0, ...leaves(c).flatMap((x) => ('stat' in x && x.stat === 'totalHours' ? [x.value] : [])));
+    expect(hours(F.survey!.when)).toBeGreaterThanOrEqual(6);
+    expect(leaves(F.survey!.when).some((x) => 'owns' in x && x.owns === 'inst.civilService')).toBe(true);
+    expect(hours(F.histories!.when)).toBeGreaterThanOrEqual(8);
+    expect(leaves(F.histories!.when).some((x) => 'owns' in x && x.owns === 'steadyState')).toBe(true);
+    expect(F.bank!.when).toEqual({ any: [] });
+    expect(C.global.offline?.bankRate ?? 0).toBe(0);
+  });
+
+  test('scheduler and ambient knobs are explicit', () => {
+    expect(C.global.dispatch).toEqual({ firstYears: 30, intervalYears: 8, jitter: 0.5, expiryYears: 12, maxPending: 1 });
+    expect(C.global.ambient?.everyYears).toBe(4);
+  });
+
+  test('a standing dispatch order exists, behind an Institution of hour 8 or later', () => {
+    const inst = C.institutions.filter((i) => [i.effects, ...(i.nextLevels ?? []).map((l) => l.effects)].flat().some((e) => e.type === 'orderUnlock' && e.order === 'dispatch'));
+    expect(inst.length).toBe(1);
+    expect(inst[0].cost).toBeGreaterThanOrEqual(280);
+    expect(inst[0].requires?.length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('M3: headlines for the new keys', () => {
+  test('the fallback set covers the new variant keys; every Industry has its own bite-back lines; Steam its seam lines', () => {
+    for (const k of M3_KEYS) expect(`${k} ${(C.headlines[k] ?? []).length >= 4}`).toBe(`${k} true`);
+    for (const s of sectorIds) expect(`${s} ${(C.sectorHeadlines?.[s]?.biteBack ?? []).length >= 3}`).toBe(`${s} true`);
+    expect((C.sectorHeadlines?.steam?.seamSunk ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/* The other two content lanes' data, as registered in index.ts (their own tests hold their volume floors). */
+describe('M3: dispatches, the cast and ambient news (registered)', () => {
+  const OK_PH = new Set(['sector', 'resource', 'service', 'age', 'year', 'cast', 'app']);
+  const noYou = (t: string) => !/\byou\b/i.test(t);
+
+  test('cast ids resolve and every cast member writes', () => {
+    for (const d of dispatches) expect(castIds.has(d.cast) ? '' : `${d.id}: ${d.cast}`).toBe('');
+    if (C.proprietor) expect(castIds.has(C.proprietor.pamphlet.cast) ? '' : C.proprietor.pamphlet.cast).toBe('');
+  });
+
+  test('dispatch shape: 2–3 arms, each priced; the default arm has no cost and no standing effects; next resolves', () => {
+    for (const d of dispatches) {
+      const ctx = d.id;
+      expect(d.arms.length >= 2 && d.arms.length <= 3 ? '' : ctx).toBe('');
+      if (d.sector) expect(sectorIds).toContain(d.sector);
+      if (d.age) expect(C.ages.map((a) => a.id)).toContain(d.age);
+      const def = d.arms[d.defaultArm ?? 0];
+      expect(def ? '' : `${ctx}: defaultArm`).toBe('');
+      if (def) {
+        expect(def.cost === undefined ? '' : `${ctx}: default arm has a cost`).toBe('');
+        expect((def.effects ?? []).filter((e) => !ONE_OFFS_M3.includes(e.type) && e.type !== 'reserveAdd').map((e) => `${ctx}: ${e.type}`)).toEqual([]);
+      }
+      for (const a of d.arms) {
+        expect(a.price.trim().length > 0 && a.label.length <= 28 && a.outcome.length > 0 ? '' : `${ctx}: ${a.label}`).toBe('');
+        if (a.next) expect(dispatchIds.has(a.next) ? '' : `${ctx}: next ${a.next}`).toBe('');
+        if (a.reply) expect(a.reply.length <= 70 && noYou(a.reply) && !/[.?]$/.test(a.reply) ? '' : `${ctx}: reply`).toBe('');
+        if (a.modifier) expect(a.modifier.years > 0 ? '' : ctx).toBe('');
+      }
+    }
+  });
+
+  test('dispatch text: headline ≤ 70 with no full stop and never “you”; body ≤ 400; known placeholders only', () => {
+    for (const d of dispatches) {
+      expect(d.headline.length <= 70 && !/[.?]$/.test(d.headline) && noYou(d.headline) ? '' : `${d.id}: ${d.headline}`).toBe('');
+      expect(d.body.length <= 400 ? '' : `${d.id}: body ${d.body.length}`).toBe('');
+      for (const t of [d.headline, d.body, ...d.arms.flatMap((a) => [a.label, a.outcome, a.price, a.reply ?? ''])]) {
+        for (const m of t.matchAll(/\{([a-zA-Z]+)\}/g)) expect(OK_PH.has(m[1]) ? '' : `${d.id}: {${m[1]}}`).toBe('');
+      }
+    }
+  });
+
+  test('ambient: when and stat resolve; variants ≤ 70 at value 1234.5; never “you”', () => {
+    for (const a of ambient) {
+      if (a.sector) expect(sectorIds).toContain(a.sector);
+      if (a.stat) {
+        expect(ALL_STATS.has(a.stat.stat) ? '' : a.id).toBe('');
+        if (SECTOR_SCOPED.includes(a.stat.stat)) expect(a.stat.sector && sectorIds.includes(a.stat.sector) ? '' : a.id).toBe('');
+      }
+      for (const t of a.text) {
+        const sub = t.replace('{value}', '1,230').replace('{pct}', '123450').replace('{fold}', '1234.5');
+        expect(sub.length <= 70 && noYou(t) && !/[.?]$/.test(t) ? '' : `${a.id}: ${t}`).toBe('');
+      }
+    }
+  });
+});
+
+describe('M3: the Archive, the Proprietor’s Day and the ending (registered)', () => {
+  const subjects = new Set([...ownable, ...dispatchIds, ...castIds]);
+
+  test('Archive notes: at least one graded source; a subject that exists; ids unique', () => {
+    expect(new Set(archive.map((a) => a.id)).size).toBe(archive.length);
+    for (const a of archive) {
+      expect(a.sources.length >= 1 && a.sources.every((x) => x.grade === 'V' || x.grade === 'S') ? '' : a.id).toBe('');
+      expect(subjects.has(a.subject) ? '' : `${a.id}: ${a.subject}`).toBe('');
+      expect(a.title.length > 0 && a.text.length > 0 ? '' : a.id).toBe('');
+    }
+  });
+
+  test('the Proprietor’s Day covers all three directions, and its headlines never say “you”', () => {
+    const p = C.proprietor;
+    if (!p) return;
+    for (const dir of ['up', 'down', 'flat'] as const) expect(`${dir} ${p.returns.some((r) => r.direction === dir)}`).toBe(`${dir} true`);
+    for (const r of p.returns) expect(r.headline.length <= 70 && !/\byou\b/i.test(r.headline) ? '' : r.headline).toBe('');
+    const OK = new Set(['workdayBefore', 'workdayAfter', 'workdayChange', 'decisionsBefore', 'decisionsAfter', 'decisionsChange',
+      'sessionsBefore', 'sessionsAfter', 'automatedPerHour', 'cast', 'year', 'age']);
+    for (const t of [p.pamphlet.headline, p.pamphlet.body, ...p.returns.flatMap((r) => [r.headline, r.body]), p.withdrawn]) {
+      for (const m of t.matchAll(/\{([a-zA-Z]+)\}/g)) expect(OK.has(m[1]) ? '' : `{${m[1]}}`).toBe('');
+    }
+  });
+
+  test('the ending: retrospective headlines ≤ 70 with known placeholders', () => {
+    const e = C.ending;
+    if (!e) return;
+    const OK = new Set(['year', 'run', 'hours', 'sector', 'age', 'resource', 'service']);
+    for (const r of e.retrospective) {
+      expect(r.headline.length <= 70 && !/\byou\b/i.test(r.headline) ? '' : r.headline).toBe('');
+      for (const m of r.headline.matchAll(/\{([a-zA-Z]+)\}/g)) expect(OK.has(m[1]) ? '' : `${r.key}: {${m[1]}}`).toBe('');
+    }
   });
 });

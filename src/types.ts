@@ -281,6 +281,8 @@ export type Cond = (
   /* --- M3 --- */
   | { returned: string; figure?: string; op?: CmpOp; value?: number }
   | { answered: string; arm?: number; run?: boolean; by?: 'player' }
+  /** True once the feature is unlocked (Derived.features[id]; a feature not listed in Content.features is always on). */
+  | { feature: FeatureId }
   | { all: Cond[] }
   | { any: Cond[] }
   | { not: Cond }

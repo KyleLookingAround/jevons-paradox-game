@@ -203,4 +203,45 @@ export const headlines: Record<HeadlineKey, string[]> = {
   ],
   /* The unfolding: a feature's headline is its own intro line (Content.features); none are drawn from here. */
   featureUnlocked: [],
+  /* M3. {name} is the seam ('seamSunk'), the lever ('biteBack') or the History ('history'), kept as authored. */
+  seamSunk: [
+    '{name} sunk; {resource} cheaper again, and more of it burned',
+    'Shaft reaches the {name}; the question of {resource} deferred again',
+    '{name} opened; the reserve grows deeper, and dearer',
+    'Pumps reach the {name}; owners call the reserve “good for a century”',
+    '{name} worked at last, thanks to the engines that will burn it',
+    'New winding gear over the {name}; the price at the pithead eases',
+  ],
+  biteBack: [
+    '{name} works; the trouble is how well',
+    'Second thoughts: {name}, and the side effects growing',
+    '{name} succeeds, and its loophole succeeds faster',
+    '{name} has bred its own exception, inquiry finds',
+    '{name} “working as intended”, says the department; so is the dodge',
+    '{name}: its critics find, to their dismay, that they were right',
+  ],
+  /* Content.dispatches and Content.ambient supply their own text; these keys only mark the item. */
+  dispatch: [],
+  answered: [],
+  ambient: [],
+  history: [
+    '{name}: the historians concede the point',
+    'The other road taken: {name}, and it held',
+    '{name} written up for the archive; the footnotes run long',
+    'What might have been, done: {name}',
+    '{name}: the seminar ends in agreement, for once',
+    '{name} settled; the counterfactual enters the textbooks',
+  ],
+  /* The household return's texts come from Content.proprietor. */
+  return: [],
+  returnWithdrawn: [],
+  /* The first ending ({year}), beside 'steadyAll'; printed once ever. */
+  ending: [
+    'Fifty years at the sink line; the Gazette prints the date, {year}',
+    'The ledgers balance, and stay balanced, in {year}',
+    'Steady State everywhere in {year}; the leader column is left blank',
+    'Every Industry within the sky’s means; the year is {year}',
+    'The rebound runs out of road in {year}; the presses pause a minute',
+    '{year}: enough, it turns out, and to spare',
+  ],
 };

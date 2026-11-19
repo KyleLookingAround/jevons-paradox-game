@@ -11,17 +11,12 @@ import { emit } from './events';
 import { headline, withNews } from './headlines';
 import { isFreshRun, withMeta } from './state';
 
-/** The contract's mixer (GameState.charterOffer). */
-export function mix32(x: number): number {
-  x = x >>> 0;
-  x = Math.imul(x ^ (x >>> 16), 0x45D9F3B) >>> 0;
-  x = Math.imul(x ^ (x >>> 16), 0x45D9F3B) >>> 0;
-  return (x ^ (x >>> 16)) >>> 0;
-}
+export { mix32 } from './util';
+import { mix32 } from './util';
 
 /** The offer for a fresh run (before any Charter), excluding `previous` when that leaves at least two. */
 export function drawOffer(state: GameState, content: Content, previous: string | undefined): string[] {
-  let E = (content.charters ?? []).filter((c) => !c.requires || evalCond(state, content, c.requires)).map((c) => c.id);
+  let E = (content.charters ?? []).filter((c) => (!c.locked || state.meta.unlocks?.[c.id] === true) && (!c.requires || evalCond(state, content, c.requires))).map((c) => c.id);
   if (previous !== undefined && E.includes(previous) && E.length - 1 >= 2) E = E.filter((id) => id !== previous);
   const n = E.length;
   if (n <= 2) return E;

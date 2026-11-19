@@ -7,7 +7,8 @@ import type { Actor, Content, GameState, LeverRecycle, LeverView, NewsItem, Sect
 import { calendarYear } from './calendar';
 import { commonsOpen } from './commons';
 import { idx } from './contentIndex';
-import { modsOf } from './effects';
+import { modsOf, isForbidden, refreshEta } from './effects';
+import { evalCond } from './conditions';
 import { emit } from './events';
 import type { EvDraft } from './events';
 import { computeFlows } from './flows';
@@ -50,9 +51,10 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const fl = computeFlows(state, content);
   if (fl.pending) return state;
   if (target < cur.level) {
-    return { ...state, levers: { ...state.levers, [leverId]: { ...cur, level: target, ref: target > 0 ? cur.ref : 0 } } };
+    const low = { ...state, levers: { ...state.levers, [leverId]: { ...cur, level: target, ref: target > 0 ? cur.ref : 0 } } };
+    return def.kind === 'measure' ? refreshEta(low, content) : low;
   }
-  if (target - cur.level > MAX_LEVEL_JUMP) return state;
+  if (target - cur.level > MAX_LEVEL_JUMP || isForbidden(mods, def.id, def)) return state;
   const inst = mods.startLevers[leverId] ?? 0;
   let cost = 0;
   for (let l = cur.level + 1; l <= target; l++) if (l > inst) cost += leverLevelDef(def, l)?.mandateCost ?? 0;
@@ -77,11 +79,12 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const year = calendarYear(state, content);
   items.push(headline(state, content, 'leverEnacted', state.time, { year }, def.sector));
   ev.push({ kind: 'leverEnacted', sector: def.sector, id: leverId, n: target, by });
-  return emit({
+  const raised = emit({
     ...state, mandate: state.mandate - cost, sectors, run,
     levers: { ...state.levers, [leverId]: { ...cur, level: target, ref: fin(ref) } },
     news: withNews(state.news, items),
   }, ev, state.time, year);
+  return def.kind === 'measure' ? refreshEta(raised, content) : raised;
 }
 
 export function setLeverRecycle(state: GameState, content: Content, leverId: string, option: LeverRecycle): GameState {
@@ -123,11 +126,18 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
     const maxLevel = leverReachable(state, content, def);
     const next = level < maxLevel ? leverLevelDef(def, level + 1) : null;
     const nextCost = next ? (level + 1 <= inst ? 0 : next.mandateCost) : null;
+    const forbidden = isForbidden(mods, def.id, def);
+    const se = def.sideEffects;
+    let bite: LeverView['bite'] = null;
+    if (se && featureOn(content, state.meta, 'sideEffects')) {
+      const unlessMet = !!se.unless && evalCond(state, content, se.unless);
+      bite = { value: ls?.bite ?? 0, growing: level >= 1 && !unlessMet, unlessMet, blurb: se.blurb, unlessLabel: se.unlessLabel ?? '' };
+    }
     const opts0 = recycleOptions(def);
     const opts = fuller ? opts0 : opts0.slice(0, 1);
     return {
       def, level, maxLevel, current: leverLevelDef(def, level), next, visible, nextCost,
-      canRaise: visible && nextCost !== null && state.mandate >= nextCost,
+      canRaise: visible && nextCost !== null && state.mandate >= nextCost && !forbidden,
       upkeep: leverNetUpkeep(def, level, inst),
       recycleOptions: opts, recycle: recycleOf(def, ls),
       recycleChoices: opts.map((option) => ({
@@ -136,6 +146,7 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
         blurb: def.recycleBlurb?.[option] ?? content.recycleText?.[option]?.blurb ?? '',
         available: option !== 'commons' || open,
       })),
+      bite, forbidden,
     };
   });
 }

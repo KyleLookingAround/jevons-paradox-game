@@ -8,6 +8,31 @@ import {
   SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, GREEN_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
+import { MECHANICS_LIVE, loadTerm } from '../helpers';
+
+/* ------------------------------------------------------------------ */
+/* LIGHT: the load curve (M3)                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Hourly profiles (hour 0 = midnight; each the shape of one use's demand over a day). The plant is built for the peak
+ * hour and idles the rest of the day (LoadDef): street lamps and shop signs burn dusk to dawn, homes make the evening
+ * peak, the night shift fills the small hours, and the trams sell the afternoon (Insull's load-building).
+ */
+const DUSK = [1, 1, 1, 1, 1, 1, 0.8, 0.3, 0, 0, 0, 0, 0, 0, 0, 0, 0.3, 0.8, 1, 1, 1, 1, 1, 1];
+const EVENING = [0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.3, 0.5, 0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.5, 0.9, 1, 1, 1, 0.9, 0.7, 0.5];
+const NIGHT = [1, 1, 1, 1, 1, 1, 0.7, 0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.5, 0.9, 1];
+const DAY = [0.05, 0.05, 0.05, 0.05, 0.05, 0.2, 0.5, 0.9, 1, 0.8, 0.6, 0.6, 0.7, 0.6, 0.6, 0.7, 0.9, 1, 0.9, 0.6, 0.4, 0.3, 0.2, 0.1];
+const FLAT = Array.from({ length: 24 }, () => 1);
+/** k: the share of Light's capital that is plant built for the peak (the brief's 0.5–0.7). Balance knob. */
+const FIXED_SHARE = 0.6;
+/**
+ * Light's capCost before the load term. The opening use (street lamps, dusk to dawn: load factor 0.6) multiplies c by
+ * about 1.4, so c is divided by that factor and the opening price is M2's (0.05). As homes found, the evening peak
+ * sharpens and c rises; as the night shift and the trams fill the hollows it falls well below M2's (by about a quarter
+ * with every use founded, more with the off-peak tariff). With MECHANICS_LIVE false: M2's 0.05.
+ */
+const LIGHT_CAPCOST = MECHANICS_LIVE ? 0.05 / loadTerm([DUSK], [1], FIXED_SHARE) : 0.05;
 
 /* ------------------------------------------------------------------ */
 /* LIGHT: the Industry                                                 */
@@ -26,7 +51,7 @@ const sector: SectorDef = {
   theme: 'gaslight',
 
   basePrice: 1,
-  capCost: 0.05,
+  capCost: LIGHT_CAPCOST,
   margin: 0.2,
   baseEta: 1,
   autoEtaRate: 0,
@@ -83,6 +108,19 @@ const sector: SectorDef = {
     },
   },
 
+  /* M3: the load curve (see above). Commons intensity (the library, the clock) burns in the evening. */
+  load: {
+    profiles: { dusk: DUSK, evening: EVENING, night: NIGHT, day: DAY, flat: FLAT },
+    defaultProfile: 'evening',
+    fixedShare: FIXED_SHARE,
+    floor: 0.05,
+  },
+  mechanic: {
+    name: 'The load curve',
+    rebound: 'Utilisation',
+    blurb: 'The works are built for the evening and idle by day. The cheapest unit to sell is the next one.',
+  },
+
   applications: [
     {
       id: 'light.streetLamps',
@@ -94,6 +132,7 @@ const sector: SectorDef = {
       steepness: 2.4,
       visibleBelow: Infinity,
       foundCost: 0,
+      profile: 'dusk',
     },
     {
       id: 'light.nightShifts',
@@ -105,6 +144,7 @@ const sector: SectorDef = {
       steepness: 3,
       visibleBelow: 0.7,
       foundCost: 8_000,
+      profile: 'night',
     },
     {
       id: 'light.trams',
@@ -116,6 +156,7 @@ const sector: SectorDef = {
       steepness: 3.4,
       visibleBelow: 0.4,
       foundCost: 20_000,
+      profile: 'day',
     },
     {
       id: 'light.homes',
@@ -127,6 +168,7 @@ const sector: SectorDef = {
       steepness: 3.6,
       visibleBelow: 0.24,
       foundCost: 40_000,
+      profile: 'evening',
     },
     {
       id: 'light.shopSigns',
@@ -138,6 +180,7 @@ const sector: SectorDef = {
       steepness: 3.8,
       visibleBelow: 0.13,
       foundCost: 150_000,
+      profile: 'dusk',
     },
   ],
 };
@@ -190,7 +233,8 @@ const lightUpgrades: UpgradeDef[] = withStages([
       name: 'Central power station',
       blurb: 'One great station instead of a gas works in every town. Cheaper current, wired into every home that will take it.',
       cost: 30_000, requires: ['light.mantle'],
-      effects: [capCost('light', 0.8), half('light', 1.25, 'light.homes')],
+      /* M3 (live): current opens the day uses: the trams. */
+      effects: [capCost('light', 0.8), half('light', 1.25, 'light.homes'), ...(MECHANICS_LIVE ? [sat('light', 1.2, 'light.trams')] : [])],
     },
   ),
 
@@ -208,7 +252,11 @@ const lightUpgrades: UpgradeDef[] = withStages([
       name: 'Flat rate',
       blurb: 'The same price at every hour. Simple, fair, and the plant idles until dusk. The profit builds another plant.',
       cost: 60_000, requires: ['light.carbon'],
-      effects: [margin('light', 0.03), sat('light', 0.85, 'light.nightShifts')],
+      /* M3 (live): a flat charge per lamp, so the home sees little of the price per unit, and burns into the peak. */
+      effects: [
+        margin('light', 0.03), sat('light', 0.85, 'light.nightShifts'),
+        ...(MECHANICS_LIVE ? [{ type: 'priceSeen' as const, sector: 'light', app: 'light.homes', share: 0.6 }] : []),
+      ],
     },
   ),
 
@@ -237,7 +285,7 @@ const lightUpgrades: UpgradeDef[] = withStages([
     cost: 30_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('light', 0.25)],
   },
-], { 'light.mantle': 1, 'light.carbon': 2, 'light.fluorescent': 3 });
+], { 'light.mantle': [1, 'Gas mantle'], 'light.carbon': [2, 'Filament lamp'], 'light.fluorescent': [3, 'Fluorescent tube'] });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -287,6 +335,27 @@ const lightLevers: LeverDef[] = [
     catch: 'There are only so many glens, and each one costs a fortune.',
     values: SHARE_VALUES, value2: [1_000, 3_000, 8_000], cost: 180, upkeep: 0.08, label: 'Supply {pct}% by hydro',
     repeat: { value2Step: 3_000 },
+  }),
+  /*
+   * M3: the lever that bites back. Grants for new hydro without a cap on the coal: the current adds to the supply and
+   * cheapens every unit, and the lamps multiply rather than the gas works closing (satMul on the whole Industry,
+   * × bite × level), unless the gas allowance holds the total. Arrives with the load curve (run 4).
+   */
+  lever({
+    id: 'light.hydroGrants', sector: 'light', kind: 'substitution',
+    requires: ['load'],
+    name: 'Hydro grants',
+    blurb: 'Public money for every glen that will take a dam. The current comes south by the new grid.',
+    catch: 'Without a cap the new current adds to the old: the gas works stay lit and the lamps multiply.',
+    values: SHARE_VALUES, value2: [2_000, 6_000, 15_000], cost: 150, upkeep: 0.06, label: 'Grant {pct}% to hydro',
+    repeat: { value2Step: 5_000 },
+    sideEffects: {
+      effects: [sat('light', 1.08)],
+      rampYears: 25, decayYears: 25,
+      unless: { owns: 'light.cap' },
+      blurb: 'The new current lights new streets; the gas works stay lit.',
+      unlessLabel: 'unless the gas allowance holds the total',
+    },
   }),
 ];
 
@@ -388,6 +457,12 @@ const lightHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Light settled: the Board fixes the lamps at what the town needs',
     'Gas company content to stay the size it is; shareholders less so',
     'The lamps burn as before, and no more lamps are built',
+  ],
+  /* M3 */
+  biteBack: [
+    'New hydro lights new streets; the gas works burn on regardless',
+    'Cheap current from the glens; the borough lights its alleys too',
+    'Evening Lamp: more current than ever, and as much gas as before',
   ],
   unsettled: [
     'Lighting settlement ends; every shop window ablaze by Friday',

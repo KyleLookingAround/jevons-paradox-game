@@ -95,7 +95,7 @@ export const motion: Layout = {
       // Suburbs, the story of this Industry: estate roads east from the spine, then cul-de-sacs field by field (each
       // parcel turns from crop to lawn behind a hedge), the shopping parade and a filling station on the arterial, a
       // school with its playing field, and the sprawl south of the road. Once built it stays.
-      key: 'suburbs', match: ['suburb'],
+      key: 'suburbs', match: ['suburb'], sprawl: true,
       anchor: R1[0],
       slots: [seg(ESTATE[0], 'mid'), { p: 'parade', x: 346, y: 256, s: sAt(256) * 1.05, v: 0.2 }, ...weave(R1.slice(1), R2.slice(0, 2)),
         { p: 'station', x: 262, y: 257, s: sAt(257) * 1.1 }, seg(ESTATE[1], 'mid'), ...weave(R2.slice(2), R3.slice(0, 3)),
@@ -129,6 +129,14 @@ export const motion: Layout = {
       hit: [0, 326, 600, 74],
       site: [150, 348, 80, 8],
     },
+    // M3: congestion as a standing queue on the motorway, from the junction outwards (1 − travel speed); and roads
+    // built (the free speed up) as a new carriageway on the verge, which the queue reaches again.
+    { key: 'roads', driver: 'roads', curve: 1, slots: [{ p: 'carriageway', x: -10, y: 331, s: 1, w: 620, band: 'near' }] },
+    {
+      key: 'jam', driver: 'congestion', curve: 1.1,
+      slots: [[240, 351], [300, 358], [0, 351], [420, 358], [240, 343], [-240, 351], [540, 358], [0, 343], [300, 336], [240, 330]]
+        .map(([x, y], i): Slot => ({ p: 'jam', x, y, s: 1, w: 240, v: (i * 0.31) % 1, band: 'near' })),
+    },
     {
       key: 'flights', match: ['plane'],
       anchor: { p: 'airport', x: 362, y: 191, s: 1.25, w: 190, band: 'mid' },
@@ -159,4 +167,7 @@ export const motion: Layout = {
   // edge of the suburbs, bunting at the junction.
   commons: [{ p: '', x: 150, y: 296, band: 'mid' }, { p: '', x: 230, y: 298, band: 'mid' }, { p: '', x: 566, y: 300, band: 'near' }],
   steadyMovers: [{ p: 'birds', x0: -40, y0: 80, x1: 640, y1: 60, dur: 38, n: 2, s: 1, band: 'far' }],
+  // M3: the cast on the verge by the motorway sign; the fuel-economy standard's heavier cars on the depot forecourt.
+  figures: [{ x: 150, y: 329, s: 0.9 }, { x: 124, y: 329, s: 0.9, flip: true }, { x: 178, y: 329, s: 0.9 }, { x: 206, y: 329, s: 0.9 }, { x: 98, y: 329, s: 0.9, flip: true }, { x: 234, y: 329, s: 0.9 }],
+  bite: { measure: { p: 'suvs', x: 180, y: 298, s: 0.9, band: 'mid' }, '*': { p: 'suvs', x: 180, y: 298, s: 0.9, band: 'mid' } },
 };

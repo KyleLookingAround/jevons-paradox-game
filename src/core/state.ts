@@ -16,6 +16,12 @@ import { budgetROf, sinkROf } from './steady';
 import { absorptionOf } from './effects';
 import { fin } from './util';
 import { featureOn } from './features';
+import { dispatchFirstAt } from './dispatchClock';
+
+/** M3: a fresh run's dispatch scheduler state (GameState.dispatch). */
+export function freshDispatch(content: Content): GameState['dispatch'] {
+  return { pending: [], queue: [], answered: [], offered: [], draws: 0, standing: [], nextAt: dispatchFirstAt(content) };
+}
 
 /* ------------------------------------------------------------------ */
 /* State construction                                                  */
@@ -28,6 +34,7 @@ export function defaultOrders(content: Content): OrdersState {
     market: { on: true, paybackMax: typeof pb === 'number' && Number.isFinite(pb) ? pb : DEFAULT_MARKET_PAYBACK, sectors: {} },
     civilService: { on: false, levers: {} },
     treasury: { on: false, keepSeconds: DEFAULT_KEEP_SECONDS, projects: [] },
+    dispatch: { on: false, cast: {} },
   };
 }
 
@@ -37,6 +44,8 @@ export function freshMeta(content: Content): MetaState {
     steadySectors: {}, sectorsOpened: {}, totalSeconds: 0,
     slots: content.global?.startingSlots ?? 2, loadout: [], backfiredSectors: {},
     charter: null, orders: defaultOrders(content), runs: [], eventSeq: 0, knowhowPeak: {}, peakPopulationEver: 1, features: {},
+    dispatches: { seen: {}, arms: {}, playerArms: {} }, history: null, histories: {}, unlocks: {}, returns: {}, archive: {},
+    flags: {}, endings: {}, milestones: {}, bankedSeconds: 0,
   };
 }
 
@@ -45,6 +54,7 @@ export function freshRunStats(): RunStats {
     peakWellbeing: 0, decoupledYears: 0, resourceUsed: {}, clicks: 0, steadySectors: {},
     wellbeingYears: 0, yearsAtTarget: 0, budgetDecades: 0, firstBackfires: {},
     leanDecades: 0, decisions: 0, decisionsByDecade: [], automated: 0, automatedByDecade: [], opening: [], firstBudgetAt: null,
+    dispatchesAnswered: 0, dispatchesDefaulted: 0,
   };
 }
 
@@ -61,6 +71,7 @@ export function freshSector(def: SectorDef, mods: Mods, open: boolean): SectorSt
     reserveMax: open ? q : 0, pressure: 0, crisesFired: 0, apps, baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0,
     peakR: 0, steadyYears: 0, backfired: false, budget: null, serviceDelivered: 0, decadesWithin: [],
     decadesLean: [], windowLean: false, clearYears: 0, settled: null, settledBefore: false, dividends: [], peakPressure: 0,
+    seamsSunk: 0,
   };
 }
 
@@ -122,6 +133,7 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
     upgrades, levers, sectors, flags: { revealed: mods.reveal, won: false }, steadyYearsAll: 0,
     news: [], history: [], run: freshRunStats(), meta: m,
     pendingDividends: [], commons: { levels: {}, fund: 0 }, events: [], lastOffline: null, charterOffer: [],
+    dispatch: freshDispatch(content), modifiers: [], ambientLast: {}, orderLog: {}, historyLifted: false,
   };
   // initial availability check and baseline
   const flows = computeFlows(s, content);

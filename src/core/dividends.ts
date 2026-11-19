@@ -8,7 +8,7 @@ import type { Actor, Content, GameState, MetaState, PendingDividend, SectorId } 
 import { featureOn } from './features';
 import { calendarYear } from './calendar';
 import { idx } from './contentIndex';
-import { fireOneOffs } from './effects';
+import { fireOneOffs, applyM3OneOffs } from './effects';
 import type { OneOffs } from './effects';
 import { emit } from './events';
 import { computeFlows } from './flows';
@@ -55,10 +55,11 @@ export function resolveDividend(state: GameState, content: Content, index: numbe
       }
     } else if (ef.type === 'reveal' && !flags.revealed) flags = { ...flags, revealed: true };
   }
-  const out: GameState = {
+  let out: GameState = {
     ...state, pendingDividends, sectors, flags,
-    capital: fin(state.capital + one.capital * offer.mul), mandate: fin(state.mandate + one.mandate * offer.mul),
+    capital: Math.max(0, fin(state.capital + one.capital * offer.mul)), mandate: Math.max(0, fin(state.mandate + one.mandate * offer.mul)),
   };
+  out = applyM3OneOffs(out, content, one);
   return emit(out, [{ kind: 'dividendChosen', sector: offer.sector, id, n: offer.decade, by }], state.time, calendarYear(state, content));
 }
 

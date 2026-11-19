@@ -15,6 +15,8 @@ const BASE = `
 .scn-stage>.scn-places:not(.act){display:none}
 .scn-bw{position:absolute;inset:0;width:100%;height:100%}
 .scn-noise{opacity:0}
+/* The signal noise is a dense SVG: kept on its own layer so its opacity (which follows pressure) never repaints it. */
+.scn[data-look=cyberpunk] .scn-noise{will-change:opacity}
 .scn-extra{overflow:hidden}
 .scn-legend{margin:2px 0 4px;text-align:center;font:italic 13px/1.3 var(--f-serif,Georgia,serif);letter-spacing:.06em;color:var(--muted,#6f5f4a);font-variant:small-caps}
 .scn-l{display:block;overflow:hidden}
@@ -205,6 +207,57 @@ const BASE = `
 .scn .starf{opacity:calc(1 - var(--light,0)*1.15 - var(--pf2,0))}
 .scn .sunf{opacity:calc(1 - var(--pf2,0)*.85)}
 .scn .rst{display:none}.scn .rst.on{display:inline}
+/* M3: the seam ladder (props/strata.ts): shafts and galleries where sunk, the next seam's shaft dotted, the worked-out
+   seams hollow, the one being worked hollowing from the shaft with the reserve. */
+.scn .sm .shf,.scn .sm .gal,.scn .sm .nxs,.scn .sm .pp{display:none}
+.scn .sm.sunk .shf,.scn .sm.work .gal,.scn .sm.next .nxs,.scn .sm.out .pp{display:inline}
+.scn .sm .sx{transform-box:fill-box;transform:scaleX(0);transition:transform 1.5s}
+.scn .sm.work .sx{transform:scaleX(var(--dep,0))}
+.scn .sm.out .sx{transform:scaleX(1)}
+.scn .sm .gal.gl{opacity:.75}
+/* M3: the sprites over the drawing. Light's day clock (a poster roundel: the day's load round a 24-hour dial, the
+   night shaded, a hand walking the day); the cast in the foreground; the proprietor's watch. */
+.scn-m3{z-index:0}
+.scn .dial .dlr{fill:var(--s-paper);stroke:var(--s-ink);stroke-width:calc(1px*var(--sw))}
+.scn .dial .dln{fill:var(--s-ink);fill-opacity:.32;stroke:none}
+.scn .dial .dlb{fill:none;stroke:var(--s-ac);stroke-width:calc(2.2px*var(--sw));stroke-linecap:butt}
+.scn[data-look=gaslight] .dial .dlb{stroke:#b8321e}
+.scn .dial .dlh{stroke-width:calc(1.6px*var(--sw))}
+.scn .fig .cs{fill:rgba(0,0,0,.18);stroke:none}
+.scn[data-look=gaslight] .fig .d,.scn[data-look=gaslight] .fig .b,.scn[data-look=gaslight] .fig .b2{fill:#1b1220}
+.scn[data-look=gaslight] .fig *:not(.cs){stroke:#f6c65b}
+.scn[data-look=gaslight] .fig .ac{fill:#b8321e}
+.scn[data-look=cyberpunk] .fig .d,.scn[data-look=cyberpunk] .fig .b,.scn[data-look=cyberpunk] .fig .b2{fill:#0b0618}
+.scn[data-look=cyberpunk] .fig *:not(.cs){stroke:#7ff6ff}
+.scn[data-look=terminal] .fig *:not(.cs){stroke:#8ef08a}
+.scn[data-look=terminal] .fig .d,.scn[data-look=terminal] .fig .b,.scn[data-look=terminal] .fig .b2{fill:rgba(6,20,8,.9)}
+.scn[data-look=gaslight] .dial .b{fill:#efdfb6}.scn[data-look=gaslight] .dial .dln{fill:#1d1830;fill-opacity:.5}
+.scn[data-look=gaslight] .dial .k{stroke:#2a1405}.scn[data-look=gaslight] .dial .d{fill:#2a1405}
+.scn.live .fig .warm{animation:scn-watch 9s ease-in-out infinite}
+.scn.settled .fig .warm{animation:none}
+@keyframes scn-watch{0%,64%{transform:rotate(0)}74%,88%{transform:rotate(-150deg)}96%,100%{transform:rotate(0)}}
+.scn .m3t{display:none}.scn .m3t.on{display:inline}
+/* M3 spots (spots.ts): the broadsheet's small pictures. */
+.scn-spot{display:block;overflow:hidden}
+.scn-spot *{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+.scn-spot .spbg{fill:var(--s-sky0)}
+.scn-spot .spfr{fill:none;stroke:var(--s-frame);stroke-width:1px}
+.scn-spot .sm.work .sx{transform:scaleX(.5)}
+/* M3 moments: a seam sunk (the shaft sinks, steam puffs at the head), the ending (the fresh sky held). */
+.scn.live .sm.sinking .shf{transform-box:fill-box;transform-origin:50% 0;animation:scn-sink 1.8s cubic-bezier(.3,.7,.4,1) both}
+@keyframes scn-sink{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.scn.live .sm.sinking .gal{animation:scn-fl 2s ease-out}
+.scn .puff i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:rgba(240,238,230,.8);box-shadow:inset 0 0 0 .5px rgba(42,31,21,.4);opacity:0}
+.scn.live .puff i{animation:scn-puff1 2.4s ease-out forwards}.scn.live .puff i:nth-child(2){animation-delay:.3s}.scn.live .puff i:nth-child(3){animation-delay:.6s}
+@keyframes scn-puff1{0%{opacity:0;transform:scale(.4)}15%{opacity:1}100%{opacity:0;transform:translate(22px,-34px) scale(3.4)}}
+.scn-sky.fresh.ending{opacity:1!important;transition:opacity 2.5s}
+.scn .ptg{fill:rgba(6,20,8,.85);stroke:var(--s-ink);stroke-width:calc(.8px*var(--sw))}
+.scn .ptt{fill:var(--s-ink);font:700 7px/1 ui-monospace,monospace}
+.scn .ptx{stroke:#ff5a4a;stroke-width:calc(1.4px*var(--sw));fill:none}
+.scn .adb{fill:rgba(6,20,8,.6)}
+.scn .sgn{fill:#f3ead2;stroke:#0e3a38;stroke-width:calc(.8px*var(--sw))}
+.scn .sgt{fill:#0e3a38;font:700 6px/1 var(--labelf,system-ui,sans-serif)}
+.scn .bcab .cab{fill:none;stroke:var(--s-sv);stroke-width:calc(.9px*var(--sw));stroke-dasharray:3 2;opacity:.85}
 .scn .stdy{display:none}.scn.steady .stdy{display:inline}
 .scn .nosteady{display:inline}.scn.steady .nosteady{display:none}
 

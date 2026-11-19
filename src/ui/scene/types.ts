@@ -31,6 +31,9 @@ export interface SceneLever {
   kind: string;
   level: number;
   name: string;
+  /** M3 (optional): how hard the lever bites back, 0–1 (LeverState.bite), present only while feature 'sideEffects' is
+   *  on and the bite is above zero. From 0.5 its side effect is drawn (heavier cars, a new road, another hall). */
+  bite?: number;
 }
 
 export interface SceneView {
@@ -95,12 +98,42 @@ export interface SceneView {
   /** Events of this Industry (and the sector-less ones the scene reacts to) newer than the last ones the host passed
    *  in, ascending seq. The engine reacts to each seq once. Absent: the engine falls back to diffing views. */
   events?: SceneEvent[];
+
+  /* --- M3 (all optional: absent = the M2 picture; each is absent while its feature is off) --- */
+  /** Steam's seam ladder (feature 'seams'): ladder seams sunk (0…total), how many there are, and whether the next one
+   *  can be reached now (cheap pumping reaches it). The original bed is always drawn above the ladder. */
+  seams?: SceneSeams;
+  /** Light's daily load (feature 'load'): 24 hourly loads normalised to the peak hour (each 0–1; hour 0 = midnight) and
+   *  the load factor (mean / peak, 0–1). */
+  load?: SceneLoad;
+  /** Motion's travel (feature 'travel'). `speed` 0–1: how freely the traffic moves (v / free speed; 1 = empty roads,
+   *  low = queues). `sprawl` 0–1: how far the suburbs have spread, from the lock-in stock (it stays when traffic thins).
+   *  `sprawlShare` 0–1: the share of today's travel that is locked in. `freeSpeed` (optional): the free speed index
+   *  (1 = the opening roads; above 1 = new roads built). */
+  travel?: SceneTravel;
+  /** Compute's "free at the point of use" (feature 'freeAtUse'): ids of founded applications whose users see a nil
+   *  or flat price (the bill is paid elsewhere). */
+  free?: { apps: string[] };
+  /** Small figures to show in the picture: cast figure keys (CastDef.figure) of the writer of a pending dispatch
+   *  addressed to this Industry (or to none), and 'proprietor' once the Proprietor's Day has happened. Unknown keys
+   *  draw nothing. Absent or [] = nobody. */
+  figures?: string[];
+  /** 0–1: how often the proprietor checks his watch (decisions per hour after the Market against before); 0 or absent =
+   *  he does not. */
+  watch?: number;
 }
 
 export interface SceneCommons { id: string; icon: string; level: number; name: string }
 
-/** A GameEvent as the scene sees it (plain JSON). */
-export interface SceneEvent { seq: number; kind: string; sector?: string; id?: string; n?: number; by?: string }
+/** M3: SceneView.seams. */
+export interface SceneSeams { sunk: number; total: number; next: boolean }
+/** M3: SceneView.load. */
+export interface SceneLoad { hours: number[]; factor: number }
+/** M3: SceneView.travel. */
+export interface SceneTravel { speed: number; sprawl: number; sprawlShare: number; freeSpeed?: number }
+
+/** A GameEvent as the scene sees it (plain JSON). M3: `first` and `label` are carried when the contract sets them. */
+export interface SceneEvent { seq: number; kind: string; sector?: string; id?: string; n?: number; by?: string; first?: boolean; label?: string }
 
 /** What a host can point at in the picture (SceneHandle.highlight). */
 export type SceneTarget = { app: string } | { lever: string } | { commons: string } | null;

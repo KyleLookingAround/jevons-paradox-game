@@ -66,7 +66,12 @@ export const global: GlobalParams = {
    * runs' worth, at the full rate; 0.2 still left it at 1.06–1.17× its own run; 0.15 puts the worst case below one
    * run (src/balance.test.ts E9b).
    */
-  offline: { capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15 },
+  offline: {
+    capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15,
+    /* M3: banked time is OFF (feature 'bank' unreachable in features.ts). Turning it on is these two numbers and the
+     * feature's `when` (design/m3-contract-notes.md §8). */
+    bankRate: 0, bankMax: 0,
+  },
   /* Growth peaks at W ≈ 29.9 and stops at 46; the wellbeing target (34) sits below the transition. */
   demography: { transitionWellbeing: 46 },
   steady: {
@@ -113,4 +118,12 @@ export const global: GlobalParams = {
   respecRefund: 1,
   /* The unfolding: five minutes of play at least between two systems arriving (features.ts). */
   featureGapSeconds: 300,
+  /*
+   * M3: the dispatch scheduler, stated explicitly (the contract's defaults). The first letter of a run at 30 model years
+   * (ten minutes in), then one about every eight model years (160 s) after each is answered or expires, ±25% (jitter
+   * 0.5); a letter waits twelve model years (four minutes) before its default answers it; one waits at a time.
+   */
+  dispatch: { firstYears: 30, intervalYears: 8, jitter: 0.5, expiryYears: 12, maxPending: 1 },
+  /* M3: at most one ambient headline every four model years (80 s); a template rests thirty years (ten minutes). */
+  ambient: { everyYears: 4, cooldownYears: 30 },
 };

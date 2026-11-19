@@ -252,7 +252,7 @@ describe('persistence v2 and migration from v1', () => {
   test('a hand-written v1 save loads and migrates', () => {
     const b = model.deserialize(JSON.stringify(v1Save()), C)!;
     expect(b).not.toBeNull();
-    expect(b.version).toBe(3); // M2: v1 chains through v2 to v3
+    expect(b.version).toBe(4); // M3: v1 chains through v2 and v3 to v4
     expect(Object.keys(b.sectors).sort()).toEqual([...SECTORS].sort());
     expect(b.sectors.light.open).toBe(true);
     expect(b.sectors.motion.open).toBe(false);
@@ -292,9 +292,9 @@ describe('persistence v2 and migration from v1', () => {
     expect(b.meta.loadout).toEqual(['inst.stats', 'inst.duty']);
     expect(b.levers['steam.duty'].level).toBe(1); // absent from the save: rebuilt from a fresh state, where the seated standing duty applies
   });
-  test('a save from the future is refused; a v3 round-trip is exact', () => {
+  test('a save from the future is refused; a v4 round-trip is exact', () => {
     const s = run(greedy({ ...steamAt(2), capital: 1e5 }, C), 60);
-    expect(model.deserialize(JSON.stringify({ ...JSON.parse(model.serialize(s)), version: 4 }), C)).toBeNull();
+    expect(model.deserialize(JSON.stringify({ ...JSON.parse(model.serialize(s)), version: 5 }), C)).toBeNull();
     const back = model.deserialize(model.serialize(s), C)!;
     expect(JSON.parse(model.serialize(back))).toEqual(JSON.parse(model.serialize(s)));
   });

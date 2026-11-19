@@ -23,7 +23,7 @@ export function machineStage(owned: number, total: number, etaFold: number, auto
 }
 
 /** Event kinds the scene reacts to without a sector (they concern every picture). */
-const GLOBAL_KINDS = new Set(['reckoning', 'won', 'charterChosen']);
+const GLOBAL_KINDS = new Set(['reckoning', 'won', 'charterChosen', 'ending']);
 
 /** The events of one sector (plus the sector-less ones the scene cares about), in seq order, as plain objects. */
 export function sceneEvents(events: readonly GameEvent[] | null | undefined, sectorId: string): SceneEvent[] {
@@ -38,6 +38,9 @@ export function sceneEvents(events: readonly GameEvent[] | null | undefined, sec
     if (e.id != null) se.id = String(e.id);
     if (Number.isFinite(e.n)) se.n = e.n;
     if (e.by) se.by = String(e.by);
+    const ex = e as { first?: boolean; label?: string };
+    if (ex.first === true) se.first = true;
+    if (typeof ex.label === 'string' && ex.label) se.label = ex.label;
     out.push(se);
   }
   return out.sort((a, b) => a.seq - b.seq);
@@ -143,6 +146,11 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
   const pr = derived?.pendingReckoning ?? null;
   const steadyYears = n(sd?.steadyYears ?? ss?.steadyYears);
 
+  // M3: each mechanic's view, only while its feature is on (and the core reports it).
+  const m3 = m3Fields(content, state, derived, sectorId);
+  const bites = m3.bites;
+  if (bites) for (const l of levers) { const b = bites[l.id]; if (b && b > 0.005) l.bite = Math.round(clamp(b, 0, 1) * 100) / 100; }
+
   return {
     sectorId,
     sectorName: String(def?.name ?? sectorId),
@@ -179,7 +187,145 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
     commons,
     landmark,
     events: sceneEvents(events, sectorId),
+    ...m3.fields,
   };
+}
+
+/** Is a feature on? Derived.features is the gate the UI reads too; a host without it (old saves, tests) reads "on". */
+function featureOn(derived: Derived | null | undefined, id: string): boolean {
+  const f = (derived as { features?: Record<string, boolean> } | null | undefined)?.features;
+  return !f || typeof f !== 'object' || !(id in f) || f[id] !== false;
+}
+
+/**
+ * M3: the optional fields of one Industry's view. Every field is left out while its feature is off or the core
+ * reports nothing (the SectorDerived views are null then), so an M2 host draws the M2 picture.
+ */
+function m3Fields(content: Content, state: GameState, derived: Derived | null | undefined, sectorId: string): { fields: Partial<SceneView>; bites: Record<string, number> | null } {
+  const out: Partial<SceneView> = {};
+  const sd = derived?.sectors?.[sectorId] as (Partial<{ seams: unknown; load: unknown; travel: unknown; free: unknown; servicePrice: number; apps: Record<string, { founded?: boolean; adoption?: number; demand?: number; priceSeen?: number }> }> | undefined);
+  // Seams (Steam).
+  const sv = sd?.seams as { sunk?: number; total?: number; ladder?: { sunk?: boolean; reachable?: boolean; forbidden?: boolean }[] } | null | undefined;
+  if (sv && typeof sv === 'object' && featureOn(derived, 'seams')) {
+    const ladder = Array.isArray(sv.ladder) ? sv.ladder : [];
+    const total = Math.max(0, Math.floor(n(sv.total, ladder.length)));
+    const sunk = clamp(Math.floor(n(sv.sunk)), 0, total);
+    const nx = ladder[sunk];
+    if (total > 0) out.seams = { sunk, total, next: !!(nx && nx.reachable && !nx.forbidden) };
+  }
+  // Load (Light): hours normalised to the peak hour.
+  const lv = sd?.load as { factor?: number; hours?: number[]; peak?: number } | null | undefined;
+  if (lv && typeof lv === 'object' && Array.isArray(lv.hours) && lv.hours.length && featureOn(derived, 'load')) {
+    const hs = lv.hours.map((x) => Math.max(0, n(x)));
+    const pk = Math.max(...hs, n(lv.peak));
+    out.load = { hours: hs.map((x) => (pk > 0 ? Math.round((x / pk) * 100) / 100 : 0)), factor: Math.round(clamp(n(lv.factor, pk > 0 ? hs.reduce((a, b) => a + b, 0) / hs.length / pk : 1), 0, 1) * 100) / 100 };
+  }
+  // Travel (Motion): flow from the speed against the free speed; sprawl from the lock-in stock against what full
+  // lock-in of every founded application would be (its effective saturation, read as demand / adoption).
+  const tv = sd?.travel as { speed?: number; freeSpeed?: number; sprawl?: number; sprawlShare?: number } | null | undefined;
+  if (tv && typeof tv === 'object' && featureOn(derived, 'travel')) {
+    const fs = Math.max(1e-6, n(tv.freeSpeed, 1));
+    const def = content?.sectors?.[sectorId];
+    let full = 0;
+    for (const a of Array.isArray(def?.applications) ? def!.applications : []) {
+      const ad = sd?.apps?.[a.id];
+      const as = state?.sectors?.[sectorId]?.apps?.[a.id] as { founded?: boolean; peakD?: number; peakAdoption?: number } | undefined;
+      if (!(ad?.founded ?? as?.founded)) continue;
+      const li = n((a as { lockIn?: number }).lockIn);
+      const ado = n(ad?.adoption);
+      const sat = ado > 0.02 ? n(ad?.demand) / ado : n(as?.peakD) / Math.max(0.02, n(as?.peakAdoption, 1));
+      full += li * Math.max(0, sat);
+    }
+    const sp = Math.max(0, n(tv.sprawl));
+    out.travel = {
+      speed: Math.round(clamp(n(tv.speed, fs) / fs, 0, 1) * 100) / 100,
+      sprawl: Math.round(clamp(full > 0 ? sp / full : 0, 0, 1) * 100) / 100,
+      sprawlShare: Math.round(clamp(n(tv.sprawlShare), 0, 1) * 100) / 100,
+      freeSpeed: Math.round(fs * 100) / 100,
+    };
+  }
+  // Free at the point of use (Compute): founded applications whose users see under half the service price.
+  if (sd?.free && featureOn(derived, 'freeAtUse')) {
+    const ps = n(sd.servicePrice);
+    const apps: string[] = [];
+    for (const [id, ad] of Object.entries(sd.apps ?? {})) {
+      if (ad?.founded && typeof ad.priceSeen === 'number' && Number.isFinite(ad.priceSeen) && ad.priceSeen <= ps * 0.5) apps.push(id);
+    }
+    out.free = { apps };
+  }
+  // Figures: the writer of a pending dispatch addressed to this Industry (or to none); the proprietor once his day
+  // has come; at the first ending, while that run lasts, the whole cast in the street.
+  const figs: string[] = [];
+  const add = (k: unknown) => { if (typeof k === 'string' && k && !figs.includes(k)) figs.push(k); };
+  if (featureOn(derived, 'dispatches')) {
+    const pend = (derived as { dispatch?: { pending?: { def?: { sector?: string }; cast?: { figure?: string } | null }[] } } | null | undefined)?.dispatch?.pending;
+    if (Array.isArray(pend)) for (const p of pend) if (p && (!p.def?.sector || p.def.sector === sectorId)) add(p.cast?.figure);
+  }
+  const meta = (state as { meta?: { flags?: Record<string, boolean> } } | undefined)?.meta;
+  const prop = meta?.flags?.proprietor === true;
+  const won = !!(state as { flags?: { won?: boolean } } | undefined)?.flags?.won && !!(derived as { ending?: { reached?: boolean } } | null | undefined)?.ending?.reached;
+  if (won) for (const c of Array.isArray((content as { cast?: unknown[] })?.cast) ? (content as { cast: { figure?: string }[] }).cast : []) add(c?.figure);
+  if (prop) add('proprietor');
+  if (figs.length) out.figures = figs;
+  // The proprietor's watch: decisions per hour after the Market against before (0.5 = unchanged).
+  if (prop) {
+    const sv2 = (derived as { survey?: { decisionsPerHourBefore?: number | null; decisionsPerHourAfter?: number | null } | null } | null | undefined)?.survey;
+    const b = n(sv2?.decisionsPerHourBefore, NaN), a = n(sv2?.decisionsPerHourAfter, NaN);
+    out.watch = Number.isFinite(a) && Number.isFinite(b) && a + b > 0 ? Math.round(clamp(a / (a + b), 0.05, 1) * 100) / 100 : 0.5;
+  }
+  // Bites of this Industry's levers (feature 'sideEffects').
+  let bites: Record<string, number> | null = null;
+  if (featureOn(derived, 'sideEffects')) {
+    for (const [id, ls] of Object.entries(state?.levers ?? {})) {
+      const b = n((ls as { bite?: number } | undefined)?.bite);
+      if (b > 0) (bites ??= {})[id] = b;
+    }
+  }
+  return { fields: out, bites };
+}
+
+/**
+ * M3: a still view of how a run ended, rebuilt from its RunSummary (after a reload, when no recorded view is left):
+ * the Industry at its peak adoption, peak pressure, stage and the M3 seams, load factor, speed and sprawl. `base` is
+ * any view of the same Industry (sceneViewFrom with the current content and state) for names and the app list; the
+ * result is a view for renderStill. With `start` true it is the run's first morning instead: nothing founded but the
+ * first place, stage 0, clean air, the reserve whole.
+ */
+export function viewFromSummary(base: SceneView, summary: RunSummaryLike | null | undefined, start = false): SceneView {
+  const s = summary?.sectors?.[base.sectorId];
+  const cause = summary?.cause;
+  if (start || !s) {
+    return {
+      ...base, events: undefined, stage: 0, pace: 0.1, pressureFraction: 0.02, pressureToClear: 0, reserveFraction: 1, popFraction: 0.1, crises: 0,
+      levers: [], reckoning: null, clear: false, clearProgress: 0, settled: false, steady: false, decoupling: false, steadyProgress: 0, commons: base.commons,
+      apps: base.apps.map((a, i) => ({ ...a, status: i === 0 ? 'founded' : i === 1 ? 'available' : 'hidden', adoption: i === 0 ? 0.15 : 0 })),
+      seams: base.seams ? { ...base.seams, sunk: 0, next: false } : undefined, travel: base.travel ? { ...base.travel, sprawl: 0, speed: 1, sprawlShare: 0 } : undefined,
+      figures: undefined, watch: undefined,
+    };
+  }
+  const pk = s.peakAdoption ?? {};
+  const v: SceneView = {
+    ...base, events: undefined,
+    apps: base.apps.map((a) => (a.id in pk ? { ...a, status: 'founded', adoption: clamp(n(pk[a.id]), 0, 1) } : { ...a, status: a.status === 'founded' ? 'available' : a.status, adoption: 0 })),
+    stage: clamp(Math.round(n(s.stage, base.stage)), 0, 3),
+    pressureFraction: clamp(n(s.peakPressure, base.pressureFraction), 0, 1.2),
+    pressureToClear: undefined,
+    reserveFraction: typeof s.unburnt === 'number' ? clamp(s.unburnt, 0, 1) : base.reserveFraction,
+    pace: clamp(Math.log2(Math.max(1, n(s.peakRFold, 1))) / 4, 0, 1),
+    steady: !!s.steady, settled: !!s.settled, clear: !!s.steady || !!s.settled, clearProgress: s.steady ? 1 : 0,
+    reckoning: cause ? { cause: String(cause), here: !summary?.causeSector || summary.causeSector === base.sectorId } : null,
+    figures: undefined, watch: undefined,
+  };
+  if (base.seams && typeof s.seams === 'number') v.seams = { ...base.seams, sunk: clamp(Math.floor(s.seams), 0, base.seams.total), next: false };
+  if (base.load && typeof s.loadFactor === 'number') v.load = { ...base.load, factor: clamp(s.loadFactor, 0, 1) };
+  if (base.travel && (typeof s.speed === 'number' || typeof s.sprawl === 'number')) v.travel = { ...base.travel, speed: typeof s.speed === 'number' ? clamp(s.speed / Math.max(1e-6, base.travel.freeSpeed ?? 1), 0, 1) : base.travel.speed };
+  return v;
+}
+
+/** The parts of RunSummary viewFromSummary reads (structurally typed so a migrated summary also fits). */
+export interface RunSummaryLike {
+  cause?: string; causeSector?: string;
+  sectors?: Record<string, { peakRFold?: number; unburnt?: number; peakPressure?: number; peakAdoption?: Record<string, number>; stage?: number; steady?: boolean; settled?: boolean; seams?: number; loadFactor?: number; speed?: number; sprawl?: number }>;
 }
 
 /**
@@ -197,6 +343,8 @@ export function compactView(v: SceneView): SceneView {
     popFraction: r2(v.popFraction), population: Math.round(v.population), steadyProgress: r2(v.steadyProgress), nextCrisisFraction: null,
     clearProgress: v.clearProgress == null ? undefined : r2(v.clearProgress), pressureToClear: v.pressureToClear == null ? undefined : r2(v.pressureToClear),
     events: undefined,
+    // M3: figures and the watch belong to the live session, not to a record of the valley.
+    figures: undefined, watch: undefined,
   };
   return out;
 }

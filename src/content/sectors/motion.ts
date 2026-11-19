@@ -8,6 +8,20 @@ import {
   SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, GREEN_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
+import { MECHANICS_LIVE } from '../helpers';
+
+/*
+ * M3: travel time, congestion and sprawl (TravelDef). Balance knobs:
+ *   ROADS     service per second at which traffic halves the speed. Commuting and the first out-of-town shopping bring
+ *             Motion's travel demand to roughly 12,000 about 15 minutes in; at 20,000 the speed index is then about 0.9
+ *             (congestion starts to bite), and by the suburbs it holds travel demand near the roads' capacity, which the
+ *             motorway, the relief roads and the road-building programme raise. With MECHANICS_LIVE false: effectively
+ *             infinite (v = 1, the M2 solve).
+ *   DECAY     sprawl fades: a lock-in peak halves in about an hour of play (ln 2 / 3,600 s). Off (M2) until live.
+ */
+const ROADS = MECHANICS_LIVE ? 20_000 : 1e15;
+const DECAY = MECHANICS_LIVE ? Math.LN2 / 3600 : undefined;
+const roads = (value: number) => ({ type: 'travelMul' as const, sector: 'motion', roads: value });
 
 /* ------------------------------------------------------------------ */
 /* MOTION: the Industry                                                */
@@ -82,6 +96,20 @@ const sector: SectorDef = {
     },
   },
 
+  travel: {
+    roads: ROADS,
+    exponent: 4,
+    /* About one hour a day at the wheel at the start: Motion's opening demand per head is near 800 vehicle-miles. */
+    hoursScale: 0.00125,
+    /* The vans make their rounds whatever the traffic; the commute, the shopping trip and the suburb are the travel. */
+    apps: ['motion.commuting', 'motion.shopping', 'motion.suburbs'],
+  },
+  mechanic: {
+    name: 'The travel-time budget',
+    rebound: 'Induced demand and lock-in',
+    blurb: 'Faster roads buy distance, not time: the hour a day stays, and the miles grow. Sprawl outlasts the traffic.',
+  },
+
   applications: [
     {
       id: 'motion.delivery',
@@ -105,6 +133,7 @@ const sector: SectorDef = {
       visibleBelow: 0.75,
       foundCost: 30_000,
       lockIn: 0.75,
+      ...(DECAY ? { lockInDecay: DECAY } : {}),
     },
     {
       id: 'motion.shopping',
@@ -117,6 +146,7 @@ const sector: SectorDef = {
       visibleBelow: 0.55,
       foundCost: 80_000,
       lockIn: 0.6,
+      ...(DECAY ? { lockInDecay: DECAY } : {}),
     },
     {
       id: 'motion.suburbs',
@@ -129,6 +159,7 @@ const sector: SectorDef = {
       visibleBelow: 0.45,
       foundCost: 200_000,
       lockIn: 0.85,
+      ...(DECAY ? { lockInDecay: DECAY } : {}),
     },
     {
       id: 'motion.flights',
@@ -199,7 +230,8 @@ const motionUpgrades: UpgradeDef[] = withStages([
       name: 'Relief roads',
       blurb: 'Widen the road and the jam clears for a season. Then it fills again, from further away.',
       cost: 400_000, requires: ['motion.leanBurn'],
-      effects: [capCost('motion', 0.85), sat('motion', 1.3, 'motion.commuting')],
+      /* M3 (live): more road, for a season. */
+      effects: [capCost('motion', 0.85), sat('motion', 1.3, 'motion.commuting'), ...(MECHANICS_LIVE ? [roads(1.4)] : [])],
     },
     {
       id: 'motion.roadPricing', sector: 'motion', kind: 'capital',
@@ -214,7 +246,9 @@ const motionUpgrades: UpgradeDef[] = withStages([
     id: 'motion.motorways', sector: 'motion', kind: 'capital',
     name: 'Motorway programme',
     blurb: 'The M1, 1959. No crossroads, no traffic lights, no speed limit, and no reason to stay at home.',
-    cost: 250_000, requires: ['motion.injection'], effects: [capCost('motion', 0.8)],
+    cost: 250_000, requires: ['motion.injection'],
+    /* M3 (live): faster (no limit) and wider: the speed buys distance, and the lanes fill. */
+    effects: [capCost('motion', 0.8), ...(MECHANICS_LIVE ? [{ type: 'travelMul' as const, sector: 'motion', speed: 1.25, roads: 1.5 }] : [])],
   },
   {
     id: 'motion.hirePurchase', sector: 'motion', kind: 'capital',
@@ -229,7 +263,7 @@ const motionUpgrades: UpgradeDef[] = withStages([
     cost: 250_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('motion', 0.25)],
   },
-], { 'motion.injection': 1, 'motion.aero': 2, 'motion.hybrid': 3 });
+], { 'motion.injection': [1, 'Fuel-injected saloon'], 'motion.aero': [2, 'Wind-tunnel saloon'], 'motion.hybrid': [3, 'Hybrid car'] });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -279,6 +313,44 @@ const motionLevers: LeverDef[] = [
     blurb: 'Steer the money saved on petrol into loft lagging instead of more lamps.',
     catch: 'Blunts the spill into Light, and only that; the motorways carry on as before.',
     values: GREEN_VALUES, cost: 220, upkeep: 0.05, label: 'Absorb {pct}% of the savings',
+  }),
+  /*
+   * M3: the lever that bites back (CAFE, 1975, and its light-truck boundary: design/research/restraint.md 5.1). A
+   * standard on miles per gallon (etaMul per step); the heavier vehicles fall outside it and the cheaper miles move the
+   * family further out (satMul on the suburbs, halfPriceMul on the commute, × bite × level), unless the fuel duty
+   * escalator holds the price of a mile (Knittel, 2011). Arrives with the travel dial (run 4).
+   */
+  lever({
+    id: 'motion.mileageRule', sector: 'motion', kind: 'measure',
+    requires: ['travel'],
+    name: 'Fleet mileage rule',
+    blurb: 'Every maker’s cars must average so many miles to the gallon. Vans and four-by-fours are counted separately.',
+    catch: 'Each mile gets cheaper, so there are more of them, and the heavy vehicles sit outside the rule.',
+    values: [1, 2, 3], cost: 220, upkeep: 0.05, label: 'Standard, step {n}',
+    labels: { 0: 'A first standard', 1: 'A stricter standard', 2: 'The strictest yet' },
+    effects: [eta('motion', 1.1)],
+    sideEffects: {
+      effects: [sat('motion', 1.12, 'motion.suburbs'), half('motion', 1.08, 'motion.commuting')],
+      rampYears: 30, decayYears: 40, // a fleet is not replaced overnight, nor scrapped
+      unless: { owns: 'motion.duty' },
+      blurb: 'Heavier vehicles fill the forecourt, and the commute grows longer.',
+      unlessLabel: 'unless the fuel duty escalator is in force',
+    },
+  }),
+  /*
+   * M3: road building to relieve congestion (SACTRA, 1994; Duranton & Turner, 2011). A measure on the roads (travelMul
+   * roads per step). It needs no side effect: the travel solve refills new road by itself, and the sprawl that follows
+   * stays (lock-in). Arrives with the travel dial.
+   */
+  lever({
+    id: 'motion.roadProgramme', sector: 'motion', kind: 'measure',
+    requires: ['travel'],
+    name: 'Road-building programme',
+    blurb: 'Widen the trunk roads, bypass the towns and ring the cities. The jam clears for a season.',
+    catch: 'New lanes fill from further away, and the houses built beside them stay.',
+    values: [1, 2, 3], cost: 180, upkeep: 0.04, label: 'Programme, phase {n}',
+    labels: { 0: 'A first programme', 1: 'A second programme', 2: 'A third programme' },
+    effects: [roads(1.3)],
   }),
 ];
 
@@ -385,6 +457,12 @@ const motionHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Motion settled: no new roads, and the old ones mended',
     'Traffic to stay as it is, by agreement; the motor show is muted',
     'The bypass is finished; nobody is building the next one',
+  ],
+  /* M3 */
+  biteBack: [
+    'Thriftier cars, heavier cars; the forecourt fills with four-by-fours',
+    'Mileage standard met; the family moves ten miles further out',
+    'Vans not cars, rules the ministry; the family buys a van',
   ],
   unsettled: [
     'Road settlement lapses; the new estate gets its relief road',

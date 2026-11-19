@@ -90,6 +90,13 @@ const sector: SectorDef = {
     },
   },
 
+  /* M3: Code's mechanic is its M2 one, named: the code stock with upkeep (pressureUpkeep) and deletion as the only sink. */
+  mechanic: {
+    name: 'The code stock',
+    rebound: 'Maintenance',
+    blurb: 'Everything shipped must be kept. Upkeep eats the attention that writes the next feature; only deletion shrinks it.',
+  },
+
   applications: [
     {
       id: 'code.internalTools',
@@ -217,7 +224,7 @@ const codeUpgrades: UpgradeDef[] = withStages([
     blurb: 'Every wheel already invented, free, and kept turning by one unpaid volunteer.',
     cost: 6_000_000, requires: ['code.autocomplete'], effects: [capCost('code', 0.6)],
   },
-], { 'code.chat': 1, 'code.agent': 2, 'code.fleets': 3 });
+], { 'code.chat': [1, 'Chat assistant'], 'code.agent': [2, 'Coding agent'], 'code.fleets': [3, 'Agent fleet'] });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -264,6 +271,27 @@ const codeLevers: LeverDef[] = [
     values: CAP_VALUES, value2: CAP_LEAK, cost: 550, upkeep: 0.25, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
     recycleBlurb: { commons: 'Spent on the Commons: a repair café for old laptops, which go on to run a great many more agents.' },
+  }),
+  /*
+   * M3: the lever that bites back (design/long-game.md: agent reviewers). Machines review what machines wrote, so review
+   * stops being the bottleneck (etaMul per step: features per hour of attention); review that cheap means more is
+   * shipped (satMul on every use, × bite × level), unless the review gate keeps a person reading.
+   */
+  lever({
+    id: 'code.machineReview', sector: 'code', kind: 'measure',
+    name: 'Machine review',
+    blurb: 'An agent reads every pull request before a person is asked to. Most of the time, nobody is asked.',
+    catch: 'Review stops being the bottleneck, so it stops limiting what ships.',
+    values: [1, 2, 3], cost: 450, upkeep: 0.1, label: 'Machine review, tier {n}',
+    labels: { 0: 'Review the small changes', 1: 'Review most changes', 2: 'Review everything' },
+    effects: [eta('code', 1.15)],
+    sideEffects: {
+      effects: [sat('code', 1.12)],
+      rampYears: 20, decayYears: 25,
+      unless: { owns: 'code.reviewGate' },
+      blurb: 'Cheap review ships everything the agents write.',
+      unlessLabel: 'unless the review gates keep a person reading',
+    },
   }),
 ];
 
@@ -361,6 +389,12 @@ const codeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Deprecated: the roadmap. Code is settled',
     'Changed: feature freeze made permanent; Code settled',
     'Known issue: none. Code settled at current scope',
+  ],
+  /* M3 */
+  biteBack: [
+    'Changed: review automated; merged pull requests up fourfold',
+    'Known issue: every change reviewed, by something; the stock doubles',
+    'Added: an agent that approves the agents; approval rate 100%',
   ],
   unsettled: [
     'Added: everything on the backlog. Code unsettled',

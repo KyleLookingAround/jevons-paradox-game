@@ -183,6 +183,7 @@ export function settledFlow(def: SectorDef, es: SectorState, st: SettledState, N
     pPre: st.pPre, permitPart: 0, dutyPart: 0, ps: st.ps, D: st.D, R: st.R, sigma: 0,
     income: st.income, dutyRevenue: 0, permitRevenue: 0, treasuryLevy: 0,
     capacity, usable, util, unrev: 0, appD, appSat, reserveGain: 0, pressureIn: 0, deletionOut: 0, wellbeingShare: fin(wb),
+    load: null, travel: null, appSeen: null, seamMul: 1,
   };
 }
 

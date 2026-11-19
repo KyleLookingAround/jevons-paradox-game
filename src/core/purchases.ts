@@ -5,7 +5,9 @@
 import type { Actor, Content, GameState, NewsItem, SectorId, UpgradeDef } from '../types';
 import { calendarYear } from './calendar';
 import { idx } from './contentIndex';
-import { modsOf, etaAt, flowCapacity, fireOneOffs } from './effects';
+import { modsOf, etaAt, flowCapacity, fireOneOffs, applyM3OneOffs, costMulOfId, isForbidden } from './effects';
+import { evalCond } from './conditions';
+import { milestone } from './milestones';
 import type { Mods, OneOffs } from './effects';
 import { computeFlows } from './flows';
 import { headline, withNews } from './headlines';
@@ -40,15 +42,21 @@ export function click(state: GameState, content: Content): GameState {
 
 export function upgradeCost(def: UpgradeDef, level: number, mods: Mods): number {
   const growth = def.repeatable ? Math.pow(def.costGrowth ?? 1, level) : 1;
-  return def.cost * mods.costMul * growth;
+  const of = costMulOfId(mods, def.id, def.sector);
+  return of === 1 ? def.cost * mods.costMul * growth : def.cost * mods.costMul * growth * of;
+}
+/** M3: an application's found cost after costMulOf effects (AppDerived.foundCost). */
+export function foundCostOf(a: { id: string; foundCost: number }, sector: SectorId, mods: Mods): number {
+  const of = costMulOfId(mods, a.id, sector);
+  return of === 1 ? a.foundCost : a.foundCost * of;
 }
 export function upgradeMax(def: UpgradeDef): number {
   return def.repeatable ? def.maxLevel ?? Infinity : 1;
 }
-export function upgradeVisible(state: GameState, def: UpgradeDef, mods: Mods): boolean {
+export function upgradeVisible(state: GameState, def: UpgradeDef, mods: Mods, content: Content): boolean {
   const es = state.sectors[def.sector];
   return !!es?.open && !es.settled && (def.requires ?? []).every((r) => (state.upgrades[r] ?? 0) > 0)
-    && (!def.locked || mods.unlocked.has(def.id));
+    && (!def.locked || mods.unlocked.has(def.id)) && (!def.when || evalCond(state, content, def.when));
 }
 
 /** Applies an upgrade (one level) without charging for it. One-off effects fire. */
@@ -86,11 +94,14 @@ export function applyUpgrade(state: GameState, content: Content, def: UpgradeDef
   const one: OneOffs = { capital: 0, mandate: 0, slots: 0 };
   fireOneOffs(def.effects, 1, computeFlows(state, content).income, one);
   if (def.kind === 'efficiency') items.push(headline(state, content, 'efficiency', time, { year }, def.sector));
-  const out: GameState = {
+  let out: GameState = {
     ...state, upgrades, sectors, flags, news: withNews(state.news, items),
-    capital: state.capital + one.capital, mandate: state.mandate + one.mandate,
+    capital: one.capital < 0 ? Math.max(0, state.capital + one.capital) : state.capital + one.capital,
+    mandate: one.mandate < 0 ? Math.max(0, state.mandate + one.mandate) : state.mandate + one.mandate,
     meta: one.slots ? { ...state.meta, slots: state.meta.slots + one.slots } : state.meta,
   };
+  out = applyM3OneOffs(out, content, one);
+  if (revealed) out = { ...out, meta: milestone(out.meta, 'reveal', null, year) };
   return revealed ? emit(out, [{ kind: 'reveal', sector: def.sector }], time, year) : out;
 }
 
@@ -112,15 +123,16 @@ export function buyUpgradeAs(state: GameState, content: Content, upgradeId: stri
   if (!def || computeFlows(state, content).pending) return state;
   const level = state.upgrades[def.id] ?? 0;
   const mods = modsOf(state, content);
-  if (level >= upgradeMax(def) || !upgradeVisible(state, def, mods) || upgradeExcludedBy(state, content, def.id)) return state;
+  if (level >= upgradeMax(def) || !upgradeVisible(state, def, mods, content) || upgradeExcludedBy(state, content, def.id)) return state;
+  if (isForbidden(mods, def.id)) return state;
   const cost = upgradeCost(def, level, mods);
   if (!(state.capital >= cost)) return state;
   const s = applyUpgrade(state, content, def, state.time);
   const stage0 = stageOf(state, content, def.sector);
   const stage1 = stageOf(s, content, def.sector);
   const ev: EvDraft[] = [{ kind: 'upgradeBought', sector: def.sector, id: def.id, n: level + 1, by }];
-  if (stage1 !== null && stage1 > (stage0 ?? 0)) ev.push({ kind: 'stageReached', sector: def.sector, n: stage1, id: def.id });
-  const out = { ...s, capital: s.capital - cost, run: recordOpening(s.run, state.time, 'upgrade', def.id, by) };
+  if (stage1 !== null && stage1 > (stage0 ?? 0)) ev.push({ kind: 'stageReached', sector: def.sector, n: stage1, id: def.id, label: def.machine ?? def.name });
+  const out = { ...s, capital: Math.max(0, s.capital - cost), run: recordOpening(s.run, state.time, 'upgrade', def.id, by) };
   return emit(out, ev, state.time, calendarYear(state, content));
 }
 
@@ -134,12 +146,15 @@ export function foundAppAs(state: GameState, content: Content, appId: string, by
   const es = state.sectors[loc.sector];
   const def = content.sectors[loc.sector].applications[loc.idx];
   const st = es?.apps[appId];
-  if (!es?.open || es.settled || !st || !st.available || st.founded || !(state.capital >= def.foundCost)) return state;
+  if (!es?.open || es.settled || !st || !st.available || st.founded) return state;
+  const mods = modsOf(state, content);
+  const cost = foundCostOf(def, loc.sector, mods);
+  if (!(state.capital >= cost) || isForbidden(mods, appId)) return state;
   if (computeFlows(state, content).pending) return state;
   const sectors = { ...state.sectors, [loc.sector]: { ...es, apps: { ...es.apps, [appId]: { ...st, founded: true } } } };
   const year = calendarYear(state, content);
   const out: GameState = {
-    ...state, capital: state.capital - def.foundCost, sectors,
+    ...state, capital: state.capital - cost, sectors,
     news: withNews(state.news, [headline(state, content, 'appFounded', state.time, { year, app: def.name }, loc.sector)]),
     run: recordOpening(state.run, state.time, 'found', appId, by),
   };

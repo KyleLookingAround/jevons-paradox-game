@@ -8,6 +8,10 @@ import {
   CAP_FIRST, SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
+import { MECHANICS_LIVE } from '../helpers';
+
+/** M3: a seen price for one Compute use (ApplicationDef.priceSeen as an effect: the card's business model sets it). */
+const seen = (app: string, share: number, flat = 0) => ({ type: 'priceSeen' as const, sector: 'compute', app, share, flat });
 
 /* ------------------------------------------------------------------ */
 /* COMPUTE: the Industry                                               */
@@ -85,6 +89,18 @@ const sector: SectorDef = {
         { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 10_000, label: '10,000 veh·mi·years driven' },
       ],
     },
+  },
+
+  /*
+   * M3: free at the point of use (ApplicationDef.priceSeen, set by the business-model fork below). Under the
+   * advertising model the web and streaming show a price of nothing: their demand ignores the service price and sits
+   * near saturation, so no efficiency can move it, and only sufficiency (Digital sobriety) does. Under subscriptions
+   * streaming and storage show a flat monthly price instead: fewer users, and no fall in the price they see either.
+   */
+  mechanic: {
+    name: 'Free at the point of use',
+    rebound: 'The frontier at its limit',
+    blurb: 'A price shown as nothing cannot be lowered. The free uses fill to saturation, whatever the chips do.',
   },
 
   applications: [
@@ -183,14 +199,20 @@ const computeUpgrades: UpgradeDef[] = withStages([
       name: 'Advertising model',
       blurb: 'Free at the point of use. The user is the point of use, and uses it all day.',
       cost: 3_000_000, requires: ['compute.virtualisation'],
-      effects: [half('compute', 1.4), margin('compute', 0.02)],
+      /* M3 (live): the web and streaming are free at the point of use (M2: adoption at 1.4× the price, every use). */
+      effects: MECHANICS_LIVE
+        ? [seen('compute.web', 0), seen('compute.streaming', 0), margin('compute', 0.02)]
+        : [half('compute', 1.4), margin('compute', 0.02)],
     },
     {
       id: 'compute.subscriptions', sector: 'compute', kind: 'capital',
       name: 'Subscriptions',
       blurb: 'A fair price, monthly, for ever. Fewer users, steadier profits, and the profits buy servers.',
       cost: 3_000_000, requires: ['compute.virtualisation'],
-      effects: [margin('compute', 0.05), sat('compute', 0.9)],
+      /* M3 (live): a flat monthly price on streaming and storage, seen whatever the chips cost (M2: saturation 0.9). */
+      effects: MECHANICS_LIVE
+        ? [margin('compute', 0.05), seen('compute.streaming', 0, 0.05), seen('compute.cloudStorage', 0, 0.09)]
+        : [margin('compute', 0.05), sat('compute', 0.9)],
     },
   ),
 
@@ -225,7 +247,7 @@ const computeUpgrades: UpgradeDef[] = withStages([
     cost: 2_000_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('compute', 0.25)],
   },
-], { 'compute.virtualisation': 1, 'compute.hyperscale': 2, 'compute.gpu': 3 });
+], { 'compute.virtualisation': [1, 'Virtualised racks'], 'compute.hyperscale': [2, 'Hyperscale hall'], 'compute.gpu': [3, 'GPU racks'] });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -275,6 +297,48 @@ const computeLevers: LeverDef[] = [
     catch: `The calculations get cheaper faster than any minister dares raise it. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 380, upkeep: 0.2, label: DUTY_LABEL, recycle: RECYCLE,
     recycleBlurb: { commons: 'Spent on the Commons: a repair café, a library with free terminals, and a great deal of streaming.' },
+  }),
+  /*
+   * M3: the lever that bites back. A compulsory standard for data halls (etaMul per step: cooling and power audited);
+   * the cheaper computation is spent on the build-out (satMul on model training, × bite × level), unless the grid
+   * allocation holds the total.
+   */
+  lever({
+    id: 'compute.hallStandard', sector: 'compute', kind: 'measure',
+    name: 'Data-hall standard',
+    blurb: 'Every new hall must meet a published standard for power and cooling. The certificate goes on the gate.',
+    catch: 'Cheaper sums are bought in bulk: the certified halls fill with training runs.',
+    values: [1, 2, 3], cost: 340, upkeep: 0.08, label: 'Standard, revision {n}',
+    labels: { 0: 'A first standard', 1: 'Revised standard', 2: 'Best in class only' },
+    effects: [eta('compute', 1.12)],
+    sideEffects: {
+      effects: [sat('compute', 1.15, 'compute.training')],
+      rampYears: 25, decayYears: 30,
+      unless: { owns: 'compute.cap' },
+      blurb: 'The certified halls fill with training runs.',
+      unlessLabel: 'unless the grid allocation holds the total',
+    },
+  }),
+  /*
+   * M3: the green paradox (Sinn, 2008). An announced phase-out of coal-fired power cleans the grid by a date (intensityMul
+   * per step), and tells every generator to sell all it can before then: power gets cheaper meanwhile (resourcePriceMul
+   * below 1, × bite × level), unless the grid allocation caps what is drawn.
+   */
+  lever({
+    id: 'compute.phaseOut', sector: 'compute', kind: 'measure',
+    name: 'Coal power phase-out',
+    blurb: 'The last coal stations close on a date fixed years ahead. The date is announced today.',
+    catch: 'Announced years ahead, it tells every generator to sell all it can before the date.',
+    values: [1, 2, 3], cost: 300, upkeep: 0.07, label: 'Phase-out, stage {n}',
+    labels: { 0: 'A date announced', 1: 'An earlier date', 2: 'The earliest date' },
+    effects: [{ type: 'intensityMul', sector: 'compute', value: 0.9 }],
+    sideEffects: {
+      effects: [{ type: 'resourcePriceMul', sector: 'compute', value: 0.9 }],
+      rampYears: 15, decayYears: 30, // the rush starts at the announcement
+      unless: { owns: 'compute.cap' },
+      blurb: 'Power stations run flat out before the date; power is cheap meanwhile.',
+      unlessLabel: 'unless the grid allocation caps the draw',
+    },
   }),
 ];
 
@@ -376,6 +440,12 @@ const computeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'info: capacity frozen at allocation; autoscaling disabled',
     'info: Compute settled; no new halls scheduled',
     'notice: data centre build programme suspended indefinitely',
+  ],
+  /* M3 */
+  biteBack: [
+    'warn: certified halls at capacity; training queue doubled',
+    'warn: power cheap before the phase-out date; demand up accordingly',
+    'info: efficiency standard met in every hall; halls ordered: more',
   ],
   unsettled: [
     'warn: allocation lapsed; autoscaling re-enabled',

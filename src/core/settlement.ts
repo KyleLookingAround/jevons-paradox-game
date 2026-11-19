@@ -8,7 +8,9 @@ import type { Actor, Content, GameState, LeverState, NewsItem, SectorId, SectorS
 import { calendarYear } from './calendar';
 import { DEFECT_PENALTY } from './constants';
 import { idx } from './contentIndex';
-import { modsOf, etaAt, fireOneOffs } from './effects';
+import { modsOf, etaAt, fireOneOffs, applyM3OneOffs } from './effects';
+import { sprawlOf, hoursPerHead } from './travel';
+import { milestone } from './milestones';
 import type { OneOffs } from './effects';
 import { emit } from './events';
 import { computeFlows, steadyView } from './flows';
@@ -48,6 +50,14 @@ export function settle(state: GameState, content: Content, s: SectorId): GameSta
     defect: def.resourceKind === 'flow' ? fin(1 - DEFECT_PENALTY * f.unrev * (1 - lev.review), 1) : 1,
     N0: state.population, spillMul0: inp?.spillMul ?? 1, extraD0: inp?.extraD ?? 0, appD, appAdoption,
   };
+  // M3: the frozen shapes the widgets redraw from while settled
+  if (f.load) settled.load = { factor: f.load.factor, hours: f.load.hours.slice(), capCostEff: f.load.cEff };
+  if (f.travel) settled.travel = { speed: f.travel.v, hoursPerHead: hoursPerHead(def, f.D, state.population, f.travel.v), roads: f.travel.K, sprawl: sprawlOf(def, es) };
+  if (f.appSeen) {
+    const seen: Record<string, number> = {};
+    def.applications.forEach((a, i) => { if (es.apps[a.id]?.founded) seen[a.id] = f.appSeen![i]; });
+    settled.appPriceSeen = seen;
+  }
   // the sector's levers to 0 (recycle kept)
   let levers = state.levers;
   for (const ld of idx(content).leversBySector[s] ?? []) {
@@ -62,10 +72,12 @@ export function settle(state: GameState, content: Content, s: SectorId): GameSta
   if (!es.settledBefore) fireOneOffs(def.settle!.dividend, 1, fl.income, one);
   const ns: SectorState = { ...es, settled, settledBefore: true };
   const items: NewsItem[] = [headline(state, content, 'settled', state.time, { year }, s)];
-  const out: GameState = {
-    ...state, levers, sectors: { ...state.sectors, [s]: ns }, capital: fin(state.capital + one.capital),
-    mandate: fin(state.mandate + one.mandate), news: withNews(state.news, items),
+  let out: GameState = {
+    ...state, levers, sectors: { ...state.sectors, [s]: ns }, capital: Math.max(0, fin(state.capital + one.capital)),
+    mandate: Math.max(0, fin(state.mandate + one.mandate)), news: withNews(state.news, items),
   };
+  out = applyM3OneOffs(out, content, one);
+  out = { ...out, meta: milestone(out.meta, `settled:${s}`, null, year) };
   return emit(out, [{ kind: 'settled', sector: s, by: 'player' }], state.time, year);
 }
 

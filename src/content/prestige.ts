@@ -309,4 +309,14 @@ export const institutions: InstitutionDef[] = [
       { effects: [startLever('code.reviewGate', 2), startLever('code.sharedLibs', 1)], label: 'Stricter review; one shared library for all' },
     ]),
   },
+  /*
+   * M3: the standing dispatch order (OrdersState.dispatch): a closing automation for shift 3, after Treasury rules
+   * (about hour 10; the brief asks hour 8 or later). It answers the chosen correspondents' letters with their default
+   * arm; it never chooses. One level, one seat, which is its price. Appended last so the M2 loadout order is unchanged.
+   */
+  {
+    id: 'inst.privateSecretary', name: 'A private secretary',
+    blurb: 'Opens the letters, answers the ones you would have let lapse, and files the rest. You need never see them.',
+    cost: 400, requires: ['inst.treasuryRules'], effects: [{ type: 'orderUnlock', order: 'dispatch' }],
+  },
 ];

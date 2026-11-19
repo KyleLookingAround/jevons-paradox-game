@@ -16,7 +16,7 @@
 import type { Content, GameState, SectorId, UpgradeDef, UpgradeView } from '../types';
 import { PROJECTION_SECONDS, PROJECTION_DT, PROJECTION_BUCKET } from './constants';
 import { idx } from './contentIndex';
-import { modsOf } from './effects';
+import { modsOf, isForbidden } from './effects';
 import { computeFlows, primeFocusedFlows } from './flows';
 import { applyUpgrade, upgradeCost, upgradeMax, upgradeVisible, upgradeExcludedBy } from './purchases';
 import { step } from './step';
@@ -186,7 +186,8 @@ export function upgradeViews(state: GameState, content: Content, sector?: Sector
     const level = state.upgrades[def.id] ?? 0;
     const maxed = level >= upgradeMax(def);
     const cost = upgradeCost(def, level, mods);
-    const visible = upgradeVisible(state, def, mods);
+    const visible = upgradeVisible(state, def, mods, content);
+    const forbidden = isForbidden(mods, def.id);
     const excludedBy = level >= 1 ? null : upgradeExcludedBy(state, content, def.id);
     let promisedChange: number | null = null;
     if (def.kind === 'efficiency') {
@@ -200,8 +201,8 @@ export function upgradeViews(state: GameState, content: Content, sector?: Sector
       proj = projectionFor(state, content, def);
     }
     out.push({
-      def, level, cost, visible, affordable: visible && !maxed && !excludedBy && state.capital >= cost, maxed, excludedBy,
-      promisedChange, projectedDecade: proj.projectedDecade, bringsWithinReach: proj.bringsWithinReach,
+      def, level, cost, visible, affordable: visible && !maxed && !excludedBy && !forbidden && state.capital >= cost, maxed, excludedBy,
+      promisedChange, projectedDecade: proj.projectedDecade, bringsWithinReach: proj.bringsWithinReach, forbidden,
     });
   }
   return out;

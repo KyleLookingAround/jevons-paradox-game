@@ -196,6 +196,8 @@ describe('conditions (P3)', () => {
       decisions: s.run.decisions, automated: s.run.automated, commonsLevels: 0, sectorsSettled: 0,
       leanDecades: sd.leanDecades, fullDecades: sd.budgetDecades - sd.leanDecades, settled: 0, clear: sd.clear ? 1 : 0,
       clearYears: sd.clearYears,
+      steadySectors: 0, dispatchesAnswered: 0, historiesCleared: 0, totalHours: s.meta.totalSeconds / 3600, bankedSeconds: 0,
+      seamsSunk: 0, loadFactor: null, travelHours: null, sprawl: null, bite: 0,
     };
     for (const stat of ALL) {
       const leaf = { stat, sector: 'steam', app: 'steam.mills' };

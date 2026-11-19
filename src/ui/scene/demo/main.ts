@@ -1,6 +1,8 @@
 // Standalone demo for the scene engine: hand-made SceneViews, scrubbable inputs, a 60-second auto-play run, and a
 // strip mode for screenshots (#strip=steam). Built by tools/scene-demo.ts into dist/scene-demo.html.
 import { createScene } from '../engine';
+import { spot, SPOT_OF, SPOT_KINDS } from '../spots';
+import { injectSceneCss } from '../css';
 import type { SceneView, SceneApp, SceneHandle } from '../types';
 
 interface Ind {
@@ -37,6 +39,25 @@ interface DemoState {
   look: string;
   /* M2 */
   clear: boolean; clearProgress: number; pressureToClear: number | null; settled: boolean; commons: number[]; landmark: string;
+  /* M3 (each absent = its feature off) */
+  m3?: Partial<Pick<SceneView, 'seams' | 'load' | 'travel' | 'free' | 'figures' | 'watch'>> & { bite?: Record<string, number> };
+}
+
+/** M3 demo data: Light's day (an evening peak and the small hours' hollow; `fill` 0–1 = how far night uses fill it). */
+export function lightDay(fill: number): number[] {
+  const base = [0.18, 0.14, 0.12, 0.12, 0.14, 0.22, 0.36, 0.5, 0.48, 0.42, 0.4, 0.4, 0.42, 0.4, 0.4, 0.44, 0.58, 0.82, 1, 0.96, 0.84, 0.62, 0.4, 0.26];
+  return base.map((h, i) => { const night = i < 6 || i > 21 ? 1 : 0; return Math.round(Math.min(1, h + night * fill * (0.62 - h * 0.5)) * 100) / 100; });
+}
+/** Each Industry's M3 state at a preset ('early' … 'crisis'), as the adapter would fill it with every feature on. */
+export function m3For(id: string, t: number): NonNullable<DemoState['m3']> {
+  switch (id) {
+    case 'steam': return { seams: { total: 4, sunk: t < 0.3 ? 0 : t < 0.6 ? 1 : t < 0.9 ? 2 : 3, next: t >= 0.2 }, figures: t > 0.4 ? ['correspondent'] : [] };
+    case 'light': { const h = lightDay(Math.min(1, t * 1.1)); return { load: { hours: h, factor: Math.round(h.reduce((a, b) => a + b, 0) / 24 * 100) / 100 }, figures: t > 0.4 ? ['fenwick'] : [] }; }
+    case 'motion': return { travel: { speed: Math.max(0.15, 1 - t * 0.9), sprawl: Math.min(1, t * 1.05), sprawlShare: t * 0.6, freeSpeed: 1 + t * 1.2 }, figures: t > 0.4 ? ['pryce'] : [], bite: t > 0.6 ? { measure: 0.7 } : {} };
+    case 'compute': return { free: { apps: t > 0.3 ? ['compute.globe', 'compute.play'] : t > 0.1 ? ['compute.globe'] : [] }, figures: t > 0.4 ? ['minister'] : [] };
+    case 'code': return { figures: t > 0.4 ? ['whitlow'] : [] };
+    default: return {};
+  }
 }
 
 /** The Commons the content lane writes, by Industry (the general 'holiday' shows in every town), and landmarks. */
@@ -71,6 +92,15 @@ export const PRESETS: Record<string, (ind: number) => DemoState> = {
     levers: { duty: true, cap: true, sufficiency: true, deletion: true } }),
   settled: (i) => ({ ...PRESETS.steady(i), settled: true, steady: true, clear: true, clearProgress: 1, commons: (COMMONS[IND[i].id] ?? []).map(() => 2) }),
   commons: (i) => ({ ...PRESETS.mid(i), stage: 2, pop: 0.7, commons: (COMMONS[IND[i].id] ?? []).map((_, k) => 1 + (k % 3)), landmark: (LANDMARKS[IND[i].id] ?? [''])[0] }),
+  /* M3: the same states with every M3 feature on */
+  earlyM3: (i) => ({ ...PRESETS.early(i), m3: m3For(IND[i].id, 0.15) }),
+  midM3: (i) => ({ ...PRESETS.mid(i), m3: m3For(IND[i].id, 0.45) }),
+  lateM3: (i) => ({ ...PRESETS.late(i), m3: m3For(IND[i].id, 0.75) }),
+  crisisM3: (i) => ({ ...PRESETS.crisis(i), m3: m3For(IND[i].id, 1) }),
+  /* Motion's sprawl that stays: demand has fallen (adoption down, traffic thin) but the suburbs are still there */
+  thinnedM3: (i) => ({ ...PRESETS.late(i), adoption: IND[i].apps.map(() => 0.18), pressure: 0.3, pace: 0.3, m3: { ...m3For(IND[i].id, 0.9), travel: { speed: 0.95, sprawl: 0.85, sprawlShare: 0.9, freeSpeed: 2 } } }),
+  proprietorM3: (i) => ({ ...PRESETS.late(i), m3: { ...m3For(IND[i].id, 0.75), figures: ['proprietor'], watch: 0.8 } }),
+  endingM3: (i) => ({ ...PRESETS.steady(i), clear: true, clearProgress: 1, m3: { ...m3For(IND[i].id, 0.6), figures: ['correspondent', 'whitlow', 'fenwick', 'pryce', 'minister', 'proprietor'], watch: 0.3 } }),
 };
 
 export function viewOf(s: DemoState): SceneView {
@@ -84,12 +114,14 @@ export function viewOf(s: DemoState): SceneView {
     })),
     stage: s.stage, etaFold: Math.pow(2, s.stage * 1.5), rFold: Math.pow(16, s.pace), pace: s.pace, reserveFraction: s.reserve,
     pressureFraction: s.pressure, nextCrisisFraction: 0.65, population: Math.exp(s.pop * Math.log(12)), popFraction: s.pop, crises: s.crises,
-    levers: LEVERS.filter(([k]) => s.levers[k]).map(([kind, name]) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name })),
+    levers: [...LEVERS.filter(([k]) => s.levers[k] || (s.m3?.bite?.[k] ?? 0) > 0), ...(s.m3?.bite?.measure ? [['measure', 'Fuel-economy standard'] as [string, string]] : [])]
+      .map(([kind, name]) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name, ...(s.m3?.bite?.[kind] ? { bite: s.m3.bite[kind] } : {}) })),
     decoupling: s.decoupling, steadyProgress: s.steadyProgress, steady: s.steady,
     reckoning: s.reckoning ? { cause: s.reckoning, here: true } : null, year: null,
     clear: s.clear, clearProgress: s.clearProgress, pressureToClear: s.pressureToClear ?? undefined, settled: s.settled, settledYear: s.settled ? 1841 + s.ind * 40 : null,
     commons: (COMMONS[ind.id] ?? []).map(([icon, name], k) => ({ id: `${ind.id}.c.${icon}`, icon, name, level: s.commons[k] ?? 0 })).filter((c) => c.level >= 1),
     landmark: s.landmark || null,
+    ...(s.m3 ? { seams: s.m3.seams, load: s.m3.load, travel: s.m3.travel, free: s.m3.free, figures: s.m3.figures, watch: s.m3.watch } : {}),
   };
 }
 
@@ -122,8 +154,8 @@ function stripMode(indId: string): void {
   document.body.classList.add('strip');
   const wrap = document.getElementById('app')!;
   wrap.innerHTML = '';
-  const m2 = /m2/.test(location.hash);
-  for (const name of m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
+  const m2 = /m2/.test(location.hash), m3 = /m3/.test(location.hash);
+  for (const name of m3 ? ['earlyM3', 'midM3', 'lateM3', 'crisisM3', 'thinnedM3', 'proprietorM3', 'endingM3'] : m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
     const fig = document.createElement('figure');
     const cap = document.createElement('figcaption');
     cap.textContent = name;
@@ -133,7 +165,7 @@ function stripMode(indId: string): void {
     const sc = createScene(host, { reducedMotion: true });
     const st = PRESETS[name](i);
     // The crisis frame shows the fog: bump crises after a first update.
-    if (name === 'crisis') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
+    if (name === 'crisis' || name === 'crisisM3') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
     sc.update(viewOf(st));
   }
 }
@@ -226,6 +258,15 @@ function interactive(): void {
       ['Commons +1', () => { const list = COMMONS[IND[s.ind].id] ?? []; const k = s.commons.length < list.length ? s.commons.length : list.length - 1; s.commons[k] = Math.min(3, (s.commons[k] ?? 0) + 1); fire('commonsBuilt', { id: `${IND[s.ind].id}.c.${list[k]?.[0]}`, n: s.commons[k] }); }],
       ['Landmark', () => { const l = LANDMARKS[IND[s.ind].id] ?? []; s.landmark = l.length ? l[(l.indexOf(s.landmark) + 1) % l.length] : ''; render(); }],
       ['Industry opens', () => fire('sectorOpened', {})],
+      /* M3 */
+      ['M3: all features on', () => { s.m3 = m3For(IND[s.ind].id, 0.75); render(); }],
+      ['M3: sink a seam', () => { const sm = s.m3?.seams ?? { sunk: 0, total: 4, next: true }; s.m3 = { ...(s.m3 ?? {}), seams: { ...sm, sunk: Math.min(sm.total, sm.sunk + 1) } }; fire('seamSunk', { id: 'seam' + seq, n: s.m3.seams!.sunk, label: ['The Barnsley Bed', 'The Silkstone', 'The Deep Hard', 'The Black Shale'][Math.min(3, s.m3.seams!.sunk - 1)] }); }],
+      ['M3: a lever bites back', () => { const k = IND[s.ind].id === 'motion' ? 'measure' : 'duty'; s.m3 = { ...(s.m3 ?? {}), bite: { [k]: 0.6 } }; fire('biteBack', { id: `${IND[s.ind].id}.${k}` }); }],
+      ['M3: a letter arrives', () => { s.m3 = { ...(s.m3 ?? {}), figures: [m3For(IND[s.ind].id, 1).figures?.[0] ?? 'correspondent'] }; render(); }],
+      ['M3: letter answered', () => { s.m3 = { ...(s.m3 ?? {}), figures: (s.m3?.figures ?? []).filter((k) => k === 'proprietor') }; render(); }],
+      ['M3: the Proprietor’s Day', () => { s.m3 = { ...(s.m3 ?? {}), figures: [...(s.m3?.figures ?? []), 'proprietor'], watch: 0.8 }; render(); }],
+      ['M3: the ending', () => { s = { ...PRESETS.endingM3(s.ind), look: s.look }; fire('ending', { id: 'steadyAll' }); }],
+      ['M3: frozen Reckoning still', async () => { const { renderStill } = await import('../engine'); const svg = await renderStill(viewOf({ ...PRESETS.crisisM3(s.ind), reckoning: 'collapse' }), { width: 600, height: 400 }); const w = window.open(''); w?.document.write(svg as string); }],
       ['Highlight a place', () => scene.highlight?.({ app: `${IND[s.ind].id}.${IND[s.ind].apps[1][0]}` })],
       ['Clear highlight', () => scene.highlight?.(null)],
       ['Replay a run (10 s)', () => { const vs: SceneView[] = []; for (let t = 0; t <= 1; t += 1 / 60) vs.push(viewOf(runAt(s.ind, t))); scene.replay?.(vs, { seconds: 10 }); }],
@@ -316,5 +357,23 @@ function interactive(): void {
   (window as unknown as { __scene: typeof api }).__scene = api;
 }
 
+/** M3: the spot illustrations, every kind in every look (#spots). */
+function spotsMode(): void {
+  injectSceneCss(document);
+  document.body.classList.add('strip');
+  document.body.style.setProperty('--fig', '250px');
+  const wrap = document.getElementById('app')!;
+  wrap.innerHTML = '';
+  const keyOf: Record<string, string> = {};
+  for (const [k, kind] of Object.entries(SPOT_OF)) if (!keyOf[kind]) keyOf[kind] = k;
+  for (const look of ['ledger', 'gaslight', 'chrome', 'terminal', 'cyberpunk']) {
+    for (const kind of SPOT_KINDS) {
+      const fig = document.createElement('figure');
+      fig.innerHTML = `<figcaption>${look} · ${kind} (${keyOf[kind]})</figcaption>` + spot(keyOf[kind], look, { width: 240, height: 160 });
+      wrap.append(fig);
+    }
+  }
+}
+
 const m = /strip=([\w-]+)/.exec(location.hash);
-if (m) stripMode(m[1]); else interactive();
+if (m) stripMode(m[1]); else if (/spots/.test(location.hash)) spotsMode(); else interactive();

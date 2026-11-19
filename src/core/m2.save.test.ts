@@ -41,7 +41,7 @@ describe('M2 save version 3', () => {
     const raw = toV2(r);
     const b = model.deserialize(JSON.stringify(raw), C)!;
     expect(b).not.toBeNull();
-    expect(b.version).toBe(3);
+    expect(b.version).toBe(4);
     // 1
     expect(b.pendingDividends).toEqual([]);
     expect(b.commons).toEqual({ levels: {}, fund: 0 });
@@ -107,7 +107,7 @@ describe('M2 save version 3', () => {
     const text = model.serialize(s);
     const back = model.deserialize(text, CALM)!;
     expect(JSON.parse(model.serialize(back))).toEqual(JSON.parse(text));
-    expect(model.deserialize(JSON.stringify({ ...JSON.parse(text), version: 4 }), CALM)).toBeNull();
+    expect(model.deserialize(JSON.stringify({ ...JSON.parse(text), version: 5 }), CALM)).toBeNull();
     // unknown ids
     const raw = JSON.parse(text);
     raw.commons.levels.nope = 3;

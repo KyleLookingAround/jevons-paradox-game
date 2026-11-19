@@ -3,7 +3,10 @@
  * identity in a WeakMap, so a new Content object gets a new index).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { AchievementDef, AgeDef, CharterDef, CommonsDef, Content, DividendDef, InstitutionDef, KnowhowDef, LeverDef, SectorId, UpgradeDef } from '../types';
+import type {
+  AchievementDef, AgeDef, ArchiveDef, CastDef, CharterDef, CommonsDef, Content, DispatchDef, DividendDef, HistoryDef, InstitutionDef,
+  KnowhowDef, LeverDef, SectorId, SeamDef, UpgradeDef,
+} from '../types';
 
 /* ------------------------------------------------------------------ */
 /* Content index (cached per content object)                           */
@@ -33,6 +36,18 @@ export interface ContentIndex {
   charters: Map<string, CharterDef>;
   /** Upgrades of each sector with an authored `stage` (absent: the sector has none). */
   stagedBySector: Record<string, UpgradeDef[]>;
+  /* M3 */
+  /** Seam id → its sector, index in the ladder and def. */
+  seams: Map<string, { sector: SectorId; idx: number; def: SeamDef }>;
+  /** Levers of kind 'measure' with effects, and levers with sideEffects (the run-varying Mods sources). */
+  measureLevers: LeverDef[];
+  sideLevers: LeverDef[];
+  dispatches: Map<string, DispatchDef>;
+  cast: Map<string, CastDef>;
+  histories: Map<string, HistoryDef>;
+  archive: Map<string, ArchiveDef>;
+  /** Any sector with an M3 mechanic kind (load, travel, priceSeen on an app), or applications with lockInDecay. */
+  anyMechanic: boolean;
 }
 const indexCache = new WeakMap<Content, ContentIndex>();
 export function idx(content: Content): ContentIndex {
@@ -45,6 +60,8 @@ export function idx(content: Content): ContentIndex {
     levers: new Map(), knowhow: new Map(), institutions: new Map(), achievements: new Map(), apps: new Map(),
     efficiencyBySector: {}, leversBySector: {}, conflicts: new Map(), names: new Map(),
     dividends: new Map(), commons: new Map(), charters: new Map(), stagedBySector: {},
+    seams: new Map(), measureLevers: [], sideLevers: [], dispatches: new Map(), cast: new Map(), histories: new Map(),
+    archive: new Map(), anyMechanic: false,
   };
   for (const a of content.ages ?? []) for (const s of a.sectors ?? []) if (!ix.ageOf.has(s)) ix.ageOf.set(s, a);
   const conflict = (a: string, b: string) => {
@@ -67,13 +84,22 @@ export function idx(content: Content): ContentIndex {
     ix.levers.set(l.id, l);
     ix.names.set(l.id, l.name);
     (ix.leversBySector[l.sector] ??= []).push(l);
+    if (l.kind === 'measure' && l.effects && l.effects.length) ix.measureLevers.push(l);
+    if (l.sideEffects && l.sideEffects.effects && l.sideEffects.effects.length) ix.sideLevers.push(l);
   }
+  for (const d of content.dispatches ?? []) if (!ix.dispatches.has(d.id)) { ix.dispatches.set(d.id, d); ix.names.set(d.id, d.headline); }
+  for (const c of content.cast ?? []) if (!ix.cast.has(c.id)) { ix.cast.set(c.id, c); ix.names.set(c.id, c.name); }
+  for (const h of content.histories ?? []) if (!ix.histories.has(h.id)) { ix.histories.set(h.id, h); ix.names.set(h.id, h.name); }
+  for (const a of content.archive ?? []) if (!ix.archive.has(a.id)) ix.archive.set(a.id, a);
   for (const k of content.knowhow ?? []) { ix.knowhow.set(k.id, k); ix.names.set(k.id, k.name); }
   for (const i of content.institutions ?? []) { ix.institutions.set(i.id, i); ix.names.set(i.id, i.name); }
   for (const a of content.achievements ?? []) { ix.achievements.set(a.id, a); ix.names.set(a.id, a.name); }
   for (const s of ids) {
     sectors[s].applications.forEach((a, i) => { ix!.apps.set(a.id, { sector: s, idx: i }); ix!.names.set(a.id, a.name); });
     ix.names.set(s, sectors[s].name);
+    const d = sectors[s];
+    if (d.resourceKind === 'stock') (d.seams ?? []).forEach((m, i) => { ix!.seams.set(m.id, { sector: s, idx: i, def: m }); ix!.names.set(m.id, m.name); });
+    if (d.load || d.travel || d.applications.some((a) => a.priceSeen || (a.lockInDecay ?? 0) > 0)) ix.anyMechanic = true;
   }
   // Solve order (Kahn): a source of spill / drawsOn is solved before its target; ties go to the later sector in
   // sectorOrder, which for v1-shaped content (spill and drawsOn point backwards) is simply the reverse order.

@@ -4,20 +4,20 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { YEARS_PER_SECOND, BUDGET_TOLERANCE } from '../types';
-import type { Content, GameState, OrdersPatch, OrdersState, OrdersView, SectorId } from '../types';
+import type { Content, GameState, MarketWhy, OrderId, OrdersPatch, OrdersState, OrdersView, SectorId } from '../types';
 import { commonsOpen } from './commons';
 import { buyCommonsAs, commonsBuyable } from './commonsActions';
 import {
   DEFAULT_ORDER_INTERVAL_YEARS, DEFAULT_MARKET_FROM_RECKONING, DEFAULT_PAYBACK_CHOICES, PAYBACK_MIN, ORDER_SECONDS_MAX,
 } from './constants';
 import { idx } from './contentIndex';
-import { modsOf, etaAt } from './effects';
+import { modsOf, etaAt, isForbidden, suspended } from './effects';
 import type { Mods } from './effects';
 import { computeFlows, steadyView } from './flows';
 import type { Flows } from './flows';
 import { leverLevelDef, leverMaxLevel, leverNetUpkeep, leverVisible } from './levers';
 import { setLeverAs } from './policy';
-import { buyUpgradeAs, foundAppAs, upgradeCost, upgradeExcludedBy, upgradeMax, upgradeVisible } from './purchases';
+import { buyUpgradeAs, foundAppAs, foundCostOf, upgradeCost, upgradeExcludedBy, upgradeMax, upgradeVisible } from './purchases';
 import { recordAutomated } from './record';
 import { defaultOrders, isFreshRun } from './state';
 import { clamp, fin, isObj } from './util';
@@ -42,8 +42,11 @@ export function ordersOf(state: GameState, content: Content): OrdersState {
 }
 export function marketAvailable(state: GameState, content: Content, mods: Mods): boolean {
   const from = content.global?.orders?.marketFromReckoning ?? DEFAULT_MARKET_FROM_RECKONING;
-  return (state.meta.reckonings >= from || mods.orderUnlock.has('market')) && featureOn(content, state.meta, 'market');
+  return (state.meta.reckonings >= from || mods.orderUnlock.has('market')) && featureOn(content, state.meta, 'market')
+    && !suspended(state.meta, content, 'market');
 }
+/** M3: the standing dispatch order is available (a standing orderUnlock 'dispatch'). */
+export const dispatchOrderAvailable = (mods: Mods): boolean => mods.orderUnlock.has('dispatch');
 
 /* ------------------------------------------------------------------ */
 /* The orders                                                          */
@@ -85,33 +88,48 @@ export function marketGain(f0: Flows, f1: Flows): number {
   return fin(saved) + Math.max(0, fin(f1.income - f0.income));
 }
 
-/** The Market's one action in sector s, or the same state. */
-function marketIn(state: GameState, content: Content, s: SectorId, paybackMax: number): GameState {
+type LogEntry = GameState['orderLog'][string];
+/** The Market's one action in sector s, or the same state; `log` receives the outcome (GameState.orderLog). */
+function marketIn(state: GameState, content: Content, s: SectorId, paybackMax: number, log: (e: LogEntry) => void): GameState {
   const def = content.sectors[s];
   const es = state.sectors[s];
   const f0 = computeFlows(state, content);
   const mods = modsOf(state, content);
   let best: { kind: 'found' | 'upgrade'; id: string; payback: number } | null = null;
+  let eligible = 0, affordable = 0, bestAny = Infinity;
   const consider = (kind: 'found' | 'upgrade', id: string, cost: number, f1: Flows) => {
     const gain = marketGain(f0, f1);
     const payback = gain > 0 ? cost / gain : Infinity;
+    if (payback < bestAny) bestAny = payback;
     if (payback <= paybackMax && (best === null || payback < best.payback)) best = { kind, id, payback };
   };
   for (const a of def.applications) {
     const st = es.apps[a.id];
-    if (!st?.available || st.founded || !(a.foundCost <= state.capital)) continue;
-    consider('found', a.id, a.foundCost, flowsWithApp(state, content, s, a.id));
+    if (!st?.available || st.founded || isForbidden(mods, a.id)) continue;
+    eligible++;
+    const cost = foundCostOf(a, s, mods);
+    if (!(cost <= state.capital)) continue;
+    affordable++;
+    consider('found', a.id, cost, flowsWithApp(state, content, s, a.id));
   }
   for (const u of content.upgrades ?? []) {
     if (u.sector !== s || (u.kind !== 'efficiency' && u.kind !== 'capital') || (u.excludes && u.excludes.length)) continue;
     const lvl = state.upgrades[u.id] ?? 0;
-    if (lvl >= upgradeMax(u) || !upgradeVisible(state, u, mods) || upgradeExcludedBy(state, content, u.id)) continue;
+    if (lvl >= upgradeMax(u) || !upgradeVisible(state, u, mods, content) || upgradeExcludedBy(state, content, u.id)) continue;
+    if (isForbidden(mods, u.id)) continue;
+    eligible++;
     const cost = upgradeCost(u, lvl, mods);
     if (!(cost <= state.capital)) continue;
+    affordable++;
     consider('upgrade', u.id, cost, flowsWithUpgrade(state, content, u.id));
   }
-  if (best === null) return state;
+  const t = state.time;
+  if (best === null) {
+    log(eligible === 0 ? { t, outcome: 'none' } : affordable === 0 ? { t, outcome: 'cash' } : { t, outcome: 'payback', payback: fin(bestAny, Number.MAX_VALUE) });
+    return state;
+  }
   const b = best as { kind: 'found' | 'upgrade'; id: string };
+  log({ t, outcome: 'bought', id: b.id });
   return b.kind === 'found' ? foundAppAs(state, content, b.id, 'market') : buyUpgradeAs(state, content, b.id, 'market');
 }
 
@@ -128,7 +146,7 @@ function civilIn(state: GameState, content: Content, s: SectorId, list: string[]
     let pick: { id: string; level: number; cost: number } | null = null;
     for (const l of listed) {
       const lvl = state.levers[l!.id]?.level ?? 0;
-      if (lvl >= leverMaxLevel(l!)) continue;
+      if (lvl >= leverMaxLevel(l!) || isForbidden(mods, l!.id, l!)) continue;
       const cost = lvl + 1 <= (mods.startLevers[l!.id] ?? 0) ? 0 : leverLevelDef(l!, lvl + 1)?.mandateCost ?? 0;
       if (!(state.mandate >= cost)) continue;
       if (pick === null || cost < pick.cost) pick = { id: l!.id, level: lvl, cost };
@@ -163,14 +181,16 @@ export function runOrders(prev: GameState, next: GameState, content: Content, li
   const ix = idx(content);
   let s = next;
   let auto = 0;
+  let orderLog: GameState['orderLog'] | null = null;
   if (o.market.on && marketAvailable(s, content, mods)) {
     for (const id of ix.ids) {
       const es = s.sectors[id];
       if (!es?.open || es.settled || o.market.sectors[id] === false) continue;
-      const t = marketIn(s, content, id, o.market.paybackMax);
+      const t = marketIn(s, content, id, o.market.paybackMax, (e) => { (orderLog ??= { ...(next.orderLog ?? {}) })[id] = e; });
       if (t !== s) { s = t; auto++; }
     }
   }
+  if (orderLog) s = { ...s, orderLog };
   if (o.civilService.on && mods.orderUnlock.has('civilService')) {
     for (const id of ix.ids) {
       const es = s.sectors[id];
@@ -206,8 +226,14 @@ export function mergeOrders(cur: OrdersState, patch: unknown, content: Content):
     market: { ...cur.market, sectors: { ...cur.market.sectors } },
     civilService: { ...cur.civilService, levers: { ...cur.civilService.levers } },
     treasury: { ...cur.treasury, projects: cur.treasury.projects.slice() },
+    dispatch: { on: cur.dispatch?.on ?? false, cast: { ...(cur.dispatch?.cast ?? {}) } },
   };
   if (!isObj(patch)) return out;
+  const dp = patch.dispatch;
+  if (isObj(dp)) {
+    if (typeof dp.on === 'boolean') out.dispatch.on = dp.on;
+    if (isObj(dp.cast)) for (const [k, v] of Object.entries(dp.cast)) if (ix.cast.has(k) && typeof v === 'boolean') out.dispatch.cast[k] = v;
+  }
   const m = patch.market;
   if (isObj(m)) {
     if (typeof m.on === 'boolean') out.market.on = m.on;
@@ -258,5 +284,39 @@ export function ordersView(state: GameState, content: Content): OrdersView {
     civilService: { available: mods.orderUnlock.has('civilService'), on: o.civilService.on, levers: { ...o.civilService.levers } },
     treasury: { available: mods.orderUnlock.has('treasury'), on: o.treasury.on, keepSeconds: o.treasury.keepSeconds, projects: o.treasury.projects.slice() },
     nextTickIn: nextTickIn(state.time, content),
+    marketWhy: marketWhyOf(state, content, o, mods),
+    dispatch: { available: dispatchOrderAvailable(mods), on: o.dispatch?.on ?? false, cast: { ...(o.dispatch?.cast ?? {}) } },
+    kind: { ...ORDER_KIND },
   };
+}
+
+/** M3: shift 3's label per order, fixed by the contract (OrdersView.kind). */
+const ORDER_KIND: Record<OrderId, 'opening' | 'closing'> = { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing' };
+
+/** M3: OrdersView.marketWhy: the static reasons first, else the last order tick's outcome, else 'waiting'. */
+export function marketWhyOf(state: GameState, content: Content, o: OrdersState, mods: Mods): Record<SectorId, MarketWhy> {
+  const out: Record<SectorId, MarketWhy> = {};
+  const avail = marketAvailable(state, content, mods);
+  const fresh = isFreshRun(state);
+  const pending = !!computeFlows(state, content).pending;
+  for (const s of idx(content).ids) {
+    const es = state.sectors[s];
+    if (!es?.open) continue;
+    let w: MarketWhy;
+    if (!avail) w = { reason: 'unavailable' };
+    else if (!o.market.on) w = { reason: 'off' };
+    else if (o.market.sectors[s] === false) w = { reason: 'sectorOff' };
+    else if (es.settled) w = { reason: 'settled' };
+    else if (fresh) w = { reason: 'fresh' };
+    else if (pending) w = { reason: 'pending' };
+    else {
+      const e = state.orderLog?.[s];
+      if (!e) w = { reason: 'waiting' };
+      else if (e.outcome === 'bought') w = { reason: 'bought', id: e.id ?? '', at: e.t };
+      else if (e.outcome === 'payback') w = { reason: 'payback', payback: e.payback ?? Infinity, at: e.t };
+      else w = { reason: e.outcome, at: e.t };
+    }
+    out[s] = w;
+  }
+  return out;
 }

@@ -32,6 +32,17 @@ import { canOpen } from './unlocks';
 import { dueFeature, unlockFeature, FEATURE_CHECK_EVERY } from './unfold';
 import { featureOn } from './features';
 import { fin, clamp } from './util';
+import { stepAmbient } from './ambient';
+import { unlockNotes } from './archive';
+import { stepDispatch } from './dispatch';
+import { emit } from './events';
+import { endingRecord, firstEnding } from './ending';
+import { stepHistory } from './history';
+import { milestone } from './milestones';
+import { expireModifiers } from './modifiers';
+import { publishOnFlag } from './returns';
+import { stepBites } from './sideEffects';
+import { decayedPeak } from './travel';
 
 /* ------------------------------------------------------------------ */
 /* Tick                                                                */
@@ -67,6 +78,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   const reserveAdds: { sector: SectorId; value: number }[] = [];
   const offers: PendingDividend[] = [];
   let revealNow = false;
+  const firsts: string[] = []; // M3: milestone keys first reached in this step
   const resourceUsed = { ...state.run.resourceUsed };
   let crisisCount = 0;
   let anyDecoupling = false;
@@ -107,6 +119,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       let changed = !apps[a.id];
       const ns = { ...st };
       if (d > ns.peakD) { ns.peakD = d; changed = true; }
+      else if ((a.lockInDecay ?? 0) > 0 && ns.peakD > d) { ns.peakD = decayedPeak(ns, d, a.lockInDecay!, dt); changed = true; } // M3: sprawl fades
       const sat = f.appSat[i];
       const adoption = sat > 0 ? clamp(d / sat, 0, 1) : 0;
       if (adoption > (ns.peakAdoption ?? 0)) { ns.peakAdoption = adoption; changed = true; }
@@ -180,11 +193,13 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       if (rb !== null && rb > 1) {
         es.backfired = true;
         items.push(headline(tmp, content, 'backfire', time, hc, s));
-        ev.push({ kind: 'backfire', sector: s });
+        const firstEver = !backfiredSectors[s];
+        ev.push(firstEver ? { kind: 'backfire', sector: s, first: true } : { kind: 'backfire', sector: s });
         grant('backfire');
-        if (!backfiredSectors[s]) {
+        if (firstEver) {
           backfiredSectors = { ...backfiredSectors, [s]: true };
           firstBackfires = { ...firstBackfires, [s]: true };
+          firsts.push(`backfire:${s}`);
         }
       }
     }
@@ -230,6 +245,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
           const n = es.decadesWithin.length;
           items.push(headline(tmp, content, 'decade', time, { ...hc, n }, s));
           ev.push({ kind: 'decade', sector: s, n, id: lean ? 'lean' : 'full' });
+          firsts.push('decade');
           const offer = decadeOffer(content, s, n, mul, state.meta);
           if (offer && fDiv) offers.push(offer);
           lean = W < target;
@@ -250,6 +266,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       es.budget = { ...es0.budget, clearAt: state.time };
       items.push(headline(tmp, content, 'clearSkies', time, hc, s));
       ev.push({ kind: 'clearSkies', sector: s });
+      firsts.push(`clearSkies:${s}`);
     }
     if (fSteady && sv.sinkHeld && sv.decoupling) {
       const before = es0.clearYears ?? 0;
@@ -262,7 +279,8 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
           runSteady = { ...runSteady, [s]: true };
           grant('steadyState');
           items.push(headline(tmp, content, 'steadySector', time, hc, s));
-          ev.push({ kind: 'steadyState', sector: s });
+          ev.push(!metaSteady[s] ? { kind: 'steadyState', sector: s, first: true } : { kind: 'steadyState', sector: s });
+          firsts.push(`steady:${s}`);
         }
         if (!metaSteady[s]) {
           metaSteady = { ...metaSteady, [s]: true };
@@ -341,6 +359,9 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
   }
   mandate = fin(mandate);
+  // M3: side effects bite (after Mandate and lapses)
+  const bites = stepBites(state, content, levers, dt);
+  levers = bites.levers;
 
   // sector openings (conditions read the state at the start of the step, as Derived.nextSectors does)
   const opened: SectorId[] = [];
@@ -353,9 +374,11 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     const age = ix.ageOf.get(s);
     const ageNew = !!age && !(age.sectors ?? []).some((o) => state.sectors[o]?.open || opened.includes(o));
     opened.push(s);
-    if (!sectorsOpened[s]) sectorsOpened = { ...sectorsOpened, [s]: true };
+    const firstOpen = !sectorsOpened[s];
+    if (firstOpen) sectorsOpened = { ...sectorsOpened, [s]: true };
     items.push(headline(tmp, content, 'sectorOpened', time, hc, s));
-    ev.push({ kind: 'sectorOpened', sector: s });
+    ev.push(firstOpen ? { kind: 'sectorOpened', sector: s, first: true } : { kind: 'sectorOpened', sector: s });
+    firsts.push(`sectorOpened:${s}`);
     if (ageNew) {
       items.push(headline(tmp, content, 'ageBegins', time, hc, s));
       ev.push({ kind: 'ageBegins', sector: s, id: age!.id });
@@ -367,13 +390,20 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   const allOpen = ix.ids.every((s) => sectors[s]?.open);
   let steadyYearsAll = state.steadyYearsAll;
   let flags = state.flags;
-  if (revealNow && !flags.revealed) flags = { ...flags, revealed: true };
+  if (revealNow && !flags.revealed) { flags = { ...flags, revealed: true }; firsts.push('reveal'); }
+  let ending = false;
   if (allSink && anyOpen && opened.length === 0) {
     steadyYearsAll += dy;
     if (allOpen && steadyYearsAll >= STEADY_STATE_YEARS && !flags.won) {
       flags = { ...flags, won: true };
       items.push(headline(tmp, content, 'steadyAll', time, hc));
       ev.push({ kind: 'won' });
+      // M3: the first ending, once ever, immediately after the run's 'won'; the run continues
+      if (!state.meta.endings?.steadyAll) {
+        ending = true;
+        items.push(headline(tmp, content, 'ending', time, hc));
+        ev.push({ kind: 'ending', id: 'steadyAll' });
+      }
     }
   } else steadyYearsAll = 0;
 
@@ -399,7 +429,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     firstBackfires,
   };
   const evs = pushEvents(state.events ?? [], state.meta.eventSeq ?? 0, ev, time, year);
-  const meta: MetaState = {
+  let meta: MetaState = {
     ...(featMeta ?? state.meta),
     totalSeconds: state.meta.totalSeconds + dt,
     sectorsOpened,
@@ -410,6 +440,8 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     eventSeq: evs.seq,
     peakPopulationEver: Math.max(state.meta.peakPopulationEver ?? 1, population),
   };
+  if (firsts.length) for (const k of firsts) meta = milestone(meta, k, null, year);
+  if (ending) meta = firstEnding(meta, endingRecord({ ...state, time, meta }, year), year) ?? meta;
   const commonsIn = fl.commonsLevy > 0 ? commonsCfg(content).fundShare * fl.commonsLevy * dt : 0;
 
   let next: GameState = {
@@ -433,8 +465,44 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   if (!lite && Math.floor(time / HISTORY_EVERY) > Math.floor(state.time / HISTORY_EVERY)) {
     next = { ...next, history: pushHistory(state.history, historySample(next, content, computeFlows(next, content))) };
   }
+  next = stepM3(state, next, content, year, secondTick, bites.bitten, lite, away);
   next = runOrders(state, next, content, lite);
   return next;
+}
+
+/**
+ * M3: the step's rules after the M2 ones, in the contract's event order: expiries ('modifierEnded', default answers),
+ * a draw, 'biteBack', 'historyCleared', 'archiveUnlocked'; ambient news; the Proprietor's Day on its flag. Each costs a
+ * comparison or two when its system is absent.
+ */
+function stepM3(prev: GameState, next0: GameState, content: Content, year: number, secondTick: boolean, bitten: string[], lite: boolean, away: boolean): GameState {
+  let next = next0;
+  const time = next.time;
+  const mods = next.modifiers;
+  if (mods && mods.length) {
+    const x = expireModifiers(mods, time);
+    if (x.ended.length) next = emit({ ...next, modifiers: x.list }, x.ended.map((m) => ({ kind: 'modifierEnded' as const, id: m.source, n: m.arm })), time, year);
+  }
+  next = stepDispatch(next, content, year, away, lite);
+  const items: NewsItem[] = [];
+  const ev: EvDraft[] = [];
+  if (bitten.length && featureOn(content, prev.meta, 'sideEffects')) {
+    const ix = idx(content);
+    for (const id of bitten) {
+      const def = ix.levers.get(id)!;
+      items.push(headline(prev, content, 'biteBack', time, { year, name: def.name }, def.sector));
+      ev.push({ kind: 'biteBack', sector: def.sector, id });
+    }
+  }
+  next = stepHistory(prev, next, content, secondTick, year, items, ev);
+  if (secondTick && content.archive?.length) {
+    const m2 = unlockNotes(next, content, next.meta, ev);
+    if (m2 !== next.meta) next = { ...next, meta: m2 };
+  }
+  if (!lite && !away && content.ambient?.length) next = stepAmbient(prev, next, content, year, items);
+  if (items.length) next = { ...next, news: withNews(next.news, items) };
+  if (ev.length) next = emit(next, ev, time, year);
+  return publishOnFlag(prev, next, content);
 }
 
 export function tick(state: GameState, content: Content, dt: number): GameState {

@@ -81,6 +81,58 @@ const sector: SectorDef = {
     blurb: 'The engines turn at a rate the sky can take. The Gazette now prints the tonnage once a year, on page six.',
   },
 
+  /*
+   * M3: the seams (SeamDef). Below the workings the run starts on (`reserve`, 380,000 tons, unchanged from M2, so a run
+   * that sinks nothing ends as before: the efficiency player's run 1 still exhausts at about 39 minutes) lie six seams of
+   * the Durham sequence, top to bottom, together six times the opening reserve. Each is dearer to raise (priceMul: the
+   * deepest seam sunk prices all the coal) and reachable only once pumping is cheap enough (reachBelow, a service
+   * price): the condenser brings the first two within reach, the Cornish engine the Hutton. Sinking is the player's
+   * decision (the Market never sinks), gated by the feature 'seams' (features.ts: run 4 or later, once the first seam
+   * is within reach). Sinking postpones exhaustion and enlarges the burn: the supply-side rebound.
+   * Depths: the shaft of Murton Colliery, Co. Durham (sunk 1838–43), won the Five-Quarter at 178 fathoms, the Main coal
+   * at 204, the Low Main at 226 and the Hutton at 246 (Durham Mining Museum via co-curate.ncl.ac.uk, checked 19 Nov
+   * 2026). The Busty and Brockwell lie below the Hutton (Durham Coalfield stratigraphy); their depths are not printed.
+   * Balance knobs: tons (how long each seam postpones exhaustion), cost (capital), priceMul (how much dearer the whole
+   * reserve becomes), reachBelow (which engine reaches it). Under the M2 core seams do nothing.
+   */
+  seams: [
+    {
+      id: 'steam.seam.fiveQuarter', name: 'Five-Quarter seam', depth: '178 fathoms',
+      blurb: 'Named for its thickness, a yard and a quarter. Wet, and close enough to pump.',
+      tons: 120_000, cost: 2_000, priceMul: 1.1, reachBelow: 0.6, // the condenser reaches it
+    },
+    {
+      id: 'steam.seam.main', name: 'Main coal', depth: '204 fathoms',
+      blurb: 'The best house coal in the field, under a hundred feet more of water.',
+      tons: 180_000, cost: 5_000, priceMul: 1.2, reachBelow: 0.45, // the double-acting engine
+    },
+    {
+      id: 'steam.seam.lowMain', name: 'Low Main seam', depth: '226 fathoms',
+      blurb: 'Hard, clean and very deep. The pumps never stop.',
+      tons: 260_000, cost: 12_000, priceMul: 1.35, reachBelow: 0.3, // high-pressure steam
+    },
+    {
+      id: 'steam.seam.hutton', name: 'Hutton seam', depth: '246 fathoms',
+      blurb: 'The steam coal the navy wants, down where only a Cornish engine keeps the water out.',
+      tons: 380_000, cost: 30_000, priceMul: 1.55, reachBelow: 0.2, // the Cornish engine (or the compound)
+    },
+    {
+      id: 'steam.seam.busty', name: 'Busty seam',
+      blurb: 'Below the Hutton, through rock that breaks the sinkers’ tools. Thick, in places.',
+      tons: 550_000, cost: 70_000, priceMul: 1.8, reachBelow: 0.13, // triple expansion
+    },
+    {
+      id: 'steam.seam.brockwell', name: 'Brockwell seam',
+      blurb: 'The lowest workable coal in the field. Beneath it, nothing anyone would pay to raise.',
+      tons: 800_000, cost: 160_000, priceMul: 2.1, reachBelow: 0.085, // the turbine age
+    },
+  ],
+  mechanic: {
+    name: 'The seams',
+    rebound: 'Supply-side',
+    blurb: 'Cheap pumping reaches deeper coal. Each seam sunk postpones the end, and enlarges the burn.',
+  },
+
   applications: [
     {
       id: 'steam.pumping',
@@ -322,7 +374,7 @@ const steamUpgrades: UpgradeDef[] = withStages([
     blurb: 'Mr Jevons, 1865: an inquiry into the probable exhaustion of our coal-mines. Chapter VII asks whether thriftier engines will save them.',
     cost: 1_600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }],
   },
-], { 'steam.condenser': 1, 'steam.highPressure': 2, 'steam.turbine': 3 });
+], { 'steam.condenser': [1, 'Watt engine'], 'steam.highPressure': [2, 'Cornish engine'], 'steam.turbine': [3, 'Turbine hall'] });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -372,6 +424,28 @@ const steamLevers: LeverDef[] = [
     catch: 'Dearer per horsepower, and the river only flows so fast.',
     values: SHARE_VALUES, value2: [100, 300, 800], cost: 110, upkeep: 0.05, label: 'Supply {pct}% by river',
     repeat: { value2Step: 300 },
+  }),
+  /*
+   * M3: the lever that bites back. A cheaper, gentler duty that taxes the hearth and exempts "productive use"; the
+   * exempt trades grow on untaxed coal (satMul on the mills, the winding engines and the railways, × bite × level),
+   * unless the smoke abatement cap holds the total. Arrives with the budget (run 3), so the cap it pairs with is on the
+   * page with it; the 'sideEffects' feature (run 4 or later) adds the "bites back" line.
+   */
+  lever({
+    id: 'steam.exemptDuty', sector: 'steam', kind: 'duty',
+    requires: ['budget'],
+    name: 'Duty with exemptions',
+    blurb: 'A duty on household coal only. Coal for mills, mines and railways goes free, as productive use.',
+    catch: `The exempt trades grow on untaxed coal, and grow faster the higher the duty. ${DIVIDEND}`,
+    values: [0.2, 0.4, 0.6], cost: 60, upkeep: 0.03, label: DUTY_LABEL, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Spent on the Commons, which are heated with coal from the exempt pits.' },
+    sideEffects: {
+      effects: [sat('steam', 1.12, 'steam.mills'), sat('steam', 1.1, 'steam.winding'), sat('steam', 1.1, 'steam.railways')],
+      rampYears: 20, decayYears: 30, // about seven minutes to most of its strength; ten to fade
+      unless: { owns: 'steam.cap' },
+      blurb: 'Exempt mills and railways grow on untaxed coal.',
+      unlessLabel: 'unless the smoke abatement cap holds the total',
+    },
   }),
 ];
 
@@ -495,6 +569,18 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Steam settled: so many tons a year, and not a ton more',
     'Coal trade agrees to stay the size it is; the Exchange is very quiet',
     'Engines held at a rate the sky can take; engine makers sulk',
+  ],
+  /* M3 */
+  seamSunk: [
+    '{name} won at last; the sinkers are given a dinner',
+    '{name} reached; the pumps work twice as hard and the coal is dearer',
+    '{name} opened; the valley’s coal “good for another generation”',
+    'Colliery Gazette: {name} reached, and the reserve is restored',
+  ],
+  biteBack: [
+    'Exempt mills multiply; the hearth pays the duty, the mill does not',
+    'Productive use found to include almost everything; mills order engines',
+    'Untaxed coal for the trades; the trades grow to burn it',
   ],
   unsettled: [
     'Coal settlement lapses; every pit in the valley lights up again',

@@ -100,13 +100,13 @@ export const light: Layout = {
     },
     {
       // The lit skeleton: as the place lights up, the streets catch the lamplight from the tram street upwards.
-      key: 'streets', driver: 'light', curve: 0.75,
+      key: 'streets', driver: 'light', curve: 0.75, byHour: true,
       // Every stretch is placed at its street's foot (so it draws over the terraces either side) and lights its third.
       slots: [0, 1, 2].flatMap((k) => STREETS.map(([x0, y0, x1, y1]): Slot =>
         ({ p: 'streetGlow', x: x0, y: y0 + 0.2, w: x1 - x0, h: y1 - y0, v: k / 3, s: 1, band: 'mid' }))),
     },
     { key: 'mains', driver: 'always', anchor: { p: 'gasMain', x: 592, y: 384, s: 1, w: 600, band: 'near' }, slots: [] },
-    { key: 'homes', match: ['house'], overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 196, 210, 76], site: [440, 252, 70, 8] },
+    { key: 'homes', match: ['house'], byHour: true, overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 196, 210, 76], site: [440, 252, 70, 8] },
     {
       key: 'night', match: ['factory-night'],
       anchor: { p: 'nightFactory', x: 112, y: 270, s: 1, v: 0.7 },
@@ -125,7 +125,7 @@ export const light: Layout = {
       site: [270, 288, 60, 6],
     },
     {
-      key: 'shops', match: ['sign'],
+      key: 'shops', match: ['sign'], byHour: true,
       anchor: { p: 'sign', x: SHOPS[4], y: 332, s: 1, v: 0.6 },
       slots: SHOPS.filter((_, i) => i !== 4).map((x, i): Slot => ({ p: 'sign', x, y: 332, s: 1, v: ((i * 37) % 10) / 10 }))
         .sort((p, q) => Math.abs(p.x - SHOPS[4]) - Math.abs(q.x - SHOPS[4])),
@@ -161,6 +161,10 @@ export const light: Layout = {
   // allotments on the hill, bunting across the high street; a Charter's gasholder by the canal.
   commons: [{ p: '', x: 212, y: 288, band: 'mid' }, { p: '', x: 392, y: 288, band: 'mid' }, { p: '', x: 236, y: 232 }, { p: '', x: 190, y: 334, band: 'near' }],
   landmark: { p: '', x: 452, y: 286, band: 'mid' },
+  // M3: the day's load as a poster roundel in the sky; the cast on the high street pavement.
+  dial: [550, 96, 26],
+  figures: [{ x: 300, y: 369 }, { x: 268, y: 370, flip: true }, { x: 336, y: 370 }, { x: 232, y: 371 }, { x: 374, y: 370, flip: true }, { x: 196, y: 370 }],
+  bite: { '*': { p: 'nightFactory', x: 214, y: 236, s: 0.85, v: 0.3 } },
 };
 
 import { moon as GAS_MOON } from '../props/gaslight';

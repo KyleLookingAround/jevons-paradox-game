@@ -16,11 +16,15 @@ export type MomentKind =
   | 'settled'    // the Industry settled
   | 'opened'     // the Industry opened or an Age began: the picture is unveiled
   | 'backfire'   // the first backfire: the valley takes a breath and burns harder
-  | 'commons';   // a Commons building rises
+  | 'commons'    // a Commons building rises
+  /* M3 */
+  | 'seamSunk'   // a shaft sinks to the next seam, a puff of steam at the head, the gallery lights
+  | 'biteBack'   // a lever's side effect appears where it stands
+  | 'ending';    // the first ending: the sky clears completely and a paper boy runs through
 
 export interface Moment { kind: MomentKind; app?: string; id?: string; by?: string; n?: number; text?: string }
 
-interface Prev { crises: number; steady: boolean; stage: number; clear: boolean; settled: boolean; status: Map<string, string>; commons: Map<string, number> }
+interface Prev { crises: number; steady: boolean; stage: number; clear: boolean; settled: boolean; status: Map<string, string>; commons: Map<string, number>; seams: number; bitten: Set<string> }
 
 export class MomentDesk {
   /** Highest event seq seen by this scene (seqs are global across sectors, so a sector switch resets nothing). */
@@ -77,8 +81,11 @@ export class MomentDesk {
       // Founding moments only when one or two places change at once (not on a jump or a load).
       if (founded.length <= 2) for (const a of founded) out.push({ kind: 'found', app: a.id, by: 'player' });
       for (const [id, lv] of commons) if ((p.commons.get(id) ?? 0) < lv) out.push({ kind: 'commons', id, n: lv });
+      if (v.seams && v.seams.sunk > p.seams && v.seams.sunk === p.seams + 1) out.push({ kind: 'seamSunk', n: v.seams.sunk });
+      for (const l of v.levers) if ((l.bite ?? 0) >= 0.5 && !p.bitten.has(l.id)) out.push({ kind: 'biteBack', id: l.id });
     }
-    this.prev.set(v.sectorId, { crises: v.crises, steady: !!v.steady, stage: v.stage, clear: !!v.clear, settled: !!v.settled, status, commons });
+    const bitten = new Set(v.levers.filter((l) => (l.bite ?? 0) >= 0.5).map((l) => l.id));
+    this.prev.set(v.sectorId, { crises: v.crises, steady: !!v.steady, stage: v.stage, clear: !!v.clear, settled: !!v.settled, status, commons, seams: v.seams?.sunk ?? 0, bitten });
     if (quiet) return [];
     for (const m of out) {
       if (m.kind === 'crisis') { this.crisisUntil = now + 7200; this.caption = { text: m.text ?? v.crisisName, until: now + 7000, sector: v.sectorId }; }
@@ -103,6 +110,9 @@ function fromEvent(e: SceneEvent, v: SceneView): Moment | null {
     case 'sectorOpened': case 'ageBegins': return { kind: 'opened', id: e.id };
     case 'backfire': return { kind: 'backfire' };
     case 'commonsBuilt': return { kind: 'commons', id: e.id, n: e.n, by: e.by };
+    case 'seamSunk': return { kind: 'seamSunk', id: e.id, n: e.n, text: e.label };
+    case 'biteBack': return { kind: 'biteBack', id: e.id };
+    case 'ending': return { kind: 'ending', id: e.id };
     default: return null;
   }
 }

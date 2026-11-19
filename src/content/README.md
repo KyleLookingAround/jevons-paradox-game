@@ -17,6 +17,9 @@ a value or an order (M2).
 | `commons.ts` | M2: the Commons projects, in display order. |
 | `dividends.ts` | M2: every decade dividend, flat. The global pair sequence is `DECADE_PAIRS` in `helpers.ts`; each Industry's own sequence is its `steady.decadeChoices`, built with `decadeSequence`. |
 | `features.ts` | The unfolding: when each system arrives (a `Cond` per feature) and the headline that introduces it (`design/unlock-schedule.md`). |
+| `histories.ts` | M3: the Histories (counterfactual runs with a goal and an option as reward; the History rules are in `src/types.ts` and linted). Their rewards are the `locked` Commons projects and Charters at the end of `commons.ts` and `charters.ts`. |
+| `cast.ts`, `dispatches/`, `news/ambient.ts` | M3, the dispatches lane: the cast, the letters, ambient headline templates. Registered by `index.ts`. |
+| `archive/`, `proprietor.ts`, `ending.ts` | M3, the archive lane: Archive notes, the Proprietor's Day texts, the first ending. Registered by `index.ts`. |
 | `words.ts` | M2: words that belong to no other module (the recycle options' wording, `recycleText`). |
 | `achievements.ts` | Achievements, in display order (the five built in first). |
 | `news/fallback.ts` | The fallback headlines (`Content.headlines`), fit for any Industry. |
@@ -25,6 +28,15 @@ a value or an order (M2).
 Dependencies point one way: `index.ts` → every other module → `helpers.ts` → `src/types.ts`. (Ids crossing modules,
 such as dividend ids in an Industry's decade pairs, are plain strings; the lint resolves them.) Modules never import
 each other otherwise, and nothing here imports `src/core/`.
+
+## M3 mechanics and the staging knob
+
+Each Industry's `SectorDef.mechanic` names its mechanic; the data is on the sector (`seams` for Steam, `load` and
+application `profile`s for Light, `travel` and `lockInDecay` for Motion) or on cards (Compute's `priceSeen` effects on
+the business-model fork). `MECHANICS_LIVE` in `helpers.ts` is the balance lane's switch: `false` keeps the numbers
+that would rebalance the M2 game under an M2 core (Light's compensated capCost, Motion's finite roads and speed
+effects, sprawl decay, Compute's free price); `true` once the core solves the mechanics. Levers that bite back carry
+`sideEffects`; policies acting through effects are `kind: 'measure'`.
 
 ## Order matters
 

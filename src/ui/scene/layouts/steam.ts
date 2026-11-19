@@ -8,6 +8,7 @@ import { bprop, ribbon, waterLines, tufts, engravedSun, birds } from './util';
 import { tree, poplar, church, cottage, hedge } from '../props/common';
 import { field, ford as LEDGER_FORD } from '../props/ledger';
 import { hills, hills2 } from '../geography';
+import { seamSection } from '../props/strata';
 
 const SHAFT_X = 70;
 
@@ -84,7 +85,8 @@ export const steam: Layout = {
       tufts(0, 310, 436, 60, 60, 'grass') +
       bprop(tree, 12, 372, 1.6, 0.75, c) + bprop(tree, 418, 372, 1.2, 0.2, c);
     const ox = (SHAFT_X / 600 * 100).toFixed(2) + '%';
-    const cut =
+    // M3: with the seam ladder, the cut-away is a section of every seam under the pit (props/strata.ts).
+    const cut = c.seams ? seamSection({ total: c.seams, shaftX: SHAFT_X, y0: 372, y1: 400, rock: c.hatch(0.9), rock2: c.hatch(0.9, 1), glow: c.u('glow') }) + R(158, 372, 2.6, 6, 'b') :
       R(0, 372, 600, 28, 'gd') + R(0, 372, 600, 28, 'hz', `fill="${c.hatch(0.9)}" opacity=".45"`) +
       L(0, 372, 600, 372, 'k K') + P('M0 379Q150 377 300 380T600 379M0 395Q200 393 400 396T600 395', 'k k2') +
       R(0, 384, 600, 8, 'd') +
@@ -228,6 +230,10 @@ export const steam: Layout = {
   ],
   landmark: { p: '', x: 392, y: 252, k: 0.9 },
   steadyMovers: [{ p: 'birds', x0: -40, y0: 70, x1: 640, y1: 56, dur: 40, n: 2, s: 1, band: 'far' }],
+  // M3: the cast on the old lane in the foreground, as an engraver stood people before a view; a lever biting back
+  // sinks another pit on the slope.
+  figures: [{ x: 198, y: 369 }, { x: 166, y: 370, flip: true }, { x: 232, y: 371 }, { x: 134, y: 370 }, { x: 266, y: 370, flip: true }, { x: 100, y: 370 }],
+  bite: { '*': { p: 'headframe', x: 236, y: 246, k: 0.9 } },
 };
 
 void birds; void f;

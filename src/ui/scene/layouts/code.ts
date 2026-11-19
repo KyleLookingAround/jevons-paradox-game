@@ -307,6 +307,9 @@ export const code: Layout = {
 
   spares: [[150, 340, 100, 28], [330, 340, 110, 28], [10, 340, 120, 28]],
 
+  // M3: the cast in the rain between the signs; a lever biting back raises another tower.
+  figures: [{ x: 266, y: 372 }, { x: 200, y: 372, flip: true }, { x: 340, y: 373 }, { x: 420, y: 372 }, { x: 510, y: 372, flip: true }, { x: 100, y: 373 }],
+  bite: { '*': { p: 'ctower', x: 248, y: 250, s: 0.9, v: 0.4, band: 'mid' } },
   restraint: {
     deletion: { p: 'demolition', x: 300, y: 368, s: 1.15, band: 'near' },
     reviewGate: { p: 'gateC', x: 168, y: 366, s: 1.15, band: 'near' },

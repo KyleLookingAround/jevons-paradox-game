@@ -24,6 +24,17 @@ import { deserialize, serialize } from './serialise';
 import { settle, unsettle } from './settlement';
 import { createState, isFreshRun } from './state';
 import { tick } from './step';
+import { unlockNotes } from './archive';
+import { answerDispatch } from './dispatch';
+import { retrospective } from './ending';
+import { emit } from './events';
+import { calendarYear } from './calendar';
+import { chooseHistory, historyViews } from './history';
+import { fastForward as ff, useBank } from './offline';
+import { fileReturn, publishOnFlag, withdrawReturn } from './returns';
+import { sinkSeam } from './seams';
+import { archiveViews } from './archive';
+import type { EvDraft } from './events';
 
 export {
   DEFAULT_MANDATE_SHARE, DEFAULT_BUDGET_DECLINE, DEFAULT_DECADE_YEARS, SUBSTITUTION_CAPCOST_MUL, CAP_LEAK_MAX,
@@ -44,19 +55,47 @@ export interface CoreModel extends ModelApi {
   upgradeViews(state: GameState, content: Content, sector?: SectorId): UpgradeView[];
 }
 
+/**
+ * M3: what runs at the end of every action that changed the state: Archive notes whose subject rule now holds
+ * ('archiveUnlocked'), and the Proprietor's Day the moment its meta flag is first set (a card bought).
+ */
+function after<A extends unknown[]>(fn: (state: GameState, content: Content, ...args: A) => GameState): (state: GameState, content: Content, ...args: A) => GameState {
+  return (state, content, ...args) => {
+    let next = fn(state, content, ...args);
+    if (next === state) return next;
+    next = publishOnFlag(state, next, content);
+    if (content.archive?.length) {
+      const ev: EvDraft[] = [];
+      const meta = unlockNotes(next, content, next.meta, ev);
+      if (meta !== next.meta) next = emit({ ...next, meta }, ev, next.time, calendarYear(next, content));
+    }
+    return next;
+  };
+}
+void fastForward;
+
 export const model: CoreModel = {
-  createState, tick, fastForward, derive, click,
-  buyUpgrade: asDecision(buyUpgrade),
-  foundApp: asDecision(foundApp),
-  setLever: asDecision(setLever),
-  setLeverRecycle: asDecision(setLeverRecycle),
-  drawBudget: asDecision(drawBudget),
-  chooseDecadeDividend: asDecision(chooseDecadeDividend),
-  settle: asDecision(settle),
-  unsettle: asDecision(unsettle),
-  buyCommons: asDecision(buyCommons),
+  createState, tick, fastForward: ff, derive, click,
+  buyUpgrade: after(asDecision(buyUpgrade)),
+  foundApp: after(asDecision(foundApp)),
+  setLever: after(asDecision(setLever)),
+  setLeverRecycle: after(asDecision(setLeverRecycle)),
+  drawBudget: after(asDecision(drawBudget)),
+  chooseDecadeDividend: after(asDecision(chooseDecadeDividend)),
+  settle: after(asDecision(settle)),
+  unsettle: after(asDecision(unsettle)),
+  buyCommons: after(asDecision(buyCommons)),
   setOrders: asDecision(setOrders, (prev) => !isFreshRun(prev)),
-  reckon, buyKnowhow, buyInstitution, setLoadout, chooseCharter, respecKnowhow,
+  reckon: after(reckon), buyKnowhow: after(buyKnowhow), buyInstitution: after(buyInstitution), setLoadout: after(setLoadout),
+  chooseCharter: after(chooseCharter), respecKnowhow: after(respecKnowhow),
   upgradeViews, leverViews, knowhowViews, institutionViews, commonsViews, yearAt, hindsightOnReckon,
   serialize, deserialize,
+  /* M3 */
+  sinkSeam: after(asDecision(sinkSeam)),
+  answerDispatch: after(asDecision(answerDispatch)),
+  chooseHistory: after(chooseHistory),
+  fileReturn: after(fileReturn),
+  withdrawReturn,
+  useBank: after(useBank),
+  historyViews, archiveViews, retrospective,
 };

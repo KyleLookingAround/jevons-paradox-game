@@ -2,11 +2,21 @@
  * derive(): the Derived view the UI reads every frame (flows, instruments, budgets, Hindsight, next sectors).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import { EXHAUSTED_BELOW, YEARS_PER_SECOND } from '../types';
+import { EXHAUSTED_BELOW, YEARS_PER_SECOND, STEADY_STATE_YEARS } from '../types';
 import type { AppDerived, Content, Derived, GameState, SectorDerived, SectorId } from '../types';
 import { calendarYear, currentAge } from './calendar';
 import { idx } from './contentIndex';
-import { modsOf } from './effects';
+import { modsOf, isForbidden } from './effects';
+import { archiveCounts } from './archive';
+import { bankView } from './bank';
+import { dispatchesView } from './dispatch';
+import { clearedThisRun } from './history';
+import { loadView } from './load';
+import { modifierViews } from './modifiers';
+import { foundCostOf } from './purchases';
+import { surveyView } from './returns';
+import { seamsView } from './seams';
+import { travelView } from './travel';
 import { commonsOpen } from './commons';
 import { computeFlows, instruments, reserveFractionOf, steadyView } from './flows';
 import { hindsightTerms } from './hindsight';
@@ -42,13 +52,23 @@ export function derive(state: GameState, content: Content): Derived {
     const lev = levs[s] ?? NO_LEVERS;
     const ins = instruments(state, content, fl, s);
     const apps: Record<string, AppDerived> = {};
+    const frozenSeen = es.settled?.appPriceSeen;
+    let freeBill = 0, freeD = 0, anySeen = false;
     def.applications.forEach((a, i) => {
       const st = es.apps[a.id];
       const sat = f.appSat[i];
+      const cost = foundCostOf(a, s, mods);
+      const forbidden = isForbidden(mods, a.id);
+      const seen = es.settled ? (frozenSeen?.[a.id] ?? f.ps) : f.appSeen ? f.appSeen[i] : f.ps;
+      if (st?.founded && seen !== f.ps) {
+        anySeen = true;
+        if (seen < f.ps) { freeBill += (f.ps - seen) * f.appD[i]; freeD += f.appD[i]; }
+      }
       apps[a.id] = {
         available: !!st?.available, founded: !!st?.founded, demand: f.appD[i],
         adoption: sat > 0 ? clamp(f.appD[i] / sat, 0, 1) : 0,
-        canFound: !!st?.available && !st.founded && state.capital >= a.foundCost && !fl.pending && !es.settled,
+        canFound: !!st?.available && !st.founded && state.capital >= cost && !fl.pending && !es.settled && !forbidden,
+        priceSeen: seen, foundCost: cost, forbidden,
       };
     });
     let secondsLeft = Infinity;
@@ -80,6 +100,14 @@ export function derive(state: GameState, content: Content): Derived {
       stage: stageOf(state, content, s),
       standingDrawIn: Number.isFinite(lev.capFrac) && !es.budget
         ? Math.max(0, standingDrawYearsOf(def, content) - es.openFor * YEARS_PER_SECOND) : null,
+      seams: seamsView(state, content, s, mods),
+      load: features.load ? loadView(def, es, f) : null,
+      travel: features.travel ? travelView(def, es, f, state.population) : null,
+      free: features.freeAtUse && anySeen ? { bill: fin(freeBill), freeShare: f.D > 0 ? fin(freeD / f.D) : 0 } : null,
+      upkeep: def.pressureUpkeep > 0 ? {
+        share: f.capacity > 0 ? Math.min(0.95, fin(es.pressure * def.pressureUpkeep / f.capacity)) : 0,
+        deletionOut: f.deletionOut, pressureIn: f.pressureIn,
+      } : null,
     };
   }
   const terms = hindsightTerms(state, content);
@@ -109,5 +137,15 @@ export function derive(state: GameState, content: Content): Derived {
     orders: ordersView(state, content),
     respec: { allowed: fresh && respecAny, refund: Object.values(refundByTree).reduce((a, b) => a + b, 0), refundByTree },
     features,
+    dispatch: dispatchesView(state, content),
+    modifiers: modifierViews(state, content),
+    history: { id: state.meta.history ?? null, cleared: (state.meta.history ?? null) !== null && clearedThisRun(state), lifted: !!state.historyLifted },
+    survey: surveyView(state, content),
+    bank: bankView(state, content),
+    ending: {
+      reached: !!state.meta.endings?.steadyAll, record: state.meta.endings?.steadyAll ?? null,
+      progress: clamp(state.steadyYearsAll / STEADY_STATE_YEARS, 0, 1), allOpen: ix.ids.every((x) => !!state.sectors[x]?.open),
+    },
+    archive: archiveCounts(state, content),
   };
 }

@@ -52,6 +52,29 @@ compactView(view);                              // a view trimmed for recording 
   view is plain JSON. `renderStill` draws the picture at rest: movers at their resting points, no rain or crisis fog,
   the style's plate optional.
 
+### M3 additions (all optional; every M1/M2 call above still works)
+
+`sceneViewFrom` fills these per Industry, each **absent while its feature is off** (`Derived.features`) or while the
+core reports nothing (the SectorDerived views are null): a host that is not yet on M3 draws the M2 picture.
+
+| Field | Type | Meaning (the audio lane reads the same) |
+|---|---|---|
+| `seams` | `{ sunk: number; total: number; next: boolean }` | Steam's seam ladder: ladder seams sunk (0…total), the ladder's length, and whether the next seam is reachable now. The original bed is always above the ladder. |
+| `load` | `{ hours: number[]; factor: number }` | Light's day: 24 hourly loads normalised to the peak hour (0–1, hour 0 = midnight) and the load factor (mean / peak). |
+| `travel` | `{ speed: number; sprawl: number; sprawlShare: number; freeSpeed?: number }` | Motion: `speed` 0–1 = v / free speed (1 = empty roads, low = queues); `sprawl` 0–1 = the lock-in stock against full lock-in of the founded applications (it stays when traffic thins); `sprawlShare` = TravelView.sprawlShare; `freeSpeed` = the free speed index (above 1 = new roads). |
+| `free` | `{ apps: string[] }` | Compute: founded applications whose users see under half the service price ("free at the point of use"). |
+| `figures` | `string[]` | Cast figure keys (`CastDef.figure`) of the writer of a pending dispatch addressed to this Industry or to none; `'proprietor'` once `meta.flags.proprietor`; at the first ending, while that run lasts, the whole cast. Unknown keys draw nothing. |
+| `watch` | `number` | 0–1, how often the proprietor checks his watch: `after / (after + before)` of `Derived.survey.decisionsPerHour*` (0.5 when unknown); absent before the Proprietor's Day. |
+| `levers[i].bite` | `number` | 0–1 (`LeverState.bite`), only while feature `sideEffects` is on and above zero. From 0.5 the side effect is drawn. |
+| `events[i].first`, `.label` | | Carried from the contract when set. |
+
+New events the picture plays (nothing loops; reduced motion gets the static state): `seamSunk` (a shaft sinks to the
+new seam, a puff of steam at the head, the gallery lights), `biteBack` (the lever's side effect appears where it
+stands: heavier cars on the forecourt, a new road filling, another hall), `ending` (the sky clears completely and a
+paper boy runs through with the news). New exports: `viewFromSummary(baseView, runSummary, start?)` (a still view of
+a run's end, or its first morning, rebuilt from `RunSummary` for the before-and-after pictures) and
+`spot(key, look, opts?)` (an engraved spot illustration per `HeadlineKey`, an SVG string; see "Spots" below).
+
 `sceneViewFrom` (in `adapter.ts`) is the only code that reads the contract. It is pure and total (never throws) and
 holds no game rules: it reads `Content`, `GameState` and `Derived` and maps them to cosmetic fractions (`SceneView`
 in `types.ts`). The scene ships its own CSS (`css.ts`, injected once as `<style id="scn-css">`), reading the page's

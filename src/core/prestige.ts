@@ -7,7 +7,7 @@ import type { Content, GameState, InstitutionDef, InstitutionView, KnowhowDef, K
 import { calendarYear } from './calendar';
 import { drawOffer } from './charters';
 import { idx } from './contentIndex';
-import { fireOneOffs, institutionMax, isSeated } from './effects';
+import { fireOneOffs, applyM3OneOffs, institutionMax, isSeated } from './effects';
 import type { OneOffs } from './effects';
 import { emit } from './events';
 import type { EvDraft } from './events';
@@ -17,6 +17,9 @@ import { computeFlows } from './flows';
 import { headline, withNews } from './headlines';
 import { hindsightTerms } from './hindsight';
 import { stageOf } from './purchases';
+import { clearedThisRun } from './history';
+import { publish } from './returns';
+import { sprawlOf } from './travel';
 import { createState, isFreshRun, withMeta } from './state';
 import { clamp, fin } from './util';
 
@@ -53,6 +56,14 @@ export function reckon(state: GameState, content: Content): GameState {
       peakAdoption, stage: stageOf(state, content, s) ?? 0, steady: !!state.run.steadySectors[s], settled: !!es.settled,
     };
     if (def.resourceKind === 'stock') summary[s].unburnt = es.reserveMax > 0 ? clamp(es.reserve / es.reserveMax, 0, 1) : 0;
+    // M3: seams, load factor, speed and sprawl at the end (absent where the sector has no such kind)
+    if (def.seams?.length && def.resourceKind === 'stock') summary[s].seams = es.seamsSunk ?? 0;
+    if (def.load) { const lf = es.settled ? es.settled.load?.factor : f.load?.factor; if (lf !== undefined) summary[s].loadFactor = lf; }
+    if (def.travel) {
+      const v = es.settled ? es.settled.travel?.speed : f.travel?.v;
+      if (v !== undefined) summary[s].speed = v;
+      summary[s].sprawl = es.settled?.travel ? es.settled.travel.sprawl : sprawlOf(def, es);
+    }
   }
   const charter = state.meta.charter ?? null;
   let commonsLevels = 0;
@@ -67,6 +78,8 @@ export function reckon(state: GameState, content: Content): GameState {
     decisions: run.decisions ?? 0, automated: run.automated ?? 0,
     decisionsByDecade: (run.decisionsByDecade ?? []).slice(), automatedByDecade: (run.automatedByDecade ?? []).slice(),
     commonsLevels, peakPopulation: state.peakPopulation,
+    ...(state.meta.history ? { history: state.meta.history, historyCleared: clearedThisRun(state) } : {}),
+    dispatchesAnswered: run.dispatchesAnswered ?? 0, dispatchesDefaulted: run.dispatchesDefaulted ?? 0,
   };
   const opening: OpeningRecord = {
     actions: (run.opening ?? []).slice(), firstBudgetAt: run.firstBudgetAt ?? null, seconds: state.time,
@@ -84,6 +97,7 @@ export function reckon(state: GameState, content: Content): GameState {
     opening,
     ...(state.meta.firstOpening ? {} : { firstOpening: opening }),
     charter: null,
+    history: null,
   };
   const nextSeed = (Math.imul(state.seed >>> 0, 1103515245) + 12345) >>> 0;
   let s0 = createState(content, meta, nextSeed);
@@ -96,7 +110,9 @@ export function reckon(state: GameState, content: Content): GameState {
   const s = { ...s0, charterOffer: offer };
   const year = calendarYear(s, content);
   const out = { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector), ...fItems]) };
-  return emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }, ...fEv], 0, year);
+  const r = emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }, ...fEv], 0, year);
+  // M3: an unpublished household return is published into the new run's news (only once the Proprietor's Day has come)
+  return r.meta.flags?.proprietor === true ? publish(r, content, 0, true) : r;
 }
 
 function knowhowGate(meta: MetaState, content: Content, def: KnowhowDef): { req: boolean; excludedBy: string | null } {
@@ -134,11 +150,12 @@ export function buyKnowhow(state: GameState, content: Content, id: string): Game
     ...state.meta, hindsight: state.meta.hindsight - cost, knowhow: { ...state.meta.knowhow, [id]: lvl + 1 },
     slots: state.meta.slots + one.slots, knowhowPeak: { ...(state.meta.knowhowPeak ?? {}), [id]: Math.max(peak, lvl + 1) },
   });
-  if (!one.capital && !one.mandate) return s;
-  const inc = computeFlows(s, content).income;
+  const s1 = applyM3OneOffs(s, content, { ...one, pop: undefined, pressure: undefined });
+  if (!one.capital && !one.mandate) return s1;
+  const inc = computeFlows(s1, content).income;
   const one2: OneOffs = { capital: 0, mandate: 0, slots: 0 };
   fireOneOffs(def.effects, 1, inc, one2);
-  return { ...s, capital: s.capital + one2.capital, mandate: s.mandate + one2.mandate };
+  return { ...s1, capital: Math.max(0, s1.capital + one2.capital), mandate: Math.max(0, s1.mandate + one2.mandate) };
 }
 
 const institutionCost = (def: InstitutionDef, level: number): number | null =>

@@ -84,7 +84,10 @@ export interface MoverDef {
  *   'light'      mean adoption of founded applications (Light's sky glow, lamps of any kind);
  *   'always'     scenery that is always there.
  */
-export type Driver = 'app' | 'population' | 'pressure' | 'depletion' | 'reserve' | 'light' | 'always';
+export type Driver = 'app' | 'population' | 'pressure' | 'depletion' | 'reserve' | 'light' | 'always'
+  /* M3 */
+  | 'congestion'  // 1 − SceneView.travel.speed (queues on the road); 0 without travel
+  | 'roads';      // new roads built: (travel.freeSpeed − 1) / 1.5; 0 without travel
 
 export interface PlotDef {
   key: string;
@@ -108,6 +111,10 @@ export interface PlotDef {
   curve?: number;
   /** Slots stay in the picture when off and fade (a light going out) instead of vanishing. */
   fade?: boolean;
+  /** M3: lit by the hour of Light's day (SceneView.load): the density is scaled by the load at the clock's hour. */
+  byHour?: boolean;
+  /** M3: sprawl that stays: with SceneView.travel the density is at least travel.sprawl (it does not fall with use). */
+  sprawl?: boolean;
 }
 
 export type Band = 'far' | 'mid' | 'near';
@@ -119,6 +126,9 @@ export interface BackdropCtx {
   stage: number;
   /** How built-up each earlier Industry is (0–1), from SceneView.heritage; see geography.ts `built()`. */
   heritage?: Record<string, number>;
+  /** M3: the length of the seam ladder when SceneView.seams is present (draw the strata; the engine toggles them by
+   *  the `sm:<i>` keys of props/strata.ts), else absent. */
+  seams?: number;
 }
 
 export interface Backdrop {
@@ -159,6 +169,18 @@ export interface Layout {
   landmark?: Slot;
   /** Birds / clear-sky movers for Steady State (optional). */
   steadyMovers?: MoverDef[];
+  /* --- M3 (all optional) --- */
+  /** Where Light's day clock (the load medallion) hangs: [x, y, radius] in viewBox units. */
+  dial?: [number, number, number];
+  /** Where the cast stand (foreground figures, in order of arrival): x, y (feet), scale (default 1; a figure is about
+   *  30 units tall at 1). */
+  figures?: { x: number; y: number; s?: number; flip?: boolean }[];
+  /** Free at the point of use: where the bill is paid (a hoarding the free halls are cabled to). The price plates
+   *  stand by each application's landmark. */
+  bill?: Slot;
+  /** Levers that bite back: lever kind → where its side effect appears ('*' = any other kind); the slot's prop is
+   *  drawn (hidden until the bite reaches 0.5). */
+  bite?: Record<string, Slot>;
 }
 
 /* ------------------------------------------------------------------ */

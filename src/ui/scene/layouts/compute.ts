@@ -194,6 +194,11 @@ export const compute: Layout = {
     greenSpending: { p: 'park', x: 420, y: 368, s: 0.9, band: 'near' },
   },
   restraintSpare: [{ p: 'notice', x: 220, y: 368 }, { p: 'notice', x: 380, y: 368 }],
+  // M3: free at the point of use: the free halls cabled to an advertising hoarding on the floor, where the bill is
+  // paid; the cast between the signs at the front; a lever biting back puts up another hall.
+  bill: { p: 'adBoard', x: 214, y: 330, s: 1, band: 'near' },
+  figures: [{ x: 300, y: 372 }, { x: 160, y: 372, flip: true }, { x: 330, y: 373 }, { x: 456, y: 372 }, { x: 262, y: 372, flip: true }, { x: 524, y: 372 }],
+  bite: { '*': { p: 'newHall', x: 452, y: 318, s: 1, band: 'near' } },
   // The Commons among the glowing homes: a repair café on the near street, bunting over it.
   commons: [{ p: '', x: 252, y: 366, band: 'near' }, { p: '', x: 344, y: 368, band: 'near' }],
 };

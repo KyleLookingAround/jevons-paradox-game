@@ -126,4 +126,27 @@ export const commons: CommonsDef[] = [
     effects: [sat('steam', 1.04, 'steam.railways')],
     requires: { owns: 'steam.railways', label: 'Railways founded' },
   },
+
+  /* ---- M3: locked projects, History rewards (histories.ts) ----
+   * Hidden until a History unlocks them (CommonsDef.locked; meta.unlocks). Each also `requires` its History cleared,
+   * which says the same thing to a core that predates `locked` (an unknown `owns` id is false), so the M2 game never
+   * offers them. Options, not power: small wellbeing (0.25 each, which keeps all twelve maxima under 12) and their
+   * own rebound. Append only. */
+  {
+    id: 'commons.welfareHall', name: 'Miners’ welfare hall', icon: 'welfarehall', sector: 'steam', locked: true,
+    blurb: 'Mining Industry Act, 1920: a penny on every ton raised, for halls, libraries and bands. The more coal, the finer the hall.',
+    cost: 40_000, mandateCost: 60,
+    wellbeing: { max: 0.25, perLevel: 0.5 },
+    /* Heated and lit, and a penny a ton is a reason to raise the tons. */
+    intensity: { sector: 'steam', perLevel: 40 },
+    requires: { owns: 'history.coalRich', label: 'Cleared Coal-rich' },
+  },
+  {
+    id: 'commons.cycleTracks', name: 'Cycle tracks', icon: 'cycletracks', sector: 'motion', locked: true,
+    blurb: 'A kerbed lane for bicycles beside every arterial road. The road space they free fills with other traffic, as road space does.',
+    cost: 600_000, mandateCost: 120,
+    wellbeing: { max: 0.25, perLevel: 0.5 },
+    effects: [sat('motion', 1.02, 'motion.commuting')],
+    requires: { owns: 'history.austerity', label: 'Cleared Austerity' },
+  },
 ];

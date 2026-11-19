@@ -26,6 +26,15 @@ import { light } from './sectors/light';
 import { motion } from './sectors/motion';
 import { steam } from './sectors/steam';
 import { recycleText } from './words';
+/* M3: this lane's Histories; the other two content lanes' modules (design/scratch/m3-register-*.md), imported here and
+ * linted by content.test.ts. The registry is the one place that wires them; their files are theirs. */
+import { histories } from './histories';
+import { cast } from './cast';
+import { dispatches } from './dispatches';
+import { ambient } from './news/ambient';
+import { archive } from './archive';
+import { proprietor } from './proprietor';
+import { ending } from './ending';
 
 export { sig2, ladder } from './helpers';
 
@@ -54,4 +63,12 @@ export const content: Content = {
   knowhowTrees,
   recycleText,
   features,
+  /* M3 */
+  cast,
+  dispatches,
+  ambient,
+  histories,
+  archive,
+  proprietor,
+  ending,
 };

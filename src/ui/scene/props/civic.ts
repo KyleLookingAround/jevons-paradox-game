@@ -247,14 +247,39 @@ export const gasholderL: Prop = (a) => {
     lamps([-30, 30], 10);
 };
 
+/** Miners' welfare hall: a plain brick hall with a lettered gable and a clock, a bowling green railed in front;
+ *  level 2 a bath-house wing with its stack, level 3 lamps and a bandstand. */
+export const welfarehall: Prop = (a) => {
+  const L2 = lvl(a);
+  let s = R(-16, -20, 32, 20, 'b') + shade(8, -20, 8, 20, a.hatch()) + P('M-18 -20L0 -31L18 -20Z', 'rf') + C(0, -24, 2.4, 'b') + P('M0 -24v-1.6M0 -24h1.2', 'k');
+  s += P(arches(-13, -3, 5, 6, 3, 10), 'w') + R(-2.5, -8, 5, 8, 'd') + P('M-14 -16H14', 'k k2');
+  s += P('M-22 4h44v3h-44z', 'tr') + railing(-22, 22, 4, 2.4);
+  if (L2 >= 2) s += R(16, -13, 14, 13, 'b') + P('M15 -13L23 -17L31 -13Z', 'rf') + R(26, -30, 2.6, 17, 'b') + grid(18, -10, 2, 1, 4.4, 0, 2, 4);
+  if (L2 >= 3) s += lamps([-19, 19], 8) + P('M-30 2h8l-1 -6h-6z', 'b') + P('M-31 -4l5 -3l5 3z', 'rf');
+  return s;
+};
+
+/** Cycle tracks: a red-surfaced track beside the road with its white bicycle signs, cyclists on it and a stand of
+ *  bicycles; level 2 a second track and a shelter, level 3 a bridge over the road. */
+export const cycletracks: Prop = (a) => {
+  const L2 = lvl(a);
+  const bike = (x: number) => C(x - 2.4, -1.8, 1.8, 'k') + C(x + 2.4, -1.8, 1.8, 'k') + P(`M${f(x - 2.4)} -1.8L${f(x)} -4.6L${f(x + 2.4)} -1.8M${f(x)} -4.6v-1.4`, 'k');
+  let s = P('M-34 0L-30 -4H30L34 0Z', 'ac') + P('M-32 -2H32', 'k k2', 'stroke-dasharray="3 3"');
+  s += bike(-18) + bike(8) + C(8, -9, 1.2, 'b k') + P('M8 -7.8V-5.4', 'k');
+  s += R(20, -10, 6, 6, 'b k') + bike(23).replace(/k"/g, 'k k2"');
+  if (L2 >= 2) s += P('M-34 6L-30 2H30L34 6Z', 'ac') + R(-30, -14, 10, 9, 'b') + P('M-31 -14h12l-1.5 -2h-9z', 'rf');
+  if (L2 >= 3) s += P('M-10 -4Q0 -18 10 -4', 'k K') + P('M-10 -4Q0 -16 10 -4', 'k k2');
+  return s;
+};
+
 /** Commons props by icon (looked up as 'commons:<icon>'), and landmarks (as 'landmark:<key>'). */
 export const CIVIC: Record<string, Prop> = {
   'commons:baths': baths, 'commons:park': parkC, 'commons:institute': institute, 'commons:library': library,
   'commons:clock': clockC, 'commons:allotments': allotmentsC, 'commons:buses': buses, 'commons:shortweek': shortweek,
-  'commons:repair': repair, 'commons:holiday': holiday, civic,
+  'commons:repair': repair, 'commons:holiday': holiday, 'commons:welfarehall': welfarehall, 'commons:cycletracks': cycletracks, civic,
   'landmark:deepShaft': deepShaft, 'landmark:millTown': millTown, 'landmark:chapel': chapel, 'landmark:orchard': orchard,
   'landmark:viaduct': viaductL, 'landmark:gasholder': gasholderL,
 };
 /** The keys the content writes today (the coverage test checks every one has its own drawing). */
-export const COMMONS_ICONS = ['baths', 'park', 'institute', 'library', 'clock', 'allotments', 'buses', 'shortweek', 'repair', 'holiday'];
+export const COMMONS_ICONS = ['baths', 'park', 'institute', 'library', 'clock', 'allotments', 'buses', 'shortweek', 'repair', 'holiday', 'welfarehall', 'cycletracks'];
 export const LANDMARKS = ['deepShaft', 'millTown', 'chapel', 'orchard', 'viaduct', 'gasholder'];

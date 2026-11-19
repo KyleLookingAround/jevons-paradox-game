@@ -76,3 +76,21 @@ describe('MomentDesk', () => {
     expect(d.take(view('light', { crises: 3 }), 20)).toEqual([]);
   });
 });
+
+describe('M3 moments', () => {
+  test('from events: seam sunk (with its name), bite back, the ending (sector-less)', () => {
+    const d = new MomentDesk();
+    const m = d.take(view('steam', { events: [{ seq: 1, kind: 'seamSunk', sector: 'steam', id: 's1', n: 1, label: 'The Barnsley Bed' }, { seq: 2, kind: 'biteBack', sector: 'steam', id: 'steam.duty' }, { seq: 3, kind: 'ending', id: 'steadyAll' }] }), 0);
+    expect(m.map((x) => x.kind)).toEqual(['seamSunk', 'biteBack', 'ending']);
+    expect(m[0].text).toBe('The Barnsley Bed');
+  });
+  test('by comparison (hosts without events): one more seam, a lever reaching half bite', () => {
+    const d = new MomentDesk();
+    const seams = { sunk: 0, total: 4, next: true };
+    d.take(view('steam', { seams, levers: [{ id: 'l', kind: 'measure', level: 1, name: 'n', bite: 0.3 }] }), 0);
+    const m = d.take(view('steam', { seams: { ...seams, sunk: 1 }, levers: [{ id: 'l', kind: 'measure', level: 1, name: 'n', bite: 0.6 }] }), 100);
+    expect(m.map((x) => x.kind)).toEqual(['seamSunk', 'biteBack']);
+    // A jump of several seams at once (a load) plays nothing; nor does a bite that stays up.
+    expect(d.take(view('steam', { seams: { ...seams, sunk: 3 }, levers: [{ id: 'l', kind: 'measure', level: 1, name: 'n', bite: 0.7 }] }), 200)).toEqual([]);
+  });
+});

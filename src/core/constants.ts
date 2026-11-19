@@ -71,3 +71,19 @@ export const DEFAULT_KEEP_SECONDS = 60;
 /** GlobalParams.commons defaults. */
 export const DEFAULT_COMMONS_FROM_RECKONING = 2;
 export const DEFAULT_COMMONS_FUND_SHARE = 1;
+
+/* --- M3 defaults (the contract's documented defaults, named once) --- */
+/** GlobalParams.dispatch defaults. */
+export const DEFAULT_DISPATCH = { firstYears: 30, intervalYears: 8, jitter: 0.5, expiryYears: 12, maxPending: 1 } as const;
+/** GameState.dispatch.queue keeps at most this many follow-ups (older dropped). */
+export const DISPATCH_QUEUE_MAX = 8;
+/** GlobalParams.ambient defaults. */
+export const DEFAULT_AMBIENT = { everyYears: 4, cooldownYears: 30 } as const;
+/** LoadDef.floor default; TravelDef.exponent default; inner travel bisection iterations. */
+export const DEFAULT_LOAD_FLOOR = 0.05;
+export const DEFAULT_TRAVEL_EXPONENT = 4;
+export const TRAVEL_ITERS = 40;
+/** A side effect's bite at which 'biteBack' fires (once per lever per run). */
+export const BITE_BACK_AT = 0.5;
+/** Survey direction band (SurveyView.direction). */
+export const SURVEY_FLAT_BAND = 0.05;

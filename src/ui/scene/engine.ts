@@ -11,12 +11,13 @@ import type { SceneView, SceneOptions, SceneHandle, SceneApp, SceneTarget, Still
 import type { Layout, PlotDef, Slot, Band, FxKind, PropArgs, PropOut, Prop, MoverDef } from './layout';
 import { depthScale } from './layout';
 import { injectSceneCss, sceneCss } from './css';
-import { hash, rng, f, clamp, esc } from './svg';
+import { hash, rng, f, clamp, esc, P, C } from './svg';
 import { layoutFor, propFor } from './registry';
 import { styleFor } from './styles/index';
 import type { ArtStyle } from './style';
 import { scaffold, survey } from './props/common';
 import { MomentDesk, type Moment } from './moments';
+import { figureArt } from './props/figures';
 
 const NS = 'http://www.w3.org/2000/svg';
 const VB = '0 0 600 400';
@@ -56,6 +57,8 @@ interface WorldEls {
   skySvg: SVGSVGElement; bw: Record<Band, HTMLDivElement>; mist1: HTMLDivElement; mist2: HTMLDivElement;
   hz1: HTMLDivElement; hz2: HTMLDivElement; hz3: HTMLDivElement; held: HTMLDivElement; flash: HTMLDivElement; fog: HTMLDivElement;
   noiseSvg: SVGSVGElement; extraLayer: HTMLDivElement; plateSvg: SVGSVGElement; places: HTMLDivElement;
+  /** M3: sprites over the drawing (Light's day clock, the cast in the foreground), rebuilt only when they change. */
+  m3: HTMLDivElement;
 }
 
 /** One built picture, kept per Industry. */
@@ -67,6 +70,12 @@ interface Built {
   spots: Map<string, [number, number, number, number]>;
   prevPace: number; leverKey: string; smokeDirty: boolean; prevSteadyOn: boolean | null; moversDirty: boolean; lastSig: string;
   stageN: number; used: number; vars: Map<string, string>; scafs: number;
+  /** M3: last applied state of the mechanics' drawings (so a patch touches the DOM only on change). */
+  m3: {
+    seams: string; free: string; bites: string; slow: number; overlay: string;
+    /** Light's clock: the hand's animation (its time is the hour), the scale on lit things at that hour, the hour shown. */
+    hand: Animation | null; hourK: number; hour: number;
+  };
 }
 
 const num0 = (v: number): string => {
@@ -122,9 +131,10 @@ function makeWorld(): WorldEls {
   const noiseSvg = svgEl('scn-l scn-noise');
   const extraLayer = div('scn-extra');
   const plateSvg = svgEl('scn-l scn-plate');
-  world.append(defs, sky0, sky1, sky2, glow, skySvg, bw.far, mist1, hz1, bw.mid, mist2, hz2, bw.near, hz3, held, extraLayer, noiseSvg, flash, fog, plateSvg);
+  const m3 = div('scn-fxl scn-m3');
+  world.append(defs, sky0, sky1, sky2, glow, skySvg, bw.far, mist1, hz1, bw.mid, mist2, hz2, bw.near, hz3, held, m3, extraLayer, noiseSvg, flash, fog, plateSvg);
   const places = div('scn-places');
-  return { world, defs, sky0, sky1, sky2, glow, skySvg, bw, mist1, mist2, hz1, hz2, hz3, held, flash, fog, noiseSvg, extraLayer, plateSvg, places };
+  return { world, defs, sky0, sky1, sky2, glow, skySvg, bw, mist1, mist2, hz1, hz2, hz3, held, flash, fog, noiseSvg, extraLayer, plateSvg, places, m3 };
 }
 
 export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHandle {
@@ -251,6 +261,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   const onVis = () => {
     root.classList.toggle('paused', document.hidden || !visible);
     syncPlay();
+    syncShed();
   };
   document.addEventListener('visibilitychange', onVis);
   let io: IntersectionObserver | null = null;
@@ -370,7 +381,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return [view.sectorId, view.look, clamp(Math.round(view.stage), 0, 3), view.apps.map((a) => a.id + '/' + a.icon).join(','),
       view.levers.map((x) => x.kind).filter((k) => !l.restraint[k]).sort().join(','),
       Object.entries(view.heritage ?? {}).map(([k, x]) => k + Math.round(x * 3)).join(','),
-      (view.commons ?? []).map((c) => `${c.id}/${c.icon}/${Math.min(3, c.level)}`).join(','), view.landmark ?? ''].join('|');
+      (view.commons ?? []).map((c) => `${c.id}/${c.icon}/${Math.min(3, c.level)}`).join(','), view.landmark ?? '', m3Key(view)].join('|');
   }
 
   function build(v: SceneView, key: string): Built {
@@ -397,6 +408,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       r: rng(hash(l.id)),
       stage: stageN,
       heritage: v.heritage,
+      seams: v.seams && v.seams.total > 0 ? Math.min(8, Math.floor(v.seams.total)) : undefined,
     };
     let bd: ReturnType<Layout['backdrop']> = {};
     try { bd = l.backdrop(bctx); } catch (e) { console.warn('scene backdrop', e); }
@@ -531,6 +543,33 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       }
     }
 
+    // M3: price plates by each application's landmark and their cables to where the bill is paid (Compute's "free"),
+    // and the side effects of levers that bite back. All built hidden; patch() shows them.
+    if (l.bill) {
+      const bsl = l.bill;
+      const bit = renderSlot(l, look, bsl, 'bill', 'm3t', stageN, `${l.id}:bill`);
+      bit.ord = uid++; items.push(bit);
+      for (const p of plots) {
+        if (!p.app || !p.def.anchor) continue;
+        const a = p.def.anchor;
+        const sc = a.s ?? depthScale(l, a.y) * (a.k ?? 1);
+        const tag = renderSlot(l, look, { p: 'priceTag', x: a.x + 14 * sc, y: a.y - 4 * sc, s: Math.max(1.5, sc * 1.4), band: a.band }, `pt:${p.idx}`, 'm3t', stageN, `${l.id}:pt:${p.idx}`);
+        tag.ord = uid++; tag.y += 0.02; items.push(tag);
+        // The cable: from the plate along the floor to the hoarding, packets running towards the bill.
+        const x0 = a.x + 14 * sc, y0 = a.y - 2, x1 = bsl.x, y1 = bsl.y - 2;
+        const mx = (x0 + x1) / 2, my = Math.max(y0, y1) + 10;
+        const d = `M${f(x0)} ${f(y0)}Q${f(mx)} ${f(my)} ${f(x1)} ${f(y1)}`;
+        const band = bandOf(l, Math.max(y0, y1));
+        items.push({ y: Math.max(y0, y1) + 0.03, ord: uid++, band, html: `<g class="m3t bcab" data-k="pc:${p.idx}"><path d="${d}" class="cab"/></g>`, fx: [] });
+        fxBand[band].push({ z: -1e6, html: fxMarkup({ kind: 'flow', x: 0, y: 0, size: 1, markup: `<path d="${d}"/>` }, 0, 0, 1, `pc:${p.idx}`) });
+      }
+    }
+    for (const [k, bsl] of Object.entries(l.bite ?? {})) {
+      const it = renderSlot(l, look, bsl, `b:${k}`, 'm3t bite', stageN, `${l.id}:b:${k}`);
+      it.ord = uid++; items.push(it);
+      spots.set('bite:' + k, spotOf(bsl));
+    }
+
     // Steady-state movers (birds), built hidden.
     (l.steadyMovers ?? []).forEach((m, mi) => {
       for (let i = 0; i < m.n; i++) {
@@ -593,6 +632,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       key, sectorId: v.sectorId, el, layout: l, style, look, legend: leg, place: l.place, plots, elsByKey, smokeEls, restraintEls, commonsEls,
       steadyMoverEls: Array.from(el.world.querySelectorAll('.mv.stdy')), moverAnims: [], spots,
       prevPace: -1, leverKey: '\u0000', smokeDirty: true, prevSteadyOn: null, moversDirty: true, lastSig: '', stageN, used: 0, vars: new Map(), scafs: 0,
+      m3: { seams: '', free: '', bites: '', slow: -1, overlay: '', hand: null, hourK: 1, hour: -1 },
     };
     for (const p of plots) {
       p.movers = p.mkeys.map((k) => (elsByKey.get(k) ?? [])[0]).filter(Boolean);
@@ -742,7 +782,15 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   }
 
   function density(p: PlotRt, v: SceneView, lightMean: number): number {
+    const d = density0(p, v, lightMean);
+    // M3: sprawl that stays (Motion) and lit by the hour (Light).
+    const d1 = p.def.sprawl && v.travel && (!p.app || p.app.status === 'founded') ? Math.max(d, v.travel.sprawl) : d;
+    return p.def.byHour && v.load && B ? d1 * B.m3.hourK : d1;
+  }
+  function density0(p: PlotRt, v: SceneView, lightMean: number): number {
     switch (p.def.driver ?? 'app') {
+      case 'congestion': return v.travel ? 1 - v.travel.speed : 0;
+      case 'roads': return v.travel ? clamp(((v.travel.freeSpeed ?? 1) - 1) / 1.5, 0, 1) : 0;
       case 'app': return p.app && p.app.status === 'founded' ? p.app.adoption : 0;
       case 'population': return 0.1 + 0.9 * v.popFraction;
       case 'pressure': return clamp(v.pressureFraction, 0, 1);
@@ -754,13 +802,33 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     }
   }
 
+  /** Show the first n × density^curve of a plot's slots (an overlay: over its base plot's shown slots). */
+  function setCount(b: Built, p: PlotRt, d: number): void {
+    const n = p.keys.length;
+    const curve = p.def.curve ?? 0.6;
+    const c = d <= 0.001 ? 0 : Math.min(n, Math.round(n * Math.pow(d, curve)));
+    if (p.overlayBase) {
+      const baseCount = p.overlayBase.count < 0 ? 0 : p.overlayBase.count;
+      const ovKey = c * 1000 + baseCount;
+      if (ovKey !== p.count) {
+        p.count = ovKey;
+        const lit = new Set(p.overlayOrder.slice(0, c));
+        p.keys.forEach((k, i) => setOn(k, lit.has(i) && i < baseCount));
+      }
+    } else if (c !== p.count) {
+      p.count = c;
+      p.keys.forEach((k, i) => setOn(k, i < c));
+      b.smokeDirty = true;
+    }
+  }
+
   function patch(v: SceneView, quiet: boolean): void {
     const b = B;
     if (!b) return;
     const el = b.el;
     const style = b.style;
     const founded = v.apps.filter((a) => a.status === 'founded');
-    const lightMean = founded.length ? founded.reduce((s, a) => s + a.adoption, 0) / Math.max(founded.length, v.apps.length * 0.6) : 0;
+    const lightMean = lightMeanOf(v);
     const pf = clamp(v.pressureFraction, 0, 1.2);
     // How far towards the Steady State look: M2 clear skies bring it in over the 50 years; M1 views use the streak.
     const clear = v.steady ? 1 : v.clear ? 0.45 + 0.55 * clamp(v.clearProgress ?? 0, 0, 1) : v.decoupling ? 0.6 * v.steadyProgress : 0;
@@ -800,6 +868,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (root.classList.contains('halt') !== !!v.reckoning) { root.classList.toggle('halt', !!v.reckoning); syncPlay(); }
     // A city under strain (pressure near collapse, not yet clearing): styles may stage blackouts, failing signs.
     root.classList.toggle('stress', pf >= 0.8 && !v.steady && clear < 0.3 && !held);
+    syncShed();
     const embText = held ? (v.settledYear ? `Settled ${v.settledYear}` : 'Settled') : '';
     if (emblem.textContent !== embText) { emblem.textContent = embText; emblem.classList.toggle('on', !!embText); }
 
@@ -807,7 +876,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const byId = new Map(v.apps.map((a) => [a.id, a]));
     for (const p of b.plots) if (p.app) p.app = byId.get(p.app.id) ?? p.app;
     // Plots.
-    const durK = [1.3, 1, 0.7][pace] * (held ? 1.8 : 1);
+    // M3: congestion slows the traffic (Motion's travel speed, three steps).
+    const slow = v.travel ? (v.travel.speed < 0.35 ? 2 : v.travel.speed < 0.65 ? 1 : 0) : 0;
+    const retime = pace !== b.prevPace || slow !== b.m3.slow;
+    const durK = [1.3, 1, 0.7][pace] * (held ? 1.8 : 1) * [1, 1.6, 2.6][slow];
     for (const p of b.plots) {
       const d = density(p, v, lightMean);
       const st = p.app ? p.app.status : 'always';
@@ -825,22 +897,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         }
       } else if (p.anchorKey && p.count < 0) setOn(p.anchorKey, true);
 
-      const n = p.keys.length;
-      const curve = p.def.curve ?? 0.6;
-      const c = d <= 0.001 ? 0 : Math.min(n, Math.round(n * Math.pow(d, curve)));
-      if (p.overlayBase) {
-        const baseCount = p.overlayBase.count < 0 ? 0 : p.overlayBase.count;
-        const ovKey = c * 1000 + baseCount;
-        if (ovKey !== p.count) {
-          p.count = ovKey;
-          const lit = new Set(p.overlayOrder.slice(0, c));
-          p.keys.forEach((k, i) => setOn(k, lit.has(i) && i < baseCount));
-        }
-      } else if (c !== p.count) {
-        p.count = c;
-        p.keys.forEach((k, i) => setOn(k, i < c));
-        b.smokeDirty = true;
-      }
+      setCount(b, p, d);
       // Movers: more trains, more often.
       const m = p.movers.length;
       if (m) {
@@ -852,7 +909,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           p.movers.forEach((e, i) => { e.classList.toggle('on', i < want); e.classList.toggle('thin', i > 0 && i % 2 === 1); });
           b.moversDirty = true;
         }
-        if (pace !== b.prevPace) {
+        if (retime) {
           for (const md of p.moverDefs) {
             const a = md.el ? animOf.get(md.el) : undefined;
             if (!a) continue;
@@ -866,7 +923,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         }
       }
     }
-    b.prevPace = pace;
+    b.prevPace = pace; b.m3.slow = slow;
     if (b.smokeDirty) { b.smokeDirty = false; assignSmoke(); }
 
     // Restraint.
@@ -880,6 +937,43 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     }
     if (b.prevSteadyOn !== !!v.steady) { b.prevSteadyOn = !!v.steady; b.steadyMoverEls.forEach((e) => e.classList.toggle('on', !!v.steady)); b.moversDirty = true; }
     if (b.moversDirty) { b.moversDirty = false; syncPlay(); }
+
+    // M3: the seam ladder in the cut-away (worked out above, being worked, the next within reach).
+    const sm = v.seams;
+    const smKey = sm ? `${sm.sunk}/${sm.next ? 1 : 0}` : '';
+    if (sm && smKey !== b.m3.seams) {
+      b.m3.seams = smKey;
+      for (let i = 0; i <= sm.total; i++) for (const e of b.elsByKey.get(`sm:${i}`) ?? []) {
+        e.classList.toggle('sunk', i <= sm.sunk); e.classList.toggle('work', i === sm.sunk);
+        e.classList.toggle('out', i < sm.sunk); e.classList.toggle('next', i === sm.sunk + 1 && sm.next);
+      }
+    }
+    // M3: free at the point of use: a struck-through price plate on each free hall, cabled to where the bill is paid.
+    const freeKey = v.free ? v.free.apps.join(',') : '';
+    if (freeKey !== b.m3.free) {
+      b.m3.free = freeKey;
+      const fr = new Set(v.free?.apps ?? []);
+      let any = false;
+      for (const p of b.plots) {
+        if (!p.app) continue;
+        const on = fr.has(p.app.id) && p.app.status === 'founded';
+        any = any || on;
+        setOn(`pt:${p.idx}`, on); setOn(`pc:${p.idx}`, on);
+      }
+      setOn('bill', any);
+    }
+    // M3: levers that bite back: the side effect stands once the bite reaches half strength.
+    const bit = v.levers.filter((x) => (x.bite ?? 0) >= 0.5).map((x) => x.kind);
+    const biteKey = bit.sort().join(',');
+    if (biteKey !== b.m3.bites) {
+      b.m3.bites = biteKey;
+      const kinds = Object.keys(b.layout.bite ?? {});
+      const shown = new Set(bit.map((k) => (kinds.includes(k) ? k : '*')));
+      for (const k of kinds) setOn(`b:${k}`, shown.has(k));
+    }
+    // M3: the sprites over the drawing (Light's day clock, the cast).
+    patchOverlay(b, v);
+    tickClock();
 
     // Moments (from the event list, or by comparison for hosts without one).
     const now = Date.now(); // UI-side timers only (the scene holds no game rules)
@@ -985,7 +1079,46 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         }
         break;
       case 'commons': pulse(b.commonsEls.get(m.id ?? '') ?? [], 'build', 2700); break;
+      case 'seamSunk': {
+        // The new seam's shaft sinks from the one above, steam puffs at the pit head, the gallery lights.
+        const i = m.n ?? v.seams?.sunk ?? 0;
+        pulse(b.elsByKey.get(`sm:${i}`) ?? [], 'sinking', 2000);
+        const head = b.layout.plots.find((p) => (p.match ?? []).includes('pump'))?.anchor;
+        if (head && !still) momentSprite(b, `<div class="fx on puff" style="left:${f(head.x)}px;top:${f(head.y - 40)}px"><i></i><i></i><i></i></div>`, 2600);
+        showToast(m.text ? `${m.text}: sunk` : 'A new seam sunk');
+        break;
+      }
+      case 'biteBack': {
+        const kind = v.levers.find((x) => x.id === m.id)?.kind ?? '';
+        const kinds = Object.keys(b.layout.bite ?? {});
+        pulse(b.elsByKey.get(`b:${kinds.includes(kind) ? kind : '*'}`) ?? [], 'raise', 1800);
+        break;
+      }
+      case 'ending': {
+        // The sky clears completely (the fresh sky, held for a while) and a paper boy runs along the front with it.
+        flashCls('fl-clear', 3200);
+        b.el.sky2.classList.add('ending'); later(() => b.el.sky2.classList.remove('ending'), 9000);
+        const art = figureArt('paperboy', b.look);
+        if (art) {
+          const y = (b.layout.figures?.[0]?.y ?? 368);
+          const sc = 1.45;
+          const html = `<div class="fx on fig fg-paperboy" style="left:${still ? 300 : -30}px;top:${f(y)}px">${spr(`<g transform="scale(${sc})">${art.body}</g>`)}</div>`;
+          const el = momentSprite(b, html, 9000);
+          if (el && !still && typeof el.animate === 'function') { try { el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(660px)' }], { duration: 8500, easing: 'linear', fill: 'forwards' }); } catch { /* ignore */ } }
+        }
+        break;
+      }
     }
+  }
+  /** A sprite that plays once over the drawing and is removed (a puff of steam, the paper boy). */
+  function momentSprite(b: Built, html: string, ms: number): HTMLElement | null {
+    const t = document.createElement('div');
+    t.innerHTML = html;
+    const el = t.firstElementChild as HTMLElement | null;
+    if (!el) return null;
+    b.el.m3.appendChild(el);
+    later(() => el.remove(), ms);
+    return el;
   }
   let crisisTimer = 0;
   function clearMoments(): void {
@@ -1097,6 +1230,85 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return true;
   }
 
+  /** Under strain a style may stage load-shedding in turn (Code's towers): a phase class stepped on the mid band every
+   *  four seconds, only while stressed, moving and on screen. A class step restyles one band once; an animation inside
+   *  the drawing would repaint it every frame. */
+  let shedT = 0, shedN = 0;
+  function syncShed(): void {
+    const want = !!B && root.classList.contains('stress') && !rm() && !root.classList.contains('paused') && !root.classList.contains('halt');
+    if (want && !shedT) {
+      shedT = window.setInterval(() => {
+        if (destroyed || !B) { clearInterval(shedT); shedT = 0; return; }
+        const m = B.el.bw.mid;
+        m.classList.remove('ph0', 'ph1', 'ph2');
+        m.classList.add('ph' + (shedN = (shedN + 1) % 3));
+      }, 4000);
+    } else if (!want && shedT) { clearInterval(shedT); shedT = 0; }
+  }
+
+  /* ---------------- M3 overlay: Light's day clock, the cast ---------------- */
+  let clockT = 0;
+  const DAY_MS = 60000;
+  /** Rebuild the sprites over the drawing when what they show changes (a letter arrives, the day's shape moves). */
+  function patchOverlay(b: Built, v: SceneView): void {
+    const l = b.layout;
+    const dial = v.load && l.dial ? l.dial : null;
+    const spots = l.figures ?? [];
+    const figs = (v.figures ?? []).filter((k) => !!figureArt(k, b.look)).slice(0, spots.length);
+    const watch = v.watch ?? 0;
+    const key = `${dial ? v.load!.hours.map((h) => Math.round(h * 10)).join('.') : ''}|${figs.join(',')}|${Math.round(watch * 10)}`;
+    if (key === b.m3.overlay) return;
+    b.m3.overlay = key;
+    if (b.m3.hand) { try { b.m3.hand.cancel(); } catch { /* ignore */ } b.moverAnims = b.moverAnims.filter((a) => a !== b.m3.hand); b.m3.hand = null; }
+    let html = '';
+    const peak = dial ? peakHour(v.load!.hours) : 0;
+    if (dial) html += dialMarkup(dial, v.load!.hours, peak);
+    figs.forEach((k, i) => {
+      const at = spots[i], art = figureArt(k, b.look)!;
+      const sc = (at.s ?? 1) * 1.45, sx = at.flip ? -sc : sc; // a little larger than life, so a person reads on a phone
+      let arm = '';
+      if (art.arm) {
+        // The watch: a lift of the arm every few seconds, more often the more the Market decides for him.
+        const per = (14 - 10 * clamp(watch, 0, 1)).toFixed(1);
+        arm = `<b class="warm" style="left:${f(art.arm.x * sx)}px;top:${f(art.arm.y * sc)}px;animation-duration:${per}s">${spr(`<g transform="scale(${sx} ${sc})">${art.arm.svg}</g>`)}</b>`;
+      }
+      html += `<div class="fx on fig fg-${k}" style="left:${f(at.x)}px;top:${f(at.y)}px">${spr(`<g transform="scale(${sx} ${sc})">${art.body}</g>`)}${arm}</div>`;
+    });
+    b.el.m3.innerHTML = html;
+    b.m3.hourK = 1; b.m3.hour = -1;
+    const hand = b.el.m3.querySelector('.dhand') as HTMLElement | null;
+    if (dial && hand) {
+      hand.style.transform = `rotate(${peak * 15}deg)`; // reduced motion and stills: the peak hour
+      if (typeof hand.animate === 'function') {
+        try {
+          const a = hand.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: DAY_MS, iterations: Infinity, easing: 'linear' });
+          a.currentTime = (18 / 24) * DAY_MS; // the day starts at dusk, with the lamps
+          a.pause();
+          b.moverAnims.push(a); animOf.set(hand, a); b.m3.hand = a;
+        } catch { /* no Web Animations: the clock stands at the peak */ }
+      }
+    }
+    syncPlay();
+    tickClock();
+  }
+  /** Light's clock: every 2.5 s, light the town for the hour the hand shows (the hand itself is composited). */
+  function tickClock(): void {
+    const b = B, v = lastView;
+    const live = !!b && !!v && !!v.load && !!b.layout.dial && v.sectorId === b.sectorId;
+    if (!live) { if (clockT) { clearInterval(clockT); clockT = 0; } return; }
+    let h = peakHour(v!.load!.hours);
+    const a = b!.m3.hand;
+    if (a && !rm() && a.playState !== 'idle') h = Math.floor(((Number(a.currentTime ?? 0) % DAY_MS) / DAY_MS) * 24) % 24;
+    if (h !== b!.m3.hour) {
+      b!.m3.hour = h;
+      b!.m3.hourK = 0.12 + 0.88 * clamp(v!.load!.hours[h] ?? 1, 0, 1);
+      const lm = lightMeanOf(v!);
+      for (const p of b!.plots) if (p.def.byHour) setCount(b!, p, density(p, v!, lm));
+    }
+    if (!clockT && !rm()) clockT = window.setInterval(() => { if (destroyed) { clearInterval(clockT); return; } tickClock(); }, 2500);
+    if (clockT && rm()) { clearInterval(clockT); clockT = 0; }
+  }
+
   /* ---------------- update ---------------- */
   function draw(v: SceneView, quiet: boolean): void {
     const view = normalise(v);
@@ -1205,6 +1417,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     cache.forEach(discard); cache.clear();
     if (B) discard(B);
     if (playRaf) cancelAnimationFrame(playRaf);
+    if (clockT) clearInterval(clockT);
+    if (shedT) clearInterval(shedT);
     document.removeEventListener('visibilitychange', onVis);
     mq?.removeEventListener?.('change', onMq);
     timers.forEach((t) => clearTimeout(t)); timers.clear();
@@ -1348,6 +1562,37 @@ function spr(inner: string): string {
   return `<svg class="spr" width="1" height="1" overflow="visible" aria-hidden="true" focusable="false">${inner}</svg>`;
 }
 
+/** Mean adoption of founded applications (Light's sky glow, lamps of any kind). */
+function lightMeanOf(v: SceneView): number {
+  const founded = v.apps.filter((a) => a.status === 'founded');
+  return founded.length ? founded.reduce((s, a) => s + a.adoption, 0) / Math.max(founded.length, v.apps.length * 0.6) : 0;
+}
+function peakHour(hours: number[]): number {
+  let k = 0;
+  hours.forEach((h, i) => { if (h > hours[k]) k = i; });
+  return k;
+}
+/** Light's day clock: a poster roundel with the day's load drawn round a 24-hour dial (a bar per hour, the night
+ *  half shaded) and a hand that walks the day. Hour 0 (midnight) at the top. */
+function dialMarkup([x, y, r]: [number, number, number], hours: number[], peak: number): string {
+  let bars = '', night = '';
+  for (let h = 0; h < 24; h++) {
+    const t = ((h + 0.5) / 24) * Math.PI * 2 - Math.PI / 2;
+    const r0 = r * 0.36, r1 = r * (0.4 + 0.5 * clamp(hours[h] ?? 0, 0, 1));
+    const c = Math.cos(t), sn = Math.sin(t);
+    bars += `M${f(c * r0)} ${f(sn * r0)}L${f(c * r1)} ${f(sn * r1)}`;
+  }
+  // The night: 20:00 to 06:00, as a darker sector.
+  const a0 = (20 / 24) * Math.PI * 2 - Math.PI / 2, a1 = (6 / 24) * Math.PI * 2 - Math.PI / 2, rr = r * 0.94;
+  night = `M0 0L${f(Math.cos(a0) * rr)} ${f(Math.sin(a0) * rr)}A${f(rr)} ${f(rr)} 0 0 1 ${f(Math.cos(a1) * rr)} ${f(Math.sin(a1) * rr)}Z`;
+  let ticks = '';
+  for (let h = 0; h < 24; h += 6) { const t = (h / 24) * Math.PI * 2 - Math.PI / 2; ticks += `M${f(Math.cos(t) * r * 0.94)} ${f(Math.sin(t) * r * 0.94)}L${f(Math.cos(t) * r * 1.06)} ${f(Math.sin(t) * r * 1.06)}`; }
+  const face = C(0, 0, r * 1.12, 'dlr') + C(0, 0, r, 'b k K') + P(night, 'dln') + P(bars, 'dlb') + P(ticks, 'k K') + C(0, 0, r * 0.3, 'b k');
+  const hand = P(`M0 ${f(r * 0.12)}L0 ${f(-r * 0.9)}`, 'k K dlh') + C(0, -r * 0.9, r * 0.07, 'd') + C(0, 0, r * 0.08, 'd');
+  void peak;
+  return `<div class="fx on dial" style="left:${f(x)}px;top:${f(y)}px">${spr(face)}<b class="dhand on">${spr(hand)}</b></div>`;
+}
+
 /** Depth at which a mover is drawn among the static scenery: its own z, else the nearer end of its track. */
 function moverZ(m: MoverDef): number { return m.z ?? Math.max(m.y0, m.y1); }
 
@@ -1384,8 +1629,39 @@ function viewSig(v: SceneView): string {
     `${v.decoupling ? 1 : 0}${v.steady ? 1 : 0}|${q(v.steadyProgress, 50)}|${v.reckoning ? v.reckoning.cause + v.reckoning.here : ''}|` +
     `${v.clear ? 1 : 0}${v.settled ? 1 : 0}${v.settledYear ?? ''}|${q(v.clearProgress ?? 0, 50)}|${q(v.pressureToClear ?? -1, 50)}|`;
   for (const a of v.apps) s += `${a.id}:${a.status[0]}${q(a.adoption, 100)}:${sig2(a.demand)}:${a.canFound ? 1 : 0}${q(a.affordFraction, 100)};`;
-  for (const l of v.levers) s += `${l.kind}${l.level},`;
+  for (const l of v.levers) s += `${l.kind}${l.level}${l.bite != null && l.bite >= 0.5 ? 'b' : ''},`;
+  // M3: what the mechanics draw.
+  if (v.seams) s += `|sm${v.seams.sunk}/${v.seams.total}${v.seams.next ? 'n' : ''}`;
+  if (v.load) s += `|ld${v.load.hours.map((h) => q(h, 10)).join('')}`;
+  if (v.travel) s += `|tv${q(v.travel.speed, 20)}/${q(v.travel.sprawl, 50)}/${q(v.travel.freeSpeed ?? 1, 10)}`;
+  if (v.free) s += `|fr${v.free.apps.join(',')}`;
+  if (v.figures) s += `|fg${v.figures.join(',')}`;
+  if (v.watch != null) s += `|w${q(v.watch, 10)}`;
   return s;
+}
+
+/** The part of the build key the M3 fields decide (only what changes the static drawing: the seam ladder's length). */
+function m3Key(v: SceneView): string {
+  return v.seams && v.seams.total > 0 ? 'sm' + Math.min(8, Math.floor(v.seams.total)) : '';
+}
+
+/** M3 fields, cleaned (each stays absent when absent or malformed). */
+function normaliseM3(v: SceneView): Partial<SceneView> {
+  const n = (x: unknown, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
+  const o: Partial<SceneView> = { seams: undefined, load: undefined, travel: undefined, free: undefined, figures: undefined, watch: undefined };
+  const sm = v.seams;
+  if (sm && typeof sm === 'object' && n(sm.total) >= 1) { const t = Math.min(8, Math.floor(n(sm.total))); o.seams = { total: t, sunk: clamp(Math.floor(n(sm.sunk)), 0, t), next: !!sm.next }; }
+  const ld = v.load;
+  if (ld && typeof ld === 'object' && Array.isArray(ld.hours) && ld.hours.length) {
+    const hs = Array.from({ length: 24 }, (_, i) => clamp(n(ld.hours[Math.floor((i * ld.hours.length) / 24)]), 0, 1));
+    o.load = { hours: hs, factor: clamp(n(ld.factor, 1), 0, 1) };
+  }
+  const tv = v.travel;
+  if (tv && typeof tv === 'object') o.travel = { speed: clamp(n(tv.speed, 1), 0, 1), sprawl: clamp(n(tv.sprawl), 0, 1), sprawlShare: clamp(n(tv.sprawlShare), 0, 1), freeSpeed: Math.max(0, n(tv.freeSpeed, 1)) };
+  if (v.free && typeof v.free === 'object' && Array.isArray(v.free.apps)) o.free = { apps: v.free.apps.filter((x) => typeof x === 'string') };
+  if (Array.isArray(v.figures)) o.figures = v.figures.filter((x) => typeof x === 'string' && /^[\w-]{1,40}$/.test(x)).slice(0, 8);
+  if (typeof v.watch === 'number' && Number.isFinite(v.watch)) o.watch = clamp(v.watch, 0, 1);
+  return o;
 }
 
 function normalise(v: SceneView): SceneView {
@@ -1407,7 +1683,7 @@ function normalise(v: SceneView): SceneView {
     stage: clamp(n(v.stage), 0, 3), etaFold: n(v.etaFold, 1), rFold: n(v.rFold, 1), pace: clamp(n(v.pace), 0, 1),
     reserveFraction: clamp(n(v.reserveFraction, 1), 0, 1), pressureFraction: clamp(n(v.pressureFraction), 0, 1.5),
     population: n(v.population, 1), popFraction: clamp(n(v.popFraction), 0, 1), crises: n(v.crises),
-    levers: Array.isArray(v.levers) ? v.levers.filter((x) => x && typeof x.kind === 'string') : [],
+    levers: Array.isArray(v.levers) ? v.levers.filter((x) => x && typeof x.kind === 'string').map((x) => (typeof x.bite === 'number' && Number.isFinite(x.bite) ? { ...x, bite: clamp(x.bite, 0, 1) } : x)) : [],
     decoupling: !!v.decoupling, steadyProgress: clamp(n(v.steadyProgress), 0, 1), steady: !!v.steady,
     heritage: v.heritage && typeof v.heritage === 'object' ? v.heritage : undefined,
     reckoning: v.reckoning && typeof v.reckoning === 'object' ? { cause: String(v.reckoning.cause ?? 'chosen'), here: v.reckoning.here !== false } : null,
@@ -1417,6 +1693,7 @@ function normalise(v: SceneView): SceneView {
     commons: Array.isArray(v.commons) ? v.commons.filter((c) => c && typeof c.id === 'string' && n(c.level) >= 1).map((c) => ({ id: c.id, icon: String(c.icon ?? ''), level: Math.floor(n(c.level)), name: String(c.name ?? c.id) })) : [],
     landmark: typeof v.landmark === 'string' && v.landmark ? v.landmark : null,
     events: Array.isArray(v.events) ? v.events.filter((e) => e && Number.isFinite(e.seq)) : undefined,
+    ...normaliseM3(v),
   };
 }
 

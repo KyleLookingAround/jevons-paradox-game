@@ -13,7 +13,10 @@ const args = process.argv.slice(2);
 const perf = args.includes('--perf');
 const sw = args.includes('--switch');
 const m2 = args.includes('--m2'); // the M2 strip: clearing, steady, settled, Commons + landmark
-const sfx = m2 ? '-m2' : '';
+const m3 = args.includes('--m3'); // the M3 strip (#strip=<id>&m3); with --perf/--switch: the busiest state with every M3 feature on
+const sfx = m2 ? '-m2' : m3 ? '-m3' : '';
+const busy = m3 ? 'crisisM3' : 'crisis';
+const hash = m2 ? '&m2' : m3 ? '&m3' : '';
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7);
 const inds = args.filter((a) => !a.startsWith('--'));
 const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron'];
@@ -33,12 +36,44 @@ async function page(w, h) {
   return p;
 }
 
-if (sw) {
+if (args.includes('--trace')) {
+  // A paint trace per Industry at its busiest state, 4× CPU, phone: main-thread ms per second of style, layout,
+  // paint and layer work, from a devtools timeline trace (CDP Tracing). Live, animated, after 3 s to settle.
+  const p = await page(390, 844);
+  const cdp = await p.context().newCDPSession(p);
+  await p.goto(url);
+  await p.waitForFunction(() => !!window.__scene);
+  const rows = [];
+  for (const ind of list.filter((x) => x !== 'iron')) {
+    await p.evaluate(([i, b]) => window.__scene.preset(b, i), [ind, busy]);
+    await p.waitForTimeout(9000); // past the crisis fog
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    // The host's 10 Hz update() with jittering inputs, as in --perf's update10hz.
+    await p.evaluate((jit) => { let k = 0; window.__jit = setInterval(() => { k++; const o = { pressure: 0.86 + (k % 5) * 0.01, pace: 0.95 + (k % 3) * 0.02 }; if (jit === 'pace') delete o.pressure; if (jit === 'pressure') delete o.pace; if (jit === 'none') return; window.__scene.raw(o); }, 100); }, process.env.JIT || 'both');
+    await browser.startTracing(p, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline'] });
+    await p.waitForTimeout(5000);
+    const buf = await browser.stopTracing();
+    await p.evaluate(() => clearInterval(window.__jit));
+    const events = JSON.parse(buf.toString()).traceEvents || [];
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    // Main thread of the renderer: the thread with the most 'Paint' or 'UpdateLayoutTree' events.
+    const cnt = {};
+    for (const e of events) if (e.name === 'Paint' || e.name === 'UpdateLayoutTree' || e.name === 'TimerFire' || e.name === 'FunctionCall') { const k = e.pid + ':' + e.tid; cnt[k] = (cnt[k] || 0) + 1; }
+    const main = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (process.env.TRACE_DEBUG) { const nm = {}; for (const e of events) nm[e.name] = (nm[e.name] || 0) + 1; console.log(ind, events.length, main, JSON.stringify(Object.entries(nm).sort((a, b) => b[1] - a[1]).slice(0, 25))); }
+    const sum = (names) => events.filter((e) => e.ph === 'X' && names.includes(e.name) && (e.pid + ':' + e.tid) === main).reduce((a, e) => a + (e.dur || 0), 0) / 1000 / 5;
+    rows.push({ ind, styleMsPerS: +sum(['UpdateLayoutTree', 'RecalculateStyles']).toFixed(1), layoutMsPerS: +sum(['Layout']).toFixed(1), paintMsPerS: +sum(['Paint']).toFixed(1),
+      layersMsPerS: +sum(['UpdateLayerTree', 'Layerize', 'PrePaint']).toFixed(1), scriptMsPerS: +sum(['FunctionCall', 'TimerFire', 'FireAnimationFrame', 'EventDispatch']).toFixed(1),
+      paints: events.filter((e) => e.name === 'Paint' && (e.pid + ':' + e.tid) === main).length });
+  }
+  console.table(rows);
+} else if (sw) {
   // Industry switch cost and style/layout per second while animating, at 4× CPU throttle on a phone profile.
   const p = await page(390, 844);
   const cdp = await p.context().newCDPSession(p);
   await p.goto(url);
   await p.waitForFunction(() => !!window.__scene);
+  await p.evaluate((b) => { window.__busy = b; }, busy);
   await cdp.send('Performance.enable');
   const ids = list.filter((x) => x !== 'iron');
   const rows = [];
@@ -46,7 +81,7 @@ if (sw) {
   for (let pass = 0; pass < 2; pass++) {
     for (const ind of ids) {
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-      const ms = await p.evaluate((i) => new Promise((ok) => { const a = performance.now(); const u = window.__scene.timeSwitch(i); requestAnimationFrame(() => setTimeout(() => ok([u, performance.now() - a]))); }), ind);
+      const ms = await p.evaluate((i) => new Promise((ok) => { const a = performance.now(); const u = window.__scene.timeSwitch(i, window.__busy); requestAnimationFrame(() => setTimeout(() => ok([u, performance.now() - a]))); }), ind);
       await p.waitForTimeout(pass ? 1500 : 8000); // past the crisis fog the preset change plays
       const m0 = await metric();
       await p.waitForTimeout(5000);
@@ -63,7 +98,7 @@ if (sw) {
   for (const ind of list) {
     if (only !== 'desk') {
       const p = await page(390, 900);
-      await p.goto(`${url}#strip=${ind}${m2 ? '&m2' : ''}`);
+      await p.goto(`${url}#strip=${ind}${hash}`);
       await p.evaluate(() => document.body.style.setProperty('--fig', '358px'));
       await p.waitForTimeout(400);
       await p.screenshot({ path: `shots/scene/${ind}${sfx}-phone.png`, fullPage: true });
@@ -71,7 +106,7 @@ if (sw) {
     }
     if (only !== 'phone') {
       const p = await page(1280, 900);
-      await p.goto(`${url}#strip=${ind}${m2 ? '&m2' : ''}`);
+      await p.goto(`${url}#strip=${ind}${hash}`);
       await p.evaluate(() => document.body.style.setProperty('--fig', '600px'));
       await p.waitForTimeout(400);
       await p.screenshot({ path: `shots/scene/${ind}${sfx}-desk.png`, fullPage: true });
@@ -80,7 +115,7 @@ if (sw) {
     console.log('strip', ind);
   }
   // Live single frames (animated, mid-motion) of the late stage, phone and desktop, scene only.
-  for (const ind of m2 ? [] : list) {
+  for (const ind of m2 || m3 ? [] : list) {
     for (const [w, tag] of [[390, 'phone'], [1280, 'desk']]) {
       if (only && only !== tag) continue;
       const p = await page(w, 900);
@@ -102,7 +137,7 @@ if (sw) {
   await p.waitForFunction(() => !!window.__scene);
   const results = [];
   for (const ind of list.filter((x) => x !== 'iron')) {
-    await p.evaluate((i) => window.__scene.preset('crisis', i), ind);
+    await p.evaluate(([i, b]) => window.__scene.preset(b, i), [ind, busy]);
     await p.waitForTimeout(800);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     // 1) idle animation; 2) idle + update() at 10 Hz with jittering inputs (patch path).

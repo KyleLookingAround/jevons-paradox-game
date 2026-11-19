@@ -1,6 +1,6 @@
 // @ts-ignore bun:test types are not in the project tsconfig (types: [])
 import { describe, expect, test } from 'bun:test';
-import { sceneViewFrom, machineStage, sceneEvents, compactView } from './adapter';
+import { sceneViewFrom, machineStage, sceneEvents, compactView, viewFromSummary } from './adapter';
 import type { Content, GameState, Derived } from '../../types';
 
 const content = {
@@ -176,5 +176,105 @@ describe('compactView', () => {
     const n = JSON.stringify(c).length;
     expect(n).toBeLessThan(2500);
     console.log('compact SceneView bytes (steam):', n, 'full:', JSON.stringify(v).length);
+  });
+});
+
+describe('M3 fields', () => {
+  const st = (extra: Record<string, unknown> = {}) => ({
+    capital: 0, population: 4, upgrades: {}, levers: { 'steam.duty': { level: 1, ref: 0, bite: 0.6 } }, sectors: { steam: { apps: {} } }, run: { steadySectors: {} },
+    meta: { flags: {} }, flags: {}, ...extra,
+  }) as unknown as GameState;
+  const sd = (extra: Record<string, unknown> = {}) => ({
+    etaFold: 1, rFold: 1, reserveFraction: 0.5, pressureFraction: 0.2, servicePrice: 1,
+    apps: { 'steam.pumping': { founded: true, available: true, adoption: 0.5, demand: 10, priceSeen: 0 }, 'steam.mills': { founded: true, available: true, adoption: 0.5, demand: 10, priceSeen: 1 } },
+    seams: { sunk: 1, total: 3, priceMul: 1.4, ladder: [{ sunk: true, reachable: false }, { sunk: false, reachable: true }, { sunk: false, reachable: false }] },
+    load: { factor: 0.5, hours: [1, 1, 2, 4, ...Array(20).fill(2)], peak: 4 },
+    travel: { speed: 0.5, freeSpeed: 2, sprawl: 3, sprawlShare: 0.3 },
+    free: { bill: 3, freeShare: 0.5 },
+    ...extra,
+  });
+  const der = (features: Record<string, boolean> | undefined, extra: Record<string, unknown> = {}) => ({
+    year: 1800, pendingReckoning: null, sectors: { steam: sd() }, features,
+    dispatch: { pending: [{ def: { sector: 'steam' }, cast: { figure: 'correspondent' } }, { def: { sector: 'light' }, cast: { figure: 'fenwick' } }], nextIn: null },
+    survey: { decisionsPerHourBefore: 10, decisionsPerHourAfter: 30 }, ending: { reached: false },
+    ...extra,
+  }) as unknown as Derived;
+  const off = { seams: false, load: false, travel: false, freeAtUse: false, dispatches: false, sideEffects: false, survey: false };
+
+  test('each field appears with its feature', () => {
+    const v = sceneViewFrom(content, st({ meta: { flags: { proprietor: true } } }), der(undefined), 'steam');
+    expect(v.seams).toEqual({ sunk: 1, total: 3, next: true });
+    expect(v.load!.hours.length).toBe(24);
+    expect(Math.max(...v.load!.hours)).toBe(1);
+    expect(v.load!.factor).toBe(0.5);
+    expect(v.travel!.speed).toBe(0.25);
+    expect(v.travel!.freeSpeed).toBe(2);
+    expect(v.travel!.sprawl).toBeGreaterThanOrEqual(0);
+    expect(v.free).toEqual({ apps: ['steam.pumping'] });
+    expect(v.figures).toEqual(['correspondent', 'proprietor']);
+    expect(v.watch).toBe(0.75);
+    expect(v.levers[0].bite).toBe(0.6);
+  });
+
+  test('nothing of a gated system shows before it unlocks', () => {
+    const v = sceneViewFrom(content, st(), der(off), 'steam');
+    for (const k of ['seams', 'load', 'travel', 'free', 'figures', 'watch'] as const) expect(v[k]).toBeUndefined();
+    expect(v.levers[0].bite).toBeUndefined();
+  });
+
+  test('null views (an M2 core) give the M2 view', () => {
+    const d = der(undefined, { sectors: { steam: sd({ seams: null, load: null, travel: null, free: null }) }, dispatch: { pending: [], nextIn: null }, survey: null });
+    const v = sceneViewFrom(content, st(), d, 'steam');
+    for (const k of ['seams', 'load', 'travel', 'free', 'figures', 'watch'] as const) expect(v[k]).toBeUndefined();
+  });
+
+  test('the ending puts the whole cast in the street', () => {
+    const c = { ...content, cast: [{ id: 'a', figure: 'whitlow' }, { id: 'b', figure: 'fenwick' }, { id: 'c' }] } as unknown as Content;
+    const v = sceneViewFrom(c, st({ flags: { won: true } }), der(undefined, { ending: { reached: true } }), 'steam');
+    expect(v.figures).toEqual(['correspondent', 'whitlow', 'fenwick']);
+  });
+
+  test('events carry first and label; ending is global', () => {
+    const e = sceneEvents([{ seq: 1, kind: 'seamSunk', sector: 'steam', id: 's1', n: 1, label: 'The Barnsley Bed' }, { seq: 2, kind: 'ending', id: 'steadyAll' }, { seq: 3, kind: 'backfire', sector: 'steam', first: true }] as never, 'steam');
+    expect(e.map((x) => x.kind)).toEqual(['seamSunk', 'ending', 'backfire']);
+    expect(e[0].label).toBe('The Barnsley Bed');
+    expect(e[2].first).toBe(true);
+  });
+
+  test('viewFromSummary rebuilds the end and the first morning', () => {
+    const base = sceneViewFrom(content, st(), der(undefined), 'steam');
+    const end = viewFromSummary(base, { cause: 'exhausted', sectors: { steam: { peakAdoption: { 'steam.mills': 0.9 }, peakPressure: 0.8, stage: 3, unburnt: 0.04, seams: 2 } } });
+    expect(end.apps.find((a) => a.id === 'steam.mills')!.adoption).toBe(0.9);
+    expect(end.apps.find((a) => a.id === 'steam.pumping')!.status).not.toBe('founded');
+    expect(end.stage).toBe(3);
+    expect(end.reckoning).toEqual({ cause: 'exhausted', here: true });
+    expect(end.seams!.sunk).toBe(2);
+    const start = viewFromSummary(base, null, true);
+    expect(start.apps.filter((a) => a.status === 'founded').length).toBe(1);
+    expect(start.reckoning).toBeNull();
+    expect(start.seams!.sunk).toBe(0);
+  });
+});
+
+import { readFileSync } from 'node:fs';
+import { SPOT_OF, spot } from './spots';
+import { FIGURE_KEYS } from './props/figures';
+describe('M3 coverage of content keys', () => {
+  test('a spot for every HeadlineKey in the contract', () => {
+    const src = readFileSync(new URL('../../types.ts', import.meta.url), 'utf8');
+    const m = /export type HeadlineKey =([\s\S]*?)\n\n/.exec(src);
+    expect(m).not.toBeNull();
+    const keys = [...m![1].replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/'(\w+)'/g)].map((x) => x[1]);
+    expect(keys.length).toBeGreaterThan(30);
+    for (const k of keys) expect(Object.keys(SPOT_OF)).toContain(k);
+    for (const look of ['ledger', 'gaslight', 'chrome', 'terminal', 'cyberpunk']) {
+      const s = spot('seamSunk', look);
+      expect(s.startsWith('<svg')).toBe(true);
+      expect(s).toContain(`data-look="${look}"`);
+    }
+  });
+  test('every cast figure key the content writes has a figure', () => {
+    const c = realContent as unknown as { cast?: { id: string; figure?: string }[] };
+    for (const x of c.cast ?? []) if (x.figure) expect(FIGURE_KEYS).toContain(x.figure);
   });
 });

@@ -265,3 +265,156 @@ export const STEAM_REFERENCE = { eta: STEAM_ETA, R: [202, 257, 321, 348, 355, 32
 
 /** Convenience for tests: an AppState that is founded. */
 export const FOUNDED: AppState = { available: true, founded: true, satMul: 1, peakD: 0, peakAdoption: 0 };
+
+/* ------------------------------------------------------------------ */
+/* M3: fixtureM3 — the M2 fixture plus every M3 mechanism              */
+/* ------------------------------------------------------------------ */
+/*
+ * Kept apart from `fixture` so that the M2 tests stay exactly as they were. Steam stays the DESIGN.md reference economy
+ * (its seams change nothing until sunk). Covered: Steam's three seams (one with reachBelow, one with requires); Light
+ * with `load` (two profiles; an evening and a night application; fixedShare 0.6); Motion with `travel` (roads small
+ * enough to congest; two travel applications with lockIn and lockInDecay); Compute with a share-0 application and a
+ * flat-price one; a 'measure' lever with effects and sideEffects with `unless`; a cast of three (one held back by
+ * `when`); eight dispatches (two- and three-armed, `once`, `next`, sector, age, a modifier, a cost); five ambient
+ * templates; three Histories (`suspend`, `forbidUntil`, rewards of a locked Commons project and a locked Charter); four
+ * Archive notes of different subject kinds; the Proprietor's Day card and texts; the ending; M3 headlines.
+ * Variants: fixtureM3Bank (bankRate 0.5, bankMax 7200) and fixtureM3Gated (every M3 feature listed in `features`).
+ */
+const NIGHT = [3, 3, 3, 3, 3, 2, 1, 0.5, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.5, 1, 1, 1.5, 2, 3, 3];
+const EVENING = [0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.5, 1, 1, 0.8, 0.6, 0.6, 0.6, 0.6, 0.6, 0.8, 1, 2, 4, 5, 5, 4, 2, 0.6];
+const m3Steam: SectorDef = {
+  ...steam,
+  mechanic: { name: 'The seams', rebound: 'Supply-side', blurb: 'Cheap pumping reaches deeper coal.' },
+  seams: [
+    { id: 'steam.seam.top', name: 'The Top Hard', depth: '100 fathoms', tons: 100_000, cost: 2_000, priceMul: 1.2 },
+    { id: 'steam.seam.deep', name: 'The Barnsley Bed', depth: '300 fathoms', tons: 150_000, cost: 5_000, priceMul: 1.5, reachBelow: 0.3 },
+    { id: 'steam.seam.deepest', name: 'The Silkstone', tons: 200_000, cost: 10_000, priceMul: 2, requires: { owns: 'steam.condenser' } },
+  ],
+};
+const m3Light: SectorDef = {
+  ...light,
+  load: { profiles: { evening: EVENING, night: NIGHT }, defaultProfile: 'evening', fixedShare: 0.6 },
+  applications: [
+    { ...light.applications[0], profile: 'evening' }, { ...light.applications[1], profile: 'evening' },
+    { ...app('light.nightWorks', 0.6, 800, 2, Infinity, 500), profile: 'night' },
+  ],
+};
+const m3Motion: SectorDef = {
+  ...motion,
+  travel: { roads: 50, exponent: 4, hoursScale: 0.001, apps: ['motion.delivery', 'motion.suburbs'] },
+  applications: [
+    { ...motion.applications[0], lockIn: 0.5, lockInDecay: 0.01 },
+    { ...motion.applications[1], lockInDecay: 0.002 },
+    app('motion.walking', 2, 100, 1.5),
+  ],
+};
+const m3Compute: SectorDef = {
+  ...compute,
+  applications: [
+    ...compute.applications,
+    { ...app('compute.search', 0.5, 5_000, 1.5), priceSeen: { share: 0 } },
+    { ...app('compute.cloud', 0.5, 8_000, 1.5), priceSeen: { share: 0, flat: 0.2 } },
+  ],
+};
+const m3Levers: LeverDef[] = [
+  ...levers,
+  lever('motion.standard', 'motion', 'measure', [L(50, 0.02, 1), L(150, 0.05, 2)], {
+    effects: [{ type: 'etaMul', sector: 'motion', value: 1.2 }],
+    sideEffects: { effects: [{ type: 'satMul', sector: 'motion', app: 'motion.suburbs', value: 1.3 }], rampYears: 10, unless: { owns: 'motion.fuelDuty' }, blurb: 'Heavier cars fill the forecourt', unlessLabel: 'unless a fuel duty is in force' },
+  }),
+  lever('motion.fuelDuty', 'motion', 'duty', [L(60, 0.02, 0.3)]),
+  lever('motion.roads', 'motion', 'measure', [L(40, 0.01, 1), L(80, 0.02, 2)], { effects: [{ type: 'travelMul', sector: 'motion', roads: 2 }] }),
+];
+const m3Upgrades: UpgradeDef[] = [
+  ...upgrades,
+  { id: 'steam.proprietor', sector: 'steam', name: "The Proprietor's Day", blurb: '', kind: 'research', cost: 100,
+    when: { returned: 'household' }, effects: [{ type: 'metaFlag', flag: 'proprietor' }] },
+  { id: 'steam.strike', sector: 'steam', name: 'Strike', blurb: '', kind: 'research', cost: 100, effects: [
+    { type: 'populationMul', value: 0.5 }, { type: 'pressureAdd', sector: 'steam', value: 0.5 }, { type: 'capitalAdd', value: -1e9 },
+    { type: 'mandateAdd', value: -1e9 }] },
+];
+const arm = (label: string, extra: Partial<import('../types').DispatchArm> = {}): import('../types').DispatchArm =>
+  ({ label, outcome: `${label}, said {cast}.`, price: 'something', ...extra });
+const dispatches: import('../types').DispatchDef[] = [
+  { id: 'd.coal', cast: 'correspondent', headline: 'A letter from {cast}', body: 'Dear proprietor, coal in {year}.',
+    arms: [arm('Ignore'), arm('Subsidise', { effects: [{ type: 'mandateAdd', value: 10 }, { type: 'satMul', sector: 'steam', value: 1.1 }], reply: 'The proprietor subsidises.' })] },
+  { id: 'd.three', cast: 'correspondent', headline: 'Three ways', body: '',
+    arms: [arm('One', { effects: [{ type: 'mandateAdd', value: 1 }] }), arm('Two', { effects: [{ type: 'mandateAdd', value: 2 }] }), arm('Three', { effects: [{ type: 'mandateAdd', value: 3 }] })] },
+  { id: 'd.once', cast: 'whitlow', once: true, headline: 'Only once', body: '', arms: [arm('Fine'), arm('Also fine')] },
+  { id: 'd.chain', cast: 'whitlow', headline: 'A chain begins', body: '', arms: [arm('Go on', { next: 'd.chained' }), arm('Stop')] },
+  { id: 'd.chained', cast: 'whitlow', headline: 'The chain continues', body: '', when: { answered: 'd.chain', arm: 0 }, arms: [arm('Yes'), arm('No')] },
+  { id: 'd.light', cast: 'fenwick', sector: 'light', headline: 'Lamps for {sector}', body: '', arms: [arm('Lamps'), arm('No lamps')] },
+  { id: 'd.age', cast: 'correspondent', age: 'acceleration', headline: 'The motor age', body: '', arms: [arm('Roads'), arm('Rails')] },
+  { id: 'd.mod', cast: 'correspondent', headline: 'A strike at the pits', body: '', expiryYears: 6,
+    arms: [arm('Wait', { modifier: { effects: [{ type: 'resourcePriceMul', sector: 'steam', value: 2 }], years: 5, label: 'Pit strike' } }),
+      arm('Settle', { cost: { mandate: 50, capitalSeconds: 10 }, effects: [{ type: 'intensityMul', sector: 'steam', value: 0.9 }] })] },
+];
+const ambient: import('../types').AmbientDef[] = [
+  { id: 'a.coal', sector: 'steam', when: { stat: 'time', op: '>=', value: 0 }, text: ['Coal at {value} tons a second', 'Coal burns: {value}'], stat: { stat: 'resourceUse', sector: 'steam' } },
+  { id: 'a.wb', when: { stat: 'time', op: '>=', value: 0 }, text: ['Wellbeing {fold}'], stat: { stat: 'wellbeing' } },
+  { id: 'a.pct', when: { stat: 'time', op: '>=', value: 0 }, text: ['Reserve {pct}% left'], stat: { stat: 'reserveFraction', sector: 'steam' } },
+  { id: 'a.plain', when: { stat: 'time', op: '>=', value: 0 }, text: ['Nothing to report in {year}'], weight: 2 },
+  { id: 'a.never', when: { flag: 'won' }, text: ['Never printed'] },
+];
+const histories: import('../types').HistoryDef[] = [
+  { id: 'h.statistician', name: 'The Statistician', blurb: '', rebound: 'none', effects: [{ type: 'satMul', sector: 'steam', value: 1.1 }],
+    suspend: ['knowhow', 'market', 'institutions'], goal: { stat: 'time', op: '>=', value: 30 }, goalLabel: 'Thirty seconds', reward: { achievement: 'statistician', title: 'Statistician' } },
+  { id: 'h.laissez', name: 'Laissez-faire', blurb: '', rebound: 'none', effects: [{ type: 'forbid', leverKind: 'duty' }, { type: 'forbid', id: 'steam.lathe' }],
+    forbidUntil: { stat: 'crises', sector: 'steam', op: '>=', value: 1 }, goal: { stat: 'crises', sector: 'steam', op: '>=', value: 2 }, goalLabel: 'Two crises', reward: {} },
+  { id: 'h.rich', name: 'Coal-rich', blurb: '', rebound: 'resource curse', effects: [{ type: 'reserveAdd', sector: 'steam', value: 1 }],
+    goal: { stat: 'time', op: '>=', value: 20 }, goalLabel: 'Twenty seconds', reward: { unlock: ['commons.lido', 'ch.secret'], cosmetic: 'gilt' },
+    requires: { stat: 'reckonings', op: '>=', value: 1 } },
+];
+export const fixtureM3: Content = {
+  ...fixture,
+  sectors: { ...fixture.sectors, steam: m3Steam, light: m3Light, motion: m3Motion, compute: m3Compute },
+  upgrades: m3Upgrades,
+  levers: m3Levers,
+  commons: [...commons, { id: 'commons.lido', name: 'The Lido', blurb: '', icon: 'lido', cost: 100, locked: true, wellbeing: { max: 2, perLevel: 1 } }],
+  charters: [...charters, { id: 'ch.secret', name: 'A secret charter', blurb: '', locked: true, effects: [{ type: 'wellbeingAdd', value: 1 }] }],
+  achievements: [...fixture.achievements, { id: 'statistician', name: 'Statistician', blurb: '' }],
+  cast: [
+    { id: 'correspondent', name: 'Our Correspondent', role: 'The paper' },
+    { id: 'whitlow', name: 'Mr Whitlow', role: 'Economist' },
+    { id: 'fenwick', name: 'Mrs Fenwick', role: 'Ratepayer', when: { stat: 'reckonings', op: '>=', value: 2 } },
+  ],
+  dispatches, ambient, histories,
+  archive: [
+    { id: 'n.condenser', subject: 'steam.condenser', title: 'The separate condenser, 1769', text: 'Watt.', sources: [{ cite: 'Dickinson', grade: 'V' }], date: '1769' },
+    { id: 'n.light', subject: 'light', title: 'Gas light', text: 'Murdoch.', sources: [{ cite: 'Hunt', grade: 'S' }] },
+    { id: 'n.coalLetter', subject: 'd.coal', title: 'A letter on coal', text: 'Jevons.', sources: [{ cite: 'Jevons', grade: 'V' }] },
+    { id: 'n.whitlow', subject: 'whitlow', title: 'Mr Whitlow', text: 'A pupil.', sources: [{ cite: 'Invented', grade: 'S' }] },
+  ],
+  proprietor: {
+    pamphlet: { cast: 'whitlow', headline: 'A question for the proprietor', body: 'How long is your day?' },
+    returns: [
+      { direction: 'up', headline: 'Workday up {workdayChange}% to {workdayAfter} minutes', body: 'From {workdayBefore}.' },
+      { direction: 'down', headline: 'Workday down {workdayChange}%', body: 'Decisions {decisionsAfter} an hour.' },
+      { direction: 'flat', headline: 'Workday unchanged at {workdayAfter}', body: '' },
+    ],
+    withdrawn: 'The Household Survey is discontinued for want of funding',
+  },
+  ending: {
+    credits: { title: 'Steady State', lines: ['The end.'], continueLabel: 'The ledger continues' },
+    retrospective: [
+      { key: 'sectorOpened:*', headline: '{sector} opens, run {run}, {hours} h' },
+      { key: 'reveal', headline: 'The rebound revealed in {year}' },
+      { key: 'won', headline: 'A steady state at last, {year}' },
+    ],
+  },
+  headlines: {
+    ...headlines,
+    seamSunk: ['{name} sunk in {sector}'], biteBack: ['{name} bites back'], dispatch: [], answered: [], ambient: [],
+    history: ['{name} written'], return: [], returnWithdrawn: [], ending: ['The ending, {year}'],
+  } as Record<HeadlineKey, string[]>,
+};
+export const fixtureM3Bank: Content = { ...fixtureM3, global: { ...fixtureM3.global, offline: { capSeconds: 3_600, holdBefore: 'crisis', bankRate: 0.5, bankMax: 7_200 } } };
+const atRk = (n: number) => ({ stat: 'reckonings' as const, op: '>=' as const, value: n });
+export const fixtureM3Gated: Content = {
+  ...fixtureM3,
+  features: {
+    archive: { when: atRk(1), intro: 'The Gazette opens its archive.' }, ambient: { when: atRk(1) }, dispatches: { when: atRk(1) },
+    seams: { when: atRk(1) }, load: { when: atRk(1) }, travel: { when: atRk(1) }, sideEffects: { when: atRk(1) },
+    freeAtUse: { when: atRk(1) }, survey: { when: atRk(1) }, histories: { when: atRk(1) }, bank: { when: atRk(1) },
+  },
+};
