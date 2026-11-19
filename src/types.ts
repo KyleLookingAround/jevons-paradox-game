@@ -2134,7 +2134,10 @@ export interface ModelApi {
   /* --- views for the UI --- */
   /** Called about once a second and after each action; runs projections (the core caches them).
    *  M2: projections never run standing orders. */
-  upgradeViews(state: GameState, content: Content): UpgradeView[];
+  /** With `sector`, only that sector's eligible cards are projected; every card is still returned, the others with
+   *  `projectedDecade: null` and `bringsWithinReach: []`. Without it, every eligible card is projected. Projections are
+   *  cached on the state's structure and a 20 s time bucket, so a projected line may lag the exact one by up to a bucket. */
+  upgradeViews(state: GameState, content: Content, sector?: SectorId): UpgradeView[];
   leverViews(state: GameState, content: Content): LeverView[];
   /** M1: the Hindsight shop, Know-how half (content order). */
   knowhowViews(state: GameState, content: Content): KnowhowView[];
