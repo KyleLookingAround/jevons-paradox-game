@@ -42,7 +42,7 @@ export interface UI {
 }
 
 const THEME_COLOUR: Record<string, string> = {
-  ledger: '#efe6d0', gaslight: '#141d33', chrome: '#ece5d6', terminal: '#070b08', agentic: '#0b0a14',
+  ledger: '#efe6d0', gaslight: '#1c1630', chrome: '#ece5d6', terminal: '#070b08', agentic: '#0b0a14',
 };
 
 export interface AppHooks extends MenuHooks {

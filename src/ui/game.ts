@@ -2,7 +2,7 @@
 // Wall-clock time lives only here; the model only ever sees dt.
 import type { Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorId, UpgradeView } from '../types';
 import { MAX_TICK_SECONDS } from '../types';
-import { makeMockModel, mockContent, parseMockHash } from './devmock';
+import type * as Devmock from './devmock';
 import type { Ctx } from './ctx';
 import { sectorIds } from './ctx';
 import { mountUI, type UI } from './app';
@@ -27,7 +27,15 @@ const VIEWS_MAX_EVERY = 4000; // ... and at most
 const VIEWS_SHARE = 0.05;     // the share of the main thread the periodic view refresh may take (cost / interval)
 const SAVE_EVERY = 10000;     // ms between autosaves
 
-export interface GameOpts { realModel?: ModelApi; realContent?: Content }
+export interface GameOpts {
+  realModel?: ModelApi;
+  realContent?: Content;
+  /**
+   * The development stand-in (src/ui/devmock.ts), passed only by the mock entry (src/ui/mock-main.ts, used by
+   * tools/shot.mjs). The production bundle does not contain it (43 KB minified): there `#mock` is ignored.
+   */
+  devmock?: typeof Devmock;
+}
 
 function contentIsM1(c: Content | undefined): boolean {
   return !!(c && c.sectors && Array.isArray(c.sectorOrder) && c.sectorOrder.length && Array.isArray(c.ages));
@@ -54,10 +62,12 @@ const mark = (n: string) => { try { performance.mark(n); } catch { /* ignore */ 
 function boot(o: GameOpts): void {
   mark('rebound-boot');
   loadFonts();
-  const mockOpts = parseMockHash(location.hash);
-  const mock = !!mockOpts || !o.realModel || !contentIsM1(o.realContent);
-  const model: ModelApi = mock ? makeMockModel(mockOpts ?? {}) : o.realModel!;
-  const content: Content = mock ? mockContent : o.realContent!;
+  const dm = o.devmock;
+  const mockOpts = dm ? dm.parseMockHash(location.hash) : null;
+  const mock = !!dm && (!!mockOpts || !o.realModel || !contentIsM1(o.realContent));
+  if (!mock && (!o.realModel || !contentIsM1(o.realContent))) throw new Error('The model or content is missing or not in the M1 shape.');
+  const model: ModelApi = mock ? dm!.makeMockModel(mockOpts ?? {}) : o.realModel!;
+  const content: Content = mock ? dm!.mockContent : o.realContent!;
   const persist = !mock || !!mockOpts?.persist;
   const saveKey = mock ? MOCK_KEY : SAVE_KEY, atKey = saveKey + '.at';
   // The rolling backup: one slot, rewritten at each Reckoning with the fresh run that follows it.

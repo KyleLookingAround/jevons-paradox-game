@@ -6,6 +6,7 @@ import { h, setText, setAttr, show, cls, reducedMotion, motionOverride } from '.
 import { fmt, money, fmtPrice, pct, num, clamp, lower, perUnit } from './fmt';
 import { infoBtn } from './gauges';
 import { createScene, sceneViewFrom, type SceneView } from './scene';
+import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
 
 /* ------------------------------------------------------------------ */
@@ -92,6 +93,7 @@ export interface WorldRenderer {
   setSector(id: SectorId): void;
   select(appId: string | null): void;
   setReducedMotion(on: boolean | null): void;
+  setDetail(d: Detail): void;
   destroy(): void;
 }
 
@@ -102,12 +104,14 @@ export function createWorldRenderer(host: HTMLElement, opts: WorldRendererOpts):
     card: true,
     money, num: fmt,
     reducedMotion: motionOverride() ?? undefined,
+    detail: getPrefs().detail,
   });
   return {
     update: (v) => scene.update(v),
     setSector: (id) => scene.setSector(id),
     select: (id) => scene.select(id),
     setReducedMotion: (on) => scene.setReducedMotion(on),
+    setDetail: (d) => scene.setDetail?.(d),
     destroy: () => scene.destroy(),
   };
 }
@@ -184,6 +188,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
   let ageKey: string | null = null;
   let sector = '';
   let motion = '';
+  let detail: Detail = getPrefs().detail;
   // The picture's first build is the heaviest single piece of the first frame: it waits one frame, so the page
   // (header, gauges, the sell button) paints first.
   let armed = false, arming = false;
@@ -205,6 +210,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
     }
     const m = document.documentElement.getAttribute('data-motion') ?? '';
     if (m !== motion) { motion = m; renderer.setReducedMotion(motionOverride()); }
+    const dt = getPrefs().detail;
+    if (dt !== detail) { detail = dt; renderer.setDetail(dt); }
     if (armed) {
       const view = timed('scene.view', () => sceneViewFrom(ctx.content, ctx.state, ctx.d, def.id));
       timed('scene.update', () => renderer.update(view));

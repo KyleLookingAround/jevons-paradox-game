@@ -10,7 +10,7 @@ import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money } from './fmt';
 import { UI_ICONS } from './icons';
 import { effectText } from './panels';
 import { download, copyText, readFileText, isPersisted, iosInBrowser } from './store';
-import { getPrefs, setPrefs, type TextSize, type Motion } from './prefs';
+import { getPrefs, setPrefs, type TextSize, type Motion, type Detail } from './prefs';
 import type { Notation } from './fmt';
 
 type Updater = (() => void) | void;
@@ -640,7 +640,9 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
       () => getPrefs().textSize, (v) => { setPrefs({ textSize: v }); ctx.refreshAll(); });
     const motion = segmented<Motion>('Motion', [['system', 'System', 'Follow the system setting'], ['reduce', 'Still', 'Still: no animation'], ['full', 'Moving', 'Moving: animate']],
       () => getPrefs().motion, (v) => { setPrefs({ motion: v }); ctx.refreshAll(); });
-    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el, motion.el));
+    const detail = segmented<Detail>('Picture detail', [['auto', 'Auto', 'Auto: less detail if the picture runs slowly'], ['full', 'Full', 'Full detail'], ['low', 'Low', 'Low detail: fewer moving things, kinder to the battery']],
+      () => getPrefs().detail, (v) => { setPrefs({ detail: v }); ctx.refreshAll(); });
+    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el, motion.el, detail.el));
 
     // Achievements
     const achList = h('ul', { class: 'ach' });
