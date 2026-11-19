@@ -80,7 +80,7 @@ function boot(o: GameOpts): void {
   applyPrefs();
   // One writer per save (tabs.ts): a second tab on the same save stops its clock and saves nothing until told to.
   let pen: (TabGuard & { writer: boolean }) | null = null;
-  if (persist) pen = createTabGuard(saveKey, { saveNow: () => save(), paused: () => soundQuiet(true) });
+  if (persist) pen = createTabGuard(saveKey, { saveNow: () => save(), paused: () => soundQuiet(true), resumed: () => takeOver() });
   const writing = (): boolean => !pen || pen.check();
 
   let halted = false;
@@ -330,6 +330,25 @@ function boot(o: GameOpts): void {
   mark('rebound-mounted');
   installKeys(ctx, ui);
   void installManifest();
+
+  /** "Play here instead" (tabs.ts): this tab now keeps the books. Load what the other tab has just saved, count the
+   *  time since its save once (as on opening), and carry on; the post-Reckoning screens come back if it was between runs. */
+  function takeOver(): void {
+    const txt = lsGet(saveKey);
+    const s = txt ? guard('deserialize', () => model.deserialize(txt, content)) : undefined;
+    if (!s) { last = performance.now(); acc = 0; return; }
+    state = s;
+    feed.resetTo(s);
+    ui.sheets.close();
+    ui.reset();
+    refresh(true);
+    soundQuiet(false);
+    const at = Number(lsGet(atKey));
+    const gap = Number.isFinite(at) && at > 0 ? Math.max(0, (Date.now() - at) / 1000) : 0;
+    if (d.freshRun && (state.meta?.reckonings ?? 0) >= 1) ui.openBetweenRuns();
+    else if (gap > 0) catchUp(gap, true);
+    last = performance.now(); acc = 0; lastBeat = last;
+  }
 
   /* ---------- time away ---------- */
   function catchUp(seconds: number, note: boolean): void {

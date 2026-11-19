@@ -902,6 +902,8 @@ async function majors(url) {
     const b = await ctx.newPage(); await b.goto(url); await b.waitForTimeout(1200);
     if (!(await b.locator('.elsewhere:not([hidden])').count())) throw new Error('the second tab shows no notice');
     if (await a.locator('.elsewhere:not([hidden])').count()) throw new Error('the first tab stopped');
+    // The player plays in the first tab (on screen), then turns to the second.
+    await a.bringToFront();
     for (let i = 0; i < 20; i++) await a.click('.sell');
     await a.waitForTimeout(11000);
     const clicks = (pg) => pg.evaluate(() => window.rebound.state.run.clicks);
@@ -910,8 +912,9 @@ async function majors(url) {
     if ((await stored()) !== ca) throw new Error(`the save holds ${await stored()} sales, the playing tab ${ca}`);
     for (let i = 0; i < 5; i++) await a.click('.sell');
     await b.bringToFront();
-    await Promise.all([b.waitForNavigation({ waitUntil: 'load', timeout: 8000 }), b.click('.elsewhere button')]);
-    await b.waitForTimeout(1500);
+    await b.click('.elsewhere button');
+    await b.waitForFunction(() => !document.querySelector('.elsewhere:not([hidden])'), null, { timeout: 6000 });
+    await b.waitForTimeout(500);
     if ((await clicks(b)) !== ca + 5) throw new Error(`after the takeover the new tab has ${await clicks(b)} sales, not ${ca + 5}`);
     if (!(await a.locator('.elsewhere:not([hidden])').count())) throw new Error('the old tab did not stop');
     await b.screenshot({ path: `${out}/${T}-tabs-taken.png` }); await a.screenshot({ path: `${out}/${T}-tabs-stopped.png` });

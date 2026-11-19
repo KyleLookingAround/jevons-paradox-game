@@ -2,8 +2,8 @@
 // play. So one tab holds the pen: a lease in storage (`<save key>.writer` = { id, at }), renewed every few seconds while
 // that tab is running and visible, released when it closes. A tab that opens while another holds a fresh lease stops its
 // clock, saves nothing, and says so, with "Play here instead": that asks the holder to save and hand over (through a
-// BroadcastChannel, or the storage event where there is none), then reloads from the save the holder has just written,
-// so nothing is lost and no time away is counted twice. A holder that does not answer (closed, frozen in the background)
+// BroadcastChannel, or the storage event where there is none), then loads, in place, the save the holder has just
+// written, so nothing is lost and no time away is counted twice. A holder that does not answer (closed, frozen in the background)
 // is overruled after a moment; when it wakes it finds the lease gone and stops without saving. Without storage there is
 // nothing shared to protect, and every guard here simply says "writer". Display and persistence only: no game rules.
 import { lsGet, lsSet, lsDel } from './store';
@@ -14,7 +14,7 @@ const FRESH_MS = 20000;
 /** How often the holder renews the lease while it runs. */
 export const BEAT_MS = 5000;
 /** How long "Play here instead" waits for the holder to save and hand over before overruling it. */
-const HANDOVER_MS = 1500;
+const HANDOVER_MS = 2500;
 const ID_KEY = 'rebound.tab.id';
 
 interface Lease { id: string; at: number }
@@ -36,12 +36,14 @@ export interface TabHooks {
   saveNow(): void;
   /** This tab has stopped being the writer (show the notice; the loop stops). */
   paused(): void;
+  /** This tab takes the pen: load the save the other tab has just written (and count any time since it), in place. */
+  resumed(): void;
 }
 
 function newId(): string {
   try { return (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.() ?? String(Math.random()).slice(2); } catch { return String(Math.random()).slice(2); }
 }
-/** The same tab keeps its id across its own reloads (a takeover reloads), never across a duplicated tab. */
+/** The same tab keeps its id across its own reloads (where the browser keeps sessionStorage), never across a duplicated tab. */
 function tabId(): string {
   let reload = false;
   try { reload = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload'; } catch { /* old browser */ }
@@ -133,10 +135,18 @@ export function createTabGuard(saveKey: string, hooks: TabHooks): TabGuard & { w
     const finish = () => {
       if (done) return;
       done = true;
-      // Overrule a holder that did not answer; then start again from the save it last wrote.
+      window.removeEventListener('storage', onLease);
+      // Overrule a holder that did not answer; then carry on from the save it last wrote, in place (no reload: a
+      // reload would lean on sessionStorage to keep this tab's id, which a browser may drop).
       const l = read();
       if (!l || l.id !== id) write({ id, at: Date.now() });
-      location.reload();
+      writer = true; stopped = false;
+      btn.removeAttribute('aria-disabled');
+      status.textContent = '';
+      if (notice) show(notice, false);
+      document.documentElement.classList.remove('sheet-open');
+      document.getElementById('app')?.removeAttribute('inert');
+      try { hooks.resumed(); } catch { /* the loop carries on with what it has */ }
     };
     const onLease = (e: StorageEvent) => { if (e.key === leaseKey && read()?.id === id) finish(); };
     window.addEventListener('storage', onLease);
