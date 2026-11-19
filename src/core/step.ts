@@ -29,6 +29,8 @@ import { unsettleAs } from './settlement';
 import { freshSector, snapshotBase, historySample, pushHistory } from './state';
 import { steadyCfg, decadeEffectsOf, standingDrawYearsOf, newBudget, paceOf } from './steady';
 import { canOpen } from './unlocks';
+import { dueFeature, unlockFeature } from './unfold';
+import { featureOn } from './features';
 import { fin, clamp } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -69,7 +71,10 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let crisisCount = 0;
   let anyDecoupling = false;
   let anyOpen = false;
-  let allSink = W >= target;
+  // the unfolding: gated accruals (a feature absent from content is on)
+  const fBudget = featureOn(content, state.meta, 'budget'), fDiv = featureOn(content, state.meta, 'dividendChoice');
+  const fSkies = featureOn(content, state.meta, 'clearSkies'), fSteady = featureOn(content, state.meta, 'steadyState');
+  let allSink = W >= target && fSteady;
   let levers = state.levers;
   const sectors = { ...state.sectors };
   const tmp = state; // headlines read the seed, the news count and the open sectors, not the time (passed apart)
@@ -190,7 +195,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
 
     // budget auto-draw for an active cap (M2: the default pace, the line's own day)
-    if (Number.isFinite(lev.capFrac) && !es0.budget && f.D > 0 && f.R > 0
+    if (fBudget && Number.isFinite(lev.capFrac) && !es0.budget && f.D > 0 && f.R > 0
       && es0.openFor * YEARS_PER_SECOND >= standingDrawYearsOf(def, content) - 1e-9) {
       es.budget = newBudget(content, s, f.R, state.time, year, W, es0.pressure);
       items.push(headline(tmp, content, 'budgetDrawn', time, hc, s));
@@ -226,7 +231,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
           items.push(headline(tmp, content, 'decade', time, { ...hc, n }, s));
           ev.push({ kind: 'decade', sector: s, n, id: lean ? 'lean' : 'full' });
           const offer = decadeOffer(content, s, n, mul);
-          if (offer) offers.push(offer);
+          if (offer && fDiv) offers.push(offer);
           lean = W < target;
           es.windowLean = false;
         }
@@ -241,12 +246,12 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
 
     // the Steady streak (M2: within budget, at target, clear skies), clear skies, Steady State
-    if (es0.budget && sv.clear && es0.budget.clearAt === undefined && es.budget === es0.budget) {
+    if (fSkies && es0.budget && sv.clear && es0.budget.clearAt === undefined && es.budget === es0.budget) {
       es.budget = { ...es0.budget, clearAt: state.time };
       items.push(headline(tmp, content, 'clearSkies', time, hc, s));
       ev.push({ kind: 'clearSkies', sector: s });
     }
-    if (sv.sinkHeld && sv.decoupling) {
+    if (fSteady && sv.sinkHeld && sv.decoupling) {
       const before = es0.clearYears ?? 0;
       const after = before + dy;
       es.clearYears = after;
@@ -376,6 +381,10 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   if (secondTick) {
     for (const a of content.achievements ?? []) if (a.when && !ach[a.id] && evalCond(state, content, a.when)) grant(a.id);
   }
+  // the unfolding: at most one feature a check, never while away (it arrives once the player is back)
+  const feature = secondTick && !away ? dueFeature(state, content) : null;
+  let featMeta: MetaState | null = null;
+  if (feature) featMeta = unlockFeature(state.meta, content, feature, time, year, items, ev);
 
   const run: RunStats = {
     ...state.run,
@@ -391,7 +400,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   };
   const evs = pushEvents(state.events ?? [], state.meta.eventSeq ?? 0, ev, time, year);
   const meta: MetaState = {
-    ...state.meta,
+    ...(featMeta ?? state.meta),
     totalSeconds: state.meta.totalSeconds + dt,
     sectorsOpened,
     achievements: ach,

@@ -127,6 +127,13 @@ export const CLEAR_RATE_TOLERANCE = 1e-6;
  *   - Any missing field of a version-3 save is rebuilt from a fresh state (deep merge), as in v1. Map- and array-valued
  *     fields the merge cannot type-check (levels, events, pendingDividends, runs, opening, settled) are validated
  *     element by element and invalid entries dropped.
+ * The unfolding (no version change; MetaState.features is optional): a version-3 save whose meta has no `features`
+ * object was made before the unfolding and is grandfathered, so a player keeps every system the old build showed
+ * them: meta.features gets every feature in content, stamped meta.totalSeconds, whose old gate holds for the save —
+ * 'population' always; 'reboundMeter', 'levers', 'moreLevers', 'budget', 'leverRepeat', 'dividendChoice',
+ * 'budgetPace', 'clearSkies', 'steadyState' and 'settlement' when flags.revealed or meta.reckonings ≥ 1; 'market'
+ * and 'charters' when meta.reckonings ≥ 1; 'commons' when meta.reckonings ≥ 2. (Older versions migrate to 3 first.)
+ * A save with a `features` object keeps its known ids with finite values.
  * The UI may keep its localStorage key; deserialize does the migration.
  */
 export const SAVE_VERSION = 3;
@@ -191,6 +198,64 @@ export type Cond = (
 ) & { label?: string };
 
 /* ------------------------------------------------------------------ */
+/* FEATURES (the unfolding: systems that arrive one at a time)         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The unfolding (owner's direction, 19 Nov 2026: "options should be unlocked more slowly"). A FEATURE is a system the
+ * player meets at a moment, not from the start. FEATURE_IDS is also the priority order when several are due at once.
+ * What each gates, in the core (a gated action is refused, returning the same state; a gated accrual does not run) and
+ * on the page (a locked feature is not shown at all):
+ *   'reboundMeter'   the rebound meter reading and the cards' projection lines (both also need flags.revealed, as
+ *                    before). The core gates nothing; it is the anchor the next feature is spaced from.
+ *   'levers'         every lever and Mandate on the page. LeverView.visible needs it (a seated Institution's startLever
+ *                    lever is visible regardless); setLever refuses an invisible lever.
+ *   'population'     the population gauge (page only).
+ *   'market'         the Market: OrdersView.market.available needs it as well as GlobalParams.orders.marketFromReckoning.
+ *   'moreLevers'     the fuller lever: levers whose LeverDef.requires names 'moreLevers', and the recycle choice
+ *                    (LeverView.recycleChoices holds only the default option; setLeverRecycle refuses).
+ *   'charters'       the Charter offer: reckon() draws GameState.charterOffer only once it is unlocked.
+ *   'budget'         budget lines: drawBudget refuses; setLever draws no line; an active cap draws no standing line (so
+ *                    no decade streak can run); levers whose requires name 'budget' (the caps) are hidden.
+ *   'leverRepeat'    "Tighten": levels past the authored ones. LeverView.maxLevel and next stop at levels.length;
+ *                    setLever refuses a higher level.
+ *   'dividendChoice' decade dividend offers: a decade appends no PendingDividend (it still pays its decadeEffects).
+ *   'budgetPace'     the pace of a line: drawBudget refuses any pace but the sector's first.
+ *   'clearSkies'     the clear level and the sink line: no 'clearSkies' headline or event and BudgetState.clearAt
+ *                    stays unset; HistorySample.sink is not recorded; SectorDerived.clearP and sinkR read null. (Lean
+ *                    against full decades is a page matter that arrives with it.)
+ *   'steadyState'    the Steady streak: SectorState.clearYears does not accrue (so no Steady State), and
+ *                    GameState.steadyYearsAll does not either.
+ *   'commons'        the Commons: Derived.commons.available needs it as well as GlobalParams.commons.fromReckoning.
+ *   'settlement'     Settlement: SectorDerived.canSettle and settle() need it.
+ * A feature absent from Content.features is always unlocked, so content without `features` (the test fixture) plays
+ * exactly as before.
+ */
+export const FEATURE_IDS = [
+  'reboundMeter', 'levers', 'population', 'market', 'moreLevers', 'charters', 'budget', 'leverRepeat', 'dividendChoice',
+  'budgetPace', 'clearSkies', 'steadyState', 'commons', 'settlement',
+] as const;
+export type FeatureId = typeof FEATURE_IDS[number];
+
+/**
+ * One feature's arrival (Content.features[id]). It unlocks on the first unlock check at which `when` holds and at least
+ * GlobalParams.featureGapSeconds of play (meta.totalSeconds) have passed since the last feature unlocked; at most one
+ * feature unlocks per check, the first due in FEATURE_IDS order. Unlock checks: once a real second in tick() (reading
+ * the state at the start of the step, as achievements do; never inside fastForward, so nothing arrives unseen while
+ * away: it arrives seconds after the player returns), and in reckon() on the new run (for features that wait on a
+ * Reckoning). Once unlocked a feature stays unlocked for good, across Reckonings (MetaState.features): a lesson learnt
+ * stays learnt. Unlocking records meta.features[id] = meta.totalSeconds, adds a news item whose text is `intro` (key
+ * 'featureUnlocked'; none without an intro) and emits a 'featureUnlocked' event (id = the feature).
+ */
+export interface FeatureDef {
+  when: Cond;
+  /** The one line that introduces it, in the broadsheet's voice (a headline). Default: none. */
+  intro?: string;
+  /** Its name on the page's "New" mark ("Counter-levers"). Default: none (the page names it itself). */
+  name?: string;
+}
+
+/* ------------------------------------------------------------------ */
 /* CONTENT (static data, never changes during play)                    */
 /* ------------------------------------------------------------------ */
 
@@ -250,6 +315,8 @@ export interface Content {
    * LeverView.recycleChoices carries the resolved wording; the UI does not resolve it itself.
    */
   recycleText?: Partial<Record<LeverRecycle, { name: string; blurb: string }>>;
+  /** The unfolding: when each feature arrives (see FeatureDef). Default: absent (every feature unlocked from the start). */
+  features?: Partial<Record<FeatureId, FeatureDef>>;
 }
 
 /**
@@ -418,6 +485,8 @@ export interface GlobalParams {
    * between runs; design/m2-contract-notes.md, decision (h)).
    */
   respecRefund?: number;
+  /** The unfolding: least play (meta.totalSeconds) between two features unlocking (see FeatureDef). Default 0. */
+  featureGapSeconds?: number;
 }
 
 /**
@@ -876,9 +945,10 @@ export interface LeverDef {
    *   'revealed'        → flags.revealed;
    *   an upgrade id     → owned (level ≥ 1) this run;
    *   an institution id → SEATED this run (M1 CHANGE: was "owned"; M2: or loaned by an institutionLoan in force);
+   *   a FeatureId       → that feature unlocked (MetaState.features; always met if the feature is not in content);
    * any other string is treated as met (the content lint flags it).
-   * Independently of `requires`, every lever is hidden until flags.revealed, unless a seated institution starts it
-   * (startLever), and hidden while `locked` and not unlocked. M2: every lever of a SETTLED sector is hidden and
+   * Independently of `requires`, every lever is hidden until flags.revealed and the 'levers' feature, unless a seated
+   * institution starts it (startLever), and hidden while `locked` and not unlocked. M2: every lever of a SETTLED sector is hidden and
    * unraisable (settle sets them to 0; see ModelApi.settle).
    */
   requires?: string[];
@@ -1008,7 +1078,9 @@ export type HeadlineKey =
   | 'settled'         // a sector is settled
   | 'unsettled'       // a settlement ends (by the player, or because its defence could not be paid)
   | 'commonsBuilt'    // a Commons level is bought ({name} = the project; by the player or Treasury rules)
-  | 'charter';        // a Charter is chosen for the run ({name} = the Charter; {sector} its sector, if any)
+  | 'charter'         // a Charter is chosen for the run ({name} = the Charter; {sector} its sector, if any)
+  /* --- the unfolding --- */
+  | 'featureUnlocked'; // a feature arrives; the text is its FeatureDef.intro, never drawn from Content.headlines
 
 /* ------------------------------------------------------------------ */
 /* STATE (serialisable, plain JSON)                                    */
@@ -1135,12 +1207,15 @@ export interface PendingDividend {
  *   'charterChosen'  id (charter)
  *   'won'            (steadyAll)
  *   'reckoning'      id (the cause), sector (the cause sector, if any) — the first event of the new run
+ *   'featureUnlocked' id (the FeatureId); see FeatureDef
  */
 export type EventKind =
   | 'appAvailable' | 'appFounded' | 'upgradeBought' | 'stageReached' | 'leverEnacted' | 'leverLapsed'
   | 'budgetDrawn' | 'budgetBroken' | 'decade' | 'dividendChosen' | 'clearSkies' | 'steadyState' | 'settled' | 'unsettled'
   | 'crisis' | 'collapse' | 'exhausted' | 'backfire' | 'reveal' | 'sectorOpened' | 'ageBegins' | 'commonsBuilt'
-  | 'charterChosen' | 'won' | 'reckoning';
+  | 'charterChosen' | 'won' | 'reckoning'
+  /* the unfolding */
+  | 'featureUnlocked';
 
 /** M2: one event (GameState.events). Plain JSON. */
 export interface GameEvent {
@@ -1576,6 +1651,11 @@ export interface MetaState {
   knowhowPeak: Record<string, number>;
   /** M2: the highest population of any run (≥ 1), updated every step. */
   peakPopulationEver: number;
+  /**
+   * The unfolding: features unlocked, id → meta.totalSeconds when each unlocked (see FeatureDef). Kept for good. Absent
+   * = {} (a fresh meta has {}). Saves from before the unfolding are grandfathered by deserialize (see SAVE_VERSION).
+   */
+  features?: Partial<Record<FeatureId, number>>;
 }
 
 export interface RunSummary {
@@ -1721,6 +1801,8 @@ export interface Derived {
    * return for every tree; refundByTree = the same per tree id (trees with nothing owned are absent).
    */
   respec: { allowed: boolean; refund: number; refundByTree: Record<string, number> };
+  /** The unfolding: every FeatureId, true once unlocked (always true for a feature absent from Content.features). */
+  features: Record<FeatureId, boolean>;
 }
 
 /** M2: Derived.orders. */

@@ -12,7 +12,8 @@ import { emit } from './events';
 import type { EvDraft } from './events';
 import { computeFlows } from './flows';
 import { headline, withNews } from './headlines';
-import { leverMaxLevel, leverLevelDef, leverNetUpkeep, leverVisible, recycleOptions, recycleOf } from './levers';
+import { leverLevelDef, leverNetUpkeep, leverReachable, leverVisible, recycleOptions, recycleOf } from './levers';
+import { featureOn } from './features';
 import { newBudget, pacesOf } from './steady';
 import { fin } from './util';
 
@@ -41,7 +42,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const def = idx(content).levers.get(leverId);
   if (!def || !Number.isFinite(level)) return state;
   const target = Math.round(level);
-  if (target < 0 || target > leverMaxLevel(def)) return state;
+  if (target < 0 || target > leverReachable(state, content, def)) return state;
   const mods = modsOf(state, content);
   if (!leverVisible(state, content, def, mods)) return state;
   const cur = state.levers[leverId] ?? { level: 0, ref: 0 };
@@ -63,7 +64,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const ev: EvDraft[] = [];
   let sectors = state.sectors;
   let run = state.run;
-  if (!state.sectors[def.sector]?.budget && f && f.R > 0) {
+  if (!state.sectors[def.sector]?.budget && f && f.R > 0 && featureOn(content, state.meta, 'budget')) {
     sectors = drawBudgetAt(state, content, def.sector, f.R, fl.wellbeing, items, ev, by);
     if (by === 'player' && run.firstBudgetAt === null) run = { ...run, firstBudgetAt: state.time };
   }
@@ -79,7 +80,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
 
 export function setLeverRecycle(state: GameState, content: Content, leverId: string, option: LeverRecycle): GameState {
   const def = idx(content).levers.get(leverId);
-  if (!def || !recycleOptions(def).includes(option)) return state;
+  if (!def || !recycleOptions(def).includes(option) || !featureOn(content, state.meta, 'moreLevers')) return state;
   if (option === 'commons' && !commonsOpen(state, content)) return state;
   const cur = state.levers[leverId] ?? { level: 0, ref: 0 };
   if (recycleOf(def, cur) === option || computeFlows(state, content).pending) return state;
@@ -88,8 +89,10 @@ export function setLeverRecycle(state: GameState, content: Content, leverId: str
 
 export function drawBudget(state: GameState, content: Content, sector: SectorId, pace?: string): GameState {
   const es = state.sectors[sector];
-  if (!state.flags.revealed || !es?.open || es.settled) return state;
-  if (pace !== undefined && !pacesOf(content, sector).some((p) => p.id === pace)) return state;
+  if (!state.flags.revealed || !es?.open || es.settled || !featureOn(content, state.meta, 'budget')) return state;
+  const paces = pacesOf(content, sector);
+  if (pace !== undefined && !paces.some((p) => p.id === pace)) return state;
+  if (pace !== undefined && pace !== paces[0]?.id && !featureOn(content, state.meta, 'budgetPace')) return state;
   const fl = computeFlows(state, content);
   const f = fl.sectors[sector];
   if (fl.pending || !f || !(f.R > 0)) return state;
@@ -105,15 +108,17 @@ const cap1 = (x: string): string => x.charAt(0).toUpperCase() + x.slice(1);
 export function leverViews(state: GameState, content: Content): LeverView[] {
   const mods = modsOf(state, content);
   const open = commonsOpen(state, content);
+  const fuller = featureOn(content, state.meta, 'moreLevers');
   return (content.levers ?? []).map((def) => {
     const ls = state.levers[def.id];
     const level = ls?.level ?? 0;
     const inst = mods.startLevers[def.id] ?? 0;
     const visible = leverVisible(state, content, def, mods);
-    const maxLevel = leverMaxLevel(def);
+    const maxLevel = leverReachable(state, content, def);
     const next = level < maxLevel ? leverLevelDef(def, level + 1) : null;
     const nextCost = next ? (level + 1 <= inst ? 0 : next.mandateCost) : null;
-    const opts = recycleOptions(def);
+    const opts0 = recycleOptions(def);
+    const opts = fuller ? opts0 : opts0.slice(0, 1);
     return {
       def, level, maxLevel, current: leverLevelDef(def, level), next, visible, nextCost,
       canRaise: visible && nextCost !== null && state.mandate >= nextCost,

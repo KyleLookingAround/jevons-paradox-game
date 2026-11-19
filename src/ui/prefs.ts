@@ -33,6 +33,11 @@ export interface Prefs {
   survey: boolean;
   /** "While you were away" reports already shown (their keys), newest last; a handful only. */
   awaySeen: string[];
+  /** Folding sections the player has opened (true) or closed (false), by key: the shop's "Owned" parts, locked rows,
+   *  the unseated Institutions; elsewhere the owned levers and the earned achievements. Absent = the section's default. */
+  open: Record<string, boolean>;
+  /** Unlocked features (Derived.features) the player has already been shown: the "New" mark clears once seen. */
+  seenFeatures: string[];
 }
 
 export const PREFS_KEY = 'rebound.ui.prefs';
@@ -40,13 +45,13 @@ export const TEXT_SCALE = [1, 1.15, 1.3] as const;
 
 const DEFAULTS: Prefs = {
   notation: 'suffix', textSize: 0, motion: 'system', detail: 'auto', lastExport: 0, persist: null, iosHintDismissed: false, passed: { run: '', ids: {} },
-  sound: false, volumes: { master: 0.8, world: 0.7, interface: 0.7 }, calm: 'system', survey: true, awaySeen: [],
+  sound: false, volumes: { master: 0.8, world: 0.7, interface: 0.7 }, calm: 'system', survey: true, awaySeen: [], open: {}, seenFeatures: [],
 };
 
 let prefs: Prefs = load();
 
 function load(): Prefs {
-  const p: Prefs = { ...DEFAULTS, passed: { run: '', ids: {} }, volumes: { ...DEFAULTS.volumes }, awaySeen: [] };
+  const p: Prefs = { ...DEFAULTS, passed: { run: '', ids: {} }, volumes: { ...DEFAULTS.volumes }, awaySeen: [], open: {}, seenFeatures: [] };
   try {
     const raw = lsGet(PREFS_KEY);
     const o = raw ? JSON.parse(raw) : null;
@@ -73,12 +78,32 @@ function load(): Prefs {
       if (o.calm === 'on' || o.calm === 'off') p.calm = o.calm;
       if (o.survey === false) p.survey = false;
       if (Array.isArray(o.awaySeen)) p.awaySeen = o.awaySeen.filter((x: unknown) => typeof x === 'string').slice(-8);
+      if (o.open && typeof o.open === 'object') {
+        for (const k of Object.keys(o.open).slice(0, 64)) if (typeof o.open[k] === 'boolean') p.open[k] = o.open[k];
+      }
+      if (Array.isArray(o.seenFeatures)) p.seenFeatures = o.seenFeatures.filter((x: unknown) => typeof x === 'string').slice(0, 64);
     }
   } catch { /* unreadable prefs: defaults */ }
   return p;
 }
 
 export function getPrefs(): Readonly<Prefs> { return prefs; }
+
+/** Whether a folding section is open: the player's last choice, else `dflt`. */
+export function isOpen(key: string, dflt = false): boolean {
+  const v = prefs.open[key];
+  return v === undefined ? dflt : v;
+}
+/** Remember a folding section's state (kept to the 64 most recent keys). */
+export function setOpen(key: string, on: boolean): void {
+  if (prefs.open[key] === on) return;
+  const open = { ...prefs.open };
+  delete open[key];
+  open[key] = on;
+  const keys = Object.keys(open);
+  for (const k of keys.slice(0, Math.max(0, keys.length - 64))) delete open[k];
+  setPrefs({ open });
+}
 
 export function setPrefs(patch: Partial<Prefs>): void {
   prefs = { ...prefs, ...patch };

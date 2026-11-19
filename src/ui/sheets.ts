@@ -10,7 +10,7 @@ import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money, unitOne } from
 import { UI_ICONS } from './icons';
 import { effectText } from './panels';
 import { download, copyText, readFileText, isPersisted, iosInBrowser } from './store';
-import { getPrefs, setPrefs, type TextSize, type Motion, type Detail } from './prefs';
+import { getPrefs, setPrefs, isOpen, setOpen, type TextSize, type Motion, type Detail } from './prefs';
 import { lapseBlock, type Lapse } from './timelapse';
 import { setSound, setVolumes, setCalm } from './sound';
 import type { Notation } from './fmt';
@@ -246,10 +246,35 @@ function treeTitle(ctx: Ctx, tree: string): string {
   return tree.charAt(0).toUpperCase() + tree.slice(1);
 }
 
-export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
+/**
+ * A folding section remembered in the UI preferences (prefs.open[key]): a native <details>, so it opens from the
+ * keyboard and is announced as such. The summary's text is set by the caller.
+ */
+export function foldSection(key: string, cls0: string, dflt = false): { el: HTMLDetailsElement; sum: HTMLElement; body: HTMLElement } {
+  const sum = h('summary', { class: 'fold-s' });
+  const body = h('div', { class: 'fold-b' });
+  const el = h('details', { class: 'fold ' + cls0 }, sum, body) as HTMLDetailsElement;
+  el.open = isOpen(key, dflt);
+  el.addEventListener('toggle', () => setOpen(key, el.open));
+  return { el, sum, body };
+}
+
+/**
+ * The Hindsight shop. Laid out for the least scrolling (owner's direction, 19 Nov 2026):
+ *   - the seats first: what is seated, each with Unseat, and the owned Institutions not seated one tap away;
+ *   - Know-how: trees whose rows still hold something to learn, nodes the player can afford first within each row, a
+ *     row that is not open yet folded to one dim line, an arm ruled out by a fork shrunk to its name; then "Owned" at
+ *     the end, folded, with every node learnt to its last level (a fork: the arm taken, and the one it ruled out);
+ *   - Institutions: those that can be bought now first, then those that can be bought later, those that need another
+ *     Institution first folded to one line, and "Owned" (every level founded) folded at the end, with Seat and Unseat.
+ * Structure is built once per opening; a purchase or a seat moves cards between places (syncChildren on a layout key)
+ * and every number is patched in place.
+ */
+export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () => void {
   const bal = h('span', { class: 'num' });
   const ro = h('p', { class: 'shop-ro' }, 'Read-only for now. Hindsight is spent and seats are changed between runs, after a Reckoning.');
   host.append(h('p', { class: 'shop-bal' }, h('span', { class: 'muted', text: 'Hindsight to spend ' }), bal), ro);
+  if (lead) host.append(lead);
   const items: (() => void)[] = [];
   const kh = h('section', { class: 'shop-col kh' }, h('h3', { text: 'Know-how' }), h('p', { class: 'shop-k', text: 'The obvious buy. Runs start faster, and reach the wall sooner.' }));
   // Respec (Derived.respec): "Unlearn" per tree and for all, between runs only, each behind a confirm with the refund.
@@ -272,35 +297,48 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
       },
     };
   };
-  const allU = unlearn(undefined, 'Unlearn everything');
-  kh.append(allU.el);
-  items.push(() => allU.update());
   const inst = h('section', { class: 'shop-col inst' }, h('h3', { text: 'Institutions' }), h('p', { class: 'shop-k', text: 'The slow buy. Only seated Institutions act.' }));
 
   const khView = (id: string): KnowhowView | undefined => (ctx.khs || []).find((v) => v.def.id === id);
   const inView = (id: string): InstitutionView | undefined => (ctx.insts || []).find((v) => v.def.id === id);
   const khName = (id: string | null) => (id ? ctx.content.knowhow.find((k) => k.id === id)?.name ?? id : '');
+  const instName = (id: string) => ctx.content.institutions.find((x) => x.id === id)?.name ?? id;
 
-  // Trees: rows by tier; nodes sharing a branch sit side by side with "or".
+  /* ---------------- Know-how ---------------- */
+  interface Arm { id: string; card: HTMLElement; row: HTMLElement }
+  interface Group { arms: Arm[]; el: HTMLElement }
+  interface Tier { tier: number; groups: Group[]; rowEl: HTMLElement; line: ReturnType<typeof foldSection> }
+  interface Tree { id: string; el: HTMLElement; tiers: Tier[]; ownHead: HTMLElement }
   const defs = ctx.content.knowhow || [];
-  const trees: string[] = [];
-  for (const k of defs) { const t = k.tree ?? 'general'; if (!trees.includes(t)) trees.push(t); }
-  for (const t of trees) {
+  const treeIds: string[] = [];
+  for (const k of defs) { const t = k.tree ?? 'general'; if (!treeIds.includes(t)) treeIds.push(t); }
+  const treeList = h('div', { class: 'trees' });
+  const khOwn = foldSection('shop.khOwned', 'own kh-own');
+  const allU = unlearn(undefined, 'Unlearn everything');
+  items.push(() => allU.update());
+  const trees: Tree[] = [];
+  for (const t of treeIds) {
     const nodes = defs.filter((k) => (k.tree ?? 'general') === t);
-    const tiers = [...new Set(nodes.map((k) => k.tier ?? 1))].sort((a, b) => a - b);
+    const tierNums = [...new Set(nodes.map((k) => k.tier ?? 1))].sort((a, b) => a - b);
     const tu = unlearn(t, 'Unlearn');
-    items.push(() => tu.update());
+    const tu2 = unlearn(t, `Unlearn ${treeTitle(ctx, t)}`);
+    items.push(() => { tu.update(); tu2.update(); });
     const treeEl = h('div', { class: 'tree' }, h('div', { class: 'tree-h' }, h('h4', { class: 'tree-t', text: treeTitle(ctx, t) }), tu.el));
-    for (const tier of tiers) {
+    const ownHead = h('div', { class: 'own-h' }, h('span', { class: 'own-ht', text: treeTitle(ctx, t) }), tu2.el);
+    const tiers: Tier[] = [];
+    for (const tier of tierNums) {
       const rowEl = h('div', { class: 'tree-row', 'data-tier': String(tier) });
+      const line = foldSection(`shop.tier.${t}.${tier}`, 'tier-line');
       const inTier = nodes.filter((k) => (k.tier ?? 1) === tier);
       const done = new Set<string>();
+      const groups: Group[] = [];
       for (const k of inTier) {
         if (done.has(k.id)) continue;
-        const arms = k.branch ? inTier.filter((o) => o.branch === k.branch) : [k];
-        arms.forEach((a) => done.add(a.id));
-        const group = h('div', { class: arms.length > 1 ? 'kh-fork' : 'kh-single' });
-        arms.forEach((a, i) => {
+        const armDefs = k.branch ? inTier.filter((o) => o.branch === k.branch) : [k];
+        armDefs.forEach((a) => done.add(a.id));
+        const group = h('div', { class: armDefs.length > 1 ? 'kh-fork' : 'kh-single' });
+        const arms: Arm[] = [];
+        armDefs.forEach((a, i) => {
           if (i) group.append(h('span', { class: 'fork-or', 'aria-hidden': 'true', text: 'or' }));
           const lvl = h('span', { class: 'num muted' });
           const note = h('p', { class: 'kh-note' });
@@ -310,58 +348,161 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
             if (khView(a.id)?.canBuy) ctx.act('buyKnowhow', (m, s, ct) => m.buyKnowhow(s, ct, a.id));
           } }, bl, c);
           const eff = (a.effects || []).map((e) => effectText(ctx, e)).filter(Boolean).join(' · ');
-          const nameEl = h('h5', { text: a.name });
-          const card = h('article', { class: 'kh-node' }, h('header', null, nameEl, lvl), h('p', { class: 'shop-eff', text: eff + (a.maxLevel > 1 ? ', per level' : '') }),
-            h('p', { class: 'shop-blurb', text: a.blurb }), note, b);
+          const card = h('article', { class: 'kh-node' }, h('header', null, h('h5', { text: a.name }), lvl),
+            h('p', { class: 'shop-eff', text: eff + (a.maxLevel > 1 ? ', per level' : '') }), h('p', { class: 'shop-blurb', text: a.blurb }), note, b);
           group.append(card);
+          // The compact row in "Owned": name, level, and the arm it ruled out.
+          const rLvl = h('span', { class: 'num muted' });
+          const rNot = h('span', { class: 'own-not' });
+          const row = h('li', { class: 'own-row' }, h('span', { class: 'own-n' }, h('span', { text: a.name }), rNot), rLvl);
+          arms.push({ id: a.id, card, row });
           items.push(() => {
             const v = khView(a.id);
             const level = num(v?.level);
             setText(lvl, `${level}/${a.maxLevel}`);
+            setText(rLvl, `${level}/${a.maxLevel}`);
             const excluded = !!v?.excludedBy;
             const locked = !!v && !v.requirementsMet;
             cls(card, 'owned', level > 0);
             cls(card, 'excluded', excluded);
+            cls(card, 'compact', excluded);
             cls(card, 'locked', locked && !excluded);
+            cls(card, 'afford', !!v?.affordable && !locked && !excluded);
             setText(note, excluded ? `Ruled out by ${khName(v!.excludedBy)}` : locked ? `Opens once a row ${tier - 1} node is learnt` : '');
             show(note, !!note.textContent);
             setText(bl, v?.maxed ? 'Learnt' : 'Learn');
             setText(c, v?.maxed || v?.cost == null ? '' : `${fmt(Math.ceil(v.cost))} H`);
             show(b, !excluded);
             setAttr(b, 'aria-disabled', v?.canBuy ? null : 'true');
+            const others = armDefs.filter((o) => o.id !== a.id).map((o) => o.name);
+            setText(rNot, others.length ? ` · not ${others.map((n) => lower(n)).join(' or ')}` : '');
           });
         });
-        rowEl.append(group);
+        groups.push({ arms, el: group });
       }
-      treeEl.append(rowEl);
+      tiers.push({ tier, groups, rowEl, line });
     }
-    kh.append(treeEl);
+    trees.push({ id: t, el: treeEl, tiers, ownHead });
   }
+  kh.append(treeList, khOwn.el);
+  let khKey = '';
+  items.push(() => {
+    const v = (id: string) => khView(id);
+    const groupDone = (g: Group) => g.arms.some((a) => v(a.id)?.maxed) && g.arms.every((a) => v(a.id)?.maxed || !!v(a.id)?.excludedBy);
+    const groupOpen = (g: Group) => g.arms.some((a) => v(a.id)?.requirementsMet);
+    const groupAfford = (g: Group) => g.arms.some((a) => { const x = v(a.id); return !!x && x.affordable && x.requirementsMet && !x.excludedBy && !x.maxed; });
+    // Layout: per tree, per row, which groups are shown (affordable first), which rows fold, which nodes are owned.
+    const plan = trees.map((tr) => {
+      const tiers = tr.tiers.map((ti) => {
+        const live = ti.groups.filter((g) => !groupDone(g));
+        const open = live.length > 0 && groupOpen(live[0]);
+        const sorted = open ? [...live.filter(groupAfford), ...live.filter((g) => !groupAfford(g))] : live;
+        return { ti, live: sorted, open };
+      });
+      const owned = tr.tiers.flatMap((ti) => ti.groups.filter(groupDone));
+      const afford = tiers.some((x) => x.open && x.live.some(groupAfford));
+      return { tr, tiers, owned, afford, any: tiers.some((x) => x.live.length > 0) };
+    });
+    const order = [...plan.filter((p) => p.afford), ...plan.filter((p) => !p.afford)];
+    const key = order.map((p) => p.tr.id + ':' + p.tiers.map((x) => `${x.open ? 'o' : 'l'}${x.live.map((g) => g.arms[0].id).join('+')}`).join('/') + '|' + p.owned.map((g) => g.arms[0].id).join('+')).join(';');
+    let nOwned = 0;
+    for (const p of plan) for (const g of p.owned) nOwned += g.arms.filter((a) => v(a.id)?.maxed).length;
+    if (key !== khKey) {
+      khKey = key;
+      syncChildren(treeList, order.filter((p) => p.any).map((p) => {
+        const kids: HTMLElement[] = [p.tr.el.firstElementChild as HTMLElement];
+        for (const x of p.tiers) {
+          if (!x.live.length) continue;
+          syncChildren(x.ti.rowEl, x.live.map((g) => g.el));
+          if (x.open) kids.push(x.ti.rowEl);
+          else {
+            // A row not open yet: one dim line; open it to read what is in it.
+            const n = x.live.reduce((a, g) => a + g.arms.length, 0);
+            setText(x.ti.line.sum, `Row ${x.ti.tier}: ${n} to learn, once a row ${x.ti.tier - 1} node is learnt`);
+            syncChildren(x.ti.line.body, [x.ti.rowEl]);
+            kids.push(x.ti.line.el);
+          }
+        }
+        syncChildren(p.tr.el, kids);
+        return p.tr.el;
+      }));
+      const ownKids: HTMLElement[] = [];
+      for (const p of plan) {
+        if (!p.owned.length) continue;
+        ownKids.push(p.tr.ownHead);
+        ownKids.push(h('ul', { class: 'own-list' }, ...p.owned.map((g) => g.arms.find((a) => v(a.id)?.maxed)!.row)));
+      }
+      ownKids.push(allU.el);
+      syncChildren(khOwn.body, ownKids);
+    }
+    setText(khOwn.sum, `Owned, ${nOwned}`);
+    show(khOwn.el, nOwned > 0);
+    // "Unlearn everything" sits in Owned while anything is learnt to the full; at the top of the trees otherwise.
+    if (nOwned === 0 && allU.el.parentElement !== kh) kh.insertBefore(allU.el, treeList);
+  });
 
-  // Seats: one box per seat; a seated institution fills as many seats as it occupies.
+  /* ---------------- Seats ---------------- */
+  // One box per seat; a seated institution fills as many seats as it occupies. The owned Institutions not seated are
+  // one tap away underneath, each with Seat.
   const seatTxt = h('p', { class: 'seat-txt num' });
   const seats = h('div', { class: 'seats', role: 'list', 'aria-label': 'Institution seats' });
-  inst.append(seatTxt, seats);
+  const pick = foldSection('shop.seatPick', 'seat-more');
+  const pickList = h('ul', { class: 'own-list seat-pick' });
+  pick.body.append(pickList);
+  const seatBox = h('section', { class: 'shop-seats' }, h('h3', { class: 'seats-t', text: 'Seats' }), seatTxt, seats, pick.el);
   let seatKey = '';
   const seatEls = new Map<string, { el: HTMLElement; b: HTMLButtonElement }>();
   const loadout = () => (Array.isArray(ctx.state.meta?.loadout) ? ctx.state.meta.loadout : []);
   const setLoadout = (ids: string[]) => ctx.act('setLoadout', (m, s, ct) => m.setLoadout(s, ct, ids));
+  const toggleSeat = (id: string) => {
+    const v = inView(id);
+    if (!v || !ctx.d?.freshRun) return;
+    if (v.seated) setLoadout(loadout().filter((o) => o !== id));
+    else if (v.canSeat) setLoadout([...loadout(), id]);
+  };
   function seatFor(id: string) {
     let x = seatEls.get(id);
     if (!x) {
-      const d = ctx.content.institutions.find((i) => i.id === id);
       const b = h('button', { class: 'btn small', type: 'button', onclick: () => { if (ctx.d?.freshRun) setLoadout(loadout().filter((o) => o !== id)); } }, 'Unseat');
-      const el = h('div', { class: 'seat full', role: 'listitem' }, h('span', { class: 'seat-n', text: d?.name ?? id }), b);
+      const el = h('div', { class: 'seat full', role: 'listitem' }, h('span', { class: 'seat-n', text: instName(id) }), b);
       x = { el, b };
       seatEls.set(id, x);
     }
     return x;
   }
+  /** A compact Institution row (name, level, Seat or Unseat), used under the seats and in "Owned". */
+  const instRows = new Map<string, { row: HTMLElement; row2: HTMLElement; up(): void }>();
+  function instRow(id: string) {
+    let x = instRows.get(id);
+    if (!x) {
+      const d = ctx.content.institutions.find((i) => i.id === id);
+      const mk = () => {
+        const lv = h('span', { class: 'num muted' });
+        const b = h('button', { class: 'btn small seat-b', type: 'button', onclick: () => toggleSeat(id) });
+        const row = h('li', { class: 'own-row' }, h('span', { class: 'own-n' }, h('span', { class: 'own-nm', text: d?.name ?? id })), lv, b);
+        return { row, up: () => {
+          const v = inView(id);
+          const max = num(v?.maxLevel, 1), level = num(v?.level);
+          setText(lv, max > 1 ? `${level}/${max}` : '');
+          setText(b, v?.seated ? 'Unseat' : 'Seat');
+          setAttr(b, 'aria-disabled', (v?.seated ? !!ctx.d?.freshRun : !!v?.canSeat) ? null : 'true');
+          setAttr(b, 'title', !v?.seated && ctx.d?.freshRun && !v?.canSeat ? 'No free seat' : null);
+          cls(row, 'seated', !!v?.seated);
+        } };
+      };
+      const a = mk(), c = mk();
+      x = { row: a.row, row2: c.row, up: () => { a.up(); c.up(); } };
+      instRows.set(id, x);
+      items.push(x.up);
+    }
+    return x;
+  }
   items.push(() => {
     const total = num(ctx.d?.slots?.total), used = num(ctx.d?.slots?.used);
-    setText(seatTxt, `Seats: ${used} of ${total} in use`);
+    setText(seatTxt, `${used} of ${total} in use`);
     const lo = loadout();
-    const k = lo.join(',') + '|' + total + '|' + used;
+    const spare = (ctx.insts || []).filter((v) => v.level > 0 && !v.seated).map((v) => v.def.id);
+    const k = lo.join(',') + '|' + total + '|' + used + '|' + spare.join(',');
     if (k !== seatKey) {
       seatKey = k;
       const nodes: HTMLElement[] = [];
@@ -372,10 +513,22 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
       }
       for (let i = used; i < total; i++) nodes.push(h('div', { class: 'seat empty', role: 'listitem', text: 'Empty seat' }));
       syncChildren(seats, nodes);
+      syncChildren(pickList, spare.map((id) => instRow(id).row));
+      setText(pick.sum, `Owned, not seated: ${spare.length}`);
     }
+    show(pick.el, spare.length > 0);
+    show(seatBox, total > 0 || lo.length > 0);
     for (const id of lo) setAttr(seatFor(id).b, 'aria-disabled', ctx.d?.freshRun ? null : 'true');
   });
 
+  /* ---------------- Institutions ---------------- */
+  const instList = h('div', { class: 'inst-list' });
+  const instLocked = foldSection('shop.instLocked', 'tier-line inst-locked');
+  const instOwn = foldSection('shop.instOwned', 'own inst-own');
+  const instOwnList = h('ul', { class: 'own-list' });
+  instOwn.body.append(instOwnList);
+  inst.append(instList, instLocked.el, instOwn.el);
+  const cards = new Map<string, HTMLElement>();
   for (const d of ctx.content.institutions || []) {
     const lvl = h('span', { class: 'num muted' });
     const req = h('p', { class: 'shop-req' });
@@ -383,23 +536,18 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
     const c = h('span', { class: 'btn-c num' });
     const bl = h('span', { class: 'btn-l' });
     const buy = h('button', { class: 'btn small', type: 'button', onclick: () => { if (inView(d.id)?.canBuy) ctx.act('buyInstitution', (m, s, ct) => m.buyInstitution(s, ct, d.id)); } }, bl, c);
-    const seat = h('button', { class: 'btn small seat-b', type: 'button', onclick: () => {
-      const v = inView(d.id);
-      if (!v || !ctx.d?.freshRun) return;
-      if (v.seated) setLoadout(loadout().filter((o) => o !== d.id));
-      else if (v.canSeat) setLoadout([...loadout(), d.id]);
-    } });
+    const seat = h('button', { class: 'btn small seat-b', type: 'button', onclick: () => toggleSeat(d.id) });
     const slots = d.slots ?? 1;
     const card = h('article', { class: 'shop-item' },
       h('header', null, h('h4', { text: d.name }), lvl), h('p', { class: 'shop-blurb', text: d.blurb + (slots > 1 ? ` Takes ${slots} seats.` : '') }),
       nextEff, req, h('div', { class: 'm-row' }, buy, seat));
-    inst.append(card);
+    cards.set(d.id, card);
     items.push(() => {
       const v = inView(d.id);
       const level = num(v?.level), max = num(v?.maxLevel, 1);
       setText(lvl, max > 1 ? `${level}/${max}` : level ? 'Founded' : '');
       const missing = (d.requires || []).filter((r) => !(num(ctx.state.meta?.institutions?.[r]) >= 1));
-      setText(req, !v?.requirementsMet && missing.length ? `Needs: ${missing.map((r) => ctx.content.institutions.find((x) => x.id === r)?.name ?? r).join(', ')}` : '');
+      setText(req, !v?.requirementsMet && missing.length ? `Needs: ${missing.map(instName).join(', ')}` : '');
       show(req, !!req.textContent);
       const nl = level === 0 ? { effects: d.effects, label: undefined as string | undefined } : d.nextLevels?.[level - 1];
       const effTxt = nl ? (nl.label ?? nl.effects.map((e) => effectText(ctx, e)).filter(Boolean).join(' · ')) : '';
@@ -414,9 +562,32 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
       setAttr(seat, 'title', !v?.seated && level > 0 && ctx.d?.freshRun && !v?.canSeat ? 'No free seat' : null);
       cls(card, 'owned', level > 0);
       cls(card, 'seated', !!v?.seated);
+      cls(card, 'compact', !v?.requirementsMet && level === 0);
+      cls(card, 'afford', !!v?.affordable && !!v?.requirementsMet && level < max);
     });
   }
-  host.append(h('div', { class: 'shop-cols' }, kh, inst));
+  let instKey = '';
+  items.push(() => {
+    const vs = (ctx.content.institutions || []).map((d) => ({ d, v: inView(d.id) }));
+    const owned = vs.filter((x) => x.v && x.v.level >= x.v.maxLevel);
+    const live = vs.filter((x) => !(x.v && x.v.level >= x.v.maxLevel));
+    const open = live.filter((x) => x.v?.requirementsMet);
+    const shut = live.filter((x) => !x.v?.requirementsMet);
+    const sorted = [...open.filter((x) => x.v?.affordable), ...open.filter((x) => !x.v?.affordable)];
+    const key = sorted.map((x) => x.d.id).join(',') + '|' + shut.map((x) => x.d.id).join(',') + '|' + owned.map((x) => x.d.id).join(',');
+    if (key !== instKey) {
+      instKey = key;
+      syncChildren(instList, sorted.map((x) => cards.get(x.d.id)!));
+      syncChildren(instLocked.body, shut.map((x) => cards.get(x.d.id)!));
+      syncChildren(instOwnList, owned.map((x) => instRow(x.d.id).row2));
+      setText(instLocked.sum, `Needs another Institution first: ${shut.length}`);
+      setText(instOwn.sum, `Owned, ${owned.length}`);
+    }
+    show(instLocked.el, shut.length > 0);
+    show(instOwn.el, owned.length > 0);
+  });
+
+  host.append(seatBox, h('div', { class: 'shop-cols' }, kh, inst));
   return () => {
     setText(bal, fmt(Math.floor(num(ctx.state.meta?.hindsight))));
     show(ro, !ctx.d?.freshRun);
@@ -427,9 +598,9 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
 
 export function shopSheet(ctx: Ctx, sheets: Sheets, after?: () => void): void {
   sheets.open('shop', (b, close) => {
-    const u = buildShop(ctx, b);
+    // Between runs the Charter (a choice for the run about to begin) leads, above the seats and the shop.
     const ch = after ? charterChoice(ctx) : null;
-    if (ch) b.append(ch.el);
+    const u = buildShop(ctx, b, ch?.el);
     if (after) b.append(h('div', { class: 'sheet-foot sticky-foot' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); after(); } }, 'Begin the next run')));
     return () => { u(); ch?.update(); };
   }, { label: 'Hindsight', cls: 'shop-sheet' + (after ? ' full-ish' : ''), blocking: !!after, dismissable: !after });

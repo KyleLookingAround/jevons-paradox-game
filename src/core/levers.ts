@@ -4,7 +4,10 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import type { Content, GameState, LeverDef, LeverKind, LeverLevelDef, LeverRecycle, LeverState } from '../types';
+import { FEATURE_IDS } from '../types';
+import type { FeatureId } from '../types';
 import { DEFAULT_MANDATE_SHARE } from './constants';
+import { featureOn } from './features';
 import { idx } from './contentIndex';
 import { isSeatedOrLoaned } from './effects';
 import type { Mods } from './effects';
@@ -142,16 +145,25 @@ export function leverNetUpkeep(def: LeverDef, level: number, instLevel: number):
 export const mandateShareOf = (content: Content): number => fin(content.global?.levy?.mandateShare ?? DEFAULT_MANDATE_SHARE);
 
 
+const FEATURE_SET: ReadonlySet<string> = new Set(FEATURE_IDS);
+
+/** Highest level the player may reach now: the authored levels only until 'leverRepeat' is unlocked. */
+export function leverReachable(state: GameState, content: Content, def: LeverDef): number {
+  const max = leverMaxLevel(def);
+  return featureOn(content, state.meta, 'leverRepeat') ? max : Math.min(max, def.levels?.length ?? 0);
+}
+
 export function leverVisible(state: GameState, content: Content, def: LeverDef, mods: Mods): boolean {
   const es = state.sectors[def.sector];
   if (!es?.open || es.settled) return false;
   if (def.locked && !mods.unlocked.has(def.id)) return false;
   const inst = (mods.startLevers[def.id] ?? 0) > 0;
-  if (!state.flags.revealed && !inst) return false;
+  if (!inst && (!state.flags.revealed || !featureOn(content, state.meta, 'levers'))) return false;
   const ix = idx(content);
   return (def.requires ?? []).every((r) =>
     r === 'revealed' ? state.flags.revealed
       : ix.upgrades.has(r) ? (state.upgrades[r] ?? 0) > 0
         : ix.institutions.has(r) ? isSeatedOrLoaned(state.meta, mods, r)
-          : true);
+          : FEATURE_SET.has(r) ? featureOn(content, state.meta, r as FeatureId)
+            : true);
 }
