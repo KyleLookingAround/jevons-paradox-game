@@ -1152,7 +1152,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   /** A value quantised to `step` that moves only when the input has moved a whole step away from the shown one. */
   function hyst(b: Built, k: string, x: number, step: number): number {
     const last = b.hy.get(k);
-    if (last !== undefined && Math.abs(x - last) < step * 0.75) return last;
+    if (last !== undefined && Math.abs(x - last) < step) return last;
     const v = Math.round(x / step) * step;
     b.hy.set(k, v);
     return v;
