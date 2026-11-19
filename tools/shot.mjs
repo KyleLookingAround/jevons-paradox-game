@@ -128,17 +128,21 @@ async function flow(base, tag0 = 'flow') {
     });
     await step('take a fork arm; the other is ruled out', async () => {
       await page.locator('.fork .up .buy:not([aria-disabled="true"])').first().click(); await page.waitForTimeout(200);
+      // One arm of a fork asks first (it rules the other out for the run).
+      await page.click('.layer:not([hidden]) button:has-text("Take it")'); await page.waitForTimeout(200);
       if (!(await page.locator('.up.excluded .ruled:has-text("Ruled out by")').count())) throw new Error('no ruled-out card');
     });
     await step('buy an upgrade', async () => {
       const n = Object.values((await st()).upgrades).reduce((a, b) => a + b, 0);
       await page.locator('.up .buy:not([aria-disabled="true"]):visible').first().click(); await page.waitForTimeout(150);
+      if (await page.locator('.layer:not([hidden]) button:has-text("Take it")').count()) { await page.click('.layer:not([hidden]) button:has-text("Take it")'); await page.waitForTimeout(150); }
       if (Object.values((await st()).upgrades).reduce((a, b) => a + b, 0) !== n + 1) throw new Error('no upgrade bought');
     });
     await step('found an app (scene: tap the staked plot, then Found in its card)', async () => {
       const place = page.locator('.scn-place.avail').first();
       const id = await place.getAttribute('data-app');
-      await place.scrollIntoViewIfNeeded(); await place.click(); await page.waitForTimeout(150);
+      await place.evaluate((el) => el.scrollIntoView({ block: 'center' })); await place.click(); await page.waitForTimeout(150);
+      await page.locator('.scn-found:not([aria-disabled="true"])').evaluate((el) => el.scrollIntoView({ block: 'center' }));
       await page.click('.scn-found:not([aria-disabled="true"])'); await page.waitForTimeout(200);
       const s = await st(); if (!s.sectors.steam.apps[id].founded) throw new Error(id + ' not founded');
     });
