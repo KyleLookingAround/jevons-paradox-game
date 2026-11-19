@@ -77,6 +77,8 @@ const KIND_GAIN: Record<SoundEventKind, number> = {
   crisis: 0.32, decade: 0.3, steady: 0.38, reckoning: 0.4, industryOpened: 0.34, ageBegun: 0.4,
 };
 const KIND_VARIANTS: Partial<Record<SoundEventKind, number>> = { sell: 6, buy: 3 };
+/** Moments worth playing late (a beat or so) rather than not at all, if their sound is not ready on first use. */
+const LATE_OK = new Set<SoundEventKind>(['reveal', 'backfire', 'steady', 'reckoning', 'ageBegun', 'industryOpened', 'crisis', 'decade', 'found', 'fork']);
 const DUCKS: Partial<Record<SoundEventKind, [number, number]>> = { reveal: [0.45, 4.5], backfire: [0.6, 2], steady: [0.6, 3], ageBegun: [0.5, 3.5], reckoning: [0.7, 3] };
 
 export function createSoundscape(opts: SoundscapeOptions & { clock?: () => number } = {}): Soundscape {
@@ -687,15 +689,25 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (let i = sellEnds.length - 1; i >= 0; i--) if (sellEnds[i] <= t) sellEnds.splice(i, 1);
       if (sellEnds.length >= MAX_SELL_VOICES) return;
     }
-    const b = recipe(`ui:${pal}:${kind}`, key, v, true);
-    if (!b) return;
-    const ok = playBuf(b, uiBus, t + 0.005, gain, Math.max(-0.6, Math.min(0.6, d.pan ?? 0)), null, kind === 'sell' || kind === 'cannotAfford' ? null : revIn, 0.25, uiEnds, MAX_UI_VOICES, rate);
-    if (ok && kind === 'sell') sellEnds.push(t + b.duration / rate);
-    const dk = DUCKS[kind];
-    if (ok && dk && duck) {
-      const p = duck.gain;
-      try { p.cancelScheduledValues(t); p.setTargetAtTime(dk[0], t, 0.08); p.setTargetAtTime(1, t + dk[1], 0.8); } catch { /* ignore */ }
-    }
+    const pan = Math.max(-0.6, Math.min(0.6, d.pan ?? 0));
+    const go = (b: AudioBuffer, at: number) => {
+      const ok = playBuf(b, uiBus!, at, gain, pan, null, kind === 'sell' || kind === 'cannotAfford' ? null : revIn, 0.25, uiEnds, MAX_UI_VOICES, rate);
+      if (ok && kind === 'sell') sellEnds.push(at + b.duration / rate);
+      const dk = DUCKS[kind];
+      if (ok && dk && duck) {
+        const p = duck.gain;
+        try { p.cancelScheduledValues(at); p.setTargetAtTime(dk[0], at, 0.08); p.setTargetAtTime(1, at + dk[1], 0.8); } catch { /* ignore */ }
+      }
+    };
+    const c0 = ctx;
+    // Not synthesised yet (the first moments after sound is turned on): play it when it is ready if that is soon, or at
+    // any delay for the rare moments that must not be lost; a tap's sound that would arrive late is dropped.
+    const b = recipe(`ui:${pal}:${kind}`, key, v, true, (nb) => {
+      if (!nb || ctx !== c0 || !wanted() || !running()) return;
+      const late = now() - t;
+      if (late < 0.3 || LATE_OK.has(kind)) go(nb, now() + 0.01);
+    });
+    if (b) go(b, t + 0.005);
   }
 
   /* ---------------- public ---------------- */
@@ -755,7 +767,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         for (let i = 0; i < meterBuf.length; i++) { const x = meterBuf[i]; s2 += x * x; pk = Math.max(pk, Math.abs(x)); }
         levelDb = 20 * Math.log10(Math.sqrt(s2 / meterBuf.length) + 1e-9); peakDb = 20 * Math.log10(pk + 1e-9);
       }
-      return { state, voices: live(worldEnds) + live(uiEnds), beds, graphs: graphs.length, sampleRate: ctx?.sampleRate ?? 0, updateMs, tickMs, bufferSamples: bankSamples, levelDb, peakDb };
+      return { state, voices: live(worldEnds) + live(uiEnds), beds, graphs: graphs.length, sampleRate: ctx?.sampleRate ?? 0, updateMs, tickMs, bufferSamples: bankSamples(), levelDb, peakDb };
     },
     destroy() {
       if (destroyed) return;
@@ -763,7 +775,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       stopTimer(); disarm(); listen(false);
       for (const g of graphs) killGraph(g, true);
       graphs = [];
-      bank.clear(); used.clear(); noiseBufs.clear(); last.clear(); warm.length = 0;
+      last.clear(); warm.length = 0;
+      if (attached) { detach(attached); attached = null; }
       if (ctx && !external) { const a = ctx as AudioContext; a.onstatechange = null; setTimeout(() => { void a.close().catch(() => {}); }, 250); }
       ctx = null;
     },

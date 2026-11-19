@@ -33,9 +33,9 @@ export function runJob(j: Job): JobResult {
     for (let i = 0; i < m; i++) { const a = i / m; x[i] = x[i] * a + x[n - m + i] * (1 - a); }
     return { chans: [x.slice(0, n - m)], sr: BUF_SR };
   }
-  // A generated room: a darkening noise tail, decorrelated left and right. Made at half the context rate (a convolver
-  // resamples its buffer; the tail is low-passed anyway), which halves the work and the convolution's length.
-  const sr = Math.round(j.sr / 2), n = Math.round(j.dur * sr);
+  // A generated room: a darkening noise tail, decorrelated left and right, at the context's rate (a ConvolverNode
+  // refuses a buffer at any other rate).
+  const sr = j.sr, n = Math.round(j.dur * sr);
   const chans: Float32Array[] = [];
   for (let ch = 0; ch < 2; ch++) {
     const r = rngFrom(j.seed ^ (0x1e + ch)), d = new Float32Array(n);
@@ -43,7 +43,7 @@ export function runJob(j: Job): JobResult {
     for (let i = 0; i < n; i++) {
       const t = i / sr;
       const a = Math.min(1, t / 0.012) * Math.exp(-t * 3.6);
-      const k = Math.min(1, (0.5 * Math.exp(-t * 2.2) + 0.04) * 2);   // the tail darkens (coefficient at half rate)
+      const k = 0.5 * Math.exp(-t * 2.2) + 0.04;            // the tail darkens
       lp += ((r() * 2 - 1) - lp) * k;
       d[i] = lp * a;
     }

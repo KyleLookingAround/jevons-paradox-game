@@ -431,7 +431,7 @@ function calc(s: GameState, c: Content, id: SectorId, etaOverride?: number): Cal
     return { eta: st0.eta, prBase: 0, permit: 0, cap: 0, margin: 0, sigma: 0, pre: st0.pPre, permitPart: 0, dutyPart: 0, ps: st0.ps, D: st0.D, R: st0.R, apps, income: st0.income, levy: 0 };
   }
   const eta = etaOverride ?? etaOf(s, c, id);
-  const prBase = def.resourceKind === 'flow' ? def.basePrice * 1.2 : def.basePrice * Math.pow(es.reserveMax / Math.max(1, es.reserve), def.alpha);
+  const prBase = def.resourceKind === 'flow' ? def.basePrice * 1.2 : def.basePrice * seamMul(s, c, id) * Math.pow(es.reserveMax / Math.max(1, es.reserve), def.alpha);
   const cap = def.capCost * mul(s, c, 'capCostMul', id);
   const margin = Math.max(0, def.margin + add(s, c, 'marginAdd', id));
   const sub = activeLever(s, c, id, 'substitution'); const sigma = sub ? sub.lv.value : 0;
@@ -672,16 +672,17 @@ function applyUpgrade(s: GameState, c: Content, u: UpgradeDef, cost: number, by:
   for (const e of u.effects) {
     if (e.type === 'reveal') { s.flags.revealed = true; news(s, c, 'reveal'); emit(s, c, 'reveal', { sector: u.sector }); }
     if (e.type === 'reserveAdd') { const es = s.sectors[e.sector]; es.reserve += e.value * c.sectors[e.sector].reserve; es.reserveMax += e.value * c.sectors[e.sector].reserve; }
+    if (e.type === 'metaFlag') { s.meta.flags[e.flag] = true; if (e.flag === 'proprietor') publishReturn(s, c); }
   }
   if (u.kind === 'efficiency') news(s, c, 'efficiency', {}, u.sector);
   if (s.run.opening.length < OPENING_MAX) s.run.opening = [...s.run.opening, { t: s.time, kind: 'upgrade', id: u.id, by }];
   emit(s, c, 'upgradeBought', { sector: u.sector, id: u.id, n: s.upgrades[u.id], by });
   const st1 = stageOf(s, c, u.sector);
-  if (st1 != null && st1 > (st0 ?? 0)) emit(s, c, 'stageReached', { sector: u.sector, id: u.id, n: st1 });
+  if (st1 != null && st1 > (st0 ?? 0)) emit(s, c, 'stageReached', { sector: u.sector, id: u.id, n: st1, label: u.machine ?? u.name });
 }
 
 /** One step. Returns nothing; mutates the clone. */
-function step(s: GameState, c: Content, dt: number): void {
+function step(s: GameState, c: Content, dt: number, live = true): void {
   const t0 = s.time;
   s.time += dt;
   let income = 0, levyMandate = 0, levyCommons = 0;
@@ -813,6 +814,7 @@ function step(s: GameState, c: Content, dt: number): void {
   }
   // Standing orders, at order ticks.
   if (!ordersPaused && Math.floor(s.time * YEARS_PER_SECOND / INTERVAL_YEARS) > Math.floor(t0 * YEARS_PER_SECOND / INTERVAL_YEARS) && !pending(s, c) && s.time > 0) runOrders(s, c);
+  if (s.dispatch) stepM3(s, c, dt, live);
 }
 function leverUpkeep(s: GameState, c: Content): number {
   let u = 0;
@@ -884,6 +886,235 @@ function buildCommons(s: GameState, c: Content, v: CommonsView, by: Actor): void
 let viewsOf: (s: GameState, c: Content) => UpgradeView[] = () => [];
 /** Standing orders wait while the mock builds its starting states (so `rich` starts where it always did). */
 let ordersPaused = false;
+
+/* ---------------- M3 (crude; display-shaped) ---------------- */
+/** M3 features the mock switches on (set by makeMockModel from the hash). */
+let m3Feat = new Set<FeatureId>();
+let mockOptsNow: MockOpts = {};
+const M3_IDS: FeatureId[] = ['archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey', 'histories', 'bank'];
+const featOn = (id: FeatureId): boolean => m3Feat.has(id);
+const DISPATCH_EXPIRY = 12 / YEARS_PER_SECOND;
+const DISPATCH_GAP = 6 / YEARS_PER_SECOND;
+function freshDispatch(): GameState['dispatch'] {
+  return { pending: [], queue: [], answered: [], offered: [], draws: 0, nextAt: 30, standing: [] };
+}
+function seamMul(s: GameState, c: Content, id: SectorId): number {
+  const n = s.sectors[id]?.seamsSunk ?? 0;
+  return n > 0 ? c.sectors[id].seams?.[n - 1]?.priceMul ?? 1 : 1;
+}
+function ownsM3(s: GameState, id: string): boolean {
+  return (s.upgrades[id] || 0) >= 1 || (s.levers[id]?.level ?? 0) >= 1 || (s.meta.knowhow[id] || 0) >= 1;
+}
+function oneOffs(s: GameState, c: Content, effs: EffectDef[], income: number): void {
+  for (const e of effs) {
+    if (e.type === 'capitalAdd') s.capital = Math.max(0, s.capital + e.value * income);
+    else if (e.type === 'mandateAdd') s.mandate = Math.max(0, s.mandate + e.value);
+    else if (e.type === 'pressureAdd' && s.sectors[e.sector]) s.sectors[e.sector].pressure = Math.max(0, s.sectors[e.sector].pressure + e.value * c.sectors[e.sector].collapseAt);
+  }
+}
+function resolveDispatch(s: GameState, c: Content, id: string, arm: number, by: Actor): void {
+  const d = (c.dispatches || []).find((x) => x.id === id);
+  if (!d) return;
+  const a = d.arms[arm];
+  const income = totalIncome(s, c);
+  if (a.cost) { s.mandate = Math.max(0, s.mandate - (a.cost.mandate ?? 0)); s.capital = Math.max(0, s.capital - (a.cost.capitalSeconds ?? 0) * income); }
+  oneOffs(s, c, a.effects ?? [], income);
+  if (a.modifier) {
+    const until = s.time + a.modifier.years / YEARS_PER_SECOND;
+    const ex = s.modifiers.find((m) => m.source === id && m.arm === arm);
+    if (ex) ex.until = Math.max(ex.until, until); else s.modifiers.push({ source: id, arm, since: s.time, until });
+  }
+  s.dispatch.pending = s.dispatch.pending.filter((p) => p.id !== id);
+  s.dispatch.answered = [...s.dispatch.answered, { id, arm, t: s.time, by }].slice(-60);
+  const arms = s.meta.dispatches.arms[id] ?? []; arms[arm] = (arms[arm] ?? 0) + 1; s.meta.dispatches.arms[id] = arms;
+  if (by === 'player') { const pa = s.meta.dispatches.playerArms[id] ?? []; pa[arm] = (pa[arm] ?? 0) + 1; s.meta.dispatches.playerArms[id] = pa; s.run.dispatchesAnswered++; }
+  else s.run.dispatchesDefaulted++;
+  if (a.reply) news(s, c, 'answered' as HeadlineKey, {}, d.sector);
+  if (a.reply) s.news[0] = { ...s.news[0], text: a.reply };
+  emit(s, c, 'dispatchAnswered', { id, n: arm, sector: d.sector, by });
+  if (!s.meta.milestones.dispatch) s.meta.milestones.dispatch = { run: s.meta.reckonings + 1, at: s.meta.totalSeconds + s.time, year: Math.floor(yearOf(s, c)) };
+  s.dispatch.nextAt = Math.max(s.dispatch.nextAt, s.time + DISPATCH_GAP);
+}
+function drawDispatch(s: GameState, c: Content): void {
+  const list = c.dispatches || [];
+  const cand = list.filter((d) => !s.dispatch.offered.includes(d.id));
+  const d = cand[0] ?? list[s.dispatch.draws % Math.max(1, list.length)];
+  if (!d) return;
+  s.dispatch.draws++;
+  s.dispatch.pending.push({ id: d.id, arrivedAt: s.time, expiresAt: s.time + (d.expiryYears ?? 12) / YEARS_PER_SECOND });
+  s.dispatch.offered.push(d.id);
+  s.meta.dispatches.seen[d.id] = (s.meta.dispatches.seen[d.id] ?? 0) + 1;
+  news(s, c, 'dispatch' as HeadlineKey, {}, d.sector);
+  s.news[0] = { ...s.news[0], text: d.headline };
+  emit(s, c, 'dispatchArrived', { id: d.id, sector: d.sector, label: d.cast });
+}
+/** The M3 part of a step (after the M2 part). `live`: not inside a catch-up (letters need a reader). */
+function stepM3(s: GameState, c: Content, dt: number, live: boolean): void {
+  const dy = dt * YEARS_PER_SECOND;
+  for (const l of c.levers) {
+    const se = l.sideEffects; if (!se) continue;
+    const st = s.levers[l.id]; if (!st) continue;
+    const active = st.level >= 1 && !(se.unless && 'owns' in se.unless && ownsM3(s, se.unless.owns));
+    const b = st.bite ?? 0;
+    st.bite = active ? b + (1 - b) * (1 - Math.exp(-dy / se.rampYears)) : b * Math.exp(-dy / (se.decayYears ?? se.rampYears));
+    if (st.bite >= 0.5 && !st.bitten) { st.bitten = true; if (featOn('sideEffects')) news(s, c, 'biteBack' as HeadlineKey, {}, l.sector); emit(s, c, 'biteBack', { sector: l.sector, id: l.id }); }
+  }
+  for (const m of [...s.modifiers]) if (m.until <= s.time) { s.modifiers = s.modifiers.filter((x) => x !== m); emit(s, c, 'modifierEnded', { id: m.source, n: m.arm }); }
+  for (const p of [...s.dispatch.pending]) if (p.expiresAt <= s.time) resolveDispatch(s, c, p.id, (c.dispatches || []).find((d) => d.id === p.id)?.defaultArm ?? 0, 'default');
+  if (live && featOn('dispatches') && !pending(s, c) && s.dispatch.pending.length < 1 && s.time >= s.dispatch.nextAt) drawDispatch(s, c);
+}
+function m3SectorViews(s: GameState, c: Content, id: SectorId, k: Calc): Pick<SectorDerived, 'seams' | 'load' | 'travel' | 'free' | 'upkeep'> {
+  const def = c.sectors[id], es = s.sectors[id];
+  let seams: SectorDerived['seams'] = null, load: SectorDerived['load'] = null, travel: SectorDerived['travel'] = null, free: SectorDerived['free'] = null, upkeep: SectorDerived['upkeep'] = null;
+  if (def.seams?.length && def.resourceKind === 'stock' && featOn('seams')) {
+    const n = es.seamsSunk ?? 0;
+    seams = { sunk: n, total: def.seams.length, priceMul: seamMul(s, c, id), ladder: def.seams.map((sd, i) => {
+      const reachable = i === n && k.ps <= (sd.reachBelow ?? Infinity);
+      return { def: sd, sunk: i < n, reachable, cost: sd.cost, canSink: reachable && s.capital >= sd.cost && !es.settled && !pending(s, c), forbidden: false };
+    }) };
+  }
+  if (def.load && featOn('load')) {
+    const L = def.load;
+    const shape = (key?: string) => { const w = L.profiles[key ?? ''] ?? L.profiles[L.defaultProfile] ?? []; const sum = w.reduce((a, x) => a + x, 0) || 1; return w.map((x) => 24 * x / sum); };
+    const hours = Array.from({ length: 24 }, () => 0);
+    for (const a of def.applications) { const d = k.apps[a.id]?.d ?? 0; if (!d) continue; const sh = shape(a.profile); for (let h = 0; h < 24; h++) hours[h] += d * (sh[h] ?? 1); }
+    const D = hours.reduce((a, x) => a + x, 0) / 24, peak = Math.max(...hours);
+    const LF = peak > 0 ? D / peak : 1;
+    load = { factor: LF, hours, peak, capCostBase: k.cap, capCostEff: k.cap * ((1 - L.fixedShare) + L.fixedShare / Math.max(L.floor ?? 0.05, LF)) };
+  }
+  if (def.travel && featOn('travel')) {
+    const T = def.travel, b = T.exponent ?? 4;
+    const cong = Math.pow(k.D / T.roads, b), v = 1 / (1 + cong);
+    let sprawl = 0;
+    for (const a of def.applications) if (es.apps[a.id]?.founded && a.lockIn) sprawl += a.lockIn * es.apps[a.id].peakD;
+    travel = { speed: v, freeSpeed: 1, roads: T.roads, congestion: cong, hoursPerHead: T.hoursScale * (k.D / Math.max(0.01, s.population)) / Math.max(v, 1e-6), sprawl, sprawlShare: k.D > 0 ? Math.min(1, sprawl / k.D) : 0 };
+  }
+  if (featOn('freeAtUse')) {
+    let bill = 0, fd = 0, any = false;
+    for (const a of def.applications) {
+      if (!a.priceSeen || !es.apps[a.id]?.founded) continue;
+      const pa = a.priceSeen.share * k.ps + (a.priceSeen.flat ?? 0);
+      if (pa !== k.ps) any = true;
+      if (pa < k.ps) { bill += (k.ps - pa) * k.apps[a.id].d; fd += k.apps[a.id].d; }
+    }
+    if (any) free = { bill, freeShare: k.D > 0 ? fd / k.D : 0 };
+  }
+  if ((def.pressureUpkeep ?? 0) > 0) {
+    const cap = def.reserve || 1;
+    upkeep = { share: Math.min(0.95, es.pressure * (def.pressureUpkeep ?? 0) * 40 / cap * 1000), deletionOut: (activeLever(s, c, id, 'deletion')?.lv.value ?? 0) * 40, pressureIn: pressureIn(c, id, k) };
+  }
+  return { seams, load, travel, free, upkeep };
+}
+
+/** M3 fixture on a rich state (#mock:m3): letters, modifiers, a biting lever, the Archive, Histories, the survey. */
+function m3Fixture(s: GameState, c: Content): void {
+  const o = mockOptsNow;
+  s.meta.reckonings = 5;
+  const ms = (run: number, at: number, year: number) => ({ run, at, year });
+  s.meta.milestones = {
+    reveal: ms(1, 540, 1806), 'backfire:steam': ms(1, 700, 1811), 'sectorOpened:light': ms(2, 4200, 1871), dispatch: ms(2, 5400, 1823),
+    decade: ms(3, 9600, 1812), 'seam:steam': ms(3, 10400, 1826), 'clearSkies:steam': ms(4, 15800, 1844), 'steady:steam': ms(4, 17600, 1862),
+    'sectorOpened:motion': ms(4, 19800, 1952), 'settled:light': ms(5, 24000, 1921), history: ms(5, 29000, 1858),
+  };
+  s.sectors.steam.seamsSunk = 1; s.sectors.steam.reserve += 120_000; s.sectors.steam.reserveMax += 120_000;
+  // A biting lever (the duty, unpaired).
+  s.levers['steam.duty'] = { ...s.levers['steam.duty'], level: 2, bite: 0.62, bitten: true };
+  if (s.levers['motion.standard']) s.levers['motion.standard'] = { level: 1, ref: 0, bite: 0.3 };
+  // Answered letters and the modifiers they left.
+  const ids = (c.dispatches || []).map((d) => d.id);
+  s.dispatch.answered = [{ id: ids[3] ?? ids[0], arm: 1, t: s.time - 200, by: 'player' }, { id: ids[2] ?? ids[0], arm: 0, t: s.time - 90, by: 'default' }];
+  s.dispatch.offered = [...new Set(s.dispatch.answered.map((a) => a.id))];
+  s.modifiers = [];
+  for (const a of s.dispatch.answered) {
+    const arm = (c.dispatches || []).find((d) => d.id === a.id)?.arms[a.arm];
+    if (arm?.modifier) s.modifiers.push({ source: a.id, arm: a.arm, since: a.t, until: s.time + 150 + s.modifiers.length * 140 });
+  }
+  s.run.dispatchesAnswered = 1; s.run.dispatchesDefaulted = 1;
+  const letter = o.letter ?? 2;
+  if (letter) {
+    const id = letter === 3 ? 'd.steam.tallChimney' : 'd.gen.firstLetter';
+    s.dispatch.pending = [{ id, arrivedAt: s.time - 20, expiresAt: s.time + 190 }];
+    s.dispatch.offered.push(id);
+    if (letter === 3) s.mandate = 30;
+  }
+  s.dispatch.nextAt = letter ? s.time + 9999 : s.time + 70;
+  // The Archive: two notes in three unlocked, spread over the save.
+  (c.archive || []).forEach((a, i) => { if (i % 3 !== 2) s.meta.archive[a.id] = 600 + i * 170; });
+  // Histories: one cleared, one in force this run.
+  const hs = c.histories || [];
+  if (hs[1]) s.meta.histories[hs[1].id] = { runs: 2, cleared: true, best: 3120 };
+  if (hs[0]) { s.meta.histories[hs[0].id] = { runs: 1, cleared: false, best: null }; s.meta.history = hs[0].id; }
+  s.meta.unlocks = { 'title:Coal owner': true };
+  // The survey.
+  const sv = o.survey ?? 'none';
+  if (sv !== 'none') {
+    const dir = sv === 'filed' ? 'up' : sv;
+    s.meta.returns.household = { figures: fixtureFigures(dir), run: 5, at: s.meta.totalSeconds, published: false, template: null };
+    if (sv !== 'filed') { s.meta.flags.proprietor = true; s.meta.returns.household.published = true; s.meta.returns.household.template = 0; }
+  }
+  s.meta.institutions['inst.civilService'] = 1;
+  if (o.ending) {
+    s.steadyYearsAll = 49.6;
+    (s as unknown as { _winAt: number })._winAt = s.time + 64;
+  }
+}
+function householdDerived(s: GameState, c: Content): SurveyView | null {
+  const r = s.meta.returns?.household;
+  if (!r || !featOn('survey')) return null;
+  const f = r.figures;
+  const div = (a: number, b: number) => (b > 0 ? a / b : null);
+  const wb = div(f.activeMinutesBefore, f.daysBefore), wa = div(f.activeMinutesAfter, f.daysAfter);
+  const db = div(f.decisionsBefore, f.activeMinutesBefore / 60), da = div(f.decisionsAfter, f.activeMinutesAfter / 60);
+  const ch = (a: number | null, b: number | null) => (a != null && b != null && b !== 0 ? a / b - 1 : null);
+  const wc = ch(wa, wb);
+  const direction: SurveyView['direction'] = wc == null ? 'flat' : wc > 0.05 ? 'up' : wc < -0.05 ? 'down' : 'flat';
+  let text: SurveyView['text'] = null;
+  if (r.published) {
+    const tpl = (c.proprietor?.returns || []).filter((x) => x.direction === direction)[r.template ?? 0];
+    const vars: Record<string, string> = {
+      workdayBefore: String(Math.round(wb ?? 0)), workdayAfter: String(Math.round(wa ?? 0)), workdayChange: String(Math.round(Math.abs((wc ?? 0) * 100))),
+      decisionsBefore: String(Math.round(db ?? 0)), decisionsAfter: String(Math.round(da ?? 0)),
+      sessionsBefore: (div(f.sessionsBefore, f.daysBefore) ?? 0).toFixed(1), sessionsAfter: (div(f.sessionsAfter, f.daysAfter) ?? 0).toFixed(1),
+      automatedPerHour: String(Math.round(div(f.automatedAfter, f.activeMinutesAfter / 60) ?? 0)),
+    };
+    const sub = (t: string) => t.replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
+    if (tpl) text = { headline: sub(tpl.headline), body: sub(tpl.body) };
+  }
+  return {
+    filedRun: r.run, published: r.published, workdayBefore: wb, workdayAfter: wa, workdayChange: wc,
+    decisionsPerHourBefore: db, decisionsPerHourAfter: da, decisionsChange: ch(da, db),
+    automatedPerHour: div(f.automatedAfter, f.activeMinutesAfter / 60),
+    sessionsPerDayBefore: div(f.sessionsBefore, f.daysBefore), sessionsPerDayAfter: div(f.sessionsAfter, f.daysAfter),
+    minutesPerSessionBefore: div(f.activeMinutesBefore, f.sessionsBefore), minutesPerSessionAfter: div(f.activeMinutesAfter, f.sessionsAfter),
+    direction, pure: { decisionsPerDecadeBefore: 14, decisionsPerDecadeAfter: 9 }, text,
+  };
+}
+function publishReturn(s: GameState, c: Content): void {
+  const r = s.meta.returns?.household;
+  if (!r || r.published) return;
+  r.published = true; r.template = 0;
+  const v = householdDerived(s, c);
+  if (v?.text) { news(s, c, 'return' as HeadlineKey); s.news[0] = { ...s.news[0], text: v.text.headline }; }
+  emit(s, c, 'returnPublished', { id: 'household', n: Math.round((v?.workdayChange ?? 0) * 100) });
+  if (!s.meta.milestones.proprietor) s.meta.milestones.proprietor = { run: s.meta.reckonings + 1, at: s.meta.totalSeconds + s.time, year: Math.floor(yearOf(s, c)) };
+}
+/** Household figures shaped to give a direction (for the mock's fixtures). */
+function fixtureFigures(dir: 'up' | 'down' | 'flat'): Record<string, number> {
+  const after = dir === 'up' ? 1800 : dir === 'down' ? 700 : 1040;
+  return { activeMinutesBefore: 1000, activeMinutesAfter: after, sessionsBefore: 14, sessionsAfter: 22, looksBefore: 40, looksAfter: 96,
+    decisionsBefore: 1500, decisionsAfter: dir === 'up' ? 2100 : 800, automatedAfter: 2600, daysBefore: 10, daysAfter: 10, quietDays: 3 };
+}
+function marketWhyOf(s: GameState, c: Content, id: SectorId, i: number): MarketWhy {
+  if (s.sectors[id]?.settled) return { reason: 'settled' };
+  if (s.meta.orders?.market?.sectors?.[id] === false) return { reason: 'sectorOff' };
+  const opts: MarketWhy[] = [
+    { reason: 'payback', payback: 380 + 40 * i, at: s.time - 12 },
+    { reason: 'bought', id: c.upgrades.find((u) => u.sector === id)?.id ?? id, at: s.time - 8 },
+    { reason: 'cash', at: s.time - 5 },
+    { reason: 'none', at: s.time - 20 },
+  ];
+  return opts[i % opts.length];
+}
 function commonsViewsOf(s: GameState, c: Content): CommonsView[] {
   const open = commonsOpen(s, c), pend = !!pending(s, c), ym = mul(s, c, 'commonsYieldMul');
   return (c.commons || []).map((p): CommonsView => {
@@ -901,7 +1132,7 @@ function commonsViewsOf(s: GameState, c: Content): CommonsView[] {
   });
 }
 function freshOrders(c: Content): OrdersState {
-  return { market: { on: true, paybackMax: c.global.orders?.marketPaybackMax ?? 120, sectors: {} }, civilService: { on: false, levers: {} }, treasury: { on: false, keepSeconds: 60, projects: [] } };
+  return { market: { on: true, paybackMax: c.global.orders?.marketPaybackMax ?? 120, sectors: {} }, civilService: { on: false, levers: {} }, treasury: { on: false, keepSeconds: 60, projects: [] }, dispatch: { on: false, cast: {} } };
 }
 
 export interface MockOpts {
@@ -918,6 +1149,14 @@ export interface MockOpts {
   /** The unfolding: every feature locked except those named by `feat=a+b` (Derived.features). Default: all unlocked. */
   locked?: boolean;
   feat?: string[];
+  /** M3: run 6 with every M3 system on (a pending letter, modifiers, a biting lever, the Archive, a History in force). */
+  m3?: boolean;
+  /** M3: the pending letter: 2 or 3 answers (3 has one the purse cannot meet); 0 = none waiting. */
+  letter?: number;
+  /** M3: the household survey: not filed, filed (the card waits), or published with that direction. */
+  survey?: 'none' | 'filed' | 'up' | 'down' | 'flat';
+  /** M3: at the brink of the first ending (credits and the retrospective a few seconds in). */
+  ending?: boolean;
 }
 
 /** `#mock` or `#mock:rich,reveal,all,budget,pending,won,persist,smog=0.8,sector=compute,m2,away=held,fresh,late`. */
@@ -932,8 +1171,13 @@ export function parseMockHash(hash: string): MockOpts | null {
     else if (k === 'locked') o.locked = true;
     else if (k === 'feat') o.feat = (v || '').split('+').filter(Boolean);
     else if (k === 'away') o.away = v === 'plain' ? 'plain' : 'held';
+    else if (k === 'm3') o.m3 = true;
+    else if (k === 'ending') { o.ending = true; o.m3 = true; }
+    else if (k === 'letter') o.letter = Number(v) || 0;
+    else if (k === 'survey' && ['none', 'filed', 'up', 'down', 'flat'].includes(v)) o.survey = v as MockOpts['survey'];
     else if ((k === 'sector' || k === 'era') && mockContent.sectors[v]) o.sector = v;
   }
+  if (o.m3) o.m2 = true;
   if (o.m2) { o.all = true; o.budget = true; }
   if (o.all) { o.rich = true; o.reveal = true; }
   if (o.budget) { o.rich = true; o.reveal = true; }
@@ -942,10 +1186,14 @@ export function parseMockHash(hash: string): MockOpts | null {
 }
 
 export function makeMockModel(opts: MockOpts = {}): ModelApi {
+  mockOptsNow = opts;
+  m3Feat = new Set(M3_IDS.filter((f) => f !== 'bank' && (opts.m3 || (opts.feat ?? []).includes(f))));
   const freshMeta = (c: Content): MetaState => ({
     hindsight: 0, hindsightEarned: 0, reckonings: 0, knowhow: {}, institutions: {}, achievements: {}, steadySectors: {}, sectorsOpened: {},
     totalSeconds: 0, slots: c.global.startingSlots ?? 2, loadout: [], backfiredSectors: {},
     charter: null, orders: freshOrders(c), runs: [], eventSeq: 0, knowhowPeak: {}, peakPopulationEver: 1,
+    dispatches: { seen: {}, arms: {}, playerArms: {} }, history: null, histories: {}, unlocks: {}, returns: {}, archive: {}, flags: {}, endings: {},
+    milestones: {}, bankedSeconds: 0,
   });
   const seatedReveal = (s: GameState, c: Content) => effects(s, c).some((e) => e.type === 'reveal');
   const terms = (s: GameState, c: Content): HindsightTerms => {
@@ -1019,19 +1267,21 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         sectors[id] = {
           open: false, openFor: 0, eta: def.baseEta, etaAtBase: 0, reserve: def.reserve, reserveMax: def.reserve, pressure: 0, crisesFired: 0, apps,
           baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0, peakR: 0, steadyYears: 0, backfired: false, budget: null, serviceDelivered: 0, decadesWithin: [],
-          decadesLean: [], windowLean: false, clearYears: 0, settled: null, settledBefore: false, dividends: [], peakPressure: 0,
+          decadesLean: [], windowLean: false, clearYears: 0, settled: null, settledBefore: false, dividends: [], peakPressure: 0, seamsSunk: 0,
         };
       }
       const m = meta ? clone(meta) : freshMeta(c);
       const s: GameState = {
-        version: 3, seed: seed ?? 1, time: 0, capital: c.global.startCapital, mandate: 0, population: 1, peakPopulation: 1, upgrades: {}, levers: {}, sectors,
+        version: 4, seed: seed ?? 1, time: 0, capital: c.global.startCapital, mandate: 0, population: 1, peakPopulation: 1, upgrades: {}, levers: {}, sectors,
         flags: { revealed: false, won: false }, steadyYearsAll: 0, news: [], history: [],
         run: {
           peakWellbeing: 0, decoupledYears: 0, resourceUsed: {}, clicks: 0, steadySectors: {}, wellbeingYears: 0, yearsAtTarget: 0, budgetDecades: 0, firstBackfires: {},
           leanDecades: 0, decisions: 0, decisionsByDecade: [], automated: 0, automatedByDecade: [], opening: [], firstBudgetAt: null,
+          dispatchesAnswered: 0, dispatchesDefaulted: 0,
         },
         meta: m,
         pendingDividends: [], commons: { levels: {}, fund: 0 }, events: [], lastOffline: null, charterOffer: [],
+        dispatch: freshDispatch(), modifiers: [], ambientLast: {}, orderLog: {}, historyLifted: false,
       };
       for (const l of c.levers) s.levers[l.id] = { level: 0, ref: 0 };
       s.capital *= mul(s, c, 'startCapitalMul');
@@ -1050,7 +1300,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           s.meta.reckonings = 4; s.meta.slots = 4; s.meta.runs = fakeRuns(c, 4); s.meta.charter = 'ch.coalfield';
           s.meta.institutions = { ...s.meta.institutions, 'in.civil': 1, 'in.treasury': 1 };
           s.meta.loadout = ['in.duty', 'in.museum', 'in.civil', 'in.treasury'];
-          s.meta.orders = { market: { on: true, paybackMax: 120, sectors: { iron: false } }, civilService: { on: true, levers: { steam: ['steam.cap'] } }, treasury: { on: false, keepSeconds: 60, projects: ['cm.baths', 'cm.park'] } };
+          s.meta.orders = { market: { on: true, paybackMax: 120, sectors: { iron: false } }, civilService: { on: true, levers: { steam: ['steam.cap'] } }, treasury: { on: false, keepSeconds: 60, projects: ['cm.baths', 'cm.park'] }, dispatch: { on: false, cast: {} } };
         }
         if (opts.reveal) { s.upgrades['steam.coalQuestion'] = 1; s.flags.revealed = true; s.mandate = 420; }
         for (let i = 0; i < 300; i++) step(s, c, 1);
@@ -1096,6 +1346,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           ];
           s.run.decisions = 96; s.run.automated = 41;
         }
+        if (opts.m3) m3Fixture(s, c);
         for (let i = 0; i < 60; i++) step(s, c, 1);
         if (opts.smog != null) for (const id of ids) if (s.sectors[id]?.open && !s.sectors[id].settled) s.sectors[id].pressure = c.sectors[id].collapseAt * opts.smog;
         if (opts.late) {
@@ -1137,7 +1388,14 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       const s = clone(s0);
       step(s, c, Math.max(0, Math.min(MAX_TICK_SECONDS, dt)));
       const w = s as unknown as { _winAt?: number };
-      if (w._winAt && s.time >= w._winAt) { s.flags.won = true; delete w._winAt; emit(s, c, 'won'); }
+      if (w._winAt && s.time >= w._winAt) {
+        s.flags.won = true; delete w._winAt; emit(s, c, 'won');
+        if (!s.meta.endings.steadyAll) {
+          const rec = { run: s.meta.reckonings + 1, runSeconds: s.time, totalSeconds: s.meta.totalSeconds + s.time, year: Math.floor(yearOf(s, c)) };
+          s.meta.endings.steadyAll = rec; s.meta.milestones.won = { run: rec.run, at: rec.totalSeconds, year: rec.year };
+          news(s, c, 'steadyAll'); emit(s, c, 'ending', { id: 'steadyAll' });
+        }
+      }
       return s;
     },
     fastForward(s0, c, seconds) {
@@ -1153,7 +1411,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       if (!heldBy) {
         for (; t < total; t += 5) {
           const nx = clone(cur);
-          step(nx, c, Math.min(5, total - t));
+          step(nx, c, Math.min(5, total - t), false);
           const crisis = order(c).find((id) => nx.sectors[id].crisesFired > cur.sectors[id].crisesFired);
           const p = pending(nx, c);
           if ((hold === 'crisis' && crisis) || (hold && p)) { heldBy = p ? (p.cause === 'collapse' ? 'collapse' : 'exhausted') : 'crisis'; heldSector = p?.sector ?? crisis; break; }
@@ -1198,7 +1456,8 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         const apps: SectorDerived['apps'] = {};
         for (const a of def.applications) {
           const st = es.apps[a.id];
-          apps[a.id] = { available: st.available, founded: st.founded, demand: k.apps[a.id].d, adoption: k.apps[a.id].ad, canFound: !settled && st.available && !st.founded && s.capital >= a.foundCost && !pend };
+          apps[a.id] = { available: st.available, founded: st.founded, demand: k.apps[a.id].d, adoption: k.apps[a.id].ad, canFound: !settled && st.available && !st.founded && s.capital >= a.foundCost && !pend,
+            priceSeen: a.priceSeen ? a.priceSeen.share * k.ps + (a.priceSeen.flat ?? 0) : k.ps, foundCost: a.foundCost, forbidden: false };
         }
         const bR = settled ? null : budgetR(s, c, id);
         const within = bR != null && k.R <= bR * (1 + BUDGET_TOLERANCE);
@@ -1220,6 +1479,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           canSettle: !settled && !!def.settle && s.flags.revealed && !pend && es.clearYears >= STEADY_STATE_YEARS && !!es.budget,
           settleExcess: settleExcess(s, id), settleDefence: settleDefenceOf(s, c, id), stage: stageOf(s, c, id),
           standingDrawIn: capOn && !es.budget ? Math.max(0, (def.steady?.standingDrawYears ?? c.global.steady?.standingDrawYears ?? 0) - es.openFor * YEARS_PER_SECOND) : null,
+          ...m3SectorViews(s, c, id, k),
         };
         income += k.income;
         const tre = ['duty', 'cap'].map((kind) => activeLever(s, c, id, kind)).find(Boolean);
@@ -1253,9 +1513,33 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           civilService: { available: orderUnlocked(s, c, 'civilService'), on: o.civilService.on, levers: o.civilService.levers },
           treasury: { available: orderUnlocked(s, c, 'treasury'), on: o.treasury.on, keepSeconds: o.treasury.keepSeconds, projects: o.treasury.projects },
           nextTickIn: (INTERVAL_YEARS / YEARS_PER_SECOND) - (s.time % (INTERVAL_YEARS / YEARS_PER_SECOND)),
+          marketWhy: Object.fromEntries(openIds.map((id, i) => [id, marketAvailable(s, c) ? (o.market.on ? marketWhyOf(s, c, id, i) : { reason: 'off' }) : { reason: 'unavailable' }])) as Record<SectorId, MarketWhy>,
+          dispatch: { available: featOn('dispatches') && s.meta.reckonings >= 4, on: o.dispatch?.on ?? false, cast: o.dispatch?.cast ?? {} },
+          kind: { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing' },
         },
         respec: { allowed: fresh && refund > 0, refund, refundByTree },
-        features: Object.fromEntries(FEATURE_IDS.map((f) => [f, !opts.locked || (opts.feat ?? []).includes(f)])) as Record<FeatureId, boolean>,
+        features: Object.fromEntries(FEATURE_IDS.map((f) => [f, M3_IDS.includes(f) ? featOn(f) : !opts.locked || (opts.feat ?? []).includes(f)])) as Record<FeatureId, boolean>,
+        dispatch: featOn('dispatches') ? {
+          pending: s.dispatch.pending.map((p): PendingDispatchView | null => {
+            const d = (c.dispatches || []).find((x) => x.id === p.id); if (!d) return null;
+            const castDef = (c.cast || []).find((x) => x.id === d.cast) ?? null;
+            return { id: p.id, def: d, cast: castDef, headline: d.headline, body: d.body, expiresIn: Math.max(0, p.expiresAt - s.time), defaultArm: d.defaultArm ?? 0,
+              arms: d.arms.map((a) => {
+                const capital = Math.max(0, (a.cost?.capitalSeconds ?? 0) * income), mandate = a.cost?.mandate ?? 0;
+                return { label: a.label, outcome: a.outcome, price: a.price, capital, mandate, affordable: !pend && s.capital >= capital && s.mandate >= mandate, effects: a.effects ?? [], modifier: a.modifier ?? null };
+              }) };
+          }).filter((x): x is PendingDispatchView => !!x),
+          nextIn: s.dispatch.pending.length || pend || fresh ? null : Math.max(0, s.dispatch.nextAt - s.time),
+        } : { pending: [], nextIn: null },
+        modifiers: s.modifiers.map((m): ModifierView | null => {
+          const a = (c.dispatches || []).find((x) => x.id === m.source)?.arms[m.arm];
+          return a?.modifier ? { source: m.source, arm: m.arm, label: a.modifier.label ?? a.label, effects: a.modifier.effects, remaining: Math.max(0, m.until - s.time) } : null;
+        }).filter((x): x is ModifierView => !!x).sort((a, b) => a.remaining - b.remaining),
+        history: { id: s.meta.history, cleared: !!(s.meta.history && s.meta.histories[s.meta.history]?.cleared), lifted: s.historyLifted },
+        survey: householdDerived(s, c),
+        bank: { seconds: s.meta.bankedSeconds, max: 0, usable: false },
+        ending: { reached: !!s.meta.endings.steadyAll, record: s.meta.endings.steadyAll ?? null, progress: Math.min(1, s.steadyYearsAll / STEADY_STATE_YEARS), allOpen: openIds.length === order(c).length },
+        archive: { unlocked: Object.keys(s.meta.archive).length, total: (c.archive || []).length },
       };
     },
     click(s0, c) {
@@ -1366,6 +1650,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         market: { ...o.market, ...(patch.market ?? {}), sectors: { ...o.market.sectors, ...(patch.market?.sectors ?? {}) } },
         civilService: { ...o.civilService, ...(patch.civilService ?? {}), levers: { ...o.civilService.levers, ...(patch.civilService?.levers ?? {}) } },
         treasury: { ...o.treasury, ...(patch.treasury ?? {}) },
+        dispatch: { on: patch.dispatch?.on ?? o.dispatch?.on ?? false, cast: { ...(o.dispatch?.cast ?? {}), ...(patch.dispatch?.cast ?? {}) } },
       };
       n.market.paybackMax = Math.min(86400, Math.max(1, n.market.paybackMax));
       n.treasury.keepSeconds = Math.min(86400, Math.max(0, n.treasury.keepSeconds));
@@ -1457,6 +1742,8 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         const cost = u.cost * Math.pow(u.costGrowth || 1, level);
         const maxed = u.repeatable ? level >= (u.maxLevel ?? Infinity) : level >= 1;
         const visible = !!s.sectors[u.sector]?.open && !s.sectors[u.sector]?.settled && (u.requires || []).every((r) => s.upgrades[r]) && (!u.locked || unlocked(s, c, u.id));
+        // Mock: the one `when` in its content (the Proprietor's Day card): a household return on file, no reveal yet.
+        const whenOk = !u.when || (!!s.meta.returns?.household && !s.meta.flags.proprietor && featOn('survey'));
         const excl = c.upgrades.find((o) => (s.upgrades[o.id] || 0) >= 1 && o.id !== u.id && ((o.excludes || []).includes(u.id) || (u.excludes || []).includes(o.id)));
         const excludedBy = excl ? excl.id : null;
         let promised: number | null = null, decade: number | null = null;
@@ -1480,8 +1767,8 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           reach.sort((x, y) => (c.sectors[u.sector].applications.find((a) => a.id === y.appId)?.visibleBelow ?? 0) - (c.sectors[u.sector].applications.find((a) => a.id === x.appId)?.visibleBelow ?? 0));
         }
         return {
-          def: u, level, cost, visible, affordable: visible && !maxed && !excludedBy && s.capital >= cost, maxed, excludedBy, promisedChange: promised,
-          projectedDecade: decade, bringsWithinReach: decade == null ? [] : reach,
+          def: u, level, cost, visible: visible && whenOk, affordable: visible && whenOk && !maxed && !excludedBy && s.capital >= cost, maxed, excludedBy, promisedChange: promised,
+          projectedDecade: decade, bringsWithinReach: decade == null ? [] : reach, forbidden: false,
         };
       });
     },
@@ -1505,6 +1792,11 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           recycleChoices: options.map((o) => ({
             option: o, name: txt[o]?.name ?? o.charAt(0).toUpperCase() + o.slice(1), blurb: l.recycleBlurb?.[o] ?? txt[o]?.blurb ?? '', available: o !== 'commons' || open,
           })),
+          bite: l.sideEffects && featOn('sideEffects') ? {
+            value: s.levers[l.id]?.bite ?? 0, growing: level >= 1 && !(l.sideEffects.unless && 'owns' in l.sideEffects.unless && ownsM3(s, l.sideEffects.unless.owns)),
+            unlessMet: !!(l.sideEffects.unless && 'owns' in l.sideEffects.unless && ownsM3(s, l.sideEffects.unless.owns)), blurb: l.sideEffects.blurb, unlessLabel: l.sideEffects.unlessLabel ?? '',
+          } : null,
+          forbidden: false,
         };
       });
     },
@@ -1541,11 +1833,103 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
     commonsViews(s, c) { return commonsViewsOf(s, c); },
     yearAt(s, c, time) { return yearOf(s, c, s.time - Math.max(0, time)); },
     hindsightOnReckon(s, c) { return terms(s, c).total; },
+    /* --- M3 --- */
+    sinkSeam(s0, c, sector) {
+      const v = api.derive(s0, c).sectors[sector]?.seams;
+      const next = v?.ladder[v.sunk];
+      if (!v || !next?.canSink) return s0;
+      const s = clone(s0), es = s.sectors[sector];
+      s.capital -= next.cost; es.reserve += next.def.tons; es.reserveMax += next.def.tons; es.seamsSunk = (es.seamsSunk ?? 0) + 1;
+      news(s, c, 'seamSunk' as HeadlineKey, {}, sector); s.news[0] = { ...s.news[0], text: `${next.def.name} sunk at ${next.def.depth || 'depth'}; the pumps work day and night` };
+      emit(s, c, 'seamSunk', { sector, id: next.def.id, n: es.seamsSunk, label: next.def.name, by: 'player' });
+      if (!s.meta.milestones[`seam:${sector}`]) s.meta.milestones[`seam:${sector}`] = { run: s.meta.reckonings + 1, at: s.meta.totalSeconds + s.time, year: Math.floor(yearOf(s, c)) };
+      decide(s);
+      return s;
+    },
+    answerDispatch(s0, c, arm, id) {
+      const d = api.derive(s0, c);
+      const p = id ? d.dispatch.pending.find((x) => x.id === id) : d.dispatch.pending[0];
+      if (!p || !p.arms[arm]?.affordable) return s0;
+      const s = clone(s0);
+      resolveDispatch(s, c, p.id, arm, 'player'); decide(s);
+      return s;
+    },
+    chooseHistory(s0, c, id) {
+      if (!isFresh(s0) || !featOn('histories') || (s0.meta.history ?? null) === id) return s0;
+      if (id != null && !(c.histories || []).some((x) => x.id === id)) return s0;
+      const meta = clone(s0.meta);
+      if (meta.history) { const h0 = meta.histories[meta.history]; if (h0) h0.runs = Math.max(0, h0.runs - 1); }
+      meta.history = id;
+      if (id) { const h1 = meta.histories[id] ?? { runs: 0, cleared: false, best: null }; h1.runs++; meta.histories[id] = h1; }
+      const s = rebuild(s0, c, meta);
+      if (id) emit(s, c, 'historyChosen', { id });
+      return s;
+    },
+    fileReturn(s0, c, ret: PlayReturn) {
+      if (!featOn('survey') || !ret || ret.id !== 'household' || !ret.figures) return s0;
+      const keys = ['activeMinutesBefore', 'activeMinutesAfter', 'sessionsBefore', 'sessionsAfter', 'looksBefore', 'looksAfter', 'decisionsBefore', 'decisionsAfter', 'automatedAfter', 'daysBefore', 'daysAfter', 'quietDays'];
+      const f: Record<string, number> = {};
+      for (const k of keys) { const v = ret.figures[k]; if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1e7) return s0; f[k] = Math.floor(v); }
+      if (f.sessionsBefore > f.looksBefore || f.sessionsAfter > f.looksAfter || f.daysBefore > f.sessionsBefore || f.daysAfter > f.sessionsAfter) return s0;
+      const old = s0.meta.returns.household;
+      if (old && old.run === s0.meta.reckonings) return s0;
+      const s = clone(s0);
+      s.meta.returns.household = { figures: f, run: s.meta.reckonings, at: s.meta.totalSeconds, published: false, template: null } as FiledReturn;
+      emit(s, c, 'returnFiled', { id: 'household' });
+      if (s.meta.flags.proprietor) publishReturn(s, c);
+      return s;
+    },
+    withdrawReturn(s0, c, id) {
+      if (!s0.meta.returns?.[id]) return s0;
+      const s = clone(s0);
+      delete s.meta.returns[id];
+      news(s, c, 'returnWithdrawn' as HeadlineKey); s.news[0] = { ...s.news[0], text: c.proprietor?.withdrawn ?? 'Survey discontinued' };
+      emit(s, c, 'returnWithdrawn', { id });
+      return s;
+    },
+    useBank(s0) { return s0; },
+    historyViews(s, c) {
+      const fresh = isFresh(s);
+      return (c.histories || []).map((d): HistoryView => {
+        const r = s.meta.histories[d.id];
+        const offered = featOn('histories');
+        const inForce = s.meta.history === d.id;
+        return { def: d, offered, inForce, runs: r?.runs ?? 0, cleared: !!r?.cleared, best: r?.best ?? null, canChoose: offered && fresh && !inForce };
+      });
+    },
+    archiveViews(s, c) {
+      const nameOf = (id: string): string => {
+        const u = c.upgrades.find((x) => x.id === id) ?? c.levers.find((x) => x.id === id);
+        if (u) return u.name;
+        if (c.sectors[id]) return c.sectors[id].name;
+        for (const sd of Object.values(c.sectors)) { const a = sd.applications.find((x) => x.id === id) ?? sd.seams?.find((x) => x.id === id); if (a) return a.name; }
+        const k = (c.commons || []).find((x) => x.id === id) ?? (c.cast || []).find((x) => x.id === id) ?? (c.histories || []).find((x) => x.id === id) ?? c.achievements.find((x) => x.id === id) ?? (c.knowhow || []).find((x) => x.id === id) ?? c.institutions.find((x) => x.id === id);
+        if (k) return k.name;
+        const tail = id.split('.').pop() ?? id;
+        return tail.charAt(0).toUpperCase() + tail.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase();
+      };
+      return (c.archive || []).map((a): ArchiveView => {
+        const at = s.meta.archive[a.id];
+        const un = at != null;
+        return { id: a.id, subject: a.subject, subjectName: nameOf(a.subject), title: a.title, date: a.date ?? '', unlocked: un, at: un ? at : null, text: un ? a.text : '', sources: a.sources };
+      });
+    },
+    retrospective(s, c) {
+      const out: RetroItem[] = [];
+      for (const [key, m] of Object.entries(s.meta.milestones).sort((a, b) => a[1].at - b[1].at)) {
+        const t = (c.ending?.retrospective || []).find((r) => r.key === key || (r.key.endsWith(':*') && key.startsWith(r.key.slice(0, -1))));
+        if (!t) continue;
+        const sector = key.includes(':') ? key.split(':')[1] : undefined;
+        const headline = t.headline.replace('{year}', m.run === 0 ? 'Earlier' : String(m.year)).replace('{run}', String(m.run)).replace('{hours}', (m.at / 3600).toFixed(1)).replace('{sector}', sector ? c.sectors[sector]?.name ?? sector : '');
+        out.push({ key, run: m.run, year: m.year, at: m.at, sector, headline });
+      }
+      return out;
+    },
     serialize(s) { return JSON.stringify(s, (_k, v) => (v === Infinity ? 1e308 : v)); },
     deserialize(text, c) {
       try {
         const s = JSON.parse(text) as GameState;
-        if (!s || typeof s !== 'object' || !s.sectors || !s.meta || (s.version ?? 1) > 3) return null;
+        if (!s || typeof s !== 'object' || !s.sectors || !s.meta || (s.version ?? 1) > 4) return null;
         void c; return s;
       } catch { return null; }
     },

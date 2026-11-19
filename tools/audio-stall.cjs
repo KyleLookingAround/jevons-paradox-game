@@ -31,6 +31,7 @@ const path = require('node:path');
     await mark(`on ${i}`); await page.click('#on'); await page.waitForTimeout(4000);
   }
   const st = await page.evaluate(() => window.stall.stats());
+  const err = await page.evaluate(() => window.__audioErr); if (err) console.log('audio error:', err);
   const longs = await page.evaluate(() => window.__long);
   const log = await page.evaluate(() => window.__log);
   const where = (t) => { let l = '?'; for (const [m, n] of marks) if (t >= m) l = n; return l; };
