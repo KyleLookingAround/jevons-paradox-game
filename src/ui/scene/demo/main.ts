@@ -1,6 +1,7 @@
 // Standalone demo for the scene engine: hand-made SceneViews, scrubbable inputs, a 60-second auto-play run, and a
 // strip mode for screenshots (#strip=steam). Built by tools/scene-demo.ts into dist/scene-demo.html.
-import { createScene } from '../engine';
+import { createScene, renderStill } from '../engine';
+import { viewFromSummary } from '../adapter';
 import { spot, SPOT_OF, SPOT_KINDS } from '../spots';
 import { injectSceneCss } from '../css';
 import type { SceneView, SceneApp, SceneHandle } from '../types';
@@ -377,5 +378,33 @@ function spotsMode(): void {
   }
 }
 
+/** M3: the run summary as before and after, and the Reckoning as the frozen scene, all as stills (#stills=<id>):
+ *  renderStill of viewFromSummary(start) and viewFromSummary(summary), as the page would after a reload. */
+async function stillsMode(indId: string): Promise<void> {
+  const i = Math.max(0, IND.findIndex((x) => x.id === indId));
+  document.body.classList.add('strip');
+  const wrap = document.getElementById('app')!;
+  wrap.innerHTML = '';
+  const base = viewOf(PRESETS.midM3(i));
+  const ind = IND[i];
+  const summary = { cause: 'collapse', causeSector: ind.id, sectors: { [ind.id]: {
+    peakAdoption: Object.fromEntries(ind.apps.map(([icon], k) => [`${ind.id}.${icon}`, [1, 0.95, 0.85, 0.75, 0.6, 0.5][k] ?? 0.5])),
+    peakPressure: 1.02, stage: 3, unburnt: 0.06, peakRFold: 16, seams: 3, loadFactor: 0.8, speed: 0.3, sprawl: 1 } } };
+  const shots: [string, SceneView][] = [
+    ['before: the first morning', viewFromSummary(base, null, true)],
+    ['after: the end of the run', viewFromSummary(base, summary)],
+    ['the Reckoning, frozen', { ...viewOf(PRESETS.crisisM3(i)), reckoning: { cause: 'collapse', here: true } }],
+  ];
+  for (const [cap, v] of shots) {
+    const fig = document.createElement('figure');
+    const svg = await renderStill(v, { width: 600, height: 400 }) as string;
+    fig.innerHTML = `<figcaption>${cap}</figcaption><img alt="" style="width:100%;display:block" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}">`;
+    wrap.append(fig);
+  }
+  document.body.dataset.ready = '1';
+}
+
 const m = /strip=([\w-]+)/.exec(location.hash);
+const ms = /stills=([\w-]+)/.exec(location.hash);
+if (ms) void stillsMode(ms[1]); else
 if (m) stripMode(m[1]); else if (/spots/.test(location.hash)) spotsMode(); else interactive();
