@@ -216,7 +216,60 @@ What "fit together" still needed after the first pass, and what was done:
   the first backfire makes the valley take a breath and then burn harder. Nothing loops; reduced motion gets the
   static version.
 
-Not done, and worth doing next: Compute's far campus is still small and lost in the smog at high pressure (it should
+Not done then (all four done in the art pass below): Compute's far campus is still small and lost in the smog at high pressure (it should
 be the picture people remember: bring it forward and give it its own cooling-tower plume line); Motion's suburbs
 would read better with front gardens and a parade of shops at the crescent; Code's service ducts are not yet a
 drawn network; and the Steam foreground fields are still a little empty before steam ploughing is founded.
+
+## Art pass: finishing the weak pictures (Nov 2026)
+
+The previous pass's "not done" list, done, and each Industry raised towards the best of them. No new systems; no
+interface change beyond optional prop parameters inside the scene.
+
+- **Compute: where the computing lives.** Rebuilt around a vanishing point at the horizon's centre. The grid marches in
+  on pylons in true perspective from the substation in front of the old mills towards the viewer as demand grows, its
+  conductors catenaries; the national grid runs small along the hills. Cold-store halls step back down an avenue to
+  the vanishing point (gable ends with their sides receding, LEDs along them). The training campus stands forward on the
+  east with a rank of five banded hyperbolic cooling towers on the skyline and their plumes drawn as outlined billows
+  leaning downwind (static, so they read in a still and under reduced motion; the towers' own vapour moves). Fibre
+  routes glow across the floor with traffic on them. The reservoir behind its dam on the west hill is drawn down to
+  amber contour rings on its banks, and under the floor the aquifer shortens. Steam's mills stand relabelled
+  `[ MILL.1851 > HALL-07 ]` with LED rows; Steam's viaduct is surveyed as a wireframe carrying the fibre trunk. As
+  pressure rises a heat dome is drawn over the campus as dashed isotherms (+1.0° to +4.0°), each appearing at a higher
+  pressure; the haze only tints now (weather `hz` .42/.30/.16, ember colour), so the phosphor lines stay legible
+  through the Heat Dome.
+- **Motion: the sprawl is the story.** Estate roads run east from the spine and cul-de-sacs fill the fields parcel by
+  parcel: each turns from crop to lawn behind a hedge, with a stub road and turning circle, semis and bungalows with
+  front gardens, garages and a car on most drives. A shopping parade (GROCER, CHEMIST, WIMPY, TV & RADIO under
+  striped awnings) and a filling station front the arterial, a school with its playing field and goalposts appears
+  south of the road, and a blue motorway sign (THE SOUTH / AIRPORT) stands at the verge. The airport comes forward to
+  the middle distance at a larger scale with three jets on the apron, so planes and contrails read under the haze; the
+  near band is hazed least (weather .8/.5/.2), so the poster curdles from the horizon in.
+- **Light: the lit skeleton.** The three streets up the hill are paved bands from the start, and as the town lights up
+  each catches the lamplight as a printed halftone ribbon, from the tram street upwards, a third at a time; the lamps
+  along them are larger. The gas main runs under the high street in the cut-away, jointed, with risers to each street
+  and the gasworks, gas moving along it. Terraces stand back from the streets so the lit lanes show between them.
+  Steam's mill shells and viaduct are rim-lit against the dusk so the earlier Age still reads behind the lamps.
+- **Steam: the valley before.** Hedgerows on the slope and the near fields, a lane winding down to a ford and up into
+  the town, flocks of sheep, ricks, a horse and cart in the ford, the corn mill's waterwheel and a windmill on the far
+  hill. They fade as the coal goes (nearest the pits and mills first; the windmill last), so what the industry
+  displaces is seen going. Late smoke is lighter (paler smog sky, weather .56/.32/.08, plume hatching lighter), and the
+  engraving stays crisp through it.
+- **Code: the network, drawn.** Cable bundles are slung facade to facade across the street in a fixed network (each
+  with a junction box at either end and one faintly lit fibre), the cable tray runs under the elevated line with
+  traffic on it, risers come down the pillars to street cabinets as the features multiply, and the service ducts with
+  a manhole every block run under the street; their traffic turns red when the city is failing. A warm room that goes
+  dark leaves a cold screen on in an empty room, so the change is from warm to cold, not to nothing. Emergency lights
+  are a composited sprite now (their blink no longer repaints the street).
+- **Frames.** The night city has its own lettering at last: a neon-tube title tag in the corner (THE STACK, BY NIGHT)
+  to match the engraved legend, the poster band, the advert headline and the HUD. The card under the picture has a
+  rule above it; the settled emblem is smaller on a phone. Compute's HUD coordinates moved below the aquifer.
+- **Cost.** SVG nodes per world at the busiest state (demo, crisis): Steam 1617 → 1703, Light 1404 → 1450, Motion
+  1736 → 1695 (an estate's houses are drawn as one path per class), Compute 931 → 975, Code 1497 → 1620. Main-thread
+  style, layout and paint while animating stay at about zero; long frames in the rAF probe are within the earlier
+  spread.
+
+Still worth doing: Compute's text-mode labels are texture rather than words at 390 px (the idiom accepts it, but a
+larger HUD caption for the campus would help); Motion's turning circles are legible only on a desktop; the Light
+street ribbons are subtle under heavy smoke; Code's crisis is still the shared fog and banner rather than a blackout
+rolling across the towers; nobody has looked at any of this in Safari or Firefox.

@@ -68,8 +68,8 @@ whose horizon sits lower passes `dy`, and x never changes, so landmarks line up 
 What earlier Industries built still stands: `SceneView.heritage` (optional, filled by `sceneViewFrom` from the
 other sectors' foundings and adoption; absent = drawn as built) reaches a layout's backdrop as `c.heritage`, read with
 `built(c.heritage, 'steam')`. Light shows Steam's viaduct and mill shells at dusk under the same hill line; Motion
-the disused viaduct, chimneys and Light's gasholders by the estuary; Compute the hill line as a survey contour and
-the mills as data halls; Code the hills behind the towers and Steam's viaduct arches carrying the elevated line. The
+the disused viaduct, chimneys and Light's gasholders by the estuary; Compute the hill line as a survey contour,
+the viaduct as a wireframe carrying the fibre trunk and the mills as data halls; Code the hills behind the towers and Steam's viaduct arches carrying the elevated line. The
 backdrop is rebuilt only when a heritage level crosses a quarter.
 
 Within a scene: one wind (all smoke drifts to the right), places linked by routes their movers follow (Steam's
@@ -154,8 +154,8 @@ its props in `props/<id>.ts`, and set `look: '<id>'` on the layouts drawn in it.
 | `apps[i].adoption` | density: more buildings in a stable seeded order growing out from the landmark, more trains/ships/vans/planes moving, more lit windows and lamps |
 | `stage` (0–3) | the machines evolve: Newcomen → Watt → Cornish → turbine hall; locomotives, ships, cars, lamps, data halls and agents change shape |
 | `pace` (from rFold) | smoke puffs faster and darker, wheels and beams turn faster, traffic speeds up (3 steps) |
-| `reserveFraction` | Steam: the seam in the cut-away hollows out from the shaft and spoil heaps rise; Light: gasholder bells sink; Motion: the oil lens shrinks and tanks empty; Compute: the reservoir drops; Code: six lamplit rooms in the old block (a figure at a desk with the cat on the sill, a reader, two at a table, a guitarist, someone at the window, a child drawing) go dark one by one (`driver: 'reserve'`, `fade: true`); the first is the last left on |
-| `pressureFraction` | weather and light: the sky browns, haze thickens with depth, the sun dims, landscape washes desaturate; Code: magenta smog-glow and signal noise, cables, lean-tos, dead neon and pipework growing up from the street |
+| `reserveFraction` | Steam: the seam in the cut-away hollows out from the shaft and spoil heaps rise, and the old country (sheep, ricks, the cart in the ford, the waterwheel, the windmill) fades away; Light: gasholder bells sink; Motion: the oil lens shrinks and tanks empty; Compute: the reservoir drops to its contour rings and the aquifer under the floor shortens; Code: six lamplit rooms in the old block (a figure at a desk with the cat on the sill, a reader, two at a table, a guitarist, someone at the window, a child drawing) go dark one by one (`driver: 'reserve'`, `fade: true`), leaving a cold screen on in each; the first is the last left on |
+| `pressureFraction` | weather and light: the sky browns, haze thickens with depth, the sun dims, landscape washes desaturate; Compute: a heat dome of isotherms over the campus; Code: magenta smog-glow and signal noise, cables, lean-tos, dead neon and pipework growing up from the street |
 | `popFraction` | houses, terraces, towers |
 | `crises` (increase) | a fog rolls across and the crisis name is shown |
 | pressure ≥ 0.8 | root class `stress`: Code sheds load tower by tower, signs fail, emergency lighting comes on |
