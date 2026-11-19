@@ -12,6 +12,8 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const args = process.argv.slice(2);
 const perf = args.includes('--perf');
 const sw = args.includes('--switch');
+const m2 = args.includes('--m2'); // the M2 strip: clearing, steady, settled, Commons + landmark
+const sfx = m2 ? '-m2' : '';
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7);
 const inds = args.filter((a) => !a.startsWith('--'));
 const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron'];
@@ -44,8 +46,8 @@ if (sw) {
   for (let pass = 0; pass < 2; pass++) {
     for (const ind of ids) {
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-      const ms = await p.evaluate((i) => new Promise((ok) => { const a = performance.now(); window.__scene.preset('crisis', i); const b = performance.now(); requestAnimationFrame(() => setTimeout(() => ok([b - a, performance.now() - a]))); }), ind);
-      await p.waitForTimeout(1500);
+      const ms = await p.evaluate((i) => new Promise((ok) => { const a = performance.now(); const u = window.__scene.timeSwitch(i); requestAnimationFrame(() => setTimeout(() => ok([u, performance.now() - a]))); }), ind);
+      await p.waitForTimeout(pass ? 1500 : 8000); // past the crisis fog the preset change plays
       const m0 = await metric();
       await p.waitForTimeout(5000);
       const m1 = await metric();
@@ -61,24 +63,24 @@ if (sw) {
   for (const ind of list) {
     if (only !== 'desk') {
       const p = await page(390, 900);
-      await p.goto(`${url}#strip=${ind}`);
+      await p.goto(`${url}#strip=${ind}${m2 ? '&m2' : ''}`);
       await p.evaluate(() => document.body.style.setProperty('--fig', '358px'));
       await p.waitForTimeout(400);
-      await p.screenshot({ path: `shots/scene/${ind}-phone.png`, fullPage: true });
+      await p.screenshot({ path: `shots/scene/${ind}${sfx}-phone.png`, fullPage: true });
       await p.context().close();
     }
     if (only !== 'phone') {
       const p = await page(1280, 900);
-      await p.goto(`${url}#strip=${ind}`);
+      await p.goto(`${url}#strip=${ind}${m2 ? '&m2' : ''}`);
       await p.evaluate(() => document.body.style.setProperty('--fig', '600px'));
       await p.waitForTimeout(400);
-      await p.screenshot({ path: `shots/scene/${ind}-desk.png`, fullPage: true });
+      await p.screenshot({ path: `shots/scene/${ind}${sfx}-desk.png`, fullPage: true });
       await p.context().close();
     }
     console.log('strip', ind);
   }
   // Live single frames (animated, mid-motion) of the late stage, phone and desktop, scene only.
-  for (const ind of list) {
+  for (const ind of m2 ? [] : list) {
     for (const [w, tag] of [[390, 'phone'], [1280, 'desk']]) {
       if (only && only !== tag) continue;
       const p = await page(w, 900);

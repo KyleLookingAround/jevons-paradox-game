@@ -1,20 +1,29 @@
 /**
  * REBOUND — simulation core. Pure TypeScript: no DOM, no clock, no randomness.
- * Implements ModelApi from ../types (M1 contract). Never mutates the state passed in.
+ * Implements ModelApi from ../types (M2 contract). Never mutates the state passed in.
  *
  * The registry: assembles `model` from the modules in this folder and is the only public entry point. Module map and
- * dependency direction: README.md.
+ * dependency direction: README.md. Every in-run player action is wrapped by asDecision (record.ts): a call that
+ * changes the state counts one decision.
  */
-import type { ModelApi } from '../types';
+import type { Content, GameState, ModelApi, SectorId, UpgradeView } from '../types';
+import { yearAt } from './calendar';
+import { chooseCharter } from './charters';
+import { buyCommons, commonsViews } from './commonsActions';
 import { derive } from './derive';
+import { chooseDecadeDividend } from './dividends';
 import { hindsightOnReckon } from './hindsight';
+import { fastForward } from './offline';
+import { setOrders } from './orders';
 import { drawBudget, leverViews, setLever, setLeverRecycle } from './policy';
-import { buyInstitution, buyKnowhow, institutionViews, knowhowViews, reckon, setLoadout } from './prestige';
+import { buyInstitution, buyKnowhow, institutionViews, knowhowViews, reckon, respecKnowhow, setLoadout } from './prestige';
 import { upgradeViews } from './projections';
 import { buyUpgrade, click, foundApp } from './purchases';
+import { asDecision } from './record';
 import { deserialize, serialize } from './serialise';
-import { createState } from './state';
-import { fastForward, tick } from './step';
+import { settle, unsettle } from './settlement';
+import { createState, isFreshRun } from './state';
+import { tick } from './step';
 
 export {
   DEFAULT_MANDATE_SHARE, DEFAULT_BUDGET_DECLINE, DEFAULT_DECADE_YEARS, SUBSTITUTION_CAPCOST_MUL, CAP_LEAK_MAX,
@@ -25,9 +34,29 @@ export {
 export { leverMaxLevel, leverLevelDef } from './levers';
 export { substitute } from './headlines';
 export { statValue, evalCond } from './conditions';
+export { mix32 } from './charters';
 
-export const model: ModelApi = {
-  createState, tick, fastForward, derive, click, buyUpgrade, foundApp, setLever, setLeverRecycle, drawBudget, reckon,
-  buyKnowhow, buyInstitution, setLoadout, upgradeViews, leverViews, knowhowViews, institutionViews, hindsightOnReckon,
+/**
+ * ModelApi plus the core's one extension: upgradeViews takes an optional sector, and then projects only that sector's
+ * cards (see projections.ts). Assignable to ModelApi.
+ */
+export interface CoreModel extends ModelApi {
+  upgradeViews(state: GameState, content: Content, sector?: SectorId): UpgradeView[];
+}
+
+export const model: CoreModel = {
+  createState, tick, fastForward, derive, click,
+  buyUpgrade: asDecision(buyUpgrade),
+  foundApp: asDecision(foundApp),
+  setLever: asDecision(setLever),
+  setLeverRecycle: asDecision(setLeverRecycle),
+  drawBudget: asDecision(drawBudget),
+  chooseDecadeDividend: asDecision(chooseDecadeDividend),
+  settle: asDecision(settle),
+  unsettle: asDecision(unsettle),
+  buyCommons: asDecision(buyCommons),
+  setOrders: asDecision(setOrders, (prev) => !isFreshRun(prev)),
+  reckon, buyKnowhow, buyInstitution, setLoadout, chooseCharter, respecKnowhow,
+  upgradeViews, leverViews, knowhowViews, institutionViews, commonsViews, yearAt, hindsightOnReckon,
   serialize, deserialize,
 };

@@ -178,16 +178,15 @@ export function runOrders(prev: GameState, next: GameState, content: Content, li
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-/** Validate and merge a patch (no-op patches return the same reference). */
-export function setOrders(state: GameState, content: Content, patch: OrdersPatch): GameState {
-  if (!isObj(patch)) return state;
+/** Validate and merge a patch onto `cur` (see OrdersPatch): a new OrdersState. Also used to sanitise a loaded save. */
+export function mergeOrders(cur: OrdersState, patch: unknown, content: Content): OrdersState {
   const ix = idx(content);
-  const cur = ordersOf(state, content);
   const out: OrdersState = {
     market: { ...cur.market, sectors: { ...cur.market.sectors } },
     civilService: { ...cur.civilService, levers: { ...cur.civilService.levers } },
     treasury: { ...cur.treasury, projects: cur.treasury.projects.slice() },
   };
+  if (!isObj(patch)) return out;
   const m = patch.market;
   if (isObj(m)) {
     if (typeof m.on === 'boolean') out.market.on = m.on;
@@ -208,8 +207,19 @@ export function setOrders(state: GameState, content: Content, patch: OrdersPatch
   if (isObj(t)) {
     if (typeof t.on === 'boolean') out.treasury.on = t.on;
     if (typeof t.keepSeconds === 'number' && Number.isFinite(t.keepSeconds)) out.treasury.keepSeconds = clamp(t.keepSeconds, 0, ORDER_SECONDS_MAX);
-    if (Array.isArray(t.projects)) out.treasury.projects = t.projects.filter((id, i) => typeof id === 'string' && ix.commons.has(id) && t.projects!.indexOf(id) === i);
+    if (Array.isArray(t.projects)) {
+      const pr = t.projects as unknown[];
+      out.treasury.projects = pr.filter((id, i): id is string => typeof id === 'string' && ix.commons.has(id) && pr.indexOf(id) === i);
+    }
   }
+  return out;
+}
+
+/** ModelApi.setOrders: validated merge; the same reference when nothing changes. (The decision is counted in index.ts.) */
+export function setOrders(state: GameState, content: Content, patch: OrdersPatch): GameState {
+  if (!isObj(patch)) return state;
+  const cur = ordersOf(state, content);
+  const out = mergeOrders(cur, patch, content);
   if (sameJson(out, cur)) return state;
   return { ...state, meta: { ...state.meta, orders: out } };
 }

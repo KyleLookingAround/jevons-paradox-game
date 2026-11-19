@@ -2,6 +2,7 @@
 // props = registerProps(). Lookups never fail: unknown sector → generic layout, unknown prop → generic 'works'.
 import type { Layout, Prop } from './layout';
 import { COMMON, works } from './props/common';
+import { CIVIC } from './props/civic';
 import { steam } from './layouts/steam';
 import { light } from './layouts/light';
 import { motion } from './layouts/motion';
@@ -11,7 +12,7 @@ import { genericLayout } from './layouts/generic';
 import { birds } from './layouts/util';
 import { styleFor, allStyles, addProps } from './styles/index';
 
-const SHARED: Record<string, Prop> = { ...COMMON, birds };
+const SHARED: Record<string, Prop> = { ...COMMON, ...CIVIC, birds };
 
 const LAYOUTS: Record<string, Layout> = { steam, light, motion, compute, code };
 

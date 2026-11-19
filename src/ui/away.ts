@@ -49,7 +49,7 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
       const e = r.heldSector ? ctx.d?.sectors?.[r.heldSector] : undefined;
       if (r.heldBy === 'exhausted') heldTxt = `The board waited for you: ${lower(def?.resource.name ?? 'the reserve')} at ${pct(num(e?.reserveFraction), false)} left.`;
       else heldTxt = `The board waited for you: ${lower(def?.pressure.name ?? 'pressure')} at ${pct(num(e?.pressureFraction), false)}${def ? ` in ${def.name}` : ''}.`;
-    } else if (r.heldBy === 'cap') heldTxt = `Time past ${dur(num(ctx.d?.offlineCapSeconds, sim))} is not counted.`;
+    } else if (r.heldBy === 'cap' && req - sim >= 60) heldTxt = `Time past ${dur(num(ctx.d?.offlineCapSeconds, sim))} is not counted.`;
     else if (r.heldBy === 'pending') heldTxt = 'A Reckoning was already waiting; nothing moved.';
     setText(held, heldTxt);
     show(held, !!heldTxt);
@@ -58,7 +58,7 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
     const signed = (x: number, f: (n: number) => string) => (x >= 0 ? '+' : '−') + f(Math.abs(x));
     rows.push(['Capital', signed(num(r.capital), money)]);
     if (num(r.mandate) !== 0) rows.push(['Mandate', signed(num(r.mandate), (n) => fmt(Math.round(n)))]);
-    rows.push(['People', signed(num(r.population), (n) => '×' + (n >= 10 ? fmt(n) : n.toFixed(2)))]);
+    rows.push(['People', signed(num(r.population), (n) => (n >= 10 ? fmt(n) : n.toFixed(2)))]);
     if (num(r.decades)) rows.push(['Decades within the line', fmt(num(r.decades))]);
     if (num(r.crises)) rows.push(['Crises', fmt(num(r.crises))]);
     if (num(r.marketBuys)) rows.push(['Bought by the Market', fmt(num(r.marketBuys))]);
@@ -71,7 +71,7 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
     ln.sort((a, b) => order.indexOf(a) - order.indexOf(b));
     lines.replaceChildren(...ln.map((id) => {
       const st = r.lines[id];
-      return h('li', { class: 'aw-' + st }, h('b', { text: sectorDef(ctx, id)!.name }), ` ${LINE_WORDS[st] ?? st}`);
+      return h('li', { class: 'awl-' + st }, h('b', { text: sectorDef(ctx, id)!.name }), `: ${LINE_WORDS[st] ?? st}`);
     }));
     show(lines, ln.length > 0);
 

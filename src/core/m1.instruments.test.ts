@@ -192,6 +192,9 @@ describe('conditions (P3)', () => {
       reserveFraction: sd.reserveFraction, pressureFraction: sd.pressureFraction, crises: s.sectors.steam.crisesFired,
       steadyYears: sd.steadyYears, budgetDecades: sd.budgetDecades, withinBudget: sd.withinBudget ? 1 : 0, appsFounded: 4,
       adoption: sd.apps['steam.mills'].adoption, appDemand: sd.apps['steam.mills'].demand,
+      decisions: s.run.decisions, automated: s.run.automated, commonsLevels: 0, sectorsSettled: 0,
+      leanDecades: sd.leanDecades, fullDecades: sd.budgetDecades - sd.leanDecades, settled: 0, clear: sd.clear ? 1 : 0,
+      clearYears: sd.clearYears,
     };
     for (const stat of ALL) {
       const leaf = { stat, sector: 'steam', app: 'steam.mills' };

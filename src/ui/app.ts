@@ -13,9 +13,13 @@ import {
 } from './sheets';
 import { fmt, num, lower } from './fmt';
 import { createAfford, type AffordState } from './afford';
-import { reducedMotion } from './dom';
+import { reducedMotion, replay } from './dom';
 import { timed } from './prof';
 import { buildAway } from './away';
+import { buildDividends } from './dividends';
+import { buildCommons } from './commons';
+import { buildOrders } from './orders';
+import { createRecorder } from './timelapse';
 import { sound } from './sound';
 
 export interface UI {
@@ -45,6 +49,8 @@ export interface UI {
   onEvents(ev: GameEvent[]): void;
   /** Show the "While you were away" ledger if the current report has not been shown. */
   awayCheck(): void;
+  /** Write the page's own local records (the time-lapse) beside an autosave. */
+  saveLocal(): void;
 }
 
 const THEME_COLOUR: Record<string, string> = {
@@ -74,8 +80,13 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const ups = buildUpgrades(ctx);
   const budget = buildBudget(ctx, { confirmSettle: (id, yes) => settleSheet(ctx, sheets, id, yes) });
   const levs = buildLevers(ctx);
+  const divs = buildDividends(ctx);
+  const commons = buildCommons(ctx);
+  const orders = buildOrders(ctx);
 
   const afford = createAfford(ctx);
+  // The time-lapse record (timelapse.ts): sampled as the run goes, kept apart from the save, replayed at the Reckoning.
+  const lapse = createRecorder(ctx, () => ctx.d?.pendingReckoning?.sector ?? ctx.sector);
   // The affordable chip, by the sell button (thumb's reach, first screen); tapping it jumps to the first offer.
   const chipN = h('span', { class: 'chip-n num' });
   const chipL = h('span', { class: 'chip-l' });
@@ -87,6 +98,10 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
 
   const onboard = h('p', { class: 'onboard', hidden: true });
   const away = buildAway(ctx, (t) => { live.textContent = t; });
+  // The run's header line: which run this is, and the Charter in force (named for the rest of the run).
+  const runN = h('span', { class: 'num' });
+  const runCh = h('span', { class: 'rl-ch' });
+  const runline = h('p', { class: 'runline', hidden: true }, runN, runCh);
   const hb = h('b', { class: 'num' });
   const reckonBtn = h('button', { class: 'btn', type: 'button', onclick: () => ui.confirmReckoning() }, 'Call a Reckoning');
   const foot = h('footer', { class: 'run-foot' },
@@ -96,24 +111,27 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // Improvements sit above the world so that a phone shows the first purchase above the fold.
   // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
   // improvements (the affordable chip by the sell button covers the rest).
-  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, onboard, world.el, news.el, ups.el, budget.el, levs.el, foot);
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, onboard, world.el, news.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, toasts.el, live);
 
   // A crisis is one event: the picture's fog (the scene), the headline (the broadsheet) and the gauges arrive together.
   document.addEventListener('rebound:moment', (e) => {
     const kind = (e as CustomEvent<string>).detail;
     if (kind !== 'crisis') return;
-    cockpit.classList.remove('m-crisis'); void cockpit.offsetWidth; cockpit.classList.add('m-crisis');
-    setTimeout(() => cockpit.classList.remove('m-crisis'), 2400);
+    replay(cockpit, 'm-crisis', 2400);
   });
 
-  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs]];
+  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders]];
 
   let look = '', accent: string | null | undefined;
   let wasWon = !!ctx.state.flags?.won;
   let onboardState: 'show' | 'fading' | 'gone' | '' = '';
 
-  function reckonNow(): void { if (hooks.reckon()) summarySheet(ctx, sheets, () => hooks.resume(), hooks.exportText); }
+  function reckonNow(): void {
+    const p = ctx.d?.pendingReckoning;
+    const rec = lapse.finish({ cause: p?.cause ?? 'chosen', here: true });
+    if (hooks.reckon()) { summarySheet(ctx, sheets, () => hooks.resume(), hooks.exportText, rec); }
+  }
 
   function jumpToAffordable(): void {
     const it = afford.state.items[0];
@@ -143,13 +161,13 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     openShop: () => shopSheet(ctx, sheets),
     openShopBetweenRuns: () => shopSheet(ctx, sheets, () => hooks.resume()),
     openLocked: (id) => lockedSheet(ctx, sheets, id),
-    confirmReckoning: () => confirmReckonSheet(ctx, sheets, reckonNow),
+    confirmReckoning: () => confirmReckonSheet(ctx, sheets, () => { sound('reckoning'); reckonNow(); }),
     unreadSave: (raw) => {
       const info = hooks.backup();
       unreadSaveSheet(sheets, raw, info ? { info, restore: () => hooks.restoreBackup() } : undefined);
     },
     blocking: () => sheets.blocking(),
-    reset() { world.reset(); wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
+    reset() { world.reset(); lapse.reset(); wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
     afterAct: (before, after) => afford.afterAct(before, after),
     afford: afford.state,
     jumpToAffordable,
@@ -159,14 +177,11 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     update,
     onEvents,
     awayCheck: () => away.check(),
+    saveLocal: () => lapse.save(),
   };
 
   /** A brief mark on an element (a class for `ms`); restarts if already running. Never loops, never blocks input. */
-  function pulse(el: Element | null, c: string, ms = 1600): void {
-    if (!el) return;
-    el.classList.remove(c); void (el as HTMLElement).offsetWidth; el.classList.add(c);
-    setTimeout(() => el.classList.remove(c), ms);
-  }
+  function pulse(el: Element | null, c: string, ms = 1600): void { replay(el, c, ms); }
   const nameOf = (id?: string) => (id ? sectorDef(ctx, id)?.name ?? '' : '');
   const goThere = (id?: string) => (id && id !== ctx.sector ? { label: 'Go there', run: () => ctx.selectSector(id) } : undefined);
 
@@ -267,6 +282,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     if (ac !== accent) { accent = ac; setAttr(html, 'data-accent', ac); }
 
     timed('ui.afford', () => afford.update());
+    timed('ui.lapse', () => lapse.tick());
     for (const [n, c] of comps) timed('ui.' + n, () => c.update());
 
     // The chip: how many offers are news (afford.ts holds the no-nag rule), and where the first one is.
@@ -284,9 +300,11 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     // Onboarding: one line on a fresh run, gone after the first purchase, and never after a long time away (the
     // catch-up runs after the first update, so the run's clock is checked on every update, not only the first).
     const fresh = Object.keys(ctx.state.upgrades || {}).length === 0;
-    if (onboardState === 'show' && ctx.state.time >= 600) { onboardState = 'gone'; show(onboard, false); }
+    // A long time away (the catch-up's own report says how long was asked for, whatever was simulated or held).
+    const longAway = num(ctx.state.lastOffline?.requested) >= 600;
+    if (onboardState === 'show' && (ctx.state.time >= 600 || longAway)) { onboardState = 'gone'; show(onboard, false); }
     if (onboardState === '') {
-      onboardState = fresh && ctx.state.time < 600 ? 'show' : 'gone';
+      onboardState = fresh && ctx.state.time < 600 && !longAway ? 'show' : 'gone';
       const again = (ctx.state.meta?.reckonings ?? 0) > 0;
       const first = sectorIds(ctx.content)[0];
       const y = ageOfSector(ctx.content, first)?.yearSpan?.[0] ?? 1780;
@@ -300,6 +318,11 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       setTimeout(() => { show(onboard, false); onboardState = 'gone'; }, 1200);
     }
 
+    const rk = num(ctx.state.meta?.reckonings);
+    const chName = ctx.d?.charter ? ctx.content.charters?.find((c) => c.id === ctx.d.charter)?.name : undefined;
+    show(runline, rk >= 1 && !ctx.d?.freshRun);
+    setText(runN, `Run ${fmt(rk + 1)}`);
+    setText(runCh, chName ? ` · under ${chName}` : '');
     setText(hb, fmt(Math.floor(ctx.d?.hindsightIfReckonNow ?? 0)));
     // Offered once the run has had its reveal (or after a first Reckoning); a forced Reckoning needs no button.
     show(foot, reckoningOffered(ctx) && !ctx.d?.pendingReckoning);
@@ -324,6 +347,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     const k = sheets.kind();
     if (ctx.d?.pendingReckoning && k !== 'pending' && k !== 'summary' && k !== 'shop') {
       pendingSheet(ctx, sheets, () => reckonNow());
+      sound('reckoning', { sector: ctx.d.pendingReckoning.sector });
     }
     // Win: first time only.
     const won = !!ctx.state.flags?.won;

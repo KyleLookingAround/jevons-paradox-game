@@ -25,9 +25,11 @@ export function projectWellbeing(def: CommonsDef, L: number, yieldMul: number): 
 }
 
 /** Σ over built projects of their wellbeing. */
+const anyKey = (o: Record<string, unknown>): boolean => { for (const _ in o) return true; return false; };
+
 export function commonsWellbeing(state: GameState, content: Content, yieldMul: number): number {
   const lv = state.commons?.levels;
-  if (!lv) return 0;
+  if (!lv || !anyKey(lv)) return 0;
   let w = 0;
   for (const def of content.commons ?? []) {
     const L = lv[def.id] ?? 0;
@@ -46,7 +48,7 @@ export function projectIntensity(state: GameState, def: CommonsDef, L: number, N
 /** Adds every project's intensity into `extra` (sector → extra price-proof demand). */
 export function addCommonsIntensity(state: GameState, content: Content, N: number, extra: Record<SectorId, number>): void {
   const lv = state.commons?.levels;
-  if (!lv) return;
+  if (!lv || !anyKey(lv)) return;
   for (const def of content.commons ?? []) {
     const L = lv[def.id] ?? 0;
     if (L > 0 && def.intensity) {

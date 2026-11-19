@@ -1,23 +1,29 @@
 // The scene engine: builds a layered SVG landscape from a Layout + prop libraries, then patches it in place.
 //
 // Layers, back to front:  sky (gradients) · sky svg · far static · far fx · mist · smog · mid static · mid fx · smog ·
-//   near static (+ cut-away) · near fx · smog · crisis fog · places (buttons) · banner.
+//   near static (+ cut-away) · near fx · smog · held wash · flash · crisis fog · places (buttons) · banner.
 // Static layers repaint only when something appears; moving things live in fx layers (CSS transform/opacity).
-import type { SceneView, SceneOptions, SceneHandle, SceneApp } from './types';
+//
+// One world per Industry: each build is kept (with its own layers and animations) and swapped back in when the
+// player returns to that tab, so a switch costs a re-attach, not a rebuild. A host can prebuild other Industries
+// when idle (`prebuild`).
+import type { SceneView, SceneOptions, SceneHandle, SceneApp, SceneTarget, StillOptions, ReplayOptions } from './types';
 import type { Layout, PlotDef, Slot, Band, FxKind, PropArgs, PropOut, Prop, MoverDef } from './layout';
 import { depthScale } from './layout';
-import { injectSceneCss } from './css';
-import { hash, rng, f, clamp, esc, mix } from './svg';
+import { injectSceneCss, sceneCss } from './css';
+import { hash, rng, f, clamp, esc } from './svg';
 import { layoutFor, propFor } from './registry';
 import { styleFor } from './styles/index';
 import type { ArtStyle } from './style';
 import { scaffold, survey } from './props/common';
+import { MomentDesk, type Moment } from './moments';
 
 const NS = 'http://www.w3.org/2000/svg';
 const VB = '0 0 600 400';
 const W = 600, H = 400;
 const BANDS: Band[] = ['far', 'mid', 'near'];
 const MAX_LIVE_SMOKE = 10, MAX_LIVE_SMOKE_LOW = 4;
+const MAX_CACHED = 6, MAX_SCAFFOLDS = 3;
 let instances = 0;
 
 interface FxSpec { kind: FxKind; x: number; y: number; size: number; markup?: string }
@@ -29,6 +35,7 @@ interface PlotRt {
   app: SceneApp | null;
   /** keys of slot elements in appear order */
   keys: string[];
+  mkeys: string[];
   anchorKey: string | null;
   movers: Element[];
   moverDefs: { el: Element; dur: number; phase: number }[];
@@ -41,6 +48,25 @@ interface PlotRt {
   ghost: Element | null;
   svy: Element | null;
   scaf: Element | null;
+}
+
+/** The layers of one world (one Industry's picture). */
+interface WorldEls {
+  world: HTMLDivElement; defs: SVGSVGElement; sky0: HTMLDivElement; sky1: HTMLDivElement; sky2: HTMLDivElement; glow: HTMLDivElement;
+  skySvg: SVGSVGElement; bw: Record<Band, HTMLDivElement>; mist1: HTMLDivElement; mist2: HTMLDivElement;
+  hz1: HTMLDivElement; hz2: HTMLDivElement; hz3: HTMLDivElement; held: HTMLDivElement; flash: HTMLDivElement; fog: HTMLDivElement;
+  noiseSvg: SVGSVGElement; extraLayer: HTMLDivElement; plateSvg: SVGSVGElement; places: HTMLDivElement;
+}
+
+/** One built picture, kept per Industry. */
+interface Built {
+  key: string; sectorId: string; el: WorldEls; layout: Layout; style: ArtStyle | undefined; look: string; legend: string; place: string;
+  plots: PlotRt[]; elsByKey: Map<string, Element[]>; smokeEls: { el: Element; key: string; size: number }[];
+  restraintEls: Map<string, Element[]>; commonsEls: Map<string, Element[]>; steadyMoverEls: Element[]; moverAnims: Animation[];
+  /** Restraint/commons slot positions (for highlight rings). */
+  spots: Map<string, [number, number, number, number]>;
+  prevPace: number; leverKey: string; smokeDirty: boolean; prevSteadyOn: boolean | null; moversDirty: boolean; lastSig: string;
+  stageN: number; used: number; vars: Map<string, string>; scafs: number;
 }
 
 const num0 = (v: number): string => {
@@ -79,6 +105,28 @@ function bandOf(l: Layout, y: number): Band {
   return y < a ? 'far' : y < b ? 'mid' : 'near';
 }
 
+function makeWorld(): WorldEls {
+  const world = div('scn-world');
+  const defs = svgEl('scn-defs');
+  const sky0 = div('scn-sky'), sky1 = div('scn-sky smog'), sky2 = div('scn-sky fresh');
+  const glow = div('scn-glow');
+  const skySvg = svgEl('scn-l');
+  // Each depth band is a wrapper holding alternating static and fx SVGs: static₀ · fx₀ · static₁ · fx₁ … The bands are
+  // split at the depth of each mover track, so a train passes behind the buildings nearer than its line and in front
+  // of those further away, while static layers still never repaint for motion.
+  const bw: Record<Band, HTMLDivElement> = { far: div('scn-bw bw-far'), mid: div('scn-bw bw-mid'), near: div('scn-bw bw-near') };
+  const mist1 = div('scn-hz mist'), mist2 = div('scn-hz mist m2');
+  const hz1 = div('scn-hz smog h1'), hz2 = div('scn-hz smog h2'), hz3 = div('scn-hz smog h3');
+  const held = div('scn-held'), flash = div('scn-flash');
+  const fog = div('scn-fog');
+  const noiseSvg = svgEl('scn-l scn-noise');
+  const extraLayer = div('scn-extra');
+  const plateSvg = svgEl('scn-l scn-plate');
+  world.append(defs, sky0, sky1, sky2, glow, skySvg, bw.far, mist1, hz1, bw.mid, mist2, hz2, bw.near, hz3, held, extraLayer, noiseSvg, flash, fog, plateSvg);
+  const places = div('scn-places');
+  return { world, defs, sky0, sky1, sky2, glow, skySvg, bw, mist1, mist2, hz1, hz2, hz3, held, flash, fog, noiseSvg, extraLayer, plateSvg, places };
+}
+
 export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHandle {
   injectSceneCss(host.ownerDocument ?? document);
   const id = `scn${++instances}-`;
@@ -89,30 +137,15 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   const root = div('scn');
   root.setAttribute('role', 'group');
   const stage = div('scn-stage');
-  const world = div('scn-world');
-  const defs = svgEl('scn-defs');
-  const sky0 = div('scn-sky'), sky1 = div('scn-sky smog'), sky2 = div('scn-sky fresh');
-  const glow = div('scn-glow');
-  const skySvg = svgEl('scn-l');
-  // Each depth band is a wrapper holding alternating static and fx SVGs: static₀ · fx₀ · static₁ · fx₁ … The bands are
-  // split at the depth of each mover track, so a train passes behind the buildings nearer than its line and in front
-  // of those further away, while static layers still never repaint for motion.
-  const bw: Record<Band, HTMLDivElement> = { far: div('scn-bw bw-far'), mid: div('scn-bw bw-mid'), near: div('scn-bw bw-near') };
-  let st: Record<Band, SVGSVGElement[]> = { far: [], mid: [], near: [] };
-  let fx: Record<Band, HTMLDivElement[]> = { far: [], mid: [], near: [] };
-  const mist1 = div('scn-hz mist'), mist2 = div('scn-hz mist m2');
-  const hz1 = div('scn-hz smog h1'), hz2 = div('scn-hz smog h2'), hz3 = div('scn-hz smog h3');
-  const fog = div('scn-fog');
-  const noiseSvg = svgEl('scn-l scn-noise');
-  const extraLayer = div('scn-extra');
-  const plateSvg = svgEl('scn-l scn-plate');
-  world.append(defs, sky0, sky1, sky2, glow, skySvg, bw.far, mist1, hz1, bw.mid, mist2, hz2, bw.near, hz3, extraLayer, noiseSvg, fog, plateSvg);
-  const places = div('scn-places');
   const banner = div('scn-banner');
   banner.setAttribute('aria-hidden', 'true');
   const toast = div('scn-toast');
   toast.setAttribute('aria-hidden', 'true');
-  stage.append(world, places, banner, toast);
+  const emblem = div('scn-emb');
+  emblem.setAttribute('aria-hidden', 'true');
+  const ring = div('scn-hl');
+  ring.setAttribute('aria-hidden', 'true');
+  stage.append(banner, toast, emblem, ring);
   const summary = document.createElement('p');
   summary.className = 'vh-scn';
   summary.id = id + 'sum';
@@ -143,32 +176,31 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   host.appendChild(root);
 
   /* ---------------- state ---------------- */
-  let builtKey = '';
-  let layout: Layout | null = null;
-  let plots: PlotRt[] = [];
-  let elsByKey = new Map<string, Element[]>();
-  let smokeEls: { el: Element; key: string; size: number }[] = [];
-  let restraintEls = new Map<string, Element[]>();
+  let B: Built | null = null;
+  const cache = new Map<string, Built>();
   let lastView: SceneView | null = null;
   let selected: string | null = null;
-  let prevStatus = new Map<string, string>();
-  let prevStage = -1, prevSector = '', prevCrises = -1, prevSteady = false, prevPace = -1;
   let rmOverride: boolean | null = typeof opts.reducedMotion === 'boolean' ? opts.reducedMotion : null;
   let visible = true;
-  let captionUntil = 0, captionText = '';
-  let crisisTimer = 0;
   let summaryText = '';
   let destroyed = false;
-  let steadyMoverEls: Element[] = [];
-  let style: ArtStyle | undefined;
+  const desk = new MomentDesk();
+  let lastStageSeen = new Map<string, number>();
   // Detail: 'full', 'low' (fewer movers and live chimneys, no second rain sheet or signal noise), or 'auto' (full,
   // dropping to low for the rest of the session if frames run long while the scene is on screen).
   let detailOpt: 'auto' | 'low' | 'full' = opts.detail ?? 'auto';
   let lowDetail = detailOpt === 'low';
-  let lastSig = '', captionDirty = false, moversDirty = true, prevSteadyOn: boolean | null = null;
-  let moverAnims: Animation[] = [];
+  let captionDirty = false;
   const animOf = new WeakMap<Element, Animation>();
   let planeK = 0;
+  let target: SceneTarget = null;
+  let replaying = 0;
+  const timers = new Set<number>();
+  const later = (fn: () => void, ms: number): number => {
+    const t = window.setTimeout(() => { timers.delete(t); if (!destroyed) fn(); }, ms);
+    timers.add(t);
+    return t;
+  };
 
   const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const rm = () => (rmOverride ?? !!mq?.matches);
@@ -178,21 +210,34 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     assignSmoke();
     syncPlay();
   }
-  /** Auto detail: watch frames for a few seconds after a build; if a quarter run long (> 24 ms), go low for good. */
+  /** Auto detail: watch the main thread for a few seconds after a build, passively (long-animation-frame or long
+   *  task entries; a rAF loop would itself keep the page restyling every frame). If more than a quarter of the time
+   *  is lost to long frames while the scene is on screen and moving, go low for the rest of the session. */
   let watchId = 0;
   function watchFrames(): void {
-    if (detailOpt !== 'auto' || lowDetail || typeof requestAnimationFrame !== 'function' || typeof performance === 'undefined') return;
+    if (detailOpt !== 'auto' || lowDetail || typeof PerformanceObserver !== 'function') return;
+    const types: readonly string[] = (PerformanceObserver as unknown as { supportedEntryTypes?: string[] }).supportedEntryTypes ?? [];
+    const type = types.includes('long-animation-frame') ? 'long-animation-frame' : types.includes('longtask') ? 'longtask' : '';
+    if (!type) return;
     const my = ++watchId;
-    let n = 0, slow = 0, last = 0;
-    const tick = (t: number) => {
+    later(() => {
       if (destroyed || my !== watchId || lowDetail) return;
-      if (rm() || root.classList.contains('paused') || root.classList.contains('halt')) { last = 0; requestAnimationFrame(tick); return; }
-      if (last) { n++; if (t - last > 24) slow++; }
-      last = t;
-      if (n >= 150) { if (slow / n > 0.25) setLow(true); return; }
-      requestAnimationFrame(tick);
-    };
-    window.setTimeout(() => requestAnimationFrame(tick), 1500);
+      let lost = 0;
+      const t0 = performance.now();
+      let po: PerformanceObserver | null = null;
+      try {
+        po = new PerformanceObserver((l) => {
+          if (rm() || root.classList.contains('paused') || root.classList.contains('halt')) return;
+          for (const e of l.getEntries()) lost += Math.max(0, e.duration - 16.7);
+        });
+        po.observe({ type, buffered: false } as PerformanceObserverInit);
+      } catch { return; }
+      later(() => {
+        po?.disconnect();
+        const span = performance.now() - t0;
+        if (my === watchId && !lowDetail && span > 0 && lost / span > 0.25) setLow(true);
+      }, 4000);
+    }, 1500);
   }
   function applyMotion(): void {
     root.classList.toggle('rm', rm());
@@ -225,7 +270,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   }
 
   /* ---------------- events ---------------- */
-  places.addEventListener('click', (ev) => {
+  stage.addEventListener('click', (ev) => {
     const b = (ev.target as Element)?.closest?.('.scn-place') as HTMLElement | null;
     if (!b) return;
     const app = b.dataset.app ?? null;
@@ -241,7 +286,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
 
   function select(appId: string | null, fromUser = false): void {
     selected = appId;
-    for (const p of plots) p.btn?.classList.toggle('sel', !!p.app && p.app.id === appId);
+    if (B) for (const p of B.plots) p.btn?.classList.toggle('sel', !!p.app && p.app.id === appId);
     if (lastView) renderCard(lastView);
     if (fromUser) { try { opts.onSelect?.(appId); } catch (e) { console.warn('scene onSelect', e); } }
   }
@@ -252,10 +297,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const lvl = hatchLevel(s);
     return {
       s, v: sl.v ?? r(), stage: stageN, w: sl.w ?? 0, h: sl.h ?? 0, r, overlay,
-      u: (x: string) => `url(#${id}${x})`,
-      hatch: (level = 0) => `url(#${id}${level ? 'x' : 'h'}${lvl})`,
+      u: (x: string) => `url(#${pid}${x})`,
+      hatch: (level = 0) => `url(#${pid}${level ? 'x' : 'h'}${lvl})`,
     };
   }
+  /** Def-id prefix of the world being built: unique per build, since kept worlds share the document. */
+  let pid = id;
+  let builds = 0;
 
   function renderSlot(l: Layout, look: string, sl: Slot, key: string, cls: string, stageN: number, seedStr: string, overlay = false, propKey?: string): Item {
     const s = sl.s ?? depthScale(l, sl.y) * (sl.k ?? 1);
@@ -282,6 +330,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       return `<div class="fx smk${e.kind === 'steam' ? ' wht' : ''}" data-k="${key}" data-sz="${k}" style="${pos};transform:scale(${k || 0.01})"><i></i><i></i><i></i></div>`;
     }
     const sc = Math.round(s * 1000) / 1000;
+    if (e.kind === 'flow') {
+      // Packets along a cable: three copies of the dashed path, a third of a dash apart, shown in turn by opacity
+      // (composited), rather than animating stroke-dashoffset (which restyles and repaints every frame).
+      const m = e.markup ?? '';
+      return `<div class="fx flow" data-k="${key}" style="${pos};transform:scale(${sc})">` +
+        [0, 1, 2].map((i) => `<b class="f${i}">${spr(m.replace('<path ', `<path style="stroke-dashoffset:${-i * 5.33}" `))}</b>`).join('') + `</div>`;
+    }
     return `<div class="fx ${e.kind}" data-k="${key}" style="${pos};transform:scale(${sc})"><b>${spr(e.markup ?? '')}</b></div>`;
   }
 
@@ -303,30 +358,42 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return { html, band, dur: m.dur, phase, z: moverZ(m) };
   }
 
-  function build(v: SceneView): void {
+  function siteFromHit(def: PlotDef): [number, number, number, number] | null {
+    if (!def.anchor) return null;
+    const a = def.anchor;
+    const w = Math.min(70, def.hit ? def.hit[2] * 0.7 : 50);
+    return [a.x - w / 2, a.y - 10, w, 10];
+  }
+
+  function buildKey(view: SceneView): string {
+    const l = layoutFor(view.sectorId, view.apps.length);
+    return [view.sectorId, view.look, clamp(Math.round(view.stage), 0, 3), view.apps.map((a) => a.id + '/' + a.icon).join(','),
+      view.levers.map((x) => x.kind).filter((k) => !l.restraint[k]).sort().join(','),
+      Object.entries(view.heritage ?? {}).map(([k, x]) => k + Math.round(x * 3)).join(','),
+      (view.commons ?? []).map((c) => `${c.id}/${c.icon}/${Math.min(3, c.level)}`).join(','), view.landmark ?? ''].join('|');
+  }
+
+  function build(v: SceneView, key: string): Built {
     const l = layoutFor(v.sectorId, v.apps.length);
-    layout = l;
     // The art style belongs to the layout (its Age); a generic layout follows the page look.
     const pick = (k: string) => { const st = styleFor(k); return st && st.css ? st : undefined; };
-    style = (l.look !== 'generic' ? pick(l.look) : undefined) ?? pick(v.look) ?? pick('generic');
+    const style = (l.look !== 'generic' ? pick(l.look) : undefined) ?? pick(v.look) ?? pick('generic');
     const look = style?.id ?? 'generic';
-    root.dataset.look = look;
-    root.dataset.layout = l.id;
-    root.classList.remove('live');
-    defs.innerHTML = `<defs>${style ? style.defs(id) : ''}</defs>`;
-    const pctx = { caption: l.caption ?? '', name: v.sectorName, u: (x: string) => `url(#${id}${x})` };
+    const el = makeWorld();
+    pid = `${id}${++builds}-`;
+    el.defs.innerHTML = `<defs>${style ? style.defs(pid) : ''}</defs>`;
+    const pctx = { caption: l.caption ?? '', name: v.sectorName, u: (x: string) => `url(#${pid}${x})` };
     let plate = '', leg = '';
     try { plate = style?.plate?.(pctx) ?? ''; leg = style?.legend?.(pctx) ?? ''; } catch (e) { console.warn('scene plate', e); }
-    plateSvg.innerHTML = plate;
-    legend.textContent = leg; legend.hidden = !leg;
-    extraLayer.innerHTML = style?.layers ?? '';
-    noiseSvg.innerHTML = style?.noise ?? '';
+    el.plateSvg.innerHTML = plate;
+    el.extraLayer.innerHTML = style?.layers ?? '';
+    el.noiseSvg.innerHTML = style?.noise ?? '';
     const items: Item[] = [];
     const fxBand: Record<Band, { z: number; html: string }[]> = { far: [], mid: [], near: [] };
     const stageN = clamp(Math.round(v.stage), 0, 3);
     const bctx = {
-      u: (x: string) => `url(#${id}${x})`,
-      hatch: (s: number, level: 0 | 1 = 0) => `url(#${id}${level ? 'x' : 'h'}${hatchLevel(s)})`,
+      u: (x: string) => `url(#${pid}${x})`,
+      hatch: (s: number, level: 0 | 1 = 0) => `url(#${pid}${level ? 'x' : 'h'}${hatchLevel(s)})`,
       r: rng(hash(l.id)),
       stage: stageN,
       heritage: v.heritage,
@@ -349,13 +416,14 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     }
     const others = l.plots.filter((p) => (p.driver ?? 'app') !== 'app');
 
-    plots = [];
+    const plots: PlotRt[] = [];
+    const baseOrd = new Map<string, number>();
     const all: { def: PlotDef; app: SceneApp | null }[] = [...others.filter((p) => !p.overlayOf).map((d) => ({ def: d, app: null })), ...assigned,
       ...others.filter((p) => !!p.overlayOf).map((d) => ({ def: d, app: null }))];
     let uid = 0;
     for (const { def, app } of all) {
       const idx = plots.length;
-      const rt: PlotRt = { def, idx, app, keys: [], anchorKey: null, movers: [], moverDefs: [], overlayBase: null, overlayOrder: [], count: -1, mcount: -1, status: '', btn: null, ghost: null, svy: null, scaf: null };
+      const rt: PlotRt = { def, idx, app, keys: [], mkeys: [], anchorKey: null, movers: [], moverDefs: [], overlayBase: null, overlayOrder: [], count: -1, mcount: -1, status: '', btn: null, ghost: null, svy: null, scaf: null };
       const seedBase = `${l.id}:${def.key}`;
       // Landmark (and, for applications, its ghost, scaffold and survey stakes).
       if (def.anchor) {
@@ -379,7 +447,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           const sc = def.anchor.s ?? depthScale(l, def.anchor.y);
           const site = def.site ?? siteFromHit(def);
           const bw = Math.min(site ? site[2] : 50, 70) / sc;
-          items.push({ y: def.anchor.y + 0.01, ord: uid++, band: def.anchor.band ?? bandOf(l, def.anchor.y), html: `<g class="scaf" data-k="${idx}:f" transform="translate(${f(def.anchor.x)} ${f(def.anchor.y)}) scale(${Math.round(sc * 1000) / 1000})">${scaffold(bw, 46)}</g>`, fx: [] });
+          items.push({ y: def.anchor.y + 0.01, ord: uid++, band: def.anchor.band ?? bandOf(l, def.anchor.y), html: `<g class="scaf" data-k="${idx}:f" transform="translate(${f(def.anchor.x)} ${f(def.anchor.y)}) scale(${Math.round(sc * 1000) / 1000})"><g class="sgr">${scaffold(bw, 46)}</g></g>`, fx: [] });
         }
       }
       if ((def.driver ?? 'app') === 'app') {
@@ -417,14 +485,18 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           const mm = moverMarkup(l, look, m, i, key, stageN, `${seedBase}:m${mi}:${i}`);
           fxBand[mm.band].push({ z: mm.z, html: mm.html });
           rt.moverDefs.push({ el: null as unknown as Element, dur: mm.dur, phase: mm.phase });
-          (rt as PlotRt & { mkeys?: string[] }).mkeys = [...((rt as PlotRt & { mkeys?: string[] }).mkeys ?? []), key];
+          rt.mkeys.push(key);
         }
       });
       plots.push(rt);
     }
-    baseOrd.clear();
 
     // Signs of restraint, one per lever kind (plus spare notice boards for unknown kinds in force).
+    const spots = new Map<string, [number, number, number, number]>();
+    const spotOf = (sl: Slot): [number, number, number, number] => {
+      const s = sl.s ?? depthScale(l, sl.y) * (sl.k ?? 1);
+      return [sl.x - 26 * s, sl.y - 40 * s, 52 * s, 46 * s];
+    };
     const rkinds = Object.keys(l.restraint);
     const extra = v.levers.map((x) => x.kind).filter((k) => !l.restraint[k]);
     const spareR = l.restraintSpare ?? [];
@@ -434,7 +506,30 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       const it = renderSlot(l, look, sl, `r:${k}`, 'rst', stageN, `${l.id}:r:${k}`);
       it.ord = uid++;
       items.push(it);
+      spots.set('lever:' + k, spotOf(sl));
     });
+
+    // The Commons: the founded projects of this Industry, each on a civic site of the town (Layout.commons, else
+    // sites taken from the town's own house plots), drawn by icon (unknown icons: a civic hall). Levels add detail.
+    const csites = commonsSites(l);
+    (v.commons ?? []).forEach((c, i) => {
+      const site = csites[i % Math.max(1, csites.length)];
+      if (!site) return;
+      const sl: Slot = { ...site, p: 'commons:' + c.icon, w: Math.min(3, c.level), v: (hash(c.id) % 1000) / 1000 };
+      const it = renderSlot(l, look, sl, `c:${c.id}`, 'cmn', stageN, `${l.id}:c:${c.id}`, false, commonsProp(l.look, look, c.icon));
+      it.ord = uid++;
+      items.push(it);
+      spots.set('commons:' + c.id, spotOf(sl));
+    });
+    // The Charter's landmark, if it names this Industry.
+    if (v.landmark) {
+      const site = l.landmark ?? csites[csites.length - 1];
+      if (site) {
+        const it = renderSlot(l, look, { ...site, p: v.landmark }, 'lm', 'cmn', stageN, `${l.id}:lm:${v.landmark}`, false, landmarkProp(l.look, look, v.landmark));
+        it.ord = uid++;
+        items.push(it);
+      }
+    }
 
     // Steady-state movers (birds), built hidden.
     (l.steadyMovers ?? []).forEach((m, mi) => {
@@ -445,6 +540,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     });
 
     // Paint: per band, backdrop first, then items by depth (y), then the cut-away.
+    const st: Record<Band, SVGSVGElement[]> = { far: [], mid: [], near: [] };
+    const fxl: Record<Band, HTMLDivElement[]> = { far: [], mid: [], near: [] };
     for (const b of BANDS) {
       const its = items.filter((x) => x.band === b).sort((p, q) => p.y - q.y || p.ord - q.ord);
       // Split depths: one per distinct mover track in this band (clustered, at most four).
@@ -460,58 +557,55 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       if (b === 'near') sh[n - 1] += bd.cut ?? '';
       // A mover at depth z draws after every item at y ≤ z: in fx layer i where splits[i] ≥ z.
       for (const e of fxBand[b]) { const k = e.z <= -1e5 ? 0 : Math.min(n - 1, layerOf(e.z)); fh[k] = e.html + fh[k]; }
-      st[b] = []; fx[b] = [];
       const kids: Element[] = [];
       for (let i = 0; i < n; i++) {
         const s = svgEl(`scn-l band-${b}`), x = div(`scn-fxl fx-${b}`);
         s.innerHTML = sh[i]; x.innerHTML = fh[i];
-        st[b].push(s); fx[b].push(x);
+        st[b].push(s); fxl[b].push(x);
         kids.push(s);
         if (fh[i]) kids.push(x);
       }
-      bw[b].replaceChildren(...kids);
+      el.bw[b].replaceChildren(...kids);
     }
-    skySvg.innerHTML = bd.sky ?? '';
+    el.skySvg.innerHTML = bd.sky ?? '';
 
     // Index elements by key.
-    elsByKey = new Map();
-    for (const svg of [...st.far, ...st.mid, ...st.near, ...fx.far, ...fx.mid, ...fx.near]) {
-      svg.querySelectorAll('[data-k]').forEach((el) => {
-        const k = (el as Element).getAttribute('data-k') as string;
+    const elsByKey = new Map<string, Element[]>();
+    for (const svg of [...st.far, ...st.mid, ...st.near, ...fxl.far, ...fxl.mid, ...fxl.near]) {
+      svg.querySelectorAll('[data-k]').forEach((e) => {
+        const k = (e as Element).getAttribute('data-k') as string;
         const arr = elsByKey.get(k);
-        if (arr) arr.push(el); else elsByKey.set(k, [el]);
+        if (arr) arr.push(e); else elsByKey.set(k, [e]);
       });
     }
     // Backdrop emitters (far aircraft lights, vents) are always on.
-    for (const b of BANDS) for (const lay of fx[b]) lay.querySelectorAll('[data-k="bd"]').forEach((el) => el.classList.add('on'));
-    smokeEls = [];
-    for (const b of BANDS) for (const lay of fx[b]) lay.querySelectorAll('.smk').forEach((el) => smokeEls.push({ el, key: el.getAttribute('data-k') ?? '', size: parseFloat(el.getAttribute('data-sz') ?? '1') }));
+    for (const b of BANDS) for (const lay of fxl[b]) lay.querySelectorAll('[data-k="bd"]').forEach((e) => e.classList.add('on'));
+    const smokeEls: Built['smokeEls'] = [];
+    for (const b of BANDS) for (const lay of fxl[b]) lay.querySelectorAll('.smk').forEach((e) => smokeEls.push({ el: e, key: e.getAttribute('data-k') ?? '', size: parseFloat(e.getAttribute('data-sz') ?? '1') }));
     smokeEls.sort((p, q) => q.size - p.size);
-    restraintEls = new Map();
-    elsByKey.forEach((els, k) => { if (k.startsWith('r:')) restraintEls.set(k.slice(2), els); });
-    steadyMoverEls = Array.from(root.querySelectorAll('.mv.stdy'));
-    prevSteadyOn = null; moversDirty = true;
-    moverAnims.forEach((a) => a.cancel());
-    moverAnims = [];
+    const restraintEls = new Map<string, Element[]>(), commonsEls = new Map<string, Element[]>();
+    elsByKey.forEach((els, k) => {
+      if (k.startsWith('r:')) restraintEls.set(k.slice(2), els);
+      else if (k.startsWith('c:')) { commonsEls.set(k.slice(2), els); els.forEach((e) => e.classList.add('on')); }
+      else if (k === 'lm') els.forEach((e) => e.classList.add('on'));
+    });
+    const nb: Built = {
+      key, sectorId: v.sectorId, el, layout: l, style, look, legend: leg, place: l.place, plots, elsByKey, smokeEls, restraintEls, commonsEls,
+      steadyMoverEls: Array.from(el.world.querySelectorAll('.mv.stdy')), moverAnims: [], spots,
+      prevPace: -1, leverKey: '\u0000', smokeDirty: true, prevSteadyOn: null, moversDirty: true, lastSig: '', stageN, used: 0, vars: new Map(), scafs: 0,
+    };
     for (const p of plots) {
-      const mk = (p as PlotRt & { mkeys?: string[] }).mkeys ?? [];
-      p.movers = mk.map((k) => (elsByKey.get(k) ?? [])[0]).filter(Boolean);
+      p.movers = p.mkeys.map((k) => (elsByKey.get(k) ?? [])[0]).filter(Boolean);
       p.moverDefs.forEach((m, i) => (m.el = p.movers[i]));
       p.ghost = (elsByKey.get(`${p.idx}:g`) ?? [])[0] ?? null;
       p.svy = (elsByKey.get(`${p.idx}:s`) ?? [])[0] ?? null;
       p.scaf = (elsByKey.get(`${p.idx}:f`) ?? [])[0] ?? null;
     }
-    prevPace = -1;
-    sizePlane();
-    for (const p of plots) p.moverDefs.forEach((m) => { if (m.el) animateMover(m.el as HTMLElement, m.dur, m.phase); });
+    for (const p of plots) p.moverDefs.forEach((m) => { if (m.el) animateMover(nb, m.el as HTMLElement, m.dur, m.phase); });
     // Steady-state movers (birds) have no plot: give them a crossing of their own.
-    steadyMoverEls.forEach((el, i) => animateMover(el as HTMLElement, 40 + i * 7, (i * 0.37) % 1));
-    syncPlay();
-    root.classList.toggle('lowd', lowDetail);
-    watchFrames();
+    nb.steadyMoverEls.forEach((e, i) => animateMover(nb, e as HTMLElement, 40 + i * 7, (i * 0.37) % 1));
 
     // Places (buttons) for applications.
-    places.replaceChildren();
     for (const p of plots) {
       if (!p.app || !p.def.hit) continue;
       const [x, y, w, h] = p.def.hit;
@@ -528,19 +622,67 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       pin.setAttribute('aria-hidden', 'true');
       pin.textContent = '+';
       b.append(pin);
-      places.append(b);
+      el.places.append(b);
       p.btn = b;
-      if (selected === p.app.id) b.classList.add('sel');
+      spots.set('app:' + p.app.id, p.def.hit);
     }
-    root.setAttribute('aria-label', `${v.sectorName}: ${l.place}`);
+    return nb;
+  }
+
+  /** Show a built world (a fresh build or one kept from an earlier visit). */
+  function attach(nb: Built, v: SceneView): void {
+    if (B && B !== nb) for (const a of B.moverAnims) { try { if (a.playState === 'running') a.pause(); } catch { /* ignore */ } }
+    const switching = !B || B.sectorId !== nb.sectorId;
+    B = nb;
+    nb.used = ++useClock;
+    root.classList.remove('live');
+    root.dataset.look = nb.look;
+    root.dataset.layout = nb.layout.id;
+    // Kept worlds stay in the document, undisplayed (display: none also stops their CSS animations; content-visibility
+    // was tried and left them ticking); only the active one is drawn.
+    if (nb.el.world.parentNode !== stage) stage.insertBefore(nb.el.world, banner);
+    if (nb.el.places.parentNode !== stage) stage.insertBefore(nb.el.places, banner);
+    for (const w of Array.from(stage.children)) {
+      if (!w.classList.contains('scn-world') && !w.classList.contains('scn-places')) continue;
+      const act = w === nb.el.world || w === nb.el.places;
+      if (w.classList.contains('act') !== act) w.classList.toggle('act', act);
+    }
+    legend.textContent = nb.legend; legend.hidden = !nb.legend;
+    // Root-level state is re-applied by the next patch.
+    nb.prevPace = -1; nb.leverKey = '\u0000'; nb.lastSig = ''; nb.prevSteadyOn = null; nb.moversDirty = true;
+    root.classList.remove('pace0', 'pace1', 'pace2');
+    for (const c of Array.from(root.classList)) if (c.startsWith('lv-')) root.classList.remove(c);
+    if (switching) { clearMoments(); setTarget(null); }
+    for (const p of nb.plots) p.btn?.classList.toggle('sel', !!p.app && p.app.id === selected);
+    root.setAttribute('aria-label', `${v.sectorName}: ${nb.place}`);
+    root.classList.toggle('lowd', lowDetail);
+    if (!planeK) sizePlane();
+    syncPlay();
+    watchFrames();
     // Suppress grow animations for things already there on (re)build; re-enable next frame.
     const enable = () => { if (!destroyed) applyMotion(); };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(enable)); else enable();
   }
-  const baseOrd = new Map<string, number>();
+  let useClock = 0;
+
+  function discard(b: Built): void {
+    for (const a of b.moverAnims) { try { a.cancel(); } catch { /* ignore */ } }
+    b.moverAnims = [];
+    if (b !== B) { b.el.world.remove(); b.el.places.remove(); }
+  }
+  function remember(b: Built): void {
+    const old = cache.get(b.sectorId);
+    if (old && old !== b) discard(old);
+    cache.set(b.sectorId, b);
+    if (cache.size > MAX_CACHED) {
+      let lru: Built | null = null;
+      cache.forEach((x) => { if (x !== B && (!lru || x.used < lru.used)) lru = x; });
+      if (lru) { discard(lru); cache.delete((lru as Built).sectorId); }
+    }
+  }
 
   /** One crossing per mover, as a Web Animation with concrete keyframes (composited; no var() in keyframes). */
-  function animateMover(el: HTMLElement, durS: number, phase: number): void {
+  function animateMover(b: Built, el: HTMLElement, durS: number, phase: number): void {
     const tr = (el.getAttribute('data-tr') ?? '0,0,0,0').split(',').map(Number);
     if (typeof el.animate !== 'function') return;
     try {
@@ -548,25 +690,38 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         { duration: durS * 1000, iterations: Infinity, easing: 'linear' });
       a.currentTime = phase * durS * 1000;
       a.pause();
-      moverAnims.push(a);
+      b.moverAnims.push(a);
       animOf.set(el, a);
     } catch { /* no Web Animations: movers stay at their resting points */ }
   }
-  /** Run, pause or drop the mover animations to match reduced motion, visibility and a Reckoning. */
+  /** Run, pause or drop the mover animations to match reduced motion, visibility and a Reckoning. Animations are
+   *  started a frame after their sprite is shown: one started on a box with no layout yet runs on the main thread
+   *  (restyling the page every frame) instead of the compositor. */
+  let playQ: Animation[] = [];
+  let playRaf = 0;
   function syncPlay(): void {
+    if (!B) return;
     const still = rm(), stop = root.classList.contains('paused') || root.classList.contains('halt');
     const steady = root.classList.contains('steady'), low = root.classList.contains('lowd');
-    for (const a of moverAnims) {
+    for (const a of B.moverAnims) {
       try {
         // A hidden mover's animation would still tick on the main thread every frame (it cannot be composited
         // without a box): only shown movers run.
         const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
         const shown = !!el && el.classList.contains('on') && (!el.classList.contains('stdy') || steady) && !(low && el.classList.contains('thin'));
         if (still) { if (a.playState !== 'idle') a.cancel(); }
-        else if (stop || !shown) { if (a.playState === 'idle') a.play(); if (a.playState !== 'paused') a.pause(); }
-        else if (a.playState !== 'running') a.play();
+        else if (stop || !shown) { if (a.playState === 'idle') a.play(); if (a.playState !== 'paused') a.pause(); playQ = playQ.filter((x) => x !== a); }
+        else if (a.playState !== 'running' && !playQ.includes(a)) { if (a.playState === 'idle') { a.play(); a.pause(); } playQ.push(a); }
       } catch { /* ignore */ }
     }
+    if (playQ.length && !playRaf && typeof requestAnimationFrame === 'function') {
+      playRaf = requestAnimationFrame(() => requestAnimationFrame(() => {
+        playRaf = 0;
+        const q = playQ; playQ = [];
+        const cur = B;
+        for (const a of q) { try { if (cur && cur.moverAnims.includes(a) && a.playState !== 'running') a.play(); } catch { /* ignore */ } }
+      }));
+    } else if (playQ.length && typeof requestAnimationFrame !== 'function') { const q = playQ; playQ = []; q.forEach((a) => { try { a.play(); } catch { /* ignore */ } }); }
   }
   /** The sprite plane is 600×400 px scaled to the stage (one write on build and on resize). */
   function sizePlane(w?: number): void {
@@ -576,16 +731,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     root.style.setProperty('--k', k.toFixed(4));
   }
 
-  function siteFromHit(def: PlotDef): [number, number, number, number] | null {
-    if (!def.anchor) return null;
-    const a = def.anchor;
-    const w = Math.min(70, def.hit ? def.hit[2] * 0.7 : 50);
-    return [a.x - w / 2, a.y - 10, w, 10];
-  }
-
   /* ---------------- patch ---------------- */
   function setOn(key: string, on: boolean, extraCls?: string): void {
-    const els = elsByKey.get(key);
+    const els = B?.elsByKey.get(key);
     if (!els) return;
     for (const el of els) {
       el.classList.toggle('on', on);
@@ -606,81 +754,70 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     }
   }
 
-  function patch(v: SceneView): void {
-    const l = layout;
-    if (!l) return;
+  function patch(v: SceneView, quiet: boolean): void {
+    const b = B;
+    if (!b) return;
+    const el = b.el;
+    const style = b.style;
     const founded = v.apps.filter((a) => a.status === 'founded');
     const lightMean = founded.length ? founded.reduce((s, a) => s + a.adoption, 0) / Math.max(founded.length, v.apps.length * 0.6) : 0;
     const pf = clamp(v.pressureFraction, 0, 1.2);
-    const clear = v.steady ? 1 : v.decoupling ? 0.6 * v.steadyProgress : 0;
+    // How far towards the Steady State look: M2 clear skies bring it in over the 50 years; M1 views use the streak.
+    const clear = v.steady ? 1 : v.clear ? 0.45 + 0.55 * clamp(v.clearProgress ?? 0, 0, 1) : v.decoupling ? 0.6 * v.steadyProgress : 0;
+    const held = !!v.settled;
     const pfv = Math.min(1, pf) * (1 - 0.85 * clear);
+    // Haze by band: below the sink line it thins near first, far last (pressureToClear when the host gives it).
+    const hb = typeof v.pressureToClear === 'number' ? Math.min(Math.min(1, pf), 0.15 + 0.85 * v.pressureToClear) * (1 - 0.85 * clear) : pfv;
     const q = (x: number) => (Math.round(x * 50) / 50).toFixed(2);
     // Fast-moving values go straight onto the few elements that use them (a custom property on the root would
-    // restyle every node of the scene); slow ones are coarsely quantised before they touch the root.
+    // restyle every node of the scene); slow ones are coarsely quantised before they touch the world.
     const q20 = (x: number) => (Math.round(x * 20) / 20).toFixed(2);
-    setOp(sky1, q(pfv)); const hzk = style?.weather?.hz ?? [0.85, 0.55, 0.32];
-    setOp(hz1, q(Math.min(1, pfv * hzk[0]))); setOp(hz2, q(Math.min(1, pfv * hzk[1]))); setOp(hz3, q(Math.min(1, pfv * hzk[2])));
-    setOp(noiseSvg as unknown as HTMLElement, q(Math.min(1, Math.min(1, pf) * (style?.weather?.noise ?? 0))));
-    setOp(glow, q(clamp(lightMean, 0, 1)));
-    setVarOn(skySvg, '--pf2', q20(pfv));
-    setVarOn(skySvg, '--light', q20(clamp(lightMean, 0, 1)));
-    const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * 10) / 10).toFixed(1);
-    for (const b of BANDS) setVarOn(bw[b], '--smk-a', smk);
-    const rs = { setProperty: setVar };
-    setVarOn(bw.near, '--pfc', q20(Math.min(1, pf)));
-    rs.setProperty('--res', q(clamp(v.reserveFraction, 0.02, 1)));
-    rs.setProperty('--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
-    setVarOn(bw.near, '--light', q20(clamp(lightMean, 0, 1)));
+    setOp(el.sky1, q(pfv)); const hzk = style?.weather?.hz ?? [0.85, 0.55, 0.32];
+    setOp(el.hz1, q(Math.min(1, Math.pow(hb, 0.8) * hzk[0]))); setOp(el.hz2, q(Math.min(1, hb * hzk[1]))); setOp(el.hz3, q(Math.min(1, Math.pow(hb, 1.35) * hzk[2])));
+    setOp(el.sky2, q(clear));
+    setOp(el.held, held ? '1' : '0');
+    setOp(el.noiseSvg as unknown as HTMLElement, q(held ? 0 : Math.min(1, Math.min(1, pf) * (style?.weather?.noise ?? 0) * (1 - clear))));
+    setOp(el.glow, q(clamp(lightMean, 0, 1)));
+    setVarOn(el.skySvg, '--pf2', q20(pfv));
+    setVarOn(el.skySvg, '--light', q20(clamp(lightMean, 0, 1)));
+    setVarOn(el.skySvg, '--clr', q20(clear));
+    const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * (held ? 0.5 : 1) * 10) / 10).toFixed(1);
+    for (const bd of BANDS) setVarOn(el.bw[bd], '--smk-a', smk);
+    setVarOn(el.bw.near, '--pfc', q20(Math.min(1, pf)));
+    setVar(b, '--res', q(clamp(v.reserveFraction, 0.02, 1)));
+    setVar(b, '--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
+    setVarOn(el.bw.near, '--light', q20(clamp(lightMean, 0, 1)));
     const wash = style?.wash?.(Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5) ?? null;
-    if (wash) { rs.setProperty('--s-wash', wash[0]); rs.setProperty('--s-water', wash[1]); }
+    if (wash) { setVar(b, '--s-wash', wash[0]); setVar(b, '--s-water', wash[1]); }
     const lamp = LAMP[clamp(Math.round(v.stage), 0, 3)];
-    rs.setProperty('--s-lamp', lamp[0]); rs.setProperty('--s-lamprgb', lamp[1]);
-    const pace = v.pace < 0.3 ? 0 : v.pace < 0.7 ? 1 : 2;
-    if (pace !== prevPace) { root.classList.remove('pace0', 'pace1', 'pace2'); root.classList.add('pace' + pace); }
+    setVar(b, '--s-lamp', lamp[0]); setVar(b, '--s-lamprgb', lamp[1]);
+    const pace = held ? 0 : v.pace < 0.3 ? 0 : v.pace < 0.7 ? 1 : 2;
+    if (pace !== b.prevPace) { root.classList.remove('pace0', 'pace1', 'pace2'); root.classList.add('pace' + pace); }
     root.classList.toggle('steady', !!v.steady);
     root.classList.toggle('decoupling', !!v.decoupling);
+    root.classList.toggle('clear', !!v.clear && !v.steady);
+    if (root.classList.contains('settled') !== held) { root.classList.toggle('settled', held); }
     if (root.classList.contains('halt') !== !!v.reckoning) { root.classList.toggle('halt', !!v.reckoning); syncPlay(); }
     // A city under strain (pressure near collapse, not yet clearing): styles may stage blackouts, failing signs.
-    root.classList.toggle('stress', pf >= 0.8 && !v.steady && clear < 0.3);
-
-    const now = Date.now(); // UI-side timers only (the scene holds no game rules)
-    // Crisis moment.
-    if (prevCrises >= 0 && prevSector === v.sectorId && v.crises > prevCrises) {
-      root.classList.remove('crisis'); void root.offsetWidth; root.classList.add('crisis');
-      clearTimeout(crisisTimer);
-      crisisTimer = window.setTimeout(() => root.classList.remove('crisis'), 7200);
-      flash(v.crisisName, 7000);
-    }
-    if (!prevSteady && v.steady && prevSector === v.sectorId) flash('The sky clears.', 6000);
+    root.classList.toggle('stress', pf >= 0.8 && !v.steady && clear < 0.3 && !held);
+    const embText = held ? (v.settledYear ? `Settled ${v.settledYear}` : 'Settled') : '';
+    if (emblem.textContent !== embText) { emblem.textContent = embText; emblem.classList.toggle('on', !!embText); }
 
     // Refresh each plot's application from this view (plots are built once; the data moves every tick).
     const byId = new Map(v.apps.map((a) => [a.id, a]));
-    for (const p of plots) if (p.app) p.app = byId.get(p.app.id) ?? p.app;
-    // Founding moments are played only when one or two places change at once (not on a jump or a load).
-    let changes = 0;
-    for (const p of plots) if (p.app && p.status && p.status !== p.app.status && p.app.status === 'founded') changes++;
-    const allowBuild = changes > 0 && changes <= 2;
+    for (const p of b.plots) if (p.app) p.app = byId.get(p.app.id) ?? p.app;
     // Plots.
-    const durK = [1.3, 1, 0.7][pace];
-    for (const p of plots) {
+    const durK = [1.3, 1, 0.7][pace] * (held ? 1.8 : 1);
+    for (const p of b.plots) {
       const d = density(p, v, lightMean);
       const st = p.app ? p.app.status : 'always';
       if (p.app) {
-        const prev = prevStatus.get(p.app.id);
         if (p.status !== st) {
           p.status = st;
           setOn(`${p.idx}:a`, st === 'founded');
           if (p.ghost) { p.ghost.classList.toggle('on', st !== 'founded'); p.ghost.classList.toggle('avail', st === 'available'); }
           p.svy?.classList.toggle('on', st === 'available');
-          if (st === 'founded' && prev && prev !== 'founded' && allowBuild && !rm()) {
-            // Founding: scaffold goes up and the landmark rises.
-            (elsByKey.get(`${p.idx}:a`) ?? []).forEach((el) => { el.classList.remove('build'); void (el as SVGGElement).getBBox; el.classList.add('build'); });
-            if (p.scaf) { p.scaf.classList.remove('on'); void (p.scaf as SVGGElement).getBBox; p.scaf.classList.add('on'); }
-            window.setTimeout(() => { p.scaf?.classList.remove('on'); (elsByKey.get(`${p.idx}:a`) ?? []).forEach((el) => el.classList.remove('build')); }, 2700);
-            showToast(`${p.app.name} founded`);
-          }
         }
-        prevStatus.set(p.app.id, st);
         if (p.btn) {
           p.btn.classList.toggle('avail', st === 'available');
           const lbl = placeLabel(p.app, v);
@@ -690,7 +827,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
 
       const n = p.keys.length;
       const curve = p.def.curve ?? 0.6;
-      let c = d <= 0.001 ? 0 : Math.min(n, Math.round(n * Math.pow(d, curve)));
+      const c = d <= 0.001 ? 0 : Math.min(n, Math.round(n * Math.pow(d, curve)));
       if (p.overlayBase) {
         const baseCount = p.overlayBase.count < 0 ? 0 : p.overlayBase.count;
         const ovKey = c * 1000 + baseCount;
@@ -700,11 +837,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           p.keys.forEach((k, i) => setOn(k, lit.has(i) && i < baseCount));
         }
       } else if (c !== p.count) {
-        const prevC = Math.max(0, p.count);
         p.count = c;
         p.keys.forEach((k, i) => setOn(k, i < c));
-        smokeDirty = true;
-        void prevC;
+        b.smokeDirty = true;
       }
       // Movers: more trains, more often.
       const m = p.movers.length;
@@ -714,10 +849,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         if (want !== p.mcount) {
           p.mcount = want;
           // In low detail every second mover beyond the first is dropped (by class, so no rebuild is needed).
-          p.movers.forEach((el, i) => { el.classList.toggle('on', i < want); el.classList.toggle('thin', i > 0 && i % 2 === 1); });
-          moversDirty = true;
+          p.movers.forEach((e, i) => { e.classList.toggle('on', i < want); e.classList.toggle('thin', i > 0 && i % 2 === 1); });
+          b.moversDirty = true;
         }
-        if (pace !== prevPace) {
+        if (pace !== b.prevPace) {
           for (const md of p.moverDefs) {
             const a = md.el ? animOf.get(md.el) : undefined;
             if (!a) continue;
@@ -731,39 +866,135 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         }
       }
     }
-    prevPace = pace;
-    if (smokeDirty) { smokeDirty = false; assignSmoke(); }
+    b.prevPace = pace;
+    if (b.smokeDirty) { b.smokeDirty = false; assignSmoke(); }
 
     // Restraint.
     const inForce = new Set(v.levers.map((x) => x.kind));
     const lvKey = [...inForce].sort().join(',');
-    if (lvKey !== leverKey) {
+    if (lvKey !== b.leverKey) {
       for (const c of Array.from(root.classList)) if (c.startsWith('lv-')) root.classList.remove(c);
       for (const k of inForce) if (/^[\w-]+$/.test(k)) root.classList.add('lv-' + k);
-      leverKey = lvKey;
+      b.leverKey = lvKey;
+      b.restraintEls.forEach((els, k) => els.forEach((e) => e.classList.toggle('on', inForce.has(k))));
     }
-    restraintEls.forEach((els, k) => els.forEach((el) => el.classList.toggle('on', inForce.has(k))));
-    if (prevSteadyOn !== !!v.steady) { prevSteadyOn = !!v.steady; steadyMoverEls.forEach((el) => el.classList.toggle('on', !!v.steady)); moversDirty = true; }
-    if (moversDirty) { moversDirty = false; syncPlay(); }
+    if (b.prevSteadyOn !== !!v.steady) { b.prevSteadyOn = !!v.steady; b.steadyMoverEls.forEach((e) => e.classList.toggle('on', !!v.steady)); b.moversDirty = true; }
+    if (b.moversDirty) { b.moversDirty = false; syncPlay(); }
+
+    // Moments (from the event list, or by comparison for hosts without one).
+    const now = Date.now(); // UI-side timers only (the scene holds no game rules)
+    const moments = desk.take(v, now, quiet);
+    for (const m of moments) play(m, v);
+    // onStage: once per change of an Industry's machines (never on the first sight of an Industry).
+    const seen = lastStageSeen.get(v.sectorId);
+    const sN = clamp(Math.round(v.stage), 0, 3);
+    if (seen !== undefined && seen !== sN && !quiet) { try { opts.onStage?.(v.sectorId, sN); } catch (e) { console.warn('scene onStage', e); } }
+    lastStageSeen.set(v.sectorId, sN);
+    root.classList.toggle('crisis', desk.crisisActive(now));
 
     // Reckoning: the world stops.
     if (v.reckoning) {
       const cause = v.reckoning.cause;
       const t = cause === 'exhausted' ? `${v.resourceName}: spent.` : cause === 'collapse' ? `${v.pressureName}: past bearing.` : 'The books are closed.';
       setBanner(v.reckoning.here || cause === 'chosen' ? t : 'Elsewhere, a Reckoning.');
-    } else if (captionUntil > now) {
-      setBanner(captionText);
-    } else setBanner('');
+    } else setBanner(desk.captionNow(now) ?? '');
 
-    prevStage = v.stage; prevSector = v.sectorId; prevCrises = v.crises; prevSteady = v.steady;
     renderCard(v);
     const s = describeView(v);
     if (s !== summaryText) { summaryText = s; summary.textContent = s; }
   }
-  let smokeDirty = true;
-  let leverKey = '\u0000';
-  const varCache = new Map<string, string>();
-  const elCache = new WeakMap<Element, Record<string, string>>();
+
+  /** Play one moment. Nothing loops; reduced motion gets the static version (or nothing). */
+  function play(m: Moment, v: SceneView): void {
+    const b = B;
+    if (!b) return;
+    const still = rm();
+    const plotOf = (appId?: string) => b.plots.find((p) => p.app && p.app.id === appId) ?? null;
+    const anchorsOf = (p: PlotRt | null) => (p ? b.elsByKey.get(`${p.idx}:a`) ?? [] : []);
+    const pulse = (els: Element[], cls: string, ms: number) => {
+      if (still) return;
+      els.forEach((e) => { e.classList.remove(cls); void (e as SVGGElement).getBBox; e.classList.add(cls); });
+      later(() => els.forEach((e) => e.classList.remove(cls)), ms);
+    };
+    const flashCls = (cls: string, ms: number) => {
+      if (still) return;
+      const fl = b.el.flash;
+      fl.className = 'scn-flash'; void fl.offsetWidth; fl.classList.add('on', cls);
+      later(() => { if (fl.classList.contains(cls)) fl.className = 'scn-flash'; }, ms);
+    };
+    switch (m.kind) {
+      case 'crisis':
+        if (!still) { root.classList.remove('crisis'); void root.offsetWidth; }
+        root.classList.add('crisis');
+        clearTimeout(crisisTimer);
+        crisisTimer = later(() => { captionDirty = true; if (lastView) update(lastView); }, 7300);
+        break;
+      case 'found': {
+        const p = plotOf(m.app);
+        if (!p) break;
+        const market = m.by === 'market';
+        if (!still) {
+          pulse(anchorsOf(p), 'build', 2700);
+          if (p.scaf) { p.scaf.classList.remove('on', 'mkt'); void (p.scaf as SVGGElement).getBBox; p.scaf.classList.add('on'); if (market) p.scaf.classList.add('mkt'); later(() => p.scaf?.classList.remove('on', 'mkt'), market ? 3800 : 2700); }
+        }
+        if (!market && p.app) showToast(`${p.app.name} founded`);
+        break;
+      }
+      case 'scaffold': {
+        if (b.scafs >= MAX_SCAFFOLDS) break;
+        // A building, not a long work (a viaduct, a road): the founded landmarks, nearest first; spread by the id.
+        const cands = b.plots.filter((p) => p.app && p.app.status === 'founded' && p.scaf && !p.def.anchor?.w)
+          .sort((p, q) => (q.def.anchor?.y ?? 0) - (p.def.anchor?.y ?? 0)).slice(0, 3);
+        if (!cands.length) break;
+        const p = cands[hash(m.id ?? '') % cands.length];
+        if (!p.scaf || p.scaf.classList.contains('on')) break;
+        b.scafs++;
+        p.scaf.classList.add('on', 'mkt');
+        later(() => { p.scaf?.classList.remove('on', 'mkt'); b.scafs--; }, still ? 4000 : 3800);
+        break;
+      }
+      case 'stage':
+        // The machines evolve: the old landmarks (kept from the last build) sink away as the new ones rise.
+        if (!still) {
+          b.el.world.querySelectorAll('.outgoing').forEach((e) => later(() => e.remove(), 1700));
+          b.plots.forEach((p) => { if (p.app?.status === 'founded') pulse(anchorsOf(p), 'evolve', 1900); });
+          flashCls('fl-stage', 1600);
+        }
+        if (m.n != null) showToast(stageWords(b.look, m.n));
+        break;
+      case 'lever': {
+        const kind = v.levers.find((x) => x.id === m.id)?.kind ?? (m.id ?? '').split('.').pop() ?? '';
+        pulse(b.restraintEls.get(kind) ?? [], 'raise', 1800);
+        break;
+      }
+      case 'decade': flashCls('fl-decade', 2600); break;
+      case 'clear': flashCls('fl-clear', 3200); if (!still) showToast('Clear skies'); break;
+      case 'steady': flashCls('fl-clear', 3200); break;
+      case 'settled': flashCls('fl-settle', 3000); break;
+      case 'opened':
+        if (!still) { b.el.world.classList.remove('opening'); void b.el.world.offsetWidth; b.el.world.classList.add('opening'); later(() => b.el.world.classList.remove('opening'), 2600); }
+        break;
+      case 'backfire':
+        // The signature moment, picture side: the valley brightens for a breath (the saving) and then burns harder
+        // (the rebound): every founded landmark gives a kick, the stacks puff black, a dark wave rolls outward.
+        if (!still) {
+          root.classList.remove('backfire'); void root.offsetWidth; root.classList.add('backfire');
+          later(() => root.classList.remove('backfire'), 5200);
+          b.plots.forEach((p) => { if (p.app?.status === 'founded') pulse(anchorsOf(p), 'kick', 1400); });
+          flashCls('fl-backfire', 5000);
+        }
+        break;
+      case 'commons': pulse(b.commonsEls.get(m.id ?? '') ?? [], 'build', 2700); break;
+    }
+  }
+  let crisisTimer = 0;
+  function clearMoments(): void {
+    root.classList.remove('crisis', 'backfire');
+    clearTimeout(crisisTimer);
+    toast.classList.remove('on');
+    setBanner('');
+  }
+
   function setVarOn(el: HTMLElement | SVGElement, k: string, val: string): void {
     let c = elCache.get(el);
     if (!c) { c = {}; elCache.set(el, c); }
@@ -771,17 +1002,19 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     c[k] = val;
     el.style.setProperty(k, val);
   }
+  const elCache = new WeakMap<Element, Record<string, string>>();
   function setOp(el: HTMLElement, val: string): void { setVarOn(el, 'opacity', val); }
-  function setVar(k: string, val: string): void {
-    if (varCache.get(k) === val) return;
-    varCache.set(k, val);
-    root.style.setProperty(k, val);
+  function setVar(b: Built, k: string, val: string): void {
+    if (b.vars.get(k) === val) return;
+    b.vars.set(k, val);
+    b.el.world.style.setProperty(k, val);
   }
 
   function assignSmoke(): void {
+    if (!B) return;
     let live = 0;
-    for (const s of smokeEls) {
-      const on = s.key === 'bd' ? true : (elsByKey.get(s.key)?.[0]?.classList.contains('on') ?? false);
+    for (const s of B.smokeEls) {
+      const on = s.key === 'bd' ? true : (B.elsByKey.get(s.key)?.[0]?.classList.contains('on') ?? false);
       if (s.key === 'bd') s.el.classList.add('on');
       const isLive = on && live < (lowDetail ? MAX_LIVE_SMOKE_LOW : MAX_LIVE_SMOKE);
       if (isLive) live++;
@@ -800,14 +1033,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     toast.textContent = t;
     toast.classList.add('on');
     clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => toast.classList.remove('on'), 2800);
-  }
-  let flashTimer = 0;
-  function flash(t: string, ms: number): void {
-    captionText = t;
-    captionUntil = Date.now() + ms;
-    clearTimeout(flashTimer);
-    flashTimer = window.setTimeout(() => { if (lastView && !destroyed) { captionDirty = true; patch(lastView); } }, ms + 50);
+    toastTimer = later(() => toast.classList.remove('on'), 2800);
   }
 
   function placeLabel(a: SceneApp, v: SceneView): string {
@@ -849,61 +1075,272 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   function setSector(sid: string): void {
     if (lastView && lastView.sectorId === sid) return;
     selected = null;
-    builtKey = '';
-    prevCrises = -1;
+    desk.setSector(sid);
+    clearMoments();
+    setTarget(null);
+  }
+
+  /* ---------------- highlight ---------------- */
+  function setTarget(t: SceneTarget): boolean {
+    target = t;
+    if (!t || !B) { ring.classList.remove('on'); return false; }
+    const k = 'app' in t ? 'app:' + t.app : 'lever' in t ? 'lever:' + t.lever : 'commons:' + t.commons;
+    const r = B.spots.get(k);
+    const shown = !!r && ('lever' in t ? !!B.restraintEls.get(t.lever)?.some((e) => e.classList.contains('on')) || true : true);
+    if (!r || !shown) { ring.classList.remove('on'); return false; }
+    const [x, y, w, h] = r;
+    ring.style.left = (x / W * 100).toFixed(2) + '%';
+    ring.style.top = (y / H * 100).toFixed(2) + '%';
+    ring.style.width = (w / W * 100).toFixed(2) + '%';
+    ring.style.height = (h / H * 100).toFixed(2) + '%';
+    ring.classList.remove('on'); void ring.offsetWidth; ring.classList.add('on');
+    return true;
+  }
+
+  /* ---------------- update ---------------- */
+  function draw(v: SceneView, quiet: boolean): void {
+    const view = normalise(v);
+    const key = buildKey(view);
+    if (!B || B.sectorId !== view.sectorId || B.key !== key) {
+      const kept = cache.get(view.sectorId);
+      if (kept && kept.key === key) attach(kept, view);
+      else {
+        const old = B && B.sectorId === view.sectorId ? B : kept ?? null;
+        const nb = build(view, key);
+        // The machines changed generation: keep the old landmarks for a moment so they can sink away.
+        if (old && old.stageN !== nb.stageN && !quiet && !rm()) carryOutgoing(old, nb);
+        attach(nb, view);
+        remember(nb);
+      }
+      if (target) setTarget(target);
+    }
+    // Skip the patch when nothing has moved past what the picture or card can show.
+    const sig = viewSig(view);
+    const b = B!;
+    if (sig === b.lastSig && lastView && !captionDirty && !(view.events && view.events.length)) { lastView = view; return; }
+    b.lastSig = sig; captionDirty = false;
+    lastView = view;
+    patch(view, quiet);
+  }
+
+  function carryOutgoing(old: Built, nb: Built): void {
+    for (const p of nb.plots) {
+      if (!p.app || p.app.status !== 'founded') continue;
+      const op = old.plots.find((q) => q.def.key === p.def.key);
+      const oa = op ? old.elsByKey.get(`${op.idx}:a`)?.[0] : undefined;
+      const na = nb.elsByKey.get(`${p.idx}:a`)?.[0];
+      if (!oa || !na || !oa.classList.contains('on')) continue;
+      const c = oa.cloneNode(true) as Element;
+      c.removeAttribute('data-k');
+      c.setAttribute('class', 'outgoing');
+      na.parentNode?.insertBefore(c, na);
+    }
   }
 
   function update(v: SceneView): void {
+    if (destroyed || !v || typeof v !== 'object' || replaying) return;
+    try { draw(v, false); } catch (e) { console.warn('scene update failed', e); }
+  }
+
+  /** Build an Industry's world now, off screen, so a later switch to it is a re-attach. */
+  function prebuild(v: SceneView): void {
     if (destroyed || !v || typeof v !== 'object') return;
     try {
       const view = normalise(v);
-      const key = [view.sectorId, view.look, clamp(Math.round(view.stage), 0, 3), view.apps.map((a) => a.id + '/' + a.icon).join(','),
-        view.levers.map((x) => x.kind).filter((k) => !layout?.restraint[k]).sort().join(','),
-        Object.entries(view.heritage ?? {}).map(([k, x]) => k + Math.round(x * 3)).join(',')].join('|');
-      if (key !== builtKey || !layout) {
-        const stageChanged = builtKey !== '' && prevSector === view.sectorId && prevStage !== view.stage;
-        if (prevSector !== view.sectorId) { selected = null; prevCrises = -1; prevSteady = view.steady; }
-        builtKey = key;
-        lastSig = '';
-        build(view);
-        if (stageChanged && !rm()) {
-          // The machines evolve: founded landmarks re-draw themselves.
-          window.setTimeout(() => plots.forEach((p) => (elsByKey.get(`${p.idx}:a`) ?? []).forEach((el) => {
-            el.classList.add('evolve');
-            window.setTimeout(() => el.classList.remove('evolve'), 1500);
-          })), 40);
-        }
-      }
-      // Skip the patch when nothing has moved past what the picture or card can show.
-      const sig = viewSig(view);
-      if (sig === lastSig && lastView && key === builtKey && !captionDirty) { lastView = view; return; }
-      lastSig = sig; captionDirty = false;
-      lastView = view;
-      patch(view);
-    } catch (e) {
-      console.warn('scene update failed', e);
-    }
+      if (B && B.sectorId === view.sectorId) return;
+      const key = buildKey(view);
+      const kept = cache.get(view.sectorId);
+      if (kept && kept.key === key) return;
+      const nb = build(view, key);
+      nb.used = 0;
+      remember(nb);
+    } catch (e) { console.warn('scene prebuild failed', e); }
+  }
+
+  function replay(views: SceneView[], o: ReplayOptions = {}): Promise<void> {
+    stopReplay();
+    const list = (Array.isArray(views) ? views : []).filter((x) => x && typeof x === 'object');
+    if (!list.length) return Promise.resolve();
+    const total = Math.max(1, (o.seconds ?? 10) * 1000);
+    const dt = Math.max(40, total / list.length);
+    const back = lastView;
+    let i = 0;
+    clearMoments();
+    return new Promise((done) => {
+      const finish = () => {
+        replaying = 0; replayDone = null;
+        if (back && !destroyed) { try { draw({ ...back, events: undefined }, true); } catch { /* ignore */ } }
+        try { o.onDone?.(); } catch { /* ignore */ }
+        done();
+      };
+      replayDone = finish;
+      const step = () => {
+        if (destroyed) { finish(); return; }
+        try { draw({ ...list[i], events: undefined }, true); } catch (e) { console.warn('scene replay', e); }
+        i++;
+        if (i >= list.length) { replaying = 0; later(finish, 600); return; }
+        replaying = window.setTimeout(step, dt);
+      };
+      replaying = -1;
+      step();
+    });
+  }
+  let replayDone: (() => void) | null = null;
+  function stopReplay(): void {
+    if (!replaying) return;
+    if (replaying > 0) clearTimeout(replaying);
+    replaying = 0;
+    replayDone?.();
+  }
+
+  function toSVG(o: StillOptions = {}): string {
+    if (!B) return '';
+    return serialise(root, B.el, B.look, o);
   }
 
   function destroy(): void {
     destroyed = true;
+    stopReplay();
     io?.disconnect(); ro?.disconnect();
-    moverAnims.forEach((a) => a.cancel());
+    cache.forEach(discard); cache.clear();
+    if (B) discard(B);
+    if (playRaf) cancelAnimationFrame(playRaf);
     document.removeEventListener('visibilitychange', onVis);
     mq?.removeEventListener?.('change', onMq);
-    clearTimeout(crisisTimer); clearTimeout(flashTimer); clearTimeout(toastTimer);
+    timers.forEach((t) => clearTimeout(t)); timers.clear();
     root.remove();
   }
 
-  return {
+  const handle: SceneHandle & { prebuild(v: SceneView): void; toSVG(o?: StillOptions): string } = {
     update,
     setSector,
     select: (a) => select(a, false),
     setReducedMotion: (on) => { rmOverride = on; applyMotion(); },
     setDetail: (d) => { detailOpt = d; if (d === 'auto') { setLow(false); watchFrames(); } else setLow(d === 'low'); },
+    highlight: (t) => setTarget(t ?? null),
+    replay,
+    stopReplay,
+    prebuild,
+    toSVG,
     describe: () => summaryText,
     destroy,
   };
+  return handle;
+}
+
+/**
+ * Render a SceneView as a still picture (no animation, deterministic) for an image: the time-lapse of a valley, a
+ * saved picture. Builds a hidden scene, draws the view at rest, and serialises it into one self-contained SVG
+ * (styles inlined); `format: 'png'` rasterises that through a canvas. Needs a DOM (a browser page).
+ */
+export async function renderStill(view: SceneView, o: StillOptions = {}): Promise<string | Blob> {
+  const w = Math.max(1, Math.round(o.width ?? 600)), h = Math.max(1, Math.round(o.height ?? 400));
+  const host = document.createElement('div');
+  host.style.cssText = `position:fixed;left:-${w + 4000}px;top:0;width:${w}px;pointer-events:none;contain:strict;height:${h + 200}px`;
+  host.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(host);
+  const sc = createScene(host, { reducedMotion: true, card: false, detail: 'full' }) as SceneHandle & { toSVG(o?: StillOptions): string };
+  try {
+    sc.update({ ...view, events: undefined });
+    const svg = sc.toSVG({ ...o, width: w, height: h });
+    if ((o.format ?? 'svg') === 'svg') return svg;
+    return await rasterise(svg, w, h, o.scale ?? 2);
+  } finally {
+    sc.destroy();
+    host.remove();
+  }
+}
+
+async function rasterise(svg: string, w: number, h: number, k: number): Promise<Blob> {
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    await new Promise<void>((ok, bad) => { img.onload = () => ok(); img.onerror = () => bad(new Error('scene: still did not load')); img.src = url; });
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    const cx = cv.getContext('2d');
+    if (!cx) throw new Error('scene: no canvas');
+    cx.drawImage(img, 0, 0, cv.width, cv.height);
+    return await new Promise<Blob>((ok, bad) => cv.toBlob((b) => (b ? ok(b) : bad(new Error('scene: toBlob failed'))), 'image/png'));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** A CSS linear-gradient(…) (as computed) → SVG stops; anything else → a flat colour. */
+function gradStops(bg: string): string {
+  const stops: string[] = [];
+  const re = /(rgba?\([^)]*\))(?:\s+([\d.]+)%)?/g;
+  let m: RegExpExecArray | null;
+  const found: [string, number | null][] = [];
+  while ((m = re.exec(bg))) found.push([m[1], m[2] != null ? +m[2] : null]);
+  if (!found.length) return '';
+  found.forEach(([c, p], i) => {
+    const off = p != null ? p / 100 : found.length === 1 ? 0 : i / (found.length - 1);
+    const mm = /rgba?\(([^)]*)\)/.exec(c);
+    const parts = (mm ? mm[1] : '0,0,0').split(/[\s,/]+/).filter(Boolean).map(Number);
+    const a = parts.length > 3 ? parts[3] : 1;
+    stops.push(`<stop offset="${off.toFixed(3)}" stop-color="rgb(${parts[0] | 0},${parts[1] | 0},${parts[2] | 0})" stop-opacity="${a}"/>`);
+  });
+  return stops.join('');
+}
+
+/** The picture as one self-contained SVG: CSS backgrounds become gradients, sprites become groups at rest. */
+function serialise(root: HTMLElement, el: WorldEls, look: string, o: StillOptions): string {
+  const w = Math.round(o.width ?? 600), h = Math.round(o.height ?? 400);
+  let gid = 0;
+  const grads: string[] = [];
+  const layerRect = (d: HTMLElement): string => {
+    const cs = getComputedStyle(d);
+    if (cs.display === 'none') return '';
+    const op = parseFloat(d.style.opacity || cs.opacity || '1');
+    if (!(op > 0.004)) return '';
+    const bg = cs.backgroundImage;
+    const stops = bg && bg !== 'none' ? gradStops(bg) : '';
+    if (!stops) {
+      const c = cs.backgroundColor;
+      if (!c || c === 'rgba(0, 0, 0, 0)' || c === 'transparent') return '';
+      return `<rect width="600" height="400" fill="${c}" opacity="${op}"/>`;
+    }
+    const gi = `g${++gid}`;
+    const radial = /^radial/.test(bg);
+    grads.push(radial ? `<radialGradient id="${gi}" cx=".5" cy=".58" r=".6">${stops}</radialGradient>` : `<linearGradient id="${gi}" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient>`);
+    return `<rect width="600" height="400" fill="url(#${gi})" opacity="${op}"/>`;
+  };
+  const sprite = (d: HTMLElement): string => {
+    if (!d.classList.contains('on')) return '';
+    const left = parseFloat(d.style.left) || 0, top = parseFloat(d.style.top) || 0;
+    const sm = /scale\(([-\d.]+)/.exec(d.style.transform || '');
+    const k = sm ? +sm[1] : 1;
+    if (d.classList.contains('smk')) {
+      const col = getComputedStyle(d.querySelector('i') ?? d).backgroundColor || 'rgba(80,80,80,.35)';
+      return `<g transform="translate(${f(left)} ${f(top)}) scale(${k})" fill="${col}"><circle cx="2" cy="-5" r="2.1"/><circle cx="9" cy="-15" r="3.6" opacity=".75"/><circle cx="18" cy="-24" r="5.2" opacity=".45"/></g>`;
+    }
+    const svgs = d.querySelectorAll('svg.spr');
+    if (!svgs.length) return '';
+    const inner = d.classList.contains('flow') ? svgs[0].innerHTML : Array.from(svgs).map((s) => s.innerHTML).join('');
+    return `<g class="fx-st ${d.className.replace(/\b(on|live|thin)\b/g, '')}" transform="translate(${f(left)} ${f(top)}) scale(${d.classList.contains('mv') ? 1 : k})">${inner}</g>`;
+  };
+  let body = '';
+  body += layerRect(el.sky0) + layerRect(el.sky1) + layerRect(el.sky2);
+  body += el.skySvg.innerHTML;
+  const band = (b: Band) => {
+    let s = '';
+    for (const c of Array.from(el.bw[b].children)) {
+      if (c instanceof SVGSVGElement) s += `<g class="${c.getAttribute('class') ?? ''}">${c.innerHTML}</g>`;
+      else s += Array.from(c.children).map((x) => sprite(x as HTMLElement)).join('');
+    }
+    return s;
+  };
+  body += band('far') + layerRect(el.mist1) + layerRect(el.hz1) + band('mid') + layerRect(el.mist2) + layerRect(el.hz2) + band('near') + layerRect(el.hz3) + layerRect(el.held);
+  if (o.plate !== false) body += el.plateSvg.innerHTML;
+  const cls = Array.from(root.classList).filter((c) => !/^(live|paused|halt|crisis|backfire)$/.test(c)).concat('rm', 'still').join(' ');
+  const vars = (root.style.cssText + ';' + el.world.style.cssText).replace(/"/g, "'");
+  const css = sceneCss().replace(/<\/style/gi, '');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${VB}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice">` +
+    `<style>${css}\n.still *{vector-effect:non-scaling-stroke}</style>` +
+    `<g class="${cls}" data-look="${look}" style="${vars}">${el.defs.innerHTML}<defs>${grads.join('')}</defs>${body}</g></svg>`;
 }
 
 /** A sprite's drawing: an overflow-visible SVG drawn about the sprite's origin. */
@@ -944,7 +1381,8 @@ function viewSig(v: SceneView): string {
   const q = (x: number, n: number) => Math.round(x * n);
   const sig2 = (x: number) => (x ? Number(x.toPrecision(2)) : 0);
   let s = `${v.sectorId}|${v.look}|${v.stage}|${q(v.pace, 20)}|${q(v.reserveFraction, 50)}|${q(v.pressureFraction, 50)}|${q(v.popFraction, 50)}|${v.crises}|` +
-    `${v.decoupling ? 1 : 0}${v.steady ? 1 : 0}|${q(v.steadyProgress, 50)}|${v.reckoning ? v.reckoning.cause + v.reckoning.here : ''}|`;
+    `${v.decoupling ? 1 : 0}${v.steady ? 1 : 0}|${q(v.steadyProgress, 50)}|${v.reckoning ? v.reckoning.cause + v.reckoning.here : ''}|` +
+    `${v.clear ? 1 : 0}${v.settled ? 1 : 0}${v.settledYear ?? ''}|${q(v.clearProgress ?? 0, 50)}|${q(v.pressureToClear ?? -1, 50)}|`;
   for (const a of v.apps) s += `${a.id}:${a.status[0]}${q(a.adoption, 100)}:${sig2(a.demand)}:${a.canFound ? 1 : 0}${q(a.affordFraction, 100)};`;
   for (const l of v.levers) s += `${l.kind}${l.level},`;
   return s;
@@ -973,10 +1411,48 @@ function normalise(v: SceneView): SceneView {
     decoupling: !!v.decoupling, steadyProgress: clamp(n(v.steadyProgress), 0, 1), steady: !!v.steady,
     heritage: v.heritage && typeof v.heritage === 'object' ? v.heritage : undefined,
     reckoning: v.reckoning && typeof v.reckoning === 'object' ? { cause: String(v.reckoning.cause ?? 'chosen'), here: v.reckoning.here !== false } : null,
+    clear: !!v.clear, clearProgress: clamp(n(v.clearProgress), 0, 1),
+    pressureToClear: typeof v.pressureToClear === 'number' && Number.isFinite(v.pressureToClear) ? clamp(v.pressureToClear, 0, 1) : undefined,
+    settled: !!v.settled, settledYear: v.settledYear == null ? null : n(v.settledYear),
+    commons: Array.isArray(v.commons) ? v.commons.filter((c) => c && typeof c.id === 'string' && n(c.level) >= 1).map((c) => ({ id: c.id, icon: String(c.icon ?? ''), level: Math.floor(n(c.level)), name: String(c.name ?? c.id) })) : [],
+    landmark: typeof v.landmark === 'string' && v.landmark ? v.landmark : null,
+    events: Array.isArray(v.events) ? v.events.filter((e) => e && Number.isFinite(e.seq)) : undefined,
   };
 }
 
+/** Where the Commons stand: the layout's civic sites, else sites taken from its town plot (every few houses). */
+function commonsSites(l: Layout): Slot[] {
+  if (l.commons?.length) return l.commons;
+  const town = l.plots.find((p) => p.driver === 'population' && !p.overlayOf);
+  if (!town) return l.spares.map(([x, y, w, h]) => ({ p: '', x: x + w / 2, y: y + h }));
+  return town.slots.filter((_, i) => i % 3 === 1).slice(0, 8).map((s) => ({ p: '', x: s.x + 6, y: s.y + 0.5, band: s.band }));
+}
+/** Prop key for a Commons icon: the style's own drawing, a shared one, else a civic hall. */
+function commonsProp(layoutLook: string, look: string, icon: string): string {
+  return propFor(layoutLook, look, 'commons:' + icon) !== works0 ? 'commons:' + icon : 'civic';
+}
+function landmarkProp(layoutLook: string, look: string, key: string): string {
+  return propFor(layoutLook, look, 'landmark:' + key) !== works0 ? 'landmark:' + key : propFor(layoutLook, look, key) !== works0 ? key : 'civic';
+}
+const works0 = propFor('generic', 'generic', '\u0000none');
+
+/** What the new machine is, in the idiom of the Age (a toast when the machines change). */
+function stageWords(look: string, n: number): string {
+  const W: Record<string, string[]> = {
+    ledger: ['Atmospheric engines', 'The separate condenser', 'High-pressure steam', 'The turbine hall'],
+    gaslight: ['Open gas flames', 'The incandescent mantle', 'The carbon filament', 'The fluorescent tube'],
+    chrome: ['The carburettor', 'Fuel injection', 'Wind-tunnel bodywork', 'The hybrid'],
+    terminal: ['One machine, one job', 'Virtualisation', 'Hyperscale', 'The GPU cluster'],
+    cyberpunk: ['Autocomplete', 'The chat assistant', 'The coding agent', 'Agent fleets'],
+  };
+  const list = W[look] ?? ['', 'New machines', 'Newer machines', 'The newest machines'];
+  return list[clamp(Math.round(n), 0, 3)] || 'New machines';
+}
+
 const WEATHER = ['clear', 'hazy', 'thickening', 'heavy', 'choking'];
+function weatherOf(v: SceneView): string {
+  return v.clear || v.settled || v.steady ? 'clear' : weatherWord(v.pressureFraction);
+}
 function weatherWord(pf: number): string {
   return WEATHER[pf < 0.08 ? 0 : pf < 0.3 ? 1 : pf < 0.55 ? 2 : pf < 0.8 ? 3 : 4];
 }
@@ -988,8 +1464,10 @@ function reserveWord(r: number, flow: boolean): string {
 function caption(v: SceneView): string {
   const founded = v.apps.filter((a) => a.status === 'founded').length;
   const avail = v.apps.some((a) => a.status === 'available');
-  const parts = [`${v.pressureName}: ${weatherWord(v.pressureFraction)}`, `${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`];
-  if (v.steady) parts.push('steady state');
+  const parts = [`${v.pressureName}: ${weatherOf(v)}`, `${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`];
+  if (v.settled) parts.push(v.settledYear ? `settled since ${v.settledYear}` : 'settled');
+  else if (v.steady) parts.push('steady state');
+  else if (v.clear) parts.push('clear skies');
   else if (v.decoupling) parts.push('holding the line');
   let s = parts.join(' · ') + '.';
   if (avail) s += ' A site is staked out: tap it.';
@@ -1007,15 +1485,17 @@ export function describeView(v: SceneView): string {
   let s = `${v.sectorName}: ${place}. `;
   s += f.length ? f.map((a) => `${a.name} ${busyWord(a.adoption)}`).join('; ') + '. ' : 'Nothing built yet. ';
   if (av.length) s += `Ready to found: ${av.map((a) => a.name).join(', ')}. `;
-  s += `${v.pressureName} ${weatherWord(v.pressureFraction)}; ${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`;
+  s += `${v.pressureName} ${weatherOf(v)}; ${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`;
   const rw = lay.reserveWords?.(v.reserveFraction);
   s += rw ? `: ${rw}. ` : '. ';
   if (v.levers.length) s += `In force: ${v.levers.map((x) => x.name).join(', ')}. `;
+  if (v.commons?.length) s += `Built for everyone: ${v.commons.map((c) => c.name).join(', ')}. `;
   if (v.reckoning) s += 'Everything has stopped: a Reckoning is due.';
+  else if (v.settled) s += `Settled${v.settledYear ? ' since ' + v.settledYear : ''}: the place runs quietly within what the sky can take.`;
   else if (v.steady) s += 'The sky has cleared: steady state.';
+  else if (v.clear) s += `Clear skies, ${Math.round((v.clearProgress ?? 0) * 100)}% of the way to steady state.`;
   else if (v.decoupling) s += `Holding within budget, ${Math.round(v.steadyProgress * 100)}% of the way to steady state.`;
   else if (v.pressureFraction >= 0.8) s += 'Close to breaking.';
   return s.trim();
 }
 
-void mix;

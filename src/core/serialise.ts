@@ -1,17 +1,26 @@
 /**
- * Persistence: serialize, deserialize (deep merge onto a fresh state, sanitising), and the v1 → v2 migration.
+ * Persistence: serialize, deserialize (deep merge onto a fresh state, sanitising), the v1 → v2 and (M2) v2 → v3
+ * migrations.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { SAVE_VERSION, START_YEAR, YEARS_PER_SECOND } from '../types';
-import type { BudgetState, Content, GameState, LeverRecycle, LeverState, MetaState, SectorId, SectorState } from '../types';
+import { EVENTS_MAX, PENDING_DIVIDENDS_MAX, RUN_HISTORY_MAX, OPENING_MAX } from '../types';
+import type {
+  AppState, BudgetState, Content, GameEvent, GameState, LeverRecycle, LeverState, MetaState, OpeningAction, OpeningRecord,
+  PendingDividend, RunSummary, SectorId, SectorState, SettledState,
+} from '../types';
 import { NEWS_MAX, HISTORY_MAX } from './constants';
 import { calendarYear } from './calendar';
+import { drawOffer } from './charters';
+import { commonsMax } from './commons';
 import { idx } from './contentIndex';
 import { institutionMax } from './effects';
 import { computeFlows } from './flows';
 import { leverMaxLevel, recycleOptions } from './levers';
+import { mergeOrders } from './orders';
 import { upgradeMax } from './purchases';
-import { freshMeta, createState } from './state';
+import { freshMeta, createState, defaultOrders, isFreshRun } from './state';
+import { pacesOf } from './steady';
 import { fin, clamp, isObj } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -45,7 +54,8 @@ function levelMap(x: unknown, maxOf: (id: string) => number | undefined): Record
   for (const [k, v] of Object.entries(x)) {
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) continue;
     const max = maxOf(k);
-    out[k] = Math.floor(max === undefined ? v : Math.min(v, max));
+    if (max === undefined) continue; // an id no longer in content
+    out[k] = Math.floor(Math.min(v, max));
   }
   return out;
 }
@@ -131,7 +141,7 @@ function migrateV1(raw: Record<string, unknown>, content: Content): Record<strin
         const ls = levers[l.id];
         if (l.kind === 'cap' && isObj(ls) && numOr(ls.level, 0) > 0 && numOr(ls.ref, 0) > 0) ref = Math.max(ref, ls.ref as number);
       }
-      if (ref > 0) es.budget = { r0: ref, since: time, drawnYear: -1 }; // year filled in once the state is built
+      if (ref > 0) es.budget = { r0: ref, since: time, drawnYear: -1 }; // year filled in once the state is built (w0/p0/pace: v2 → v3)
     }
   }
   for (const [id, ls] of Object.entries(levers)) {
@@ -139,16 +149,143 @@ function migrateV1(raw: Record<string, unknown>, content: Content): Record<strin
     if (isObj(ls) && def && typeof ls.level === 'number') ls.level = clamp(Math.floor(ls.level), 0, leverMaxLevel(def));
     if (isObj(ls)) delete ls.recycle;
   }
-  r.version = SAVE_VERSION;
+  r.version = 2;
   return r;
 }
 
-function validBudget(x: unknown): BudgetState | null {
+/** v2 → v3 steps 1–5 (types.ts SAVE_VERSION), on a JSON copy. Steps 6–7 run once the state is built. */
+function migrateV2(raw: Record<string, unknown>, content: Content): Record<string, unknown> {
+  const r: Record<string, unknown> = JSON.parse(JSON.stringify(raw));
+  // 1
+  r.pendingDividends = [];
+  r.commons = { levels: {}, fund: 0 };
+  r.events = [];
+  r.lastOffline = null;
+  r.charterOffer = [];
+  // 2, 3
+  const sectors = isObj(r.sectors) ? r.sectors : {};
+  for (const [id, es] of Object.entries(sectors)) {
+    if (!isObj(es)) continue;
+    es.clearYears = 0;
+    es.settled = null;
+    es.settledBefore = false;
+    es.dividends = [];
+    es.decadesLean = Array.isArray(es.decadesWithin) ? es.decadesWithin.map(() => false) : [];
+    es.windowLean = false;
+    es.peakPressure = numOr(es.pressure, 0);
+    if (isObj(es.apps)) for (const a of Object.values(es.apps)) if (isObj(a)) a.peakAdoption = 0;
+    if (isObj(es.budget)) {
+      const b = es.budget;
+      b.pace = content.sectors[id] ? pacesOf(content, id)[0].id : 'gentle';
+      b.w0 = -1;
+      b.p0 = -1;
+      delete b.clearAt;
+    }
+  }
+  // 4
+  const run: Record<string, unknown> = isObj(r.run) ? r.run : {};
+  r.run = run;
+  Object.assign(run, { leanDecades: 0, decisions: 0, decisionsByDecade: [], automated: 0, automatedByDecade: [], opening: [], firstBudgetAt: null });
+  // 5
+  const meta: Record<string, unknown> = isObj(r.meta) ? r.meta : {};
+  r.meta = meta;
+  meta.charter = null;
+  meta.orders = defaultOrders(content);
+  meta.runs = isObj(meta.lastRun) ? [meta.lastRun] : [];
+  delete meta.opening;
+  delete meta.firstOpening;
+  meta.eventSeq = 0;
+  meta.knowhowPeak = isObj(meta.knowhow) ? { ...meta.knowhow } : {};
+  meta.peakPopulationEver = Math.max(1, numOr(r.peakPopulation, 1));
+  r.version = 3;
+  return r;
+}
+
+/* ---- element-by-element validation of the M2 map- and array-valued fields ---- */
+
+const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+const ACTORS = new Set(['player', 'market', 'civilService', 'treasury', 'default']);
+const EVENT_KINDS = new Set([
+  'appAvailable', 'appFounded', 'upgradeBought', 'stageReached', 'leverEnacted', 'leverLapsed', 'budgetDrawn',
+  'budgetBroken', 'decade', 'dividendChosen', 'clearSkies', 'steadyState', 'settled', 'unsettled', 'crisis', 'collapse',
+  'exhausted', 'backfire', 'reveal', 'sectorOpened', 'ageBegins', 'commonsBuilt', 'charterChosen', 'won', 'reckoning',
+]);
+function validEvents(x: unknown, maxSeq: number): GameEvent[] {
+  if (!Array.isArray(x)) return [];
+  const out: GameEvent[] = [];
+  let last = 0;
+  for (const e of x) {
+    if (!isObj(e) || !isNum(e.seq) || e.seq <= last || e.seq > maxSeq || typeof e.kind !== 'string' || !EVENT_KINDS.has(e.kind)
+      || !isNum(e.time) || !isNum(e.year)) continue;
+    const ev: GameEvent = { seq: e.seq, kind: e.kind as GameEvent['kind'], time: e.time, year: e.year };
+    if (typeof e.sector === 'string') ev.sector = e.sector;
+    if (typeof e.id === 'string') ev.id = e.id;
+    if (isNum(e.n)) ev.n = e.n;
+    if (typeof e.by === 'string' && ACTORS.has(e.by)) ev.by = e.by as GameEvent['by'];
+    out.push(ev);
+    last = e.seq;
+  }
+  return out.slice(-EVENTS_MAX);
+}
+function validPending(x: unknown, content: Content): PendingDividend[] {
+  if (!Array.isArray(x)) return [];
+  const ix = idx(content);
+  const out: PendingDividend[] = [];
+  for (const p of x) {
+    if (!isObj(p) || typeof p.sector !== 'string' || !ix.pos.has(p.sector) || !Array.isArray(p.options) || p.options.length !== 2) continue;
+    const [a, b] = p.options;
+    if (typeof a !== 'string' || typeof b !== 'string' || !ix.dividends.has(a) || !ix.dividends.has(b)) continue;
+    out.push({ sector: p.sector, decade: isNum(p.decade) ? p.decade : 1, options: [a, b], mul: isNum(p.mul) && p.mul >= 0 ? p.mul : 1 });
+  }
+  return out.slice(-PENDING_DIVIDENDS_MAX);
+}
+function validOpeningActions(x: unknown): OpeningAction[] {
+  if (!Array.isArray(x)) return [];
+  const out: OpeningAction[] = [];
+  for (const a of x) {
+    if (!isObj(a) || !isNum(a.t) || (a.kind !== 'upgrade' && a.kind !== 'found') || typeof a.id !== 'string'
+      || typeof a.by !== 'string' || !ACTORS.has(a.by)) continue;
+    out.push({ t: a.t, kind: a.kind, id: a.id, by: a.by as OpeningAction['by'] });
+  }
+  return out.slice(0, OPENING_MAX);
+}
+function validOpening(x: unknown): OpeningRecord | undefined {
+  if (!isObj(x)) return undefined;
+  const r: OpeningRecord = {
+    actions: validOpeningActions(x.actions), firstBudgetAt: isNum(x.firstBudgetAt) ? x.firstBudgetAt : null,
+    seconds: isNum(x.seconds) ? x.seconds : 0,
+  };
+  if (typeof x.charter === 'string') r.charter = x.charter;
+  return r;
+}
+const validSummary = (x: unknown): x is RunSummary =>
+  isObj(x) && typeof x.cause === 'string' && isNum(x.seconds) && isNum(x.hindsightGained) && isObj(x.sectors);
+function validSettled(x: unknown): SettledState | null {
+  if (!isObj(x)) return null;
+  const keys = ['since', 'sinceYear', 'D', 'R', 'ps', 'pPre', 'income', 'P', 'eta', 'defect', 'N0', 'spillMul0', 'extraD0'] as const;
+  for (const k of keys) if (!isNum(x[k])) return null;
+  return {
+    since: x.since as number, sinceYear: x.sinceYear as number, D: x.D as number, R: x.R as number, ps: x.ps as number,
+    pPre: x.pPre as number, income: x.income as number, P: x.P as number, eta: x.eta as number, defect: x.defect as number,
+    N0: x.N0 as number, spillMul0: x.spillMul0 as number, extraD0: x.extraD0 as number,
+    appD: amountMap(x.appD), appAdoption: amountMap(x.appAdoption),
+  };
+}
+
+function validBudget(x: unknown, content: Content, s: SectorId): BudgetState | null {
   if (!isObj(x)) return null;
   const r0 = numOr(x.r0, NaN), since = numOr(x.since, NaN), drawnYear = numOr(x.drawnYear, NaN);
   if (!(r0 > 0) || !Number.isFinite(since) || !Number.isFinite(drawnYear)) return null;
+  // w0 / p0 absent or invalid: the -1 markers, replaced with the loaded day (step 7)
+  const b: BudgetState = {
+    r0, since, drawnYear, w0: numOr(x.w0, -1), p0: numOr(x.p0, -1),
+    pace: typeof x.pace === 'string' ? x.pace : pacesOf(content, s)[0].id,
+  };
   const heldAt = numOr(x.heldAt, NaN);
-  return Number.isFinite(heldAt) ? { r0, since, drawnYear, heldAt } : { r0, since, drawnYear };
+  if (Number.isFinite(heldAt)) b.heldAt = heldAt;
+  const clearAt = numOr(x.clearAt, NaN);
+  if (Number.isFinite(clearAt)) b.clearAt = clearAt;
+  return b;
 }
 
 export function deserialize(text: string, content: Content): GameState | null {
@@ -166,6 +303,7 @@ export function deserialize(text: string, content: Content): GameState | null {
       if (!isObj(raw0.sectors)) return null;
       raw = raw0;
     }
+    if (version < 3) raw = migrateV2(raw, content);
   } catch { return null; }
   try {
     const ix = idx(content);
@@ -182,9 +320,26 @@ export function deserialize(text: string, content: Content): GameState | null {
       loadout.push(id);
       used += d.slots ?? 1;
     }
+    const runs = (Array.isArray(merged0.runs) ? merged0.runs : []).filter(validSummary).slice(-RUN_HISTORY_MAX);
+    const opening = validOpening(merged0.opening);
+    const firstOpening = validOpening(merged0.firstOpening);
+    const knowhow = levelMap(merged0.knowhow, (id) => ix.knowhow.get(id)?.maxLevel);
+    const knowhowPeak = levelMap(merged0.knowhowPeak, (id) => ix.knowhow.get(id)?.maxLevel);
+    for (const k in knowhow) knowhowPeak[k] = Math.max(knowhowPeak[k] ?? 0, knowhow[k]);
+    const { opening: _o, firstOpening: _f, ...rest0 } = merged0;
+    void _o; void _f;
     const meta: MetaState = {
-      ...merged0,
-      knowhow: levelMap(merged0.knowhow, (id) => ix.knowhow.get(id)?.maxLevel),
+      ...rest0,
+      charter: typeof merged0.charter === 'string' && ix.charters.has(merged0.charter) ? merged0.charter : null,
+      orders: mergeOrders(defaultOrders(content), merged0.orders, content),
+      runs,
+      ...(runs.length ? { lastRun: runs[runs.length - 1] } : merged0.lastRun && validSummary(merged0.lastRun) ? { lastRun: merged0.lastRun } : {}),
+      ...(opening ? { opening } : {}),
+      ...(firstOpening ? { firstOpening } : {}),
+      eventSeq: Math.max(0, Math.floor(numOr(merged0.eventSeq, 0))),
+      knowhowPeak,
+      peakPopulationEver: Math.max(1, numOr(merged0.peakPopulationEver, 1)),
+      knowhow,
       institutions,
       achievements: trueMap(merged0.achievements),
       steadySectors: trueMap(merged0.steadySectors),
@@ -199,10 +354,22 @@ export function deserialize(text: string, content: Content): GameState | null {
     const sectors: Record<SectorId, SectorState> = {};
     for (const s of ix.ids) {
       const es = merged.sectors[s];
+      const decadesWithin = Array.isArray(es.decadesWithin) ? es.decadesWithin.filter((y) => typeof y === 'number' && Number.isFinite(y)) : [];
+      const lean0 = Array.isArray(es.decadesLean) ? es.decadesLean : [];
+      const apps: Record<string, AppState> = {};
+      for (const [id, a] of Object.entries(isObj(es.apps) ? es.apps : {})) {
+        if (!isObj(a)) continue;
+        apps[id] = { ...(a as unknown as AppState), peakAdoption: clamp(numOr(a.peakAdoption, 0), 0, 1) };
+      }
+      const settled = es.open ? validSettled(es.settled) : null;
       sectors[s] = {
         ...es,
-        budget: validBudget(es.budget),
-        decadesWithin: Array.isArray(es.decadesWithin) ? es.decadesWithin.filter((y) => typeof y === 'number' && Number.isFinite(y)) : [],
+        apps,
+        budget: validBudget(es.budget, content, s),
+        decadesWithin,
+        decadesLean: decadesWithin.map((_, i) => lean0[i] === true),
+        settled,
+        dividends: Array.isArray(es.dividends) ? es.dividends.filter((d): d is string => typeof d === 'string' && ix.dividends.has(d)) : [],
       };
     }
     const levers: Record<string, LeverState> = {};
@@ -221,7 +388,19 @@ export function deserialize(text: string, content: Content): GameState | null {
       run: {
         ...run, resourceUsed: amountMap(run.resourceUsed), steadySectors: trueMap(run.steadySectors),
         firstBackfires: trueMap(run.firstBackfires),
+        decisionsByDecade: Array.isArray(run.decisionsByDecade) ? run.decisionsByDecade.map((x) => (isNum(x) && x >= 0 ? x : 0)) : [],
+        automatedByDecade: Array.isArray(run.automatedByDecade) ? run.automatedByDecade.map((x) => (isNum(x) && x >= 0 ? x : 0)) : [],
+        opening: validOpeningActions(run.opening),
+        firstBudgetAt: isNum(run.firstBudgetAt) ? run.firstBudgetAt : null,
       },
+      events: validEvents(merged.events, meta.eventSeq),
+      pendingDividends: validPending(merged.pendingDividends, content),
+      commons: {
+        levels: levelMap(isObj(merged.commons) ? merged.commons.levels : {}, (id) => { const d = ix.commons.get(id); return d ? commonsMax(d) : undefined; }),
+        fund: Math.max(0, numOr(isObj(merged.commons) ? merged.commons.fund : 0, 0)),
+      },
+      charterOffer: Array.isArray(merged.charterOffer) ? merged.charterOffer.filter((c): c is string => typeof c === 'string' && ix.charters.has(c)).slice(0, 2) : [],
+      lastOffline: isObj(merged.lastOffline) ? merged.lastOffline : null,
       news: Array.isArray(merged.news)
         ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number')
           .map((n) => (typeof n.year === 'number' ? n : { ...n, year: Math.floor(START_YEAR + n.time * YEARS_PER_SECOND) }))
@@ -241,6 +420,25 @@ export function deserialize(text: string, content: Content): GameState | null {
         if (b && b.drawnYear < 0) { s2[id] = { ...s2[id], budget: { ...b, drawnYear: y } }; changed = true; }
       }
       if (changed) s = { ...s, sectors: s2 };
+    }
+    // unknown Commons projects are dropped
+    for (const k of Object.keys(s.commons.levels)) if (!ix.commons.has(k)) delete s.commons.levels[k];
+    // v2 → v3 step 6: a fresh run between Reckonings gets the offer reckon() would have drawn
+    if (version < 3) {
+      s = { ...s, charterOffer: isFreshRun(s) && s.meta.reckonings >= 1 ? drawOffer(s, content, s.meta.lastRun?.charter) : [] };
+    }
+    // step 7 (and any budget without a valid w0/p0): the day drawn becomes the day loaded
+    {
+      const W = computeFlows(s, content).wellbeing;
+      let s2: Record<SectorId, SectorState> | null = null;
+      for (const id of ix.ids) {
+        const b = s.sectors[id].budget;
+        if (b && (b.w0 < 0 || b.p0 < 0)) {
+          s2 ??= { ...s.sectors };
+          s2[id] = { ...s2[id], budget: { ...b, w0: b.w0 < 0 ? W : b.w0, p0: b.p0 < 0 ? s.sectors[id].pressure : b.p0 } };
+        }
+      }
+      if (s2) s = { ...s, sectors: s2 };
     }
     // sanity: must be computable
     const d = computeFlows(s, content);

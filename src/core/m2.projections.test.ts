@@ -10,6 +10,8 @@ import { projectOne, simulate } from './projections';
 import { openAll } from './m1.testkit';
 import type { Content, GameState, UpgradeView } from '../types';
 
+declare const Bun: { nanoseconds(): number };
+
 /** Tolerance of the focused method: |(1 + new) / (1 + exact) − 1|. */
 const TOL = 0.005;
 

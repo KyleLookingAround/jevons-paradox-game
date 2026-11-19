@@ -35,12 +35,26 @@ interface DemoState {
   ind: number; status: SceneApp['status'][]; adoption: number[]; stage: number; pressure: number; reserve: number; pop: number; pace: number;
   levers: Record<string, boolean>; crises: number; reckoning: '' | 'exhausted' | 'collapse' | 'chosen'; decoupling: boolean; steadyProgress: number; steady: boolean;
   look: string;
+  /* M2 */
+  clear: boolean; clearProgress: number; pressureToClear: number | null; settled: boolean; commons: number[]; landmark: string;
 }
+
+/** The Commons the content lane writes, by Industry (the general 'holiday' shows in every town), and landmarks. */
+const COMMONS: Record<string, [string, string][]> = {
+  steam: [['baths', 'Baths and wash-houses'], ['park', 'People’s park'], ['institute', 'Mechanics’ institute'], ['holiday', 'Bank holidays']],
+  light: [['library', 'Free library'], ['clock', 'Town clock'], ['allotments', 'Allotments'], ['holiday', 'Bank holidays']],
+  motion: [['buses', 'Municipal buses'], ['shortweek', 'Shorter working week'], ['holiday', 'Bank holidays']],
+  compute: [['repair', 'Repair cafés'], ['holiday', 'Bank holidays']],
+  code: [['holiday', 'Bank holidays']],
+  iron: [['mystery', 'A civic mystery']],
+};
+export const LANDMARKS: Record<string, string[]> = { steam: ['deepShaft', 'millTown', 'chapel', 'orchard', 'viaduct'], light: ['gasholder'] };
 
 function blank(ind: number): DemoState {
   const n = IND[ind].apps.length;
   return { ind, status: Array.from({ length: n }, (_, i) => (i === 0 ? 'available' : 'hidden')), adoption: Array(n).fill(0), stage: 0, pressure: 0, reserve: 1,
-    pop: 0, pace: 0, levers: {}, crises: 0, reckoning: '', decoupling: false, steadyProgress: 0, steady: false, look: '' };
+    pop: 0, pace: 0, levers: {}, crises: 0, reckoning: '', decoupling: false, steadyProgress: 0, steady: false, look: '',
+    clear: false, clearProgress: 0, pressureToClear: null, settled: false, commons: [], landmark: '' };
 }
 
 export const PRESETS: Record<string, (ind: number) => DemoState> = {
@@ -52,6 +66,11 @@ export const PRESETS: Record<string, (ind: number) => DemoState> = {
   collapse: (i) => ({ ...PRESETS.crisis(i), pressure: 1.05, reserve: 0.08, crises: 3, reckoning: 'collapse' }),
   steady: (i) => ({ ...blank(i), status: IND[i].apps.map(() => 'founded'), adoption: IND[i].apps.map((_, k) => [0.85, 0.75, 0.62, 0.5, 0.42, 0.3][k] ?? 0.3), stage: 3, pressure: 0.14, reserve: 0.55, pop: 0.7, pace: 0.35,
     levers: { duty: true, cap: true, substitution: true, sufficiency: true, greenSpending: true, deletion: true, sharedLibs: true }, decoupling: true, steadyProgress: 1, steady: true, crises: 2 }),
+  /* M2 */
+  clearing: (i) => ({ ...PRESETS.late(i), pressure: 0.22, pressureToClear: 0, clear: true, clearProgress: 0.2, decoupling: true, crises: 2,
+    levers: { duty: true, cap: true, sufficiency: true, deletion: true } }),
+  settled: (i) => ({ ...PRESETS.steady(i), settled: true, steady: true, clear: true, clearProgress: 1, commons: (COMMONS[IND[i].id] ?? []).map(() => 2) }),
+  commons: (i) => ({ ...PRESETS.mid(i), stage: 2, pop: 0.7, commons: (COMMONS[IND[i].id] ?? []).map((_, k) => 1 + (k % 3)), landmark: (LANDMARKS[IND[i].id] ?? [''])[0] }),
 };
 
 export function viewOf(s: DemoState): SceneView {
@@ -68,7 +87,29 @@ export function viewOf(s: DemoState): SceneView {
     levers: LEVERS.filter(([k]) => s.levers[k]).map(([kind, name]) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name })),
     decoupling: s.decoupling, steadyProgress: s.steadyProgress, steady: s.steady,
     reckoning: s.reckoning ? { cause: s.reckoning, here: true } : null, year: null,
+    clear: s.clear, clearProgress: s.clearProgress, pressureToClear: s.pressureToClear ?? undefined, settled: s.settled, settledYear: s.settled ? 1841 + s.ind * 40 : null,
+    commons: (COMMONS[ind.id] ?? []).map(([icon, name], k) => ({ id: `${ind.id}.c.${icon}`, icon, name, level: s.commons[k] ?? 0 })).filter((c) => c.level >= 1),
+    landmark: s.landmark || null,
   };
+}
+
+/** The demo's run, empty valley to collapse, at time t (0–1). */
+export function runAt(ind: number, t: number): DemoState {
+  const s = blank(ind);
+  const n = IND[ind].apps.length;
+  for (let k = 0; k < n; k++) {
+    const tk = 0.02 + k * (0.75 / n);
+    s.status[k] = t >= tk ? 'founded' : t >= tk - 0.06 || k === 0 ? 'available' : 'hidden';
+    s.adoption[k] = t >= tk ? 1 / (1 + Math.exp(-(t - tk - 0.12) * 14)) : 0;
+  }
+  s.stage = Math.min(3, Math.floor(t * 4.2));
+  s.pressure = Math.min(1.05, Math.pow(t, 1.5) * 1.08);
+  s.reserve = Math.max(0.05, 1 - Math.pow(t, 1.3) * 0.95);
+  s.pop = Math.min(1, t * 1.1);
+  s.pace = Math.min(1, t * 1.2);
+  s.crises = t > 0.85 ? 3 : t > 0.65 ? 2 : t > 0.4 ? 1 : 0;
+  s.reckoning = t >= 0.99 ? 'collapse' : '';
+  return s;
 }
 
 /* ------------------------------------------------------------------ */
@@ -81,7 +122,8 @@ function stripMode(indId: string): void {
   document.body.classList.add('strip');
   const wrap = document.getElementById('app')!;
   wrap.innerHTML = '';
-  for (const name of ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
+  const m2 = /m2/.test(location.hash);
+  for (const name of m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
     const fig = document.createElement('figure');
     const cap = document.createElement('figcaption');
     cap.textContent = name;
@@ -118,7 +160,12 @@ function interactive(): void {
       log.textContent = `onFound(${id}) — the host would call model.foundApp`;
     },
   });
-  let playing = 0, t0 = 0;
+  let playing = 0, t0 = 0, seq = 0;
+  const fire = (kind: string, x: Record<string, unknown>) => {
+    document.documentElement.dataset.era = s.look || IND[s.ind].look;
+    scene.update({ ...viewOf(s), events: [{ seq: ++seq, kind, sector: IND[s.ind].id, ...x }] });
+    log.textContent = `event ${seq}: ${kind}`;
+  };
 
   const render = () => {
     document.documentElement.dataset.era = s.look || IND[s.ind].look;
@@ -166,8 +213,27 @@ function interactive(): void {
     }
     const play = el('button', { type: 'button', textContent: '▶ Auto-play a run (60 s)', className: 'play', onclick: () => start() });
     const crisis = el('button', { type: 'button', textContent: 'Fire a crisis', onclick: () => { s.crises++; render(); } });
+    const evb = el('div', { className: 'btns' });
+    const evs: [string, () => void][] = [
+      ['Market buys', () => fire('upgradeBought', { id: 'u' + seq, by: 'market' })],
+      ['Market founds', () => { const k = s.status.findIndex((x) => x !== 'founded'); if (k >= 0) { s.status[k] = 'founded'; s.adoption[k] = 0.05; fire('appFounded', { id: `${IND[s.ind].id}.${IND[s.ind].apps[k][0]}`, by: 'market' }); } }],
+      ['Stage up', () => { s.stage = (s.stage + 1) % 4; fire('stageReached', { n: s.stage }); }],
+      ['First backfire', () => fire('backfire', {})],
+      ['Decade', () => fire('decade', { n: 1, id: 'full' })],
+      ['Lever enacted', () => { s.levers.duty = true; fire('leverEnacted', { id: `${IND[s.ind].id}.duty`, n: 1 }); }],
+      ['Clear skies', () => { s.clear = true; s.pressureToClear = 0; s.pressure = Math.min(s.pressure, 0.2); fire('clearSkies', {}); }],
+      ['Settle', () => { s.settled = true; s.steady = true; s.clear = true; s.clearProgress = 1; fire('settled', {}); }],
+      ['Commons +1', () => { const list = COMMONS[IND[s.ind].id] ?? []; const k = s.commons.length < list.length ? s.commons.length : list.length - 1; s.commons[k] = Math.min(3, (s.commons[k] ?? 0) + 1); fire('commonsBuilt', { id: `${IND[s.ind].id}.c.${list[k]?.[0]}`, n: s.commons[k] }); }],
+      ['Landmark', () => { const l = LANDMARKS[IND[s.ind].id] ?? []; s.landmark = l.length ? l[(l.indexOf(s.landmark) + 1) % l.length] : ''; render(); }],
+      ['Industry opens', () => fire('sectorOpened', {})],
+      ['Highlight a place', () => scene.highlight?.({ app: `${IND[s.ind].id}.${IND[s.ind].apps[1][0]}` })],
+      ['Clear highlight', () => scene.highlight?.(null)],
+      ['Replay a run (10 s)', () => { const vs: SceneView[] = []; for (let t = 0; t <= 1; t += 1 / 60) vs.push(viewOf(runAt(s.ind, t))); scene.replay?.(vs, { seconds: 10 }); }],
+      ['Save picture', async () => { const { renderStill } = await import('../engine'); const b = await renderStill(viewOf(s), { width: 1200, height: 800, format: 'png' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b as Blob); a.download = 'valley.png'; a.click(); }],
+    ];
+    for (const [t, fn] of evs) evb.append(el('button', { type: 'button', textContent: t, onclick: () => { stop(); fn(); syncPanel(); } }));
     const rm = check('Reduced motion', () => !!rmOn, (v) => { rmOn = v; scene.setReducedMotion(v); });
-    const head = el('div', { className: 'grp' }, el('h3', {}, 'Industry & look'), ind, look, presets, el('div', { className: 'btns' }, play, crisis), rm);
+    const head = el('div', { className: 'grp' }, el('h3', {}, 'Industry & look'), ind, look, presets, el('div', { className: 'btns' }, play, crisis), rm, el('h3', {}, 'Events (M2)'), evb);
 
     const apps = el('div', { className: 'grp' }, el('h3', {}, 'Applications'));
     IND[s.ind].apps.forEach(([, name], k) => {
@@ -186,6 +252,9 @@ function interactive(): void {
       slider('pace (use rate)', () => s.pace, (v) => (s.pace = v)),
       slider('steady progress', () => s.steadyProgress, (v) => (s.steadyProgress = v)),
       check('Decoupling', () => s.decoupling, (v) => (s.decoupling = v)),
+      check('Clear skies', () => s.clear, (v) => (s.clear = v)),
+      slider('clear progress', () => s.clearProgress, (v) => (s.clearProgress = v)),
+      check('Settled', () => s.settled, (v) => (s.settled = v)),
       check('Steady State', () => s.steady, (v) => (s.steady = v)));
     const rk = el('select') as HTMLSelectElement;
     [['', 'No Reckoning'], ['exhausted', 'Reckoning: exhausted'], ['collapse', 'Reckoning: collapse'], ['chosen', 'Reckoning: chosen']].forEach(([v, t]) => rk.append(el('option', { value: v, textContent: t })));
@@ -203,21 +272,9 @@ function interactive(): void {
     stop();
     s = { ...blank(s.ind), look: s.look };
     t0 = performance.now();
-    const n = IND[s.ind].apps.length;
     const step = () => {
       const t = Math.min(1, (performance.now() - t0) / 60000);
-      for (let k = 0; k < n; k++) {
-        const tk = 0.02 + k * (0.75 / n);
-        s.status[k] = t >= tk ? 'founded' : t >= tk - 0.06 || k === 0 ? 'available' : 'hidden';
-        s.adoption[k] = t >= tk ? 1 / (1 + Math.exp(-(t - tk - 0.12) * 14)) : 0;
-      }
-      s.stage = Math.min(3, Math.floor(t * 4.2));
-      s.pressure = Math.min(1.05, Math.pow(t, 1.5) * 1.08);
-      s.reserve = Math.max(0.05, 1 - Math.pow(t, 1.3) * 0.95);
-      s.pop = Math.min(1, t * 1.1);
-      s.pace = Math.min(1, t * 1.2);
-      s.crises = t > 0.85 ? 3 : t > 0.65 ? 2 : t > 0.4 ? 1 : 0;
-      s.reckoning = t >= 0.99 ? 'collapse' : '';
+      s = { ...runAt(s.ind, t), look: s.look };
       render();
       syncPanel();
       if (t < 1) playing = window.setTimeout(step, 100); // the host calls update() ~10×/s
@@ -239,6 +296,20 @@ function interactive(): void {
       buildPanel(); render();
     },
     play: () => start(),
+    fire: (kind: string, x: Record<string, unknown> = {}) => fire(kind, x),
+    replay: (sec = 10) => { const vs: SceneView[] = []; for (let t = 0; t <= 1; t += 1 / 60) vs.push(viewOf(runAt(s.ind, t))); return scene.replay?.(vs, { seconds: sec }); },
+    still: async (w = 600, h = 400) => { const { renderStill } = await import('../engine'); return renderStill(viewOf(s), { width: w, height: h }); },
+    /** Time a switch to an Industry in a preset state: the scene's own cost (setSector + update), in ms. */
+    timeSwitch: (ind: string, name = 'crisis') => {
+      stop();
+      const i = Math.max(0, IND.findIndex((x) => x.id === ind));
+      s = { ...PRESETS[name](i), look: s.look };
+      const v = viewOf(s);
+      const t0 = performance.now();
+      scene.setSector(IND[i].id);
+      scene.update(v);
+      return performance.now() - t0;
+    },
     scene: () => scene,
     rebuild: () => { scene.destroy(); scene = createScene(host, {}); render(); },
   };

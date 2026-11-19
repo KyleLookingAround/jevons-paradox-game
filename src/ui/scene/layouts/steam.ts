@@ -70,21 +70,33 @@ export const steam: Layout = {
 
   plots: [
     {
-      key: 'town', driver: 'population',
+      // The town grows in districts, each from its own heart and along its own route, infill before sprawl: the pit
+      // village on the hillside by the shaft, the mill town's streets up the valley, the railway quarter facing the
+      // line, and the sailors' houses above the harbour. Same order every time.
+      key: 'town', driver: 'population', curve: 0.75,
       slots: weave(
-        scatter('terrace', [150, 178, 290, 62], 18, 'steam-town', { from: [262, 200], gap: [36, 9] }),
-        scatter(['cottage'], [8, 240, 100, 18], 2, 'steam-town2', { from: [100, 246], gap: [30, 8] }),
+        row('terrace', 236, 214, 330, 210, 3, 'steam-mt1', 0.5),                            // mill town: High Street
+        row('cottage', 104, 312, 150, 314, 3, 'steam-pv1', 0, { k: 0.95 }),                 // pit village: Engine Row, by the wagonway
+        row('terrace', 250, 260, 330, 262, 2, 'steam-rq1', 0.2, { k: 0.95 }),               // railway quarter: Station Road
+        row('terrace', 340, 206, 430, 214, 3, 'steam-mt2', 0, { k: 0.95 }),                 // mill town: Mill Lane
+        row('cottage', 486, 232, 586, 238, 4, 'steam-pt1', 0, { k: 0.95 }),                  // port: Quay Terrace
+        row('terrace', 6, 300, 40, 302, 2, 'steam-pv2', 1, { k: 0.95 }),                     // pit village: Top Row
+        row('cottage', 14, 244, 120, 240, 4, 'steam-pv3', 0.7, { k: 0.9 }),                // the old hamlet on the hill
+        row('terrace', 150, 258, 222, 258, 2, 'steam-rq2', 1, { k: 0.95 }),                 // railway quarter
+        row('terrace', 240, 196, 330, 192, 3, 'steam-mt3', 0.5, { k: 0.9 }),                // mill town: back streets
+        row('cottage', 130, 190, 200, 186, 3, 'steam-sp1', 1, { k: 0.9 }),                  // sprawl up the far slope
+        row('terrace', 350, 190, 430, 196, 2, 'steam-mt4', 0, { k: 0.85 }),
       ),
     },
     {
       key: 'pump', match: ['pump'],
-      anchor: { p: 'engine', x: SHAFT_X, y: 284, s: 1.1 },
+      anchor: { p: 'engine', x: SHAFT_X, y: 284, k: 0.92 },
       slots: scatter('engine', [0, 172, 210, 40], 3, 'steam-pumps', { from: [110, 190], gap: [64, 14], k: 0.9 }),
       hit: [24, 200, 96, 90],
     },
     {
       key: 'winder', match: ['winder'],
-      anchor: { p: 'headframe', x: 162, y: 290, s: 1.05 },
+      anchor: { p: 'headframe', x: 162, y: 290 },
       // The wagonway carries the coal the winders raise: pit head → mills → quay, the tubs running full one way.
       slots: [{ p: 'wagonway', x: 168, y: 292, s: 1, w: 128, h: 10, band: 'near' }, { p: 'wagonway', x: 330, y: 304, s: 1, w: 120, h: 14, band: 'near' },
         ...scatter('headframe', [0, 196, 230, 70], 5, 'steam-winders', { from: [160, 250], gap: [48, 14], k: 0.95 })],
@@ -111,7 +123,7 @@ export const steam: Layout = {
     },
     {
       key: 'mills', match: ['mill'],
-      anchor: { p: 'mill', x: 312, y: 302, v: 0.75, s: 1.05 },
+      anchor: { p: 'mill', x: 312, y: 302, v: 0.75 },
       slots: weave(
         scatter('mill', [222, 186, 215, 92], 8, 'steam-mills', { from: [312, 260], gap: [52, 12], k: 0.95 }),
         scatter('chimney', [214, 184, 232, 80], 6, 'steam-stacks', { from: [300, 240], gap: [18, 8] }),
@@ -169,6 +181,13 @@ export const steam: Layout = {
     greenSpending: { p: 'park', x: 388, y: 370, s: 1.05 },
   },
   restraintSpare: [{ p: 'notice', x: 418, y: 330 }, { p: 'notice', x: 192, y: 368 }],
+  // The Commons, where the town is: baths by the river below the mills, the institute by the station, the people's
+  // park laid out on the near fields, bunting across Station Road; a Charter's landmark on the open slope by the line.
+  commons: [
+    { p: '', x: 276, y: 254, k: 0.95 }, { p: '', x: 232, y: 352, k: 0.95 }, { p: '', x: 196, y: 262, k: 0.95 },
+    { p: '', x: 300, y: 270, band: 'mid' }, { p: '', x: 120, y: 330 }, { p: '', x: 410, y: 300 },
+  ],
+  landmark: { p: '', x: 392, y: 252, k: 0.9 },
   steadyMovers: [{ p: 'birds', x0: -40, y0: 70, x1: 640, y1: 56, dur: 40, n: 2, s: 1, band: 'far' }],
 };
 

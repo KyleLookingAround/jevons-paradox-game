@@ -101,7 +101,7 @@ const code: SectorDef = {
   ...base, id: 'code', name: 'Code', years: '2025–', firstYear: 2025, theme: 'agentic', accent: 'diff',
   tagline: 'Software is now cheaper to write than to read.',
   service: { name: 'Features', unit: 'features', unitSingular: 'feature' }, resource: { name: 'Human attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
-  basePrice: 4, capCost: 0.2, reserve: 3e6, resourceKind: 'flow', pressureSource: 'service', drawsOn: { sector: 'compute', perService: 2 },
+  basePrice: 4, capCost: 0.2, reserve: 3e6, resourceKind: 'flow', pressureSource: 'service', absorption: 0, drawsOn: { sector: 'compute', perService: 2 },
   unlock: { minReckonings: 4, after: ['compute'], when: { all: [{ owns: 'compute.node', label: 'Own a Die shrink' }] } },
   applications: [
     app('code.tools', 'Internal tools', 'wrench', 5, 60, 1.6, Infinity, 0, 'A dashboard for the dashboard.'),
@@ -765,7 +765,7 @@ function step(s: GameState, c: Content, dt: number): void {
     if (s.history.length > 240) s.history = s.history.filter((_, i) => i % 2 === 0 || i > 120);
   }
   // Standing orders, at order ticks.
-  if (Math.floor(s.time * YEARS_PER_SECOND / INTERVAL_YEARS) > Math.floor(t0 * YEARS_PER_SECOND / INTERVAL_YEARS) && !pending(s, c) && s.time > 0) runOrders(s, c);
+  if (!ordersPaused && Math.floor(s.time * YEARS_PER_SECOND / INTERVAL_YEARS) > Math.floor(t0 * YEARS_PER_SECOND / INTERVAL_YEARS) && !pending(s, c) && s.time > 0) runOrders(s, c);
 }
 function leverUpkeep(s: GameState, c: Content): number {
   let u = 0;
@@ -835,6 +835,8 @@ function buildCommons(s: GameState, c: Content, v: CommonsView, by: Actor): void
   emit(s, c, 'commonsBuilt', { id: v.def.id, n: v.level + 1, sector: v.def.sector, by });
 }
 let viewsOf: (s: GameState, c: Content) => UpgradeView[] = () => [];
+/** Standing orders wait while the mock builds its starting states (so `rich` starts where it always did). */
+let ordersPaused = false;
 function commonsViewsOf(s: GameState, c: Content): CommonsView[] {
   const open = commonsOpen(s, c), pend = !!pending(s, c), ym = mul(s, c, 'commonsYieldMul');
   return (c.commons || []).map((p): CommonsView => {
@@ -986,6 +988,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       for (const e of effects(s, c)) if (e.type === 'reserveAdd' && sectors[e.sector]) { sectors[e.sector].reserve += e.value * c.sectors[e.sector].reserve; sectors[e.sector].reserveMax += e.value * c.sectors[e.sector].reserve; }
       openSector(s, c, order(c)[0], true);
       if (!meta && opts.rich) {
+        ordersPaused = true;
         s.capital = 2e5; s.upgrades = { 'steam.boilers': 1, 'steam.condenser': 1 };
         s.sectors.steam.apps['steam.mills'] = newApp(true, true);
         s.meta = { ...s.meta, hindsight: 420, hindsightEarned: 470, reckonings: 1, knowhow: { 'kh.cornish': 1, 'kh.seed': 1 }, knowhowPeak: { 'kh.cornish': 1, 'kh.seed': 1 },
@@ -1055,6 +1058,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           sectors: { steam: { etaFold: 12, peakRFold: 2.1, resourceUsed: 5.2e5, unburnt: 0.04, decades: 1 }, light: { etaFold: 3, peakRFold: 4.4, resourceUsed: 8e4, unburnt: 0.61, decades: 0 } },
           hindsightTerms: { wellbeingYears: 820, intensity: 2.4, wellbeing: 10.6, budget: 6, unburnt: 3.1, backfire: 10, sectorsReached: 10, steady: 0, settled: 0, total: 40 },
         };
+        ordersPaused = false;
         if (opts.away) {
           const held = opts.away === 'held';
           s.lastOffline = {

@@ -89,3 +89,19 @@ export const reducedMotion = (): boolean => {
   if (o != null) return o;
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 };
+
+/**
+ * Restart a one-shot CSS animation carried by class `c` without forcing a synchronous layout (no offsetWidth read in
+ * the handler): the class comes off now and back on in the next frame, and off again after `ms`.
+ */
+export function replay(el: Element | null | undefined, c: string, ms: number): void {
+  if (!el) return;
+  el.classList.remove(c);
+  requestAnimationFrame(() => {
+    el.classList.add(c);
+    const t = (el as unknown as { __rp?: Record<string, number> });
+    const map = t.__rp ?? (t.__rp = {});
+    clearTimeout(map[c]);
+    map[c] = window.setTimeout(() => el.classList.remove(c), ms);
+  });
+}

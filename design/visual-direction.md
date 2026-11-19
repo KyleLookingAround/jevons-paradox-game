@@ -182,3 +182,41 @@ For the page to meet the scene halfway (not done here; the page is another lane)
 - Offer the scene's `detail` option as a setting ("Scene detail: automatic / low / full") beside reduced motion.
 - Every look: the scene card (`.scn-card`) inherits page type; using the page's label font for its caption line and
   the page rule colour for its top border would seat it.
+
+## M2 scene pass: cohesion, the quiet states, and the page's hooks (Nov 2026)
+
+What "fit together" still needed after the first pass, and what was done:
+
+- **A scale ladder.** About 2.5 units to the metre at scale 1: a cottage is 15 units to the ridge, a terrace 19, a
+  mill 30–40 with a stack of 55–70, an engine house 44 with its stack 64, a locomotive 12, a double-deck tram 12.5.
+  Landmarks now follow the depth curve (`k ≤ 1`) instead of being blown up with a fixed `s`, so Steam's engine house
+  sits beside its pit cottages at a believable two-and-a-half times their height and the mills no longer dwarf the
+  town in front of them. New civic props are drawn to the same ladder.
+- **Growth that composes.** Towns grow in districts along their routes and from their hearts, infill before sprawl,
+  in a fixed order: Steam has a pit village by the wagonway, a mill town's High Street and Mill Lane, a railway quarter
+  facing the line and the sailors' terrace above the harbour; Light's terraces line three streets climbing from the
+  tram street; Motion's closes fill both sides of the avenues out from the arterial, then a crescent, then the
+  sprawl.
+- **Routes in every Industry.** Light: the gas mains under the three streets (lit dashed lines) with their lamps
+  coming on from the tram street upwards; trams redrawn as tramcars (crimson and cream, platforms, trolley pole,
+  double-deck from stage 2) with the light as a pool on the setts, not a lit box. Motion: a road network (spine from
+  the old town to the arterial and the motorway junction, avenues into the suburbs, the airport road, the mall's slip
+  road) with traffic flowing along it: commuters down the avenues, shoppers up the slip road, cars to the terminal.
+  Compute: the grid comes over the hill on the pylons to a substation by the dam and a CAD trace feeds every hall,
+  current running along it; the mill label no longer overlaps. Code keeps its elevated line on Steam's arches.
+- **The quiet states.** Clear skies fade each style's fresh sky in over the 50 years (the night city shows its first
+  stars and the rain thins); a settled Industry runs slow and soft under a held wash in its own colour, with an
+  emblem in its idiom (an engraved oval, a gilt plate, an enamel badge, a phosphor tag, a neon tag).
+- **The Commons and the Charters** each have a drawing of their own (`props/civic.ts`), on civic sites chosen per
+  layout: baths and wash-house by the river, the people's park on the near fields, the institute by the station; the
+  free library and the clock tower either side of Church Street; the bus garage by the depots, the lido and cricket
+  field on the suburbs' edge; a repair café among the glowing homes; bank-holiday bunting in whichever town is shown.
+- **Moments.** A stage change replaces the machine in front of you (the old one sinks as the new one rises, a flash,
+  the machine named); founding rises on a scaffold; the Market's purchases put up a scaffold that comes down again;
+  the first backfire makes the valley take a breath and then burn harder. Nothing loops; reduced motion gets the
+  static version.
+
+Not done, and worth doing next: Compute's far campus is still small and lost in the smog at high pressure (it should
+be the picture people remember: bring it forward and give it its own cooling-tower plume line); Motion's suburbs
+would read better with front gardens and a parade of shops at the crescent; Code's service ducts are not yet a
+drawn network; and the Steam foreground fields are still a little empty before steam ploughing is founded.

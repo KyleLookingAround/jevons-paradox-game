@@ -25,6 +25,22 @@ function fields(): string {
   return s;
 }
 
+/** The road network the place grows along: the spine from the old town down to the arterial and on to the motorway
+ *  junction, avenues out into the fields for the suburbs, the airport road, the mall's slip road. [x0, y0, x1, y1]. */
+const SPINE: [number, number, number, number][] = [[284, 186, 300, 258], [300, 266, 330, 330]];
+const AVENUES: [number, number, number, number][] = [[340, 258, 304, 212], [392, 258, 452, 212], [512, 258, 586, 222], [304, 212, 420, 204]];
+const AIRPORT_RD: [number, number, number, number] = [470, 258, 470, 200];
+const MALL_RD: [number, number, number, number] = [334, 326, 452, 316];
+const seg = ([x0, y0, x1, y1]: [number, number, number, number], band: 'far' | 'mid' | 'near'): Slot => ({ p: 'road', x: x0, y: y0, w: x1 - x0, h: y1 - y0, s: 1, band });
+/** Closes of houses both sides of an avenue, from the arterial outwards. */
+const closes = (n: number) => AVENUES.flatMap(([x0, y0, x1, y1], i) => [-1, 1].map((sd) => {
+  const ox = sd * (i === 3 ? 0 : 30), oy = i === 3 ? sd * 9 : 0;
+  return Array.from({ length: n }, (_, k): Slot => {
+    const t = (k + 0.6) / n;
+    return { p: 'suburb', x: x0 + (x1 - x0) * t + ox, y: y0 + (y1 - y0) * t + oy - 2, k: 1.1, v: ((i * 7 + k * 3 + (sd > 0 ? 1 : 0)) % 10) / 10 };
+  });
+}));
+
 const LANE_FWD = (y: number, n: number, from: number, dur: number) => ({ p: 'car', x0: -40, y0: y, x1: 640, y1: y, dur, n, s: 1, from, band: 'near' as const });
 const LANE_BACK = (y: number, n: number, from: number, dur: number) => ({ p: 'car', x0: 640, y0: y, x1: -40, y1: y, dur, n, s: 1, from, band: 'near' as const });
 
@@ -76,17 +92,31 @@ export const motion: Layout = {
       hit: [20, 190, 180, 74],
     },
     {
+      // The spine road exists from the start: the old town's road down to the arterial.
+      key: 'spine', driver: 'always', slots: [seg(SPINE[0], 'mid')],
+    },
+    {
+      // Suburbs: the avenues are laid first, then closes of houses fill both sides from the arterial outwards, then
+      // the crescent along the top, then the sprawl beyond. Commuters drive down the avenues to the arterial.
       key: 'suburbs', match: ['suburb'],
-      anchor: { p: 'suburb', x: 300, y: 228, k: 1.15 },
-      slots: scatter('suburb', [236, 204, 364, 88], 20, 'motion-suburbs', { from: [300, 226], gap: [66, 12], k: 1.15 }),
+      anchor: { p: 'suburb', x: 318, y: 240, k: 1.1 },
+      slots: [...AVENUES.map((a) => seg(a, 'mid')), ...weave(...closes(3)),
+        ...scatter('suburb', [236, 270, 364, 24], 6, 'motion-suburbs', { from: [400, 280], gap: [66, 10], k: 1.15 })],
+      movers: [
+        { p: 'car', x0: 452, y0: 212, x1: 392, y1: 258, dur: 9, n: 2, s: 0.85, band: 'mid', z: 258 },
+        { p: 'car', x0: 304, y0: 212, x1: 340, y1: 258, dur: 8, n: 2, s: 0.85, band: 'mid', z: 258 },
+        { p: 'car', x0: 586, y0: 222, x1: 512, y1: 258, dur: 10, n: 1, s: 0.85, band: 'mid', z: 258 },
+      ],
       hit: [220, 200, 200, 76],
       site: [280, 220, 50, 8],
     },
     {
       key: 'mall', match: ['mall'],
       anchor: { p: 'mall', x: 506, y: 322, s: 1.3, band: 'near' },
-      slots: ([[400, 312], [400, 322], [346, 322], [346, 312], [584, 322], [400, 302], [346, 302], [292, 322], [292, 312]] as [number, number][])
-        .map(([x, y], i): Slot => ({ p: 'carpark', x, y, s: 1.2, v: (i * 0.29) % 1, band: 'near' })),
+      slots: [seg(SPINE[1], 'near'), seg(MALL_RD, 'near'), ...([[400, 312], [400, 322], [346, 322], [346, 312], [584, 322], [400, 302], [346, 302], [292, 322], [292, 312]] as [number, number][])
+        .map(([x, y], i): Slot => ({ p: 'carpark', x, y, s: 1.2, v: (i * 0.29) % 1, band: 'near' }))],
+      // Shoppers come off the motorway junction, up the slip road to the car park.
+      movers: [{ p: 'car', x0: 300, y0: 336, x1: 452, y1: 318, dur: 9, n: 2, s: 1, band: 'near', z: 330 }],
       hit: [430, 252, 170, 74],
     },
     {
@@ -106,11 +136,12 @@ export const motion: Layout = {
       anchor: { p: 'airport', x: 370, y: 196, s: 1, w: 230, band: 'far' },
       // Contrails accumulate over the optimistic sky as flying spreads.
       slots: weave(
-        [{ p: 'slab', x: 458, y: 194, s: 0.6, v: 0.1, band: 'far' }, { p: 'airport', x: 400, y: 182, s: 0.6, w: 280, band: 'far' }],
+        [seg(AIRPORT_RD, 'mid'), { p: 'slab', x: 458, y: 194, s: 0.6, v: 0.1, band: 'far' }, { p: 'airport', x: 400, y: 182, s: 0.6, w: 280, band: 'far' }],
         ([[300, 120, 160], [180, 96, 220], [420, 70, 200], [60, 132, 180], [240, 58, 240], [520, 110, 120], [120, 84, 200], [360, 40, 230]] as [number, number, number][])
           .map(([x, y, w]): Slot => ({ p: 'contrail', x, y, w, s: 1, band: 'far' })),
       ),
-      movers: [{ p: 'plane', x0: 470, y0: 186, x1: 720, y1: 90, dur: 13, n: 3, s: 1, band: 'far' }],
+      movers: [{ p: 'plane', x0: 470, y0: 186, x1: 720, y1: 90, dur: 13, n: 3, s: 1, band: 'far' },
+        { p: 'car', x0: 470, y0: 258, x1: 470, y1: 202, dur: 7, n: 2, s: 0.75, band: 'mid', z: 230 }],
       hit: [420, 120, 180, 74],
       site: [440, 186, 80, 6],
     },
@@ -127,5 +158,8 @@ export const motion: Layout = {
     greenSpending: { p: 'park', x: 140, y: 324, s: 0.9, band: 'near' },
   },
   restraintSpare: [{ p: 'notice', x: 240, y: 324 }, { p: 'notice', x: 20, y: 324 }],
+  // The Commons by the arterial road: the corporation bus garage near the depots, the lido and cricket field on the
+  // edge of the suburbs, bunting at the junction.
+  commons: [{ p: '', x: 150, y: 296, band: 'mid' }, { p: '', x: 230, y: 298, band: 'mid' }, { p: '', x: 566, y: 300, band: 'near' }],
   steadyMovers: [{ p: 'birds', x0: -40, y0: 80, x1: 640, y1: 60, dur: 38, n: 2, s: 1, band: 'far' }],
 };

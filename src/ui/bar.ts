@@ -68,7 +68,22 @@ export function buildTopbar(ctx: Ctx): Comp {
 }
 
 export function buildTabs(ctx: Ctx): Comp {
-  const el = h('nav', { class: 'tabs', 'aria-label': 'Industries' });
+  const row = h('div', { class: 'tabs-row' });
+  // When the row scrolls sideways (many Industries on a phone), a fade and an arrow at the edge say there is more.
+  const moreR = h('button', { class: 'tabs-more r', type: 'button', tabindex: '-1', 'aria-hidden': 'true', onclick: () => nudge(1) }, '›');
+  const moreL = h('button', { class: 'tabs-more l', type: 'button', tabindex: '-1', 'aria-hidden': 'true', onclick: () => nudge(-1) }, '‹');
+  const el = h('nav', { class: 'tabs', 'aria-label': 'Industries' }, moreL, row, moreR);
+  let edgeRaf = 0;
+  const edges = () => {
+    edgeRaf = 0;
+    const max = row.scrollWidth - row.clientWidth;
+    cls(el, 'more-r', max > 2 && row.scrollLeft < max - 2);
+    cls(el, 'more-l', max > 2 && row.scrollLeft > 2);
+  };
+  const queueEdges = () => { if (!edgeRaf) edgeRaf = requestAnimationFrame(edges); };
+  row.addEventListener('scroll', queueEdges, { passive: true });
+  window.addEventListener('resize', queueEdges, { passive: true });
+  function nudge(dir: number): void { row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' }); }
   const btns = new Map<SectorId, HTMLButtonElement>();
   const locks = new Map<SectorId, { b: HTMLButtonElement; name: HTMLElement; sub: HTMLElement }>();
   let key = '';
@@ -82,7 +97,8 @@ export function buildTabs(ctx: Ctx): Comp {
         h('span', { class: 'tab-num', text: roman(sectorIndex(ctx.content, id)) }),
         h('span', { class: 'tab-txt' }, h('span', { class: 'tab-name', text: def?.name ?? id })),
         h('span', { class: 'tab-dot', 'aria-hidden': 'true', text: '!' }),
-        h('span', { class: 'tab-buy', 'aria-hidden': 'true' }));
+        h('span', { class: 'tab-buy', 'aria-hidden': 'true' }),
+        h('span', { class: 'tab-div num', 'aria-hidden': 'true' }));
       btns.set(id, b);
     }
     return b;
@@ -106,8 +122,11 @@ export function buildTabs(ctx: Ctx): Comp {
     const k = ids.join(',') + '|' + next.map((n) => n.id).join(',');
     if (k !== key) {
       key = k;
-      syncChildren(el, [...ids.map(tabFor), ...next.map((n) => lockFor(n.id).b)]);
+      syncChildren(row, [...ids.map(tabFor), ...next.map((n) => lockFor(n.id).b)]);
+      queueEdges();
     }
+    const pend = Array.isArray(ctx.state.pendingDividends) ? ctx.state.pendingDividends : [];
+    const cmBuy = new Set((ctx.cms || []).filter((v) => v?.canBuy && v.def.sector).map((v) => v.def.sector as string));
     for (const id of ids) {
       const b = tabFor(id);
       const sel = id === ctx.sector;
@@ -116,10 +135,17 @@ export function buildTabs(ctx: Ctx): Comp {
       const warn = sectorWarning(ctx, id);
       cls(b, 'warn', warn);
       // Something worth buying there (the affordable signal's no-nag rule applies); the open tab has the chip instead.
-      const buy = !sel && (ctx.afford?.bySector.get(id) ?? 0) > 0;
+      const buy = !sel && ((ctx.afford?.bySector.get(id) ?? 0) > 0 || cmBuy.has(id));
       cls(b, 'can-buy', buy);
+      // Decade dividends waiting for a choice in this Industry: a count on the chip (the card itself is in the feed).
+      const nd = pend.filter((p) => p.sector === id).length;
+      const dv = b.querySelector('.tab-div');
+      setText(dv, nd ? String(nd) : '');
+      cls(b, 'has-div', nd > 0);
+      const settled = !!ctx.d?.sectors?.[id]?.settled;
+      cls(b, 'settled', settled);
       const nm = sectorDef(ctx, id)?.name ?? id;
-      setAttr(b, 'aria-label', `${nm}${warn ? ', under strain' : ''}${buy ? ', something affordable' : ''}`);
+      setAttr(b, 'aria-label', `${nm}${settled ? ', settled' : ''}${warn ? ', under strain' : ''}${buy ? ', something affordable' : ''}${nd ? `, ${nd} dividend${nd === 1 ? '' : 's'} to choose` : ''}`);
     }
     // Keep the selected tab in view when the row scrolls sideways (many industries on a phone).
     // Read layout in the next frame, not here: right after a change of look this read would force the whole page's
@@ -128,10 +154,14 @@ export function buildTabs(ctx: Ctx): Comp {
       shown = ctx.sector;
       requestAnimationFrame(() => {
         const b = btns.get(ctx.sector);
-        if (b && el.scrollWidth > el.clientWidth) {
-          const left = b.offsetLeft - el.offsetLeft - 16;
-          if (left < el.scrollLeft || left + b.offsetWidth + 32 > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, left);
+        if (b && row.scrollWidth > row.clientWidth) {
+          // Keep the selected tab in view with a little of its neighbour showing on the far side (so "more" reads).
+          const left = b.offsetLeft - row.offsetLeft;
+          const pad = 36;
+          if (left - pad < row.scrollLeft) row.scrollLeft = Math.max(0, left - pad);
+          else if (left + b.offsetWidth + pad > row.scrollLeft + row.clientWidth) row.scrollLeft = left + b.offsetWidth + pad - row.clientWidth;
         }
+        edges();
       });
     }
     for (const n of next) {

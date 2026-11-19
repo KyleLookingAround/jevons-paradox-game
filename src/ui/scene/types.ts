@@ -164,6 +164,11 @@ export interface SceneHandle {
    *  update() calls are ignored while it plays; cancel with stopReplay(). */
   replay?(views: SceneView[], opts?: ReplayOptions): Promise<void>;
   stopReplay?(): void;
+  /** Build another Industry's picture now, off screen (call when idle with sceneViewFrom(…, thatSector)), so switching
+   *  to it later re-attaches a kept world instead of building one. Worlds are kept per Industry (at most six). */
+  prebuild?(view: SceneView): void;
+  /** The current picture as one self-contained SVG string (styles inlined, no animation): for "save picture". */
+  toSVG?(opts?: StillOptions): string;
   /** The current one-paragraph text alternative. */
   describe(): string;
   destroy(): void;

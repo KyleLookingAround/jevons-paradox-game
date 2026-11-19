@@ -1,13 +1,18 @@
 /**
- * Test-only Content fixture (M1 contract). Self-contained: Steam is exactly the DESIGN.md reference economy; the other
+ * Test-only Content fixture (M2 contract). Self-contained: Steam is exactly the DESIGN.md reference economy; the other
  * sectors are minimal but exercise every mechanic (spill, lock-in, autoEta, flow resource, service pressure, upkeep,
  * drawsOn), and there is at least one lever of every LeverKind. M1 mechanisms covered: three ages (Light with a
  * firstYear and a theme override), unlocks by `when` (labelled), by `after` and by the deprecated price gate, lever
  * `repeat` and `recycle`, locked items with an `unlock`, two fork pairs, a Know-how tree with tiers and a branch, an
  * institution with levels and two seats, demography, steady (decade effects, firstSteadyEffects), levy, an achievement
- * with `when`, and sector headlines. Never imported by the game.
+ * with `when`, and sector headlines. M2 mechanisms covered: three paces, decade choices (two global pairs and a Light
+ * override), clear-level overrides on Motion, Code with absorption 0, Steam with `settle`, four dividends, three Commons
+ * projects (Light intensity; a time rebound through satMul; a repeatable one with Mandate cost and a one-off), three
+ * Charters (with `requires`, with startFounded, with institutionLoan), institutions with orderUnlock (Civil Service;
+ * Treasury rules with offlineCapAdd), upgrades with `stage`, `offline` (8 h, hold before a crisis), 'commons' recycle,
+ * recycle wording, Know-how tree names, and headlines for the M2 keys. Never imported by the game.
  */
-import type { AppState, Content, HeadlineKey, LeverDef, SectorDef, SectorId, UpgradeDef } from '../types';
+import type { AppState, CharterDef, CommonsDef, Content, DividendDef, HeadlineKey, LeverDef, PaceDef, SectorDef, SectorId, UpgradeDef } from '../types';
 
 const sector = (o: Partial<SectorDef> & Pick<SectorDef, 'id' | 'applications'>): SectorDef => ({
   name: o.id[0].toUpperCase() + o.id.slice(1), years: '', tagline: '', service: { name: `${o.id} service`, unit: 'u' },
@@ -26,6 +31,7 @@ const steam = sector({
   id: 'steam', accent: 'brass', basePrice: 1, capCost: 0.04, margin: 0.2, alpha: 0.6, reserve: 300_000,
   pressureIntensity: 0.002, absorption: 0.01, collapseAt: 100, crisisAt: [0.4, 0.7], pressureWellbeingCost: 15,
   wellbeingWeight: 12, wellbeingScale: 50,
+  settle: { dividend: [{ type: 'wellbeingAdd', value: 1 }, { type: 'mandateAdd', value: 30 }], upkeepPerSpill: 2, freeExcess: 0.05, blurb: 'Steam settles.' },
   applications: [
     { ...app('steam.pumping', 1.5, 40, 1.5), reserveGainPerService: 0.1 },
     app('steam.mills', 0.6, 300, 2.0, 0.8, 500),
@@ -37,6 +43,7 @@ const steam = sector({
 /** Opens on milestones restraint does not block (labelled `when`), after one Reckoning; own clock from 1870. */
 const light = sector({
   id: 'light', firstYear: 1870, theme: 'gaslight', capCost: 0.05, reserve: 5_000_000, spill: { to: 'steam', rate: 0.4 },
+  steady: { decadeChoices: [['div.wellbeing', 'div.efficiency']] },
   unlock: {
     minReckonings: 1,
     when: {
@@ -52,6 +59,7 @@ const light = sector({
 /** The deprecated price gate (no `when`). */
 const motion = sector({
   id: 'motion', firstYear: 1950, reserve: 10_000_000, spill: { to: 'light', rate: 0.3 },
+  steady: { clearBelow: 0.4, clearCeiling: 0.2 },
   unlock: { prevServicePriceBelow: 0.12, minReckonings: 2 },
   applications: [app('motion.delivery', 1.4, 2000, 1.5), { ...app('motion.suburbs', 0.3, 20_000, 2.2, 0.45, 2_000), lockIn: 0.8 }],
 });
@@ -83,8 +91,13 @@ export const STEAM_EFFICIENCY = ['boilers', 'condenser', 'doubleActing', 'highPr
 /** The Steam fork pairs: [a, b] exclude each other. */
 export const STEAM_FORKS: [string, string][] = [['steam.premium', 'steam.pirate'], ['steam.parliamentary', 'steam.firstClass']];
 
+/** M2: machine stages of the Steam cards (condenser 1, compound 2, turbine 3). */
+const STAGES: Record<string, number> = { 'steam.condenser': 1, 'steam.compound': 2, 'steam.turbine': 3 };
 const upgrades: UpgradeDef[] = [
-  ...STEAM_EFFICIENCY.map((id, i) => effUp(id, 'steam', STEAM_COSTS[i], STEAM_ETA[i + 1] / STEAM_ETA[i], i ? [STEAM_EFFICIENCY[i - 1]] : undefined)),
+  ...STEAM_EFFICIENCY.map((id, i) => ({
+    ...effUp(id, 'steam', STEAM_COSTS[i], STEAM_ETA[i + 1] / STEAM_ETA[i], i ? [STEAM_EFFICIENCY[i - 1]] : undefined),
+    ...(STAGES[id] ? { stage: STAGES[id] } : {}),
+  })),
   { id: 'steam.lathe', sector: 'steam', name: 'Lathe', blurb: '', kind: 'capital', cost: 2_000, requires: ['steam.boilers'],
     effects: [{ type: 'capCostMul', sector: 'steam', value: 0.8 }] },
   { id: 'steam.deeperShaft', sector: 'steam', name: 'Shaft', blurb: '', kind: 'prospect', cost: 4_000, repeatable: true,
@@ -125,7 +138,8 @@ const lever = (id: string, s: SectorId, kind: LeverDef['kind'], levels: ReturnTy
   ({ id, sector: s, kind, name: id, blurb: '', catch: 'a catch', levels, ...extra });
 
 const levers: LeverDef[] = [
-  lever('steam.duty', 'steam', 'duty', [L(100, 0.05, 0.3), L(300, 0.12, 0.6), L(900, 0.3, 0.9)], { recycle: ['treasury', 'dividend'] }),
+  lever('steam.duty', 'steam', 'duty', [L(100, 0.05, 0.3), L(300, 0.12, 0.6), L(900, 0.3, 0.9)],
+    { recycle: ['treasury', 'dividend', 'commons'], recycleBlurb: { dividend: 'Paid back per head; more people follow.' } }),
   // cap as a fraction of the budget line; Tighten twice more (0.2, 0.1; 0.0 is out of the cap's range)
   lever('steam.cap', 'steam', 'cap', [L(120, 0.06, 1.0, 3), L(360, 0.15, 0.8, 3), L(1_000, 5, 0.3, 1)],
     { repeat: { valueStep: -0.1, costGrowth: 1.5, upkeepGrowth: 1.2, label: 'Cap at {pct}% of budget' } }),
@@ -144,8 +158,36 @@ const levers: LeverDef[] = [
 export const HEADLINE_KEYS: HeadlineKey[] = [
   'appFounded', 'appAvailable', 'sectorOpened', 'crisis', 'collapse', 'exhausted', 'backfire', 'reveal', 'leverEnacted',
   'leverLapsed', 'steadySector', 'steadyAll', 'reckoning', 'efficiency', 'ageBegins', 'budgetDrawn', 'decade', 'budgetBroken',
+  'clearSkies', 'settled', 'unsettled', 'commonsBuilt', 'charter',
 ];
-const headlines = Object.fromEntries(HEADLINE_KEYS.map((k) => [k, [`${k}: {sector} {age} {app} {resource} {service} {year} #{n}`]])) as Record<HeadlineKey, string[]>;
+const headlines = Object.fromEntries(HEADLINE_KEYS.map((k) => [k, [`${k}: {sector} {age} {app} {resource} {service} {year} #{n}{name}`]])) as Record<HeadlineKey, string[]>;
+
+/** M2: the paces (the first is the default), the dividends, the Commons and the Charters. */
+export const PACES: PaceDef[] = [
+  { id: 'gentle', name: 'Gentle', declinePerDecade: 0.05, dividendMul: 1 },
+  { id: 'firm', name: 'Firm', declinePerDecade: 0.1, dividendMul: 1.5 },
+  { id: 'severe', name: 'Severe', declinePerDecade: 0.2, dividendMul: 2.5 },
+];
+const dividends: DividendDef[] = [
+  { id: 'div.mandate', name: 'A grant', blurb: '', effects: [{ type: 'mandateAdd', value: 40 }] },
+  { id: 'div.capital', name: 'A bond', blurb: '', effects: [{ type: 'capitalAdd', value: 30 }] },
+  { id: 'div.wellbeing', name: 'Public baths', blurb: '', effects: [{ type: 'wellbeingAdd', value: 1 }] },
+  { id: 'div.efficiency', name: 'A prize', blurb: '', effects: [{ type: 'etaMul', sector: 'steam', value: 1.1 }, { type: 'mandateAdd', value: 10 }] },
+];
+const commons: CommonsDef[] = [
+  { id: 'commons.library', name: 'The Free Library', blurb: '', icon: 'library', sector: 'light', cost: 1_000,
+    wellbeing: { max: 6, perLevel: 2 }, intensity: { sector: 'light', perLevel: 0.5 } },
+  { id: 'commons.park', name: 'The People’s Park', blurb: '', icon: 'park', cost: 800, costGrowth: 2, maxLevel: 3,
+    wellbeing: { max: 4, perLevel: 1.5 }, effects: [{ type: 'satMul', sector: 'light', app: 'light.lamps', value: 1.2 }] },
+  { id: 'commons.baths', name: 'Baths', blurb: '', icon: 'baths', cost: 500, costGrowth: 1.5, maxLevel: 5, mandateCost: 10,
+    wellbeing: { max: 10, perLevel: 1 }, effects: [{ type: 'mandateAdd', value: 5 }] },
+];
+const charters: CharterDef[] = [
+  { id: 'ch.coalfield', name: 'The Northern Coalfield', blurb: '', sector: 'steam', requires: { stat: 'reckonings', op: '>=', value: 1 },
+    effects: [{ type: 'reserveAdd', sector: 'steam', value: 0.5 }, { type: 'satMul', sector: 'steam', value: 1.1 }, { type: 'mandateAdd', value: 999 }] },
+  { id: 'ch.mills', name: 'Mills from the first minute', blurb: '', sector: 'steam', effects: [{ type: 'startFounded', app: 'steam.mills' }, { type: 'startFounded', app: 'light.homes' }] },
+  { id: 'ch.loan', name: 'A borrowed office', blurb: '', effects: [{ type: 'institutionLoan', id: 'inst.stats', level: 1 }] },
+];
 headlines.leverLapsed = []; // exercises the plain fallback
 
 export const fixture: Content = {
@@ -181,6 +223,9 @@ export const fixture: Content = {
         { cost: 9, effects: [{ type: 'wellbeingAdd', value: 2 }, { type: 'popGrowthMul', value: 0.5 }], label: 'Parks' },
       ] },
     { id: 'inst.capStanding', name: 'Standing cap', blurb: '', cost: 6, effects: [{ type: 'startLever', lever: 'steam.cap', level: 1 }] },
+    { id: 'inst.civil', name: 'Civil Service', blurb: '', cost: 5, effects: [{ type: 'orderUnlock', order: 'civilService' }] },
+    { id: 'inst.treasury', name: 'Treasury rules', blurb: '', cost: 5,
+      effects: [{ type: 'orderUnlock', order: 'treasury' }, { type: 'offlineCapAdd', seconds: 3_600 }] },
   ],
   achievements: [
     ...['firstReckoning', 'backfire', 'jevonsWasRight', 'degrowthByAccident', 'steadyState'].map((id) => ({ id, name: id, blurb: '' })),
@@ -188,6 +233,11 @@ export const fixture: Content = {
     { id: 'neverGranted', name: 'Never', blurb: '' },
   ],
   headlines,
+  dividends,
+  commons,
+  charters,
+  knowhowTrees: { engines: { name: 'Engines' }, general: { name: 'General' } },
+  recycleText: { treasury: { name: 'Treasury', blurb: 'Revenue for the state.' }, dividend: { name: 'Dividend', blurb: 'Back to households.' } },
   sectorHeadlines: { steam: { crisis: ['Steam crisis {n} in {year}'], decade: [] } },
   global: {
     startCapital: 50, clickSeconds: 1, clickFlat: 2, popGrowth: 0.00002, subsistence: 8, wellbeingTarget: 28,
@@ -197,11 +247,14 @@ export const fixture: Content = {
       perSectorReached: 5, perSteadySector: 100,
     },
     offlineCapSeconds: 4 * 60 * 60,
+    offline: { capSeconds: 8 * 60 * 60, holdBefore: 'crisis' },
     demography: { transitionWellbeing: 40 },
     steady: {
       budgetDeclinePerDecade: 0.05, decadeYears: 10,
       decadeEffects: [{ type: 'mandateAdd', value: 50 }, { type: 'wellbeingAdd', value: 1 }],
       firstSteadyEffects: [{ type: 'slotAdd', value: 1 }],
+      paces: PACES,
+      decadeChoices: [['div.mandate', 'div.capital'], ['div.wellbeing', 'div.efficiency']],
     },
     levy: { mandateShare: 0.1 },
     startingSlots: 2,
@@ -211,4 +264,4 @@ export const fixture: Content = {
 export const STEAM_REFERENCE = { eta: STEAM_ETA, R: [202, 257, 321, 348, 355, 324, 269, 205] };
 
 /** Convenience for tests: an AppState that is founded. */
-export const FOUNDED: AppState = { available: true, founded: true, satMul: 1, peakD: 0 };
+export const FOUNDED: AppState = { available: true, founded: true, satMul: 1, peakD: 0, peakAdoption: 0 };

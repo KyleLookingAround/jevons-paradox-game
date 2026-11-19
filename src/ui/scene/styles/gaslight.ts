@@ -37,6 +37,8 @@ export const gaslight: ArtStyle = {
 .scn[data-look=gaslight] .gd{fill:#1e1626;stroke:none}.scn[data-look=gaslight] .gd2{fill:#1a1220}
 .scn[data-look=gaslight] .pave{fill:#140e18!important}
 .scn[data-look=gaslight] .post{stroke:#8a6a5a;stroke-width:calc(1px*var(--sw))}
+.scn[data-look=gaslight] .tlive{fill:#8e2a26;stroke:#1a0d0a;stroke-width:calc(.6px*var(--sw))}.scn[data-look=gaslight] .tcream{fill:#d9c08a;stroke:none}
+.scn[data-look=gaslight] .main{fill:none;stroke:rgba(var(--s-lamprgb,246,198,91),.38);stroke-width:calc(1.1px*var(--sw));stroke-dasharray:1 3}
 .scn[data-look=gaslight] .k{stroke:#6a4a5a}
 .scn .star{fill:#f4e7c5}
 .scn .moon{fill:#f4e7c5;stroke:none;opacity:.9}

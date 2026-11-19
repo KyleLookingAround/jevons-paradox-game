@@ -45,7 +45,7 @@ export const CALM: Content = { ...C, sectors: { ...C.sectors, steam: { ...C.sect
 /** Steam saturated (η 18, population 5), wellbeing above target, within a generous budget: decoupling. */
 export function decoupling(c: Content = CALM): GameState {
   let s = run({ ...steamAt(7, {}, c), population: 5, flags: { revealed: true, won: false } }, 2, c);
-  s = patchSector(s, 'steam', { budget: { r0: 10 * steamD(s, c).resourceUse, since: s.time, drawnYear: 1800 } });
+  s = patchSector(s, 'steam', { budget: { r0: 10 * steamD(s, c).resourceUse, since: s.time, drawnYear: 1800, w0: 1e3, p0: 0, pace: "gentle" } });
   expect(steamD(s, c).decoupling).toBe(true);
   return s;
 }

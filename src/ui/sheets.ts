@@ -6,11 +6,13 @@ import { sectorDef, sd, sectorIds, ageOfSector, ageDef, reckoningOffered } from 
 import type { HindsightTerms, InstitutionView, KnowhowView, ReckoningCause, SectorId } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
 import { h, svg, setText, setAttr, setStyle, show, cls, syncChildren } from './dom';
-import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money } from './fmt';
+import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money, unitOne } from './fmt';
 import { UI_ICONS } from './icons';
 import { effectText } from './panels';
 import { download, copyText, readFileText, isPersisted, iosInBrowser } from './store';
 import { getPrefs, setPrefs, type TextSize, type Motion, type Detail } from './prefs';
+import { lapseBlock, type Lapse } from './timelapse';
+import { setSound, setVolumes, setCalm } from './sound';
 import type { Notation } from './fmt';
 
 type Updater = (() => void) | void;
@@ -123,7 +125,7 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
   const label = kind === 'eff' ? 'Efficiency' : kind === 'cons' ? 'Consumption' : kind === 'rebound' ? 'Rebound' : 'Price';
   sheets.open('formula', (b) => {
     const def = sectorDef(ctx);
-    const unitS = def?.service.unit ?? '', unitR = (def?.resource.unit ?? '').replace(/s$/, '');
+    const unitS = unitOne(def?.service), unitR = unitOne(def?.resource);
     const unitRs = def?.resource.unit ?? '';
     const lines: Record<FormulaKind, string[]> = {
       eff: ['η = service ÷ resource', 'fold = η ÷ η at the start'],
@@ -230,6 +232,8 @@ function termsLedger(ctx: Ctx, get: () => HindsightTerms | null | undefined): { 
 /* ------------------------------------------------------------------ */
 
 function treeTitle(ctx: Ctx, tree: string): string {
+  const named = ctx.content.knowhowTrees?.[tree]?.name;
+  if (named) return named;
   const s = ctx.content.sectors?.[tree];
   if (s) return s.name;
   if (tree === 'general') return 'General';
@@ -242,6 +246,29 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
   host.append(h('p', { class: 'shop-bal' }, h('span', { class: 'muted', text: 'Hindsight to spend ' }), bal), ro);
   const items: (() => void)[] = [];
   const kh = h('section', { class: 'shop-col kh' }, h('h3', { text: 'Know-how' }), h('p', { class: 'shop-k', text: 'The obvious buy. Runs start faster, and reach the wall sooner.' }));
+  // Respec (Derived.respec): "Unlearn" per tree and for all, between runs only, each behind a confirm with the refund.
+  const unlearn = (tree: string | undefined, label: string): { el: HTMLElement; update(): void } => {
+    const q = h('p');
+    const box = h('div', { class: 'confirm-box', hidden: true }, q, h('div', { class: 'm-row' },
+      h('button', { class: 'btn danger', type: 'button', onclick: () => { show(box, false); show(ask, true); ctx.act('respecKnowhow', (m, s, ct) => m.respecKnowhow(s, ct, tree)); } }, 'Unlearn it'),
+      h('button', { class: 'btn', type: 'button', onclick: () => { show(box, false); show(ask, true); ask.focus(); } }, 'Keep it')));
+    const ask = h('button', { class: 'btn small linkish unlearn', type: 'button', onclick: () => { show(ask, false); show(box, true); (box.querySelector('button') as HTMLButtonElement | null)?.focus(); } }, label);
+    const el = h('div', { class: 'unlearn-w' }, ask, box);
+    return {
+      el,
+      update() {
+        const r = ctx.d?.respec;
+        const amt = tree == null ? num(r?.refund) : num(r?.refundByTree?.[tree]);
+        const ok = !!r?.allowed && amt > 0;
+        show(el, ok);
+        if (!ok) { show(box, false); show(ask, true); return; }
+        setText(q, `${tree == null ? 'Unlearn all Know-how' : `Unlearn ${treeTitle(ctx, tree)}`}? ${fmt(Math.floor(amt))} Hindsight comes back to spend again. What a level gave once (a seat) is not given twice.`);
+      },
+    };
+  };
+  const allU = unlearn(undefined, 'Unlearn everything');
+  kh.append(allU.el);
+  items.push(() => allU.update());
   const inst = h('section', { class: 'shop-col inst' }, h('h3', { text: 'Institutions' }), h('p', { class: 'shop-k', text: 'The slow buy. Only seated Institutions act.' }));
 
   const khView = (id: string): KnowhowView | undefined => (ctx.khs || []).find((v) => v.def.id === id);
@@ -255,7 +282,9 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
   for (const t of trees) {
     const nodes = defs.filter((k) => (k.tree ?? 'general') === t);
     const tiers = [...new Set(nodes.map((k) => k.tier ?? 1))].sort((a, b) => a - b);
-    const treeEl = h('div', { class: 'tree' }, h('h4', { class: 'tree-t', text: treeTitle(ctx, t) }));
+    const tu = unlearn(t, 'Unlearn');
+    items.push(() => tu.update());
+    const treeEl = h('div', { class: 'tree' }, h('div', { class: 'tree-h' }, h('h4', { class: 'tree-t', text: treeTitle(ctx, t) }), tu.el));
     for (const tier of tiers) {
       const rowEl = h('div', { class: 'tree-row', 'data-tier': String(tier) });
       const inTier = nodes.filter((k) => (k.tier ?? 1) === tier);
@@ -393,8 +422,10 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
 export function shopSheet(ctx: Ctx, sheets: Sheets, after?: () => void): void {
   sheets.open('shop', (b, close) => {
     const u = buildShop(ctx, b);
+    const ch = after ? charterChoice(ctx) : null;
+    if (ch) b.append(ch.el);
     if (after) b.append(h('div', { class: 'sheet-foot sticky-foot' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); after(); } }, 'Begin the next run')));
-    return u;
+    return () => { u(); ch?.update(); };
   }, { label: 'Hindsight', cls: 'shop-sheet' + (after ? ' full-ish' : ''), blocking: !!after, dismissable: !after });
 }
 
@@ -489,8 +520,45 @@ export function pendingSheet(ctx: Ctx, sheets: Sheets, onFaced: () => void): voi
   }, { label: 'The Reckoning', full: true, blocking: true, dismissable: false, cls: 'reckon-sheet pending-sheet' });
 }
 
-export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, exportText?: () => string): void {
+/** The Charter choice between runs: two cards from Derived.charterOffer and "none" as a quiet third. */
+export function charterChoice(ctx: Ctx): { el: HTMLElement; update(): void } {
+  const list = h('div', { class: 'ch-list', role: 'radiogroup', 'aria-label': 'A Charter for the next run' });
+  const el = h('section', { class: 'charters', hidden: true },
+    h('h3', { class: 'paper-sub', text: 'A Charter for the next run' }),
+    h('p', { class: 'muted small', text: 'One starting situation, mild and in force all run. Or none.' }), list);
+  let key = '';
+  const btns: { id: string | null; b: HTMLButtonElement }[] = [];
+  function update(): void {
+    const offer = (ctx.d?.charterOffer || []).filter((id) => (ctx.content.charters || []).some((c) => c.id === id));
+    show(el, offer.length > 0 && !!ctx.d?.freshRun);
+    const k = offer.join(',');
+    if (k !== key) {
+      key = k;
+      btns.length = 0;
+      const mk = (id: string | null) => {
+        const c = id ? ctx.content.charters?.find((x) => x.id === id) : undefined;
+        const sec = c?.sector ? sectorDef(ctx, c.sector)?.name : undefined;
+        const fx = (c?.effects || []).map((e) => effectText(ctx, e)).filter(Boolean).join(' · ');
+        const b = h('button', { class: id ? 'ch-card' : 'ch-none', type: 'button', role: 'radio', 'aria-checked': 'false',
+          onclick: () => ctx.act('chooseCharter', (m, s, ct) => m.chooseCharter(s, ct, id)) },
+          id ? h('span', { class: 'ch-k', text: sec ?? 'For the whole run' }) : null,
+          h('span', { class: 'ch-n', text: c?.name ?? 'No Charter' }),
+          c?.blurb ? h('span', { class: 'ch-b', text: c.blurb }) : null,
+          fx ? h('span', { class: 'ch-fx num', text: fx }) : null);
+        btns.push({ id, b });
+        return b;
+      };
+      list.replaceChildren(...offer.map(mk), mk(null));
+    }
+    const cur = ctx.d?.charter ?? null;
+    for (const { id, b } of btns) { const on = id === cur; setAttr(b, 'aria-checked', String(on)); cls(b, 'on', on); }
+  }
+  return { el, update };
+}
+
+export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, exportText?: () => string, lapse?: Lapse | null): void {
   const lr = ctx.state.meta?.lastRun;
+  const ch = charterChoice(ctx);
   sheets.open('summary', (b, close) => {
     if (!lr) { b.append(h('p', { text: 'The books are closed.' })); }
     else {
@@ -504,7 +572,8 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
         h('div', { class: 'paper' },
           h('div', { class: 'paper-mast' }, h('span', { text: 'The year’s accounts' }), h('span', { class: 'num', text: String(Math.floor(num(lr.yearReached, 1780))) })),
           h('h1', { class: 'paper-head', text: causeHeadline(ctx, lr.cause, lr.causeSector) }),
-          h('p', { class: 'paper-stand num', text: `${dur(lr.seconds)} of play · peak wellbeing ${fmt(Math.floor(num(lr.peakWellbeing)))}` }),
+          h('p', { class: 'paper-stand num', text: `${dur(lr.seconds)} of play · peak wellbeing ${fmt(Math.floor(num(lr.peakWellbeing)))}${lr.charter ? ` · under ${ctx.content.charters?.find((c) => c.id === lr.charter)?.name ?? 'a Charter'}` : ''}` }),
+          lapseBlock(ctx, lapse ?? null, causeHeadline(ctx, lr.cause, lr.causeSector)),
           h('div', { class: 'acct' }, ...ids.map((id) => {
             const r = lr.sectors[id], def = sectorDef(ctx, id);
             const res = lower(def?.resource.name ?? 'resource');
@@ -522,6 +591,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
           ...(lr.hindsightTerms ? [h('h3', { class: 'paper-sub', text: 'Where the Hindsight came from' }), tl.el] : []),
           h('p', { class: 'paper-h big' }, h('span', { class: 'muted', text: 'Hindsight gained ' }), h('b', { class: 'num', text: fmt(num(lr.hindsightGained)) }))));
     }
+    b.append(ch.el);
     b.append(h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => { shopSheet(ctx, sheets, onDone); } }, 'Spend Hindsight'),
       h('button', { class: 'btn', type: 'button', onclick: () => { close(); onDone(); } }, 'Begin the next run')));
@@ -532,6 +602,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
       if (ok) setPrefs({ lastExport: Date.now() });
       setText(dlNote, ok ? ' Downloaded.' : ' Download blocked; the menu has the save as text.');
     } }, 'Download a copy of the save'), dlNote));
+    return () => ch.update();
   }, { label: 'Run summary', full: true, blocking: true, dismissable: false, cls: 'reckon-sheet' });
 }
 
@@ -586,6 +657,8 @@ export function unreadSaveSheet(sheets: Sheets, raw: string, backup?: { info: Ba
 
 export interface BackupInfo { at: number; reckonings: number; year: number }
 export interface MenuHooks {
+  /** The household survey (the local play ledger): close deletes it and stops; open starts it again, empty. */
+  survey: { close(): void; open(): void };
   exportText(): string;
   importText(t: string): boolean;
   hardReset(): void;
@@ -642,7 +715,38 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
       () => getPrefs().motion, (v) => { setPrefs({ motion: v }); ctx.refreshAll(); });
     const detail = segmented<Detail>('Picture detail', [['auto', 'Auto', 'Auto: less detail if the picture runs slowly'], ['full', 'Full', 'Full detail'], ['low', 'Low', 'Low detail: fewer moving things, kinder to the battery']],
       () => getPrefs().detail, (v) => { setPrefs({ detail: v }); ctx.refreshAll(); });
-    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el, motion.el, detail.el));
+    // Sound: off until turned on here (the tap creates and unlocks the audio); three volumes and a calmer mode.
+    const sndTog = h('button', { class: 'tog', type: 'button', role: 'switch', 'aria-checked': 'false', onclick: () => { setSound(!getPrefs().sound); paintSound(); } },
+      h('span', { class: 'tog-k', 'aria-hidden': 'true' }), h('span', { class: 'tog-l', text: 'Sound' }));
+    const slider = (k: 'master' | 'world' | 'interface', label: string) => {
+      const inp = h('input', { type: 'range', min: '0', max: '100', step: '5', class: 'vol', 'aria-label': `${label} volume` }) as HTMLInputElement;
+      inp.value = String(Math.round(getPrefs().volumes[k] * 100));
+      inp.addEventListener('input', () => setVolumes({ [k]: Number(inp.value) / 100 }));
+      return h('label', { class: 'vol-row' }, h('span', { text: label }), inp);
+    };
+    const calm = segmented<'system' | 'on' | 'off'>('Calmer sound', [['system', 'System', 'Follow the system’s reduced-motion setting'], ['on', 'Calmer', 'Fewer, softer sounds'], ['off', 'Full', 'Every sound']],
+      () => getPrefs().calm, (v) => setCalm(v));
+    const sndMore = h('div', { class: 'snd-more' }, slider('master', 'Master'), slider('world', 'The world'), slider('interface', 'Buttons'), calm.el);
+    const sndNote = h('p', { class: 'muted small', text: 'Each Industry has a soundscape of its own. Off by default; nothing plays until it is turned on.' });
+    const paintSound = () => { const on = getPrefs().sound; setAttr(sndTog, 'aria-checked', String(on)); cls(sndTog, 'on', on); show(sndMore, on); };
+    paintSound();
+    // The household survey (playledger.ts), disclosed from the first launch, with one switch that closes and deletes it.
+    const svTog = h('button', { class: 'tog', type: 'button', role: 'switch', 'aria-checked': 'false', onclick: () => {
+      if (getPrefs().survey) hooks.survey.close(); else hooks.survey.open();
+      paintSurvey();
+    } }, h('span', { class: 'tog-k', 'aria-hidden': 'true' }), h('span', { class: 'tog-l', text: 'The Household Survey' }));
+    const svTxt = h('p', { class: 'small' });
+    const paintSurvey = () => {
+      const on = getPrefs().survey;
+      setAttr(svTog, 'aria-checked', String(on)); cls(svTog, 'on', on);
+      setText(svTxt, on
+        ? 'The Statistics Office keeps a household survey on this device: minutes played, sessions and decisions. It never leaves the device and is not in your save. Switching it off closes the survey and deletes it.'
+        : 'The Household Survey is closed: nothing is being kept. Switching it on starts an empty one.');
+    };
+    paintSurvey();
+    b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el, motion.el, detail.el,
+      h('div', { class: 'setting snd' }, sndTog, sndNote, sndMore),
+      h('div', { class: 'setting survey' }, svTog, svTxt)));
 
     // Achievements
     const achList = h('ul', { class: 'ach' });
@@ -886,6 +990,49 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
       ['Peak wellbeing', () => (m()?.lastRun ? fmt(Math.floor(num(m()!.lastRun!.peakWellbeing))) : null)],
       ['Hindsight gained', () => (m()?.lastRun ? fmt(num(m()!.lastRun!.hindsightGained)) : null)],
     ], () => !!m()?.lastRun));
+
+    // Run history (meta.runs), newest first; each opens to its Industries.
+    const runsHost = h('div', { class: 'runs' });
+    const runsSec = h('section', { class: 'm-sec' }, h('h3', { text: 'Past runs' }), runsHost);
+    b.append(runsSec);
+    let runsKey = '';
+    ups.push(() => {
+      const runs = Array.isArray(m()?.runs) ? m()!.runs : [];
+      show(runsSec, runs.length > 0);
+      const k = runs.length + ':' + (runs[runs.length - 1]?.totalSecondsAtEnd ?? 0);
+      if (k === runsKey) return;
+      runsKey = k;
+      runsHost.replaceChildren(...runs.map((r, i) => ({ r, i })).reverse().map(({ r, i }) => {
+        const n = num(r.index, i + 1);
+        const secs = Object.keys(r.sectors || {}).filter((id) => sectorDef(ctx, id));
+        const dec = secs.reduce((a, id) => a + num(r.sectors[id].decades), 0);
+        const lean = secs.reduce((a, id) => a + num(r.sectors[id].leanDecades), 0);
+        const settled = secs.filter((id) => r.sectors[id].settled).length;
+        const ch = r.charter ? ctx.content.charters?.find((c) => c.id === r.charter)?.name : undefined;
+        const bits = [
+          ch ? `under ${ch}` : null,
+          dec ? `${fmt(dec)} decade${dec === 1 ? '' : 's'}${lean ? ` (${fmt(lean)} lean, ${fmt(dec - lean)} full)` : ''}` : 'no decades',
+          settled ? `${fmt(settled)} settled` : null,
+          r.decisions != null ? `${fmt(num(r.decisions))} decisions${num(r.automated) ? `, ${fmt(num(r.automated))} by standing orders` : ''}` : null,
+        ].filter(Boolean).join(' · ');
+        const rows = secs.map((id) => {
+          const x = r.sectors[id], def = sectorDef(ctx, id);
+          const parts = [`efficiency ${fold(x.etaFold)}`, `peak ${lower(def?.resource.name ?? 'use')} ${fold(x.peakRFold)}`];
+          if (x.unburnt != null) parts.push(`${pct(x.unburnt, false)} unburnt`);
+          if (x.peakPressure != null) parts.push(`peak ${lower(def?.pressure.name ?? 'pressure')} ${pct(x.peakPressure, false)}`);
+          if (x.steady) parts.push('Steady State');
+          if (x.settled) parts.push('settled');
+          return h('li', null, h('b', { text: def?.name ?? id }), ` ${parts.join(' · ')}`);
+        });
+        return h('details', { class: 'run-row' },
+          h('summary', null,
+            h('span', { class: 'run-n num', text: `Run ${n}` }),
+            h('span', { class: 'run-c', text: causeHeadline(ctx, r.cause, r.causeSector) }),
+            h('span', { class: 'run-f num', text: `${dur(r.seconds)} · ${Math.floor(num(r.yearReached))} · +${fmt(num(r.hindsightGained))} H` }),
+            h('span', { class: 'run-b muted', text: bits })),
+          h('ul', { class: 'run-secs' }, ...rows));
+      }));
+    });
 
     return () => { for (const u of ups) u(); for (const u of perUps) u(); };
   }, { label: 'Statistics', cls: 'stats-sheet' });

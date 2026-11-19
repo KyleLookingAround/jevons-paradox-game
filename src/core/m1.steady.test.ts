@@ -17,7 +17,7 @@ describe('budget lines (P2)', () => {
     const rs = rich(s);
     expect(model.drawBudget(rs, C, 'light')).toBe(rs); // closed sector
     const r = model.drawBudget(rich(s), C, 'steam');
-    expect(r.sectors.steam.budget).toEqual({ r0: steamD(s).resourceUse, since: s.time, drawnYear: Math.floor(D(s).year) });
+    expect(r.sectors.steam.budget).toEqual({ r0: steamD(s).resourceUse, since: s.time, drawnYear: Math.floor(D(s).year), w0: D(s).wellbeing, p0: s.sectors.steam.pressure, pace: 'gentle' });
     expect(r.news[0].key).toBe('budgetDrawn');
   });
   test('the first lever raise draws a budget; a later raise does not redraw', () => {
@@ -42,7 +42,11 @@ describe('budget lines (P2)', () => {
     const later = run(s, 200);
     expect(steamD(later).budgetR!).toBeCloseTo(r0 * 0.95, 9);
     // a sector override of the decline
-    const C2: Content = { ...C, sectors: { ...C.sectors, steam: { ...C.sectors.steam, steady: { declinePerDecade: 0.2 } } } };
+    // M2 CHANGE: a sector's declinePerDecade only shapes the implicit pace, so the fixture's global paces are removed here
+    const C2: Content = {
+      ...C, global: { ...C.global, steady: { ...C.global.steady!, paces: undefined } },
+      sectors: { ...C.sectors, steam: { ...C.sectors.steam, steady: { declinePerDecade: 0.2 } } },
+    };
     expect(steamD(later, C2).budgetR!).toBeCloseTo(r0 * 0.8, 9);
   });
   test('a cap at 1.0 keeps withinBudget true (tolerance), and follows the line down', () => {
@@ -88,35 +92,35 @@ describe('budget lines (P2)', () => {
     expect(t2.sectors.steam.decadesWithin.length).toBe(1);
     expect(count(t2, 'decade')).toBe(1);
     // breaking a streak holding a decade says so
-    const broken = model.tick(patchSector(t2, 'steam', { budget: { r0: 1e-9, since: t2.time, drawnYear: 1900 } }), CALM, 1);
+    const broken = model.tick(patchSector(t2, 'steam', { budget: { r0: 1e-9, since: t2.time, drawnYear: 1900, w0: 1e3, p0: 0, pace: "gentle" } }), CALM, 1);
     expect(broken.sectors.steam.steadyYears).toBe(0);
     expect(count(broken, 'budgetBroken')).toBe(1);
     expect(broken.sectors.steam.decadesWithin.length).toBe(1);
   });
   test('50 years gives per-sector Steady State; the headline fires once per run even after a break and re-earn', () => {
-    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01 });
+    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01, clearYears: STEADY_STATE_YEARS - 0.01 });
     s = model.tick(s, CALM, 1);
     expect(s.run.steadySectors.steam).toBe(true);
     expect(s.meta.steadySectors.steam).toBe(true);
     expect(s.meta.achievements.steadyState).toBe(true);
     expect(count(s, 'steadySector')).toBe(1);
     const budget = s.sectors.steam.budget;
-    s = model.tick(patchSector(s, 'steam', { budget: { r0: 1e-9, since: s.time, drawnYear: 1900 } }), CALM, 1);
+    s = model.tick(patchSector(s, 'steam', { budget: { r0: 1e-9, since: s.time, drawnYear: 1900, w0: 1e3, p0: 0, pace: "gentle" } }), CALM, 1);
     expect(s.sectors.steam.steadyYears).toBe(0);
-    s = patchSector(s, 'steam', { budget: { ...budget!, since: s.time }, steadyYears: STEADY_STATE_YEARS - 0.01 });
+    s = patchSector(s, 'steam', { budget: { ...budget!, since: s.time }, steadyYears: STEADY_STATE_YEARS - 0.01, clearYears: STEADY_STATE_YEARS - 0.01 });
     s = model.tick(s, CALM, 1);
     expect(s.sectors.steam.steadyYears).toBeGreaterThanOrEqual(STEADY_STATE_YEARS);
     expect(count(s, 'steadySector')).toBe(1);
   });
   test('firstSteadyEffects adds a slot only the first time ever', () => {
-    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01 });
+    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01, clearYears: STEADY_STATE_YEARS - 0.01 });
     expect(s.meta.slots).toBe(2);
     s = model.tick(s, CALM, 1);
     expect(s.meta.slots).toBe(3);
     const next = model.reckon(s, CALM);
     expect(next.meta.slots).toBe(3);
     let again = run({ ...steamAt(7, {}, CALM), meta: next.meta, population: 5, flags: { revealed: true, won: false } }, 2, CALM);
-    again = patchSector(again, 'steam', { budget: { r0: 1e9, since: again.time, drawnYear: 1800 }, steadyYears: STEADY_STATE_YEARS - 0.01 });
+    again = patchSector(again, 'steam', { budget: { r0: 1e9, since: again.time, drawnYear: 1800, w0: 1e3, p0: 0, pace: "gentle" }, steadyYears: STEADY_STATE_YEARS - 0.01, clearYears: STEADY_STATE_YEARS - 0.01 });
     again = model.tick(again, CALM, 1);
     expect(again.run.steadySectors.steam).toBe(true);
     expect(again.meta.slots).toBe(3);
@@ -221,7 +225,7 @@ describe('levy and recycling', () => {
     // no levy share; only the (higher) wellbeing term moves Mandate
     expect(db.mandatePerSec).toBeCloseTo(da.mandatePerSec - 0.1 * da.sectors.steam!.levyRevenue + C.global.mandateRate * (db.wellbeing - da.wellbeing), 9);
     expect(db.wellbeing).toBeGreaterThan(da.wellbeing);
-    expect(model.leverViews(b, C).find((l) => l.def.id === 'steam.duty')!.recycleOptions).toEqual(['treasury', 'dividend']);
+    expect(model.leverViews(b, C).find((l) => l.def.id === 'steam.duty')!.recycleOptions).toEqual(['treasury', 'dividend', 'commons']);
   });
   test('setLeverRecycle refuses options the lever does not offer', () => {
     const s = rich(run(steamAt(1), 2));
@@ -282,7 +286,7 @@ describe('M1 balance fix 1: the budget line holds once Steady State is earned', 
   /** CALM with a reserve that lasts for centuries. */
   const DEEP: Content = { ...CALM, sectors: { ...CALM.sectors, steam: { ...CALM.sectors.steam, reserve: 1e12 } } };
   test('the line declines until the streak crosses 50 years, then holds level for the rest of the run', () => {
-    let s = patchSector(decoupling(DEEP), 'steam', { steadyYears: STEADY_STATE_YEARS - 5 });
+    let s = patchSector(decoupling(DEEP), 'steam', { steadyYears: STEADY_STATE_YEARS - 5, clearYears: STEADY_STATE_YEARS - 5 });
     const b0 = s.sectors.steam.budget!;
     s = run(s, 99, DEEP);
     expect(s.sectors.steam.budget!.heldAt).toBeUndefined();
@@ -298,7 +302,7 @@ describe('M1 balance fix 1: the budget line holds once Steady State is earned', 
     expect(much.sectors.steam.steadyYears).toBeGreaterThan(STEADY_STATE_YEARS + 100);
   });
   test('a held line survives a broken streak; a redraw starts a new, declining line', () => {
-    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01 });
+    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01, clearYears: STEADY_STATE_YEARS - 0.01 });
     s = model.tick(s, CALM, 1);
     const held = s.sectors.steam.budget!;
     expect(held.heldAt).toBeDefined();
@@ -325,7 +329,7 @@ describe('M1 balance fix 1: the budget line holds once Steady State is earned', 
     expect(steamD(later, F2).budgetR!).toBeCloseTo(r0 * 0.5, 9);
   });
   test('a heldAt in a save round-trips', () => {
-    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01 });
+    let s = patchSector(decoupling(), 'steam', { steadyYears: STEADY_STATE_YEARS - 0.01, clearYears: STEADY_STATE_YEARS - 0.01 });
     s = model.tick(s, CALM, 1);
     const back = model.deserialize(model.serialize(s), CALM)!;
     expect(back.sectors.steam.budget).toEqual(s.sectors.steam.budget);

@@ -5,11 +5,11 @@
 import type { Ctx, Comp, FormulaKind } from './ctx';
 import { sectorDef, sd, ageOfSector } from './ctx';
 import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
-import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, perUnit } from './fmt';
+import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, unitOne } from './fmt';
 import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
 import type { GameEvent } from '../types';
-import { reducedMotion } from './dom';
+import { reducedMotion, replay } from './dom';
 
 const CX = 60, CY = 60, R = 47;
 const pt = (t: number, r = R): [number, number] => {
@@ -163,7 +163,6 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
   let scaleKey = '';
   let sparkKey = '';
   let lastTv = { cons: 0.5 };
-  let swingTimer = 0;
 
   /** A purchase in this Industry: the needles swing slowly while the player watches; the old consumption reading is
    *  left as a faint mark for a few seconds; the promised needle jumps to what the card promised. Never blocks input. */
@@ -172,9 +171,7 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     if (!mine || reducedMotion()) return;
     const was = cons.svgEl.querySelector('.d-was') as SVGElement | null;
     rot(was, lastTv.cons);
-    cls(el, 'swing', false); void el.offsetWidth; cls(el, 'swing', true);
-    clearTimeout(swingTimer);
-    swingTimer = window.setTimeout(() => cls(el, 'swing', false), 3200);
+    replay(el, 'swing', 3200);
   }
 
   function update(): void {
@@ -215,8 +212,8 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     setText(eff.val, fold(etaF));
     // Units, not names: "hp per ton" fits a third of a 360 px phone where "motive power per ton" did not.
     const svcUnit = def?.service.unit;
-    setText(eff.sub, svcUnit && unit ? `${svcUnit} per ${perUnit(unit)}` : `${lower(svcName)} per ${perUnit(unit) || lower(resName)}`);
-    setAttr(eff.box, 'title', `${svcName} per ${perUnit(unit) || lower(resName)} of ${lower(resName)}, against the start`);
+    setText(eff.sub, svcUnit && unit ? `${svcUnit} per ${unitOne(def?.resource)}` : `${lower(svcName)} per ${unitOne(def?.resource) || lower(resName)}`);
+    setAttr(eff.box, 'title', `${svcName} per ${unitOne(def?.resource) || lower(resName)} of ${lower(resName)}, against the start`);
 
     // Consumption (with the cosmetic trend as an arrow)
     const sweep = cons.svgEl.querySelector('.d-sweep');

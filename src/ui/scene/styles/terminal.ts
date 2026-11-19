@@ -37,6 +37,7 @@ export const terminal: ArtStyle = {
 .scn .grid{fill:none;stroke:rgba(127,212,116,.13);stroke-width:.6px}
 .scn .hzn{fill:none;stroke:#7fd474;stroke-width:1.2px;opacity:.7}
 .scn .dim{opacity:.45}
+.scn .feed{stroke:rgba(233,180,74,.35)!important;stroke-width:.7px!important;fill:none;stroke-dasharray:3 1.5}
 .scn .lnk{stroke:rgba(127,212,116,.28)!important;stroke-width:.7px!important;fill:none}
 `,
   defs: (p) => ([[0, 3], [1, 4], [2, 5.5], [3, 7]] as const).map(([i, sp]) => lineHatch(p, `h${i}`, sp, sp * 0.18, 0, 0.5) + lineHatch(p, `x${i}`, sp * 0.8, sp * 0.18, 0, 0.75)).join('') + glowDefs(p),

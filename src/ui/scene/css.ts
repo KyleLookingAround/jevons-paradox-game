@@ -11,6 +11,8 @@ const BASE = `
   border:1px solid var(--s-frame);contain:layout paint;-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .scn-world,.scn-l,.scn-sky,.scn-hz,.scn-fog,.scn-places,.scn-glow,.scn-extra{position:absolute;inset:0;width:100%;height:100%}
 .scn-extra,.scn-plate,.scn-noise{pointer-events:none}
+.scn-stage>.scn-world:not(.act){display:none}
+.scn-stage>.scn-places:not(.act){display:none}
 .scn-bw{position:absolute;inset:0;width:100%;height:100%}
 .scn-noise{opacity:0}
 .scn-extra{overflow:hidden}
@@ -33,6 +35,44 @@ const BASE = `
 .scn.crisis .scn-fog{animation:scn-fog 7s ease-in-out forwards}
 @keyframes scn-fog{0%{opacity:0;transform:translateX(-30%)}25%{opacity:.88;transform:translateX(0)}70%{opacity:.7}100%{opacity:0;transform:translateX(12%)}}
 .scn.halt .scn-world{filter:grayscale(.75) contrast(.92);transition:filter 2.5s}
+/* Settled: a held wash (the style's --s-held), never the frozen grey of a Reckoning. */
+.scn-held{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 3s;background:linear-gradient(to bottom,rgba(var(--s-held,236,226,190),.0),rgba(var(--s-held,236,226,190),.16) 45%,rgba(var(--s-held,236,226,190),.1));mix-blend-mode:normal}
+.scn[data-look=gaslight]{--s-held:246,206,140}.scn[data-look=chrome]{--s-held:214,236,226}.scn[data-look=terminal]{--s-held:110,210,130}.scn[data-look=cyberpunk]{--s-held:120,190,255}
+/* Clear skies, before Steady State: the weather has gone (each style's sky2 fades in with clearProgress). The night
+   city shows its first stars and the rain thins. */
+.scn[data-look=cyberpunk].clear svg .stdy{display:inline;opacity:.55}
+.scn[data-look=cyberpunk].clear .rain.r2,.scn[data-look=cyberpunk].settled .rain{display:none}
+.scn[data-look=cyberpunk].settled svg .stdy{display:inline}
+.scn.settled .smk.live i{animation-duration:8s!important}
+.scn.settled .smk i{background:rgba(var(--s-smk),.16)!important}
+.scn.live.settled .spin.on>b{animation-duration:9s}.scn.live.settled .rock.on>b{animation-duration:6s}
+.scn.settled .blink.on>b{animation:none}
+/* One-off moments: a flash layer (opacity only, composited). */
+.scn-flash{position:absolute;inset:0;pointer-events:none;opacity:0}
+.scn-flash.on.fl-decade{background:radial-gradient(90% 70% at 50% 35%,rgba(255,250,225,.55),rgba(255,250,225,0) 70%);animation:scn-fl 2.6s ease-out forwards}
+.scn-flash.on.fl-stage{background:radial-gradient(80% 60% at 50% 70%,rgba(255,255,240,.4),rgba(255,255,240,0) 70%);animation:scn-fl 1.6s ease-out forwards}
+.scn-flash.on.fl-clear{background:linear-gradient(to bottom,rgba(255,255,255,.5),rgba(255,255,255,0) 60%);animation:scn-fl 3.2s ease-out forwards}
+.scn-flash.on.fl-settle{background:radial-gradient(100% 80% at 50% 50%,rgba(var(--s-held,236,226,190),.45),rgba(var(--s-held,236,226,190),0));animation:scn-fl 3s ease-out forwards}
+.scn-flash.on.fl-backfire{background:radial-gradient(120% 90% at 30% 70%,rgba(var(--s-fog,var(--s-smk)),.75),rgba(var(--s-fog,var(--s-smk)),.25) 70%,rgba(var(--s-fog,var(--s-smk)),0));animation:scn-bf 5s ease-in-out forwards}
+@keyframes scn-fl{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+@keyframes scn-bf{0%{opacity:0}30%{opacity:0}62%{opacity:.85}100%{opacity:0}}
+.scn.backfire .scn-world{animation:scn-breath 5s ease-in-out}
+@keyframes scn-breath{0%{opacity:1}14%{opacity:.86}26%{opacity:1}100%{opacity:1}}
+.scn.backfire .smk.live i{animation-duration:1.4s!important}
+.scn.backfire .smk i{background:rgba(var(--s-smk),.7)!important}
+.scn-world.opening{animation:scn-open 2.4s ease-out}
+@keyframes scn-open{0%{opacity:0}100%{opacity:1}}
+/* The settled emblem and the highlight ring. */
+.scn-emb{position:absolute;right:3%;bottom:4%;padding:2px 7px;font:600 10px/1.4 var(--labelf,var(--body,system-ui));letter-spacing:.14em;text-transform:uppercase;
+  color:var(--s-ink);background:var(--s-paper);border:1px solid var(--s-ink);box-shadow:0 0 0 2px var(--s-paper),0 0 0 3px var(--s-ink);opacity:0;transition:opacity 2s;pointer-events:none}
+.scn-emb.on{opacity:.9}
+.scn[data-look=ledger] .scn-emb{font:italic 11px/1.3 var(--f-serif,Georgia,serif);letter-spacing:.08em;text-transform:none;font-variant:small-caps;border-radius:50%/40%;padding:4px 10px}
+.scn[data-look=gaslight] .scn-emb{background:#c8a03c;color:#2a1405;border-color:#2a1405;font-family:var(--display,Georgia,serif)}
+.scn[data-look=chrome] .scn-emb{border-radius:12px;background:#f3ead2;color:#0e5a54;border-color:#0e5a54;box-shadow:none}
+.scn[data-look=terminal] .scn-emb{background:rgba(6,20,8,.8);color:#8ef08a;border-color:#8ef08a;box-shadow:none;font-family:ui-monospace,monospace}
+.scn[data-look=cyberpunk] .scn-emb{background:rgba(10,4,24,.7);color:#7ff6ff;border-color:#7ff6ff;box-shadow:0 0 6px rgba(127,246,255,.6);font-family:ui-monospace,monospace}
+.scn-hl{position:absolute;pointer-events:none;border:2px solid var(--focus,var(--s-sv));border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.35);opacity:0;transform:scale(1.15);transition:opacity .4s,transform .5s cubic-bezier(.2,.9,.3,1.2)}
+.scn-hl.on{opacity:.95;transform:none}
 .scn.halt *{animation-play-state:paused!important}
 .scn.paused *{animation-play-state:paused!important}
 
@@ -65,6 +105,8 @@ const BASE = `
 .scn .plm{fill:none;stroke:rgba(var(--s-smk),.28);stroke-width:4.5;stroke-linecap:round;vector-effect:none!important}
 .scn .scf{stroke:var(--s-ink);stroke-width:calc(.7px*var(--sw));opacity:.85}
 .scn .gl{stroke:none}
+.scn .tlive{fill:var(--s-ac);stroke:var(--s-ink);stroke-width:calc(.6px*var(--sw))}.scn .tcream{fill:var(--s-b2);stroke:none}
+.scn .main{fill:none;stroke:var(--s-ink);stroke-width:calc(.6px*var(--sw));stroke-dasharray:1 3;opacity:.6}
 .scn .cs{fill:rgba(0,0,0,.13);stroke:none}
 .scn[data-look=ledger] .cs{fill:rgba(42,31,21,.13)}.scn[data-look=gaslight] .cs{fill:rgba(8,4,10,.45)}
 .scn[data-look=terminal] .cs{fill:none;stroke:rgba(120,200,110,.25);stroke-width:.6px;stroke-dasharray:2 2}.scn[data-look=cyberpunk] .cs{fill:rgba(62,242,255,.06)}
@@ -95,8 +137,27 @@ const BASE = `
 .scn .scaf.on{display:inline;animation:scn-scaf 2.6s ease forwards}
 @keyframes scn-scaf{0%{opacity:0}15%{opacity:1}70%{opacity:1}100%{opacity:0}}
 .scn.live .build>.gr{animation:scn-rise 1.8s .3s cubic-bezier(.2,.9,.3,1.05) both!important}
-.scn.live .evolve>.gr{animation:scn-evolve 1.4s ease both}
-@keyframes scn-evolve{0%{opacity:.2;transform:scaleY(.9)}60%{opacity:1}100%{transform:none}}
+.scn.live .evolve>.gr{animation:scn-evolve 1.6s .35s cubic-bezier(.2,.9,.3,1.1) both}
+@keyframes scn-evolve{0%{opacity:0;transform:scaleY(.2)}55%{opacity:1}100%{transform:none}}
+/* The old machine sinks away as the new one rises (a stage change). */
+.scn .outgoing{pointer-events:none}
+.scn.live .outgoing>.gr{animation:scn-out 1.3s ease-in forwards}
+.scn.rm .outgoing{display:none}
+@keyframes scn-out{0%{opacity:1;transform:none}100%{opacity:0;transform:scaleY(.15)}}
+/* The Market's scaffold: up, held, down; no player highlight. */
+.scn .scaf.mkt.on{animation:scn-scaf2 3.8s ease forwards}
+.scn.live .scaf.mkt.on>.sgr{transform-box:view-box;transform-origin:0 0;animation:scn-scafr 3.8s ease forwards}
+@keyframes scn-scaf2{0%{opacity:0}12%{opacity:.9}78%{opacity:.9}100%{opacity:0}}
+@keyframes scn-scafr{0%{transform:scaleY(.1)}30%{transform:none}75%{transform:none}100%{transform:scaleY(.3)}}
+.scn.rm .scaf.mkt.on{opacity:.8}
+.scn .scaf.mkt .scf{stroke-width:calc(1.2px*var(--sw));opacity:1}
+/* A sign of restraint going up; a landmark's kick at the first backfire. */
+.scn.live .raise>.gr{animation:scn-rise 1.4s cubic-bezier(.2,.9,.3,1.15) both}
+.scn.live .kick>.gr{animation:scn-kick 1.3s ease-out both}
+@keyframes scn-kick{0%{transform:none}12%{transform:scale(1.06,.94)}30%{transform:scale(.97,1.05)}55%{transform:none}}
+/* Commons and a Charter's landmark: always shown once built. */
+.scn .cmn{display:none}.scn .cmn.on{display:inline}
+.scn.live .cmn.build>.gr{animation:scn-rise 1.8s .2s cubic-bezier(.2,.9,.3,1.05) both}
 
 /* --- fx: smoke, spin, rock, blink, flow, drift, movers ---
    Sprites (HTML) in a 600×400 px plane scaled to the stage; every animation is transform/opacity on an HTML element
@@ -128,11 +189,13 @@ const BASE = `
 .scn.live .blink.on>b{animation:scn-blink 1.6s steps(2,jump-none) infinite}
 @keyframes scn-blink{50%{opacity:.15}}
 .scn .flow path{fill:none;stroke:var(--s-lit);stroke-width:calc(1.4px*var(--sw));stroke-dasharray:2 14}
-.scn.live .flow.on path{animation:scn-flow 2.2s steps(11,end) infinite}
-@keyframes scn-flow{to{stroke-dashoffset:-32}}
+.scn .flow>b.f1,.scn .flow>b.f2{opacity:0}
+.scn.live .flow.on>b{animation:scn-flow 1.2s linear infinite}
+.scn.live .flow.on>b.f1{animation-delay:-.8s}.scn.live .flow.on>b.f2{animation-delay:-.4s}
+@keyframes scn-flow{0%,33.2%{opacity:1}33.3%,100%{opacity:0}}
 .scn.live .drift.on>b{animation:scn-drift 70s ease-in-out infinite alternate}
 @keyframes scn-drift{from{transform:translateX(-28px)}to{transform:translateX(28px)}}
-.scn.lowd .flow path,.scn.lowd .drift>b{animation:none!important}
+.scn.lowd .flow>b,.scn.lowd .drift>b{animation:none!important}
 .scn.lowd .mv.thin{display:none}
 .scn.lowd .scn-noise{display:none}
 .scn .rx{transform-box:fill-box;transform:scaleX(var(--res,1));transition:transform 1.5s}

@@ -170,26 +170,31 @@ export function computeMods(upgrades: Record<string, number>, meta: MetaState, c
   return m;
 }
 
-const stateMods = new WeakMap<GameState, { content: Content; mods: Mods }>();
+/** Mods of a state. No per-state cache (a WeakMap entry per transient state costs more than the key below). */
 export function modsOf(s: GameState, c: Content): Mods {
-  const hit = stateMods.get(s);
-  if (hit && hit.content === c) return hit.mods;
-  const src: ModSources = { decades: {}, dividends: [], commons: {}, settled: [] };
   let key = '';
+  let src: ModSources | null = null;
   for (const id of idx(c).ids) {
     const es = s.sectors[id];
     if (!es) continue;
     const n = es.decadesWithin?.length ?? 0;
-    if (n > 0) { src.decades[id] = n; key += `${id}:${n},`; }
     const dv = es.dividends;
+    const st = es.settled && es.open;
+    if (n === 0 && !(dv && dv.length) && !st) continue;
+    src ??= { decades: {}, dividends: [], commons: {}, settled: [] };
+    if (n > 0) { src.decades[id] = n; key += `${id}:${n},`; }
     if (dv && dv.length) { for (const d of dv) src.dividends.push(d); key += `${id}v${dv.join('+')},`; }
-    if (es.settled && es.open) { src.settled.push(id); key += `${id}S,`; }
+    if (st) { src.settled.push(id); key += `${id}S,`; }
   }
   const lv = s.commons?.levels;
-  if (lv) for (const k in lv) if (lv[k] > 0) { src.commons[k] = lv[k]; key += `c${k}:${lv[k]},`; }
-  const mods = computeMods(s.upgrades, s.meta, c, src, key);
-  stateMods.set(s, { content: c, mods });
-  return mods;
+  if (lv) {
+    for (const k in lv) {
+      if (!(lv[k] > 0)) continue;
+      src ??= { decades: {}, dividends: [], commons: {}, settled: [] };
+      src.commons[k] = lv[k]; key += `c${k}:${lv[k]},`;
+    }
+  }
+  return computeMods(s.upgrades, s.meta, c, src ?? NO_SOURCES, key);
 }
 /** Institution seated, or loaned by an institutionLoan in force (LeverDef.requires). */
 export const isSeatedOrLoaned = (meta: MetaState, mods: Mods, id: string): boolean => isSeated(meta, id) || (mods.loans[id] ?? 0) >= 1;

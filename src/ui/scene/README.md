@@ -21,6 +21,37 @@ scene.select(appId | null); scene.setReducedMotion(bool | null); scene.describe(
 scene.setDetail?.('auto' | 'low' | 'full'); // optional, for a page setting
 ```
 
+### M2 additions (all optional; every M1 call above still works)
+
+```ts
+// Events: pass the GameEvents with seq > lastSeen (all sectors; set lastSeen = meta.eventSeq on load/import/new
+// game so nothing in a save replays). The adapter keeps this Industry's (and reckoning/won/charterChosen).
+scene.update(sceneViewFrom(content, state, derived, sectorId, newEvents));
+createScene(host, { onStage: (sectorId, stage) => {} });   // the machines changed generation (not on a switch/build)
+scene.highlight?.({ app: id } | { lever: kind } | { commons: id } | null);  // a ring over the place; false if absent
+scene.prebuild?.(sceneViewFrom(content, state, derived, otherSector));      // when idle: later switch = re-attach
+scene.toSVG?.({ width, height, plate });                    // the current picture, one self-contained SVG string
+await renderStill(view, { width, height, format: 'svg' | 'png', scale });   // any view, static: string | Blob
+await scene.replay?.(views, { seconds: 10 });   // a run back, no toasts or moments; update() ignored meanwhile
+scene.stopReplay?.();
+compactView(view);                              // a view trimmed for recording (~1.7 KB JSON for Steam)
+```
+
+- **Events, not diffs.** The engine reacts to each event once (it remembers the highest seq; seqs are global, so a
+  switch resets nothing): `crisis` fog and name · `appFounded` (player: the landmark rises on a scaffold, a toast;
+  Market: a scaffold, no toast; `default`: nothing) · `upgradeBought` by the Market: a scaffold rises and comes down on
+  the nearest founded landmark (three at most) · `stageReached`: the old machines sink away as the new rise, a flash,
+  the machine named (`onStage` fires) · `leverEnacted`: its sign goes up · `decade`: a brief brightening ·
+  `clearSkies`, `steadyState`, `settled`: a clearing wash and a caption · `sectorOpened` / `ageBegins`: the picture is
+  unveiled · `backfire` (the first): the valley takes a breath, then burns harder: landmarks kick, stacks puff black, a
+  dark wave rolls through · `commonsBuilt`: the building rises. Hosts without events (the demo, old saves) get the M1
+  behaviour by comparing views of the same Industry (`moments.ts`, tested).
+- **Crisis state is per Industry**: the fog and its name stop on `setSector` (or on a view of another Industry) and
+  never come back when the player returns (`moments.test.ts`).
+- **What to record per sample** for a time-lapse: `compactView(sceneViewFrom(...))` at each sample; nothing else. The
+  view is plain JSON. `renderStill` draws the picture at rest: movers at their resting points, no rain or crisis fog,
+  the style's plate optional.
+
 `sceneViewFrom` (in `adapter.ts`) is the only code that reads the contract. It is pure and total (never throws) and
 holds no game rules: it reads `Content`, `GameState` and `Derived` and maps them to cosmetic fractions (`SceneView`
 in `types.ts`). The scene ships its own CSS (`css.ts`, injected once as `<style id="scn-css">`), reading the page's
@@ -79,6 +110,18 @@ To add one: write `styles/<id>.ts`, add it to `styles/index.ts` (or call `regist
 its props in `props/<id>.ts`, and set `look: '<id>'` on the layouts drawn in it. The style wins over the page theme
 (Code is always a night city, whatever the page look); only the `generic` layout follows the page look.
 
+## Performance (M2)
+
+- **One world per Industry, kept.** Each build keeps its own layers and animations; a switch back re-attaches it
+  (`display: none` on the others, which also stops their CSS animations). At most six are kept; a build key change
+  (stage, apps, heritage, Commons, landmark) rebuilds only that Industry. Def ids are unique per build.
+- **Nothing restyles per frame.** Three things kept the main thread restyling every frame and are gone: Web Animations
+  started before their sprite had a layout box ran on the main thread (they now start two frames after being shown);
+  the auto-detail watcher's own rAF loop (now a passive long-animation-frame / long-task observer); the packet flow's
+  `stroke-dashoffset` animation (now three dashed copies shown in turn by opacity).
+- Measured in the demo (`node tools/scene-shot.mjs --switch`, 4× CPU, phone): style while animating 40–105 → ~0 ms/s;
+  switching back to a kept Industry 1–7 ms of script.
+
 ## Why SVG (and not canvas)
 
 - **Every place is a real control.** Tap targets are HTML buttons laid over the picture, with labels; the art itself
@@ -119,6 +162,11 @@ its props in `props/<id>.ts`, and set `look: '<id>'` on the layouts drawn in it.
 | `levers` | signs of restraint in the world: customs house or toll (duty), permit board (cap), allotments, cycle lane or a garden lot (sufficiency), windmill, turbines or solar (substitution), kiln (circularity), park (green spending), demolition that opens a gap of sky and stars in the skyline (deletion), a checkpoint (review gates), a library (shared libraries). The root also carries `lv-<kind>` classes so a style can react |
 | `decoupling` / `steadyProgress` / `steady` | haze lifts with the streak; at Steady State the sky turns fresh, the wash greens, birds cross; Code: the rain stops, flicker stops, stars and a moon come out |
 | `reckoning` | the world stops: every animation pauses, colour drains, a banner names the end |
+| `pressureToClear` (M2) | the haze by band: as pressure falls towards the clear level, the near haze goes first, the far last |
+| `clear` / `clearProgress` (M2) | clear skies: each style's fresh sky fades in over the 50 years (stars and thinner rain in the night city); `steady` completes it |
+| `settled` / `settledYear` (M2) | the quiet look: slow wheels and soft smoke, no flicker or signal noise, a "held" wash in the style's colour, an emblem lettered "Settled 1841" in the style's idiom; never the Reckoning's grey |
+| `commons` (M2) | civic buildings on each layout's civic sites (`Layout.commons`, else every third house of the town): baths and wash-house, people's park, mechanics' institute, free library, town clock, allotments, corporation buses, lido and cricket field (the shorter week), repair café, bank-holiday bunting (general projects show in whichever town is on screen); unknown icons get a civic hall. Levels 2–3 add a wing, villas, a bandstand, lamps |
+| `landmark` (M2) | the Charter's landmark on `Layout.landmark`: a deep shaft, a cotton-town mill, a chapel, an orchard, a second viaduct, a great gasholder |
 
 ## Adding an industry
 
@@ -151,7 +199,10 @@ never shows a blank.
 
 ## Demo and screenshots
 
-`bun run tools/scene-demo.ts` → `dist/scene-demo.html` (self-contained). Scrub every input, switch industry and look,
+`bun run tools/scene-demo.ts` → `dist/scene-demo.html` (self-contained). M2 controls: clear skies, settled, every
+event (Market purchase and founding, stage, first backfire, decade, lever, Commons, landmark, Industry opens), a
+highlight, a 10-second replay and "save picture". `#strip=steam&m2` shows clearing, steady, settled and Commons;
+`node tools/scene-shot.mjs [industries] --m2` shoots it, `--switch` measures switching and style per second. Scrub every input, switch industry and look,
 fire a crisis, call a Reckoning, toggle reduced motion, or press **Auto-play a run** (empty valley to collapse in
 60 s). `#strip=steam` shows the seven stages frozen. `node tools/scene-shot.mjs [industries] [--perf]` writes
 `shots/scene/` and measures frame timings with 4× CPU throttling.

@@ -4,15 +4,15 @@ import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, PaceDef, SectorDef, UpgradeView } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
-import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion } from './dom';
-import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit, dur } from './fmt';
+import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion, replay } from './dom';
+import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit, dur, unitOne } from './fmt';
 import { sound } from './sound';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
 export function effectText(ctx: Ctx, e: EffectDef): string {
   const def = 'sector' in e ? sectorDef(ctx, e.sector) : undefined;
   const res = lower(def?.resource.name ?? 'resource');
-  const svc = perUnit(def?.service.unit) || 'unit';
+  const svc = unitOne(def?.service) || 'unit';
   const appName = (id?: string) => (id && def ? def.applications.find((a) => a.id === id)?.name : undefined);
   switch (e.type) {
     case 'etaMul': return `${pct(1 / e.value - 1)} ${res} per ${svc}`;
@@ -72,7 +72,7 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
   const tryBuy = (): boolean => {
     const r = el.getBoundingClientRect();
     const ok = ctx.act('buyUpgrade', (m, s, c) => m.buyUpgrade(s, c, def.id));
-    if (ok) stamp(el, r);
+    if (ok) stamp(el, r, !!def.repeatable && num(cur?.level) + 1 < num(def.maxLevel, Infinity));
     return ok;
   };
   // One arm of a fork rules the others out for the run: ask first (only when the purchase would go through).
@@ -194,19 +194,18 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
  * stamped, fading where it stood. Composited (transform and opacity), never in the way of the next tap, and nothing
  * under reduced motion.
  */
-export function stamp(card: HTMLElement, rect: DOMRect): void {
+export function stamp(card: HTMLElement, rect: DOMRect, stays = false): void {
   if (reducedMotion() || !rect.width) return;
-  if (card.isConnected && card.getClientRects().length && !card.closest('[hidden]')) {
-    card.classList.remove('stamped'); void card.offsetWidth; card.classList.add('stamped');
-    setTimeout(() => card.classList.remove('stamped'), 900);
+  if (stays && card.isConnected && card.getClientRects().length && !card.closest('[hidden]')) {
+    replay(card, 'stamped', 900);
     return;
   }
   const g = card.cloneNode(true) as HTMLElement;
   g.classList.add('up-ghost', 'stamped');
   g.setAttribute('aria-hidden', 'true');
   g.setAttribute('inert', '');
-  g.style.cssText = `position:absolute;left:${(rect.left + scrollX).toFixed(0)}px;top:${(rect.top + scrollY).toFixed(0)}px;width:${rect.width.toFixed(0)}px;margin:0;`;
-  document.getElementById('app')?.append(g);
+  g.style.cssText = `position:fixed;left:${rect.left.toFixed(0)}px;top:${rect.top.toFixed(0)}px;width:${rect.width.toFixed(0)}px;margin:0;`;
+  document.body.append(g);
   setTimeout(() => g.remove(), 1100);
 }
 
@@ -458,7 +457,7 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     const pName = def?.pressure.name ?? 'Pressure';
     if (cpf == null) setText(skyTxt, `${pName} ${pct(pf, false)}. The clear level is set when a line is drawn.`);
     else if (e?.clear) setText(skyTxt, `Clear skies: ${pName.toLowerCase()} ${pct(pf, false)}, under the clear level of ${pct(cpf, false)} and not rising.`);
-    else if (pf > cpf) setText(skyTxt, `${pName} ${pct(pf, false)}: ${fmt(Math.max(0, (pf - cpf) * 100))} points above the clear level (${pct(cpf, false)}).`);
+    else if (pf > cpf) setText(skyTxt, `${pName} ${pct(pf, false)}: ${fmt(Math.max(1, Math.round((pf - cpf) * 100)))} points above the clear level (${pct(cpf, false)}).`);
     else setText(skyTxt, `${pName} ${pct(pf, false)}, under the clear level (${pct(cpf, false)}) but still rising.`);
     cls(sky, 'clear', !!e?.clear);
     // An Industry with nothing to absorb its pressure (Code) clears only by deletion: no sink line to draw.
@@ -466,7 +465,7 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     show(skyCode, noSink);
     setText(skyCode, `Deleted down, not absorbed: nothing takes ${pName.toLowerCase()} away here but deletion.`);
     const cy = Math.floor(num(e?.clearYears));
-    setText(ssTxt, `Clear skies: ${Math.min(cy, STEADY_STATE_YEARS)} of ${STEADY_STATE_YEARS} years to Steady State`);
+    setText(ssTxt, cy >= STEADY_STATE_YEARS ? `Steady State: ${STEADY_STATE_YEARS} years of clear skies served` : `Clear skies: ${cy} of ${STEADY_STATE_YEARS} years to Steady State`);
     setFill(ssFill, cy / STEADY_STATE_YEARS, 100);
     cls(ss, 'on', !!e?.sinkHeld);
     show(sky, has || cpf != null);

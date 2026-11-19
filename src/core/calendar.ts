@@ -33,3 +33,20 @@ export function currentAge(state: GameState, content: Content): AgeDef | null {
   for (let i = ages.length - 1; i >= 0; i--) if ((ages[i].sectors ?? []).some((s) => state.sectors[s]?.open)) return ages[i];
   return null;
 }
+
+/**
+ * M2: the calendar year at run time `time` of the current run: each sector's openFor shifted by (state.time − time), a
+ * sector counting as open then when that is ≥ 0. Times after state.time extrapolate; negative times count as 0.
+ */
+export function yearAt(state: GameState, content: Content, time: number): number {
+  const t = Math.max(0, Number.isFinite(time) ? time : 0);
+  const shift = state.time - t;
+  const sectors: Record<SectorId, SectorState> = {};
+  for (const s in state.sectors) {
+    const es = state.sectors[s];
+    if (!es?.open) continue;
+    const o = es.openFor - shift;
+    if (o >= -1e-9) sectors[s] = { ...es, openFor: Math.max(0, o) };
+  }
+  return calendarYear({ time: t, sectors }, content);
+}

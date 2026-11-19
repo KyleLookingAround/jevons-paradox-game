@@ -5,7 +5,7 @@ import type { Ctx, Comp } from './ctx';
 import { sectorDef, sectorIds } from './ctx';
 import type { CommonsView } from '../types';
 import { h, setText, setAttr, setFill, show, cls, syncChildren, reducedMotion } from './dom';
-import { fmt, money, num, perUnit } from './fmt';
+import { fmt, money, num, lower } from './fmt';
 import { effectText, stamp } from './panels';
 import { sound } from './sound';
 
@@ -23,7 +23,7 @@ function makeCard(ctx: Ctx, v0: CommonsView): Card {
   let cur: CommonsView = v0;
   const buy = h('button', { class: 'btn buy', type: 'button', onclick: () => {
     const r = el.getBoundingClientRect();
-    if (ctx.act('buyCommons', (m, s, c) => m.buyCommons(s, c, def.id))) stamp(el, r);
+    if (ctx.act('buyCommons', (m, s, c) => m.buyCommons(s, c, def.id))) stamp(el, r, cur.level + 1 < cur.maxLevel);
     else { sound('cannotAfford'); if (!reducedMotion()) { buy.classList.remove('nope'); void buy.offsetWidth; buy.classList.add('nope'); } }
   } }, fill, h('span', { class: 'btn-l', text: 'Build' }), cost);
   const el = h('article', { class: 'up cm' },
@@ -34,15 +34,16 @@ function makeCard(ctx: Ctx, v0: CommonsView): Card {
   function update(v: CommonsView): void {
     cur = v;
     setText(lvl, v.maxLevel > 1 ? `${v.level}/${v.maxLevel}` : v.level ? 'Built' : '');
-    setText(wb, v.maxed ? `Wellbeing +${fmt(v.wellbeing)}` : `Wellbeing +${fmt(v.wellbeing)} → +${fmt(v.wellbeing + v.nextWellbeing)}`);
+    setText(wb, v.maxed ? `Wellbeing +${fmt(v.wellbeing)}` : v.level === 0 ? `Wellbeing +${fmt(v.nextWellbeing)} when built` : `Wellbeing +${fmt(v.wellbeing)} now, +${fmt(v.wellbeing + v.nextWellbeing)} with the next`);
     const isec = def.intensity ? sectorDef(ctx, def.intensity.sector) : undefined;
-    setText(inten, isec ? `It is used, too: ${v.intensityNow > 0 ? `${fmt(v.intensityNow)} ${isec.service.unit}/s of ${isec.name} now` : `${fmt(def.intensity!.perLevel)} ${perUnit(isec.service.unit)} a head per level from ${isec.name}`}` : '');
+    setText(inten, isec ? (v.intensityNow > 0 ? `Draws ${fmt(v.intensityNow)} ${isec.service.unit}/s of ${lower(isec.service.name)} from ${isec.name}`
+      : `Each level will draw ${fmt(def.intensity!.perLevel)} ${isec.service.unit}/s a head from ${isec.name}`) : '');
     show(inten, !!isec);
     show(buy, !v.maxed);
     if (!v.maxed && v.cost != null) {
       const fund = num(ctx.d?.commons?.fund);
       const fromFund = Math.min(fund, v.cost);
-      setText(cost, money(v.cost) + (num(v.mandateCost) > 0 ? ` + ${fmt(num(v.mandateCost))} M` : ''));
+      setText(cost, money(v.cost) + (num(v.mandateCost) > 0 ? ` · ${fmt(num(v.mandateCost))} Mandate` : ''));
       setText(how, fromFund >= v.cost ? 'All from the Commons fund.' : fromFund > 0 ? `${money(fromFund)} from the fund, ${money(v.cost - fromFund)} from capital.` : 'From capital: the fund is empty.');
       setAttr(buy, 'aria-disabled', v.canBuy ? null : 'true');
       setFill(fill, v.canBuy ? 0 : (fund + num(ctx.state.capital)) / Math.max(1e-9, v.cost), 100);
@@ -52,7 +53,6 @@ function makeCard(ctx: Ctx, v0: CommonsView): Card {
     cls(el, 'maxed', v.maxed);
   }
   update(v0);
-  void cur;
   return { el, update };
 }
 

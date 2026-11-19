@@ -13,7 +13,7 @@ import type { Mods } from './effects';
 import { sectorLevers, NO_LEVERS, leverNetUpkeep, mandateShareOf } from './levers';
 import { solveSector } from './solver';
 import type { SectorFlow } from './solver';
-import { budgetROf, isWithin, decadeWellbeingOf, clearPOf, isClear, sinkROf } from './steady';
+import { budgetROf, isWithin, decadeWellbeingOf, clearPOf, isClear, sinkROf, sectorSteady } from './steady';
 import { fin, clamp } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -128,7 +128,8 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
     income += f.income;
     levy += f.dutyRevenue + f.permitRevenue;
     treasury += f.treasuryLevy;
-    commonsLevy += f.commonsLevy;
+    if (lev.dutyRecycle === 'commons') commonsLevy += f.dutyRevenue;
+    if (lev.capRecycle === 'commons') commonsLevy += f.permitRevenue;
     if (def.spill && state.sectors[def.spill.to]?.open && es.basePs > 0) {
       const a = def.spill.rate * (1 - lev.green) * Math.max(0, 1 - f.ps / es.basePs);
       spill[def.spill.to] = (spill[def.spill.to] ?? 1) * (1 + Math.max(0, a));
@@ -180,7 +181,7 @@ export function settledFlow(def: SectorDef, es: SectorState, st: SettledState, N
   return {
     eta: st.eta, etaFold: fin(st.eta / etaBase, 1), c, m, prBase: fin(prBase), permit: 0, pr: fin(prBase),
     pPre: st.pPre, permitPart: 0, dutyPart: 0, ps: st.ps, D: st.D, R: st.R, sigma: 0,
-    income: st.income, dutyRevenue: 0, permitRevenue: 0, treasuryLevy: 0, commonsLevy: 0,
+    income: st.income, dutyRevenue: 0, permitRevenue: 0, treasuryLevy: 0,
     capacity, usable, util, unrev: 0, appD, appSat, reserveGain: 0, pressureIn: 0, deletionOut: 0, wellbeingShare: fin(wb),
   };
 }
@@ -233,25 +234,33 @@ export interface SteadyView {
   budgetR: number | null; withinBudget: boolean; decadeW: number; decoupling: boolean;
   clearP: number | null; clear: boolean; sinkR: number | null; sinkHeld: boolean;
 }
-export function steadyView(state: GameState, content: Content, fl: Flows, s: SectorId): SteadyView {
+let noLine: SteadyView | null = null;
+export function steadyView(state: GameState, content: Content, fl: Flows, s: SectorId, mods0?: Mods, withSink = true): SteadyView {
   const es = state.sectors[s];
   const f = fl.sectors[s];
   const def = content.sectors[s];
   const target = content.global.wellbeingTarget;
   const W = fl.wellbeing;
-  const budgetR = budgetROf(es, def, content, state.time);
+  if (!es?.budget && !es?.settled) { // no line: nothing counts (one shared, frozen answer per target)
+    if (noLine === null || noLine.decadeW !== target) {
+      noLine = Object.freeze({ budgetR: null, withinBudget: false, decadeW: target, decoupling: false, clearP: null, clear: false, sinkR: null, sinkHeld: false });
+    }
+    return noLine;
+  }
+  const st = sectorSteady(content, s);
+  const budgetR = budgetROf(es!, def, content, state.time, st);
   const withinBudget = !!f && isWithin(f.R, budgetR);
-  const decadeW = decadeWellbeingOf(es, content, s);
-  const clearP = clearPOf(es, def, content);
-  if (es?.settled) {
+  const decadeW = decadeWellbeingOf(es, content, s, st);
+  const clearP = clearPOf(es, def, content, st);
+  if (es.settled) {
     return { budgetR, withinBudget, decadeW, decoupling: W >= target && !fl.pending, clearP, clear: true, sinkR: null, sinkHeld: false };
   }
-  if (!es || !f) return { budgetR, withinBudget: false, decadeW, decoupling: false, clearP, clear: false, sinkR: null, sinkHeld: false };
-  const ab = absorptionOf(def, modsOf(state, content));
-  const clear = isClear(es, def, content, f.pressureIn, f.deletionOut, ab);
+  if (!f) return { budgetR, withinBudget: false, decadeW, decoupling: false, clearP, clear: false, sinkR: null, sinkHeld: false };
+  const ab = absorptionOf(def, mods0 ?? modsOf(state, content));
+  const clear = isClear(es, def, content, f.pressureIn, f.deletionOut, ab, clearP);
   return {
     budgetR, withinBudget, decadeW, decoupling: withinBudget && W >= decadeW && !fl.pending, clearP, clear,
-    sinkR: sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, ab),
+    sinkR: withSink ? sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, ab, clearP) : null,
     sinkHeld: withinBudget && W >= target && clear && !fl.pending,
   };
 }

@@ -1,6 +1,6 @@
 // @ts-ignore bun:test types are not in the project tsconfig (types: [])
 import { describe, expect, test } from 'bun:test';
-import { sceneViewFrom, machineStage, sceneEvents } from './adapter';
+import { sceneViewFrom, machineStage, sceneEvents, compactView } from './adapter';
 import type { Content, GameState, Derived } from '../../types';
 
 const content = {
@@ -75,6 +75,7 @@ describe('sceneViewFrom', () => {
         { id: 'baths', name: 'Public baths', icon: 'baths', sector: 'steam' },
         { id: 'lib', name: 'Free library', icon: 'library', sector: 'light' },
         { id: 'park', name: 'The park', icon: 'park', sector: 'steam' },
+        { id: 'hols', name: 'Bank holidays', icon: 'holiday' },
       ],
       charters: [{ id: 'north', name: 'North', sector: 'steam', landmark: 'pithead-baths', effects: [] }],
     } as unknown as Content;
@@ -107,9 +108,9 @@ describe('sceneViewFrom', () => {
       expect(sceneViewFrom(c2, st(), dv({ clearP: null, pressureFraction: 0.4 }), 'steam').pressureToClear).toBeCloseTo(0.4);
     });
 
-    test('commons filtered by sector and level; the charter landmark', () => {
-      const v = sceneViewFrom(c2, st({ commons: { levels: { baths: 2, lib: 1, park: 0 }, fund: 0 }, meta: { charter: 'north' } }), dv(), 'steam');
-      expect(v.commons).toEqual([{ id: 'baths', icon: 'baths', level: 2, name: 'Public baths' }]);
+    test('commons filtered by sector and level (general ones in every picture); the charter landmark', () => {
+      const v = sceneViewFrom(c2, st({ commons: { levels: { baths: 2, lib: 1, park: 0, hols: 1 }, fund: 0 }, meta: { charter: 'north' } }), dv(), 'steam');
+      expect(v.commons).toEqual([{ id: 'baths', icon: 'baths', level: 2, name: 'Public baths' }, { id: 'hols', icon: 'holiday', level: 1, name: 'Bank holidays' }]);
       expect(v.landmark).toBe('pithead-baths');
       const l = sceneViewFrom(c2, st({ commons: { levels: { baths: 2, lib: 1 }, fund: 0 }, meta: { charter: 'north' } }), dv(), 'light');
       expect(l.commons?.map((x) => x.id)).toEqual(['lib']);
@@ -141,5 +142,39 @@ describe('sceneViewFrom', () => {
       expect(v.pressureToClear).toBeCloseTo(0.3);
       expect(v.popFraction).toBeCloseTo(Math.log(4) / Math.log(12));
     });
+  });
+});
+
+// Coverage: every Commons icon and Charter landmark the content writes has a drawing of its own (no generic fallback).
+import { propFor } from './registry';
+import { works } from './props/common';
+import { COMMONS_ICONS, LANDMARKS } from './props/civic';
+import { content as realContent } from '../../content/index';
+describe('civic coverage', () => {
+  const looks = ['ledger', 'gaslight', 'chrome', 'terminal', 'cyberpunk'];
+  test('content keys are all known to the scene', () => {
+    const c = realContent as unknown as { commons?: { icon: string }[]; charters?: { landmark?: string }[] };
+    for (const x of c.commons ?? []) expect(COMMONS_ICONS).toContain(x.icon);
+    for (const x of c.charters ?? []) if (x.landmark) expect(LANDMARKS).toContain(x.landmark);
+  });
+  test('each has its own prop in every style', () => {
+    for (const look of looks) {
+      for (const i of COMMONS_ICONS) expect(propFor(look, look, 'commons:' + i)).not.toBe(works);
+      for (const k of LANDMARKS) expect(propFor(look, look, 'landmark:' + k)).not.toBe(works);
+    }
+  });
+});
+
+describe('compactView', () => {
+  test('keeps the picture, drops the card; small enough to record per Reckoning', () => {
+    const v = sceneViewFrom(realContent, { capital: 1e6, population: 40, upgrades: {}, levers: {}, sectors: {}, run: { steadySectors: {} } } as unknown as GameState,
+      null, 'steam', [{ seq: 1, kind: 'crisis', sector: 'steam', time: 0, year: 0 }] as never);
+    const c = compactView(v);
+    expect(c.apps.length).toBe(v.apps.length);
+    expect(c.events).toBeUndefined();
+    expect(c.apps.every((a) => a.blurb === '')).toBe(true);
+    const n = JSON.stringify(c).length;
+    expect(n).toBeLessThan(2500);
+    console.log('compact SceneView bytes (steam):', n, 'full:', JSON.stringify(v).length);
   });
 });

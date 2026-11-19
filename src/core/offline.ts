@@ -1,0 +1,105 @@
+/**
+ * Offline catch-up (M2): fastForward in steps of at most FAST_FORWARD_STEP, capped at the effective cap, holding before
+ * what GlobalParams.offline.holdBefore names (the step that would fire it is discarded), with the OfflineReport.
+ * Standing orders run inside the steps exactly as in tick (step.ts calls them).
+ * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
+ */
+import type { Content, GameState, OfflineReport, SectorId } from '../types';
+import { DEFAULT_OFFLINE_CAP, FAST_FORWARD_STEP } from './constants';
+import { idx } from './contentIndex';
+import { modsOf } from './effects';
+import type { Mods } from './effects';
+import { computeFlows } from './flows';
+import { sectorSteady } from './steady';
+import { step } from './step';
+import { fin } from './util';
+
+/** GlobalParams.offline with its defaults (the deprecated offlineCapSeconds only when `offline` is absent). */
+export function offlineCfg(content: Content): { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null } {
+  const g = content.global;
+  if (g.offline) {
+    const h = g.offline.holdBefore;
+    return { capSeconds: Math.max(0, fin(g.offline.capSeconds, DEFAULT_OFFLINE_CAP)), holdBefore: h === 'crisis' || h === 'collapse' ? h : null };
+  }
+  return { capSeconds: Math.max(0, fin(g.offlineCapSeconds ?? DEFAULT_OFFLINE_CAP, DEFAULT_OFFLINE_CAP)), holdBefore: 'collapse' };
+}
+/** Derived.offlineCapSeconds: the base cap plus every standing offlineCapAdd. */
+export const offlineCapOf = (content: Content, mods: Mods): number => Math.max(0, offlineCfg(content).capSeconds + mods.offlineCapAdd);
+
+export function fastForward(state: GameState, content: Content, seconds: number): GameState {
+  const requested = Math.max(0, fin(seconds));
+  if (!(requested > 0)) return state;
+  const ix = idx(content);
+  const cfg = offlineCfg(content);
+  const report: OfflineReport = {
+    requested, simulated: 0, heldBy: null, from: state.time, to: state.time, capital: 0, mandate: 0, population: 0,
+    decades: 0, dividends: 0, crises: 0, marketBuys: 0, civilServiceRaises: 0, treasuryBuys: 0, lapsed: [], opened: [],
+    unsettled: [], lines: {}, fromSeq: state.meta.eventSeq ?? 0, toSeq: state.meta.eventSeq ?? 0,
+  };
+  if (computeFlows(state, content).pending) return { ...state, lastOffline: { ...report, heldBy: 'pending' } };
+  const total = Math.min(requested, offlineCapOf(content, modsOf(state, content)));
+  const broken = new Set<SectorId>();
+  const unsettled = new Set<SectorId>();
+  let s = state;
+  let held: { by: OfflineReport['heldBy']; sector?: SectorId } | null = null;
+  if (total > 0) {
+    const n = Math.ceil(total / FAST_FORWARD_STEP - 1e-9);
+    const h = total / n;
+    for (let i = 0; i < n; i++) {
+      const t = step(s, content, h);
+      if (t === s) break;
+      // the hold: discard a step that fires what holdBefore names
+      if (cfg.holdBefore !== null) {
+        const pend = computeFlows(t, content).pending;
+        if (pend) { held = { by: pend.cause === 'chosen' ? 'collapse' : pend.cause, sector: pend.sector }; break; }
+        if (cfg.holdBefore === 'crisis') {
+          const cs = ix.ids.find((id) => (t.sectors[id]?.crisesFired ?? 0) > (s.sectors[id]?.crisesFired ?? 0));
+          if (cs !== undefined) { held = { by: 'crisis', sector: cs }; break; }
+        }
+      }
+      // what this step did (its events are the newest in t.events)
+      const seq0 = s.meta.eventSeq ?? 0;
+      for (const e of t.events ?? []) {
+        if (e.seq <= seq0) continue;
+        switch (e.kind) {
+          case 'decade':
+            report.decades++;
+            if (e.sector && sectorSteady(content, e.sector).choices.length) report.dividends++;
+            break;
+          case 'crisis': report.crises++; break;
+          case 'upgradeBought': case 'appFounded': if (e.by === 'market') report.marketBuys++; break;
+          case 'leverEnacted': if (e.by === 'civilService') report.civilServiceRaises++; break;
+          case 'commonsBuilt': if (e.by === 'treasury') report.treasuryBuys++; break;
+          case 'leverLapsed': if (e.id) report.lapsed.push(e.id); break;
+          case 'sectorOpened': if (e.sector) report.opened.push(e.sector); break;
+          case 'unsettled': if (e.sector) { report.unsettled.push(e.sector); unsettled.add(e.sector); } break;
+          default: break;
+        }
+      }
+      // a line is broken when a step leaves its decade streak at 0 (it reset, or never held)
+      for (const id of ix.ids) {
+        const b = t.sectors[id];
+        if (b?.open && b.budget && !b.settled && !(b.steadyYears > 0)) broken.add(id);
+      }
+      s = t;
+      report.simulated += h;
+    }
+  }
+  report.simulated = fin(report.simulated);
+  report.heldBy = held ? held.by : total < requested ? 'cap' : null;
+  if (held?.sector !== undefined && held.by !== 'cap') report.heldSector = held.sector;
+  for (const id of ix.ids) {
+    const b = s.sectors[id], a = state.sectors[id];
+    if (!b?.open || !b.budget) continue;
+    if (b.settled && !unsettled.has(id)) report.lines[id] = 'settled';
+    else if (!a?.budget || a.budget.since !== b.budget.since || a.budget.r0 !== b.budget.r0) report.lines[id] = 'drawn';
+    else if (broken.has(id)) report.lines[id] = 'broken';
+    else report.lines[id] = 'held';
+  }
+  report.to = s.time;
+  report.capital = fin(s.capital - state.capital);
+  report.mandate = fin(s.mandate - state.mandate);
+  report.population = fin(s.population - state.population);
+  report.toSeq = s.meta.eventSeq ?? 0;
+  return { ...s, lastOffline: report };
+}

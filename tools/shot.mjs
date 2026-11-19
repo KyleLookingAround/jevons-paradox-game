@@ -1,5 +1,5 @@
 // Screenshots and a scripted play-through of the game, for visual checks.
-//   node tools/shot.mjs [scenes|flow|checks|audit|real|realplay|looks|first|all] [filter]
+//   node tools/shot.mjs [scenes|flow|checks|audit|m2|real|realplay|looks|first|all] [filter]
 // Builds a mock-only page (src/ui/mock-main.ts bundled with `bun build`, inlined into index.html) at shots/mock.html,
 // so the UI can be checked while the real model or content does not build. `real` runs `bun run build.ts` and plays
 // dist/index.html. Sizes: 390×844 (phone), 1280×800 (desk), 360×740 (narrow: overflow check only).
@@ -168,11 +168,18 @@ async function flow(base, tag0 = 'flow') {
     await step('draw the budget line', async () => {
       await closeToasts();
       await page.locator('.bud-draw').scrollIntoViewIfNeeded();
-      await page.click('.bud-draw'); await page.waitForTimeout(250);
-      if (!(await st()).sectors.steam.budget) throw new Error('no budget');
+      // M2: drawing opens the pace choice (three paces), then draws at the chosen one.
+      await page.click('.bud-draw'); await page.waitForTimeout(200);
+      if ((await page.locator('.pace-box .pace').count()) < 2) throw new Error('no pace choice');
+      await page.locator('.pace-box .pace').nth(1).click(); await page.waitForTimeout(100);
+      await shot('pace');
+      await page.click('.pace-box .btn.primary'); await page.waitForTimeout(250);
+      const b = (await st()).sectors.steam.budget;
+      if (!b) throw new Error('no budget');
+      if (b.pace !== 'firm') throw new Error(`drawn at ${b.pace}, not the chosen pace`);
       await page.click('.bud-draw'); await page.waitForTimeout(150);
-      if (!(await page.locator('.budget .confirm-box:visible').count())) throw new Error('no redraw confirm');
-      await page.click('button:has-text("Keep the line")');
+      if (!(await page.locator('.pace-warn.warn:visible').count())) throw new Error('no redraw warning');
+      await page.click('.pace-box button:has-text("Not now")');
       await page.waitForTimeout(5600); // history samples every 5 s of play
       if (!(await page.locator('.sp-bud[points*=","]').count())) throw new Error('budget line not on sparkline');
       await shot('budget');
@@ -331,13 +338,20 @@ async function checks() {
     // Come back 25 minutes later: backdate the stamp before the page's own scripts run.
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
-    await page.addInitScript(() => { localStorage.setItem('rebound.mock.save.at', String(Date.now() - 25 * 60 * 1000)); });
+    await page.addInitScript(() => { if (!sessionStorage.getItem('gap')) { sessionStorage.setItem('gap', '1'); localStorage.setItem('rebound.mock.save.at', String(Date.now() - 25 * 60 * 1000)); } });
     await page.goto(mock + '#mock:persist'); await page.waitForTimeout(800);
-    const toast = await page.locator('.toast-t:has-text("While you were away")').count();
+    // M2: the ledger (lastOffline) at the head of the feed, under the gauges; dismissed once, not shown again.
+    const ledger = await page.locator('.away:not([hidden]) .aw-t:has-text("While you were away")').count();
     const t1 = await page.evaluate(() => window.rebound.state.time);
     await page.screenshot({ path: `${out}/check-away.png` });
-    if (!toast) throw new Error('no "While you were away" note');
+    if (!ledger) throw new Error('no "While you were away" ledger');
     if (!(t1 > t0 + 600)) throw new Error(`time did not jump (${t0} → ${t1})`);
+    const g = await page.locator('.gauges').boundingBox(), a = await page.locator('.away').boundingBox();
+    if (!g || !a || a.y < g.y + g.height - 1) throw new Error('the ledger covers the gauges');
+    await page.click('.away button:has-text("Carry on")'); await page.waitForTimeout(150);
+    if (await page.locator('.away:not([hidden])').count()) throw new Error('the ledger did not go');
+    await page.reload(); await page.waitForTimeout(800);
+    if (await page.locator('.away:not([hidden])').count()) throw new Error('the same report was shown twice: ' + await page.evaluate(() => JSON.stringify([window.rebound.state.lastOffline?.requested, window.rebound.state.lastOffline?.to, localStorage.getItem('rebound.ui.prefs')])));
     if (errs.length) throw new Error(errs.join(' | '));
     await ctx.close();
   });
@@ -847,8 +861,11 @@ async function realFlow(url) {
     });
     await step('draw the budget, enact a lever', async () => {
       await closeToasts();
-      await page.locator('.bud-draw').click(); await page.waitForTimeout(300);
+      await page.locator('.bud-draw').click(); await page.waitForTimeout(200);
+      // M2: the pace choice, then draw at the default (first) pace.
+      await page.click('.pace-box .btn.primary'); await page.waitForTimeout(300);
       const s = await st(); if (!Object.values(s.sectors).some((x) => x.budget)) throw new Error('no budget drawn');
+      await page.locator('.budget').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/${T}-budget.png` });
       await rich(0, 1e4); await page.waitForTimeout(1100);
       const r = page.locator('.lev-raise:not([aria-disabled="true"]):visible');
       if (!(await r.count())) throw new Error('no lever to raise');
@@ -986,6 +1003,243 @@ async function first() {
   }
 }
 
+/* ---------------------------------------------------------------- m2 (mock): every M2 element */
+// `node tools/shot.mjs m2 [filter]`: the pace choice, the dividend card, the sink line, a settled row and the Settle
+// ceremony, the Commons, standing orders, the Charter choice and the run header, the return ledger (held and plain), the
+// respec confirm, run history, the settings (sound off until tapped; the survey's disclosure and switch), the purchase
+// moment, the time-lapse summary with "Save picture", the rebound past 1,000%, the tab row's "more" cue. Phone and desk;
+// the 360 px narrow size for overflow.
+async function m2() {
+  for (const sz of SIZES) {
+    if (filter && !sz.tag.includes(filter)) continue;
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: 1 });
+    // Count AudioContexts made: none may exist until sound is turned on from a tap.
+    await ctx.addInitScript(() => {
+      window.__ac = 0;
+      for (const k of ['AudioContext', 'webkitAudioContext']) {
+        const C = window[k]; if (!C) continue;
+        window[k] = class extends C { constructor(...a) { super(...a); window.__ac++; } };
+      }
+    });
+    const T = `m2-${sz.tag}`;
+    const big = sz.tag !== 'narrow';
+    const step = async (name, f) => {
+      try { await f(); console.log(`  ok   ${T} ${name}`); }
+      catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); }
+    };
+    const shot = async (n, sel) => {
+      if (!big) return;
+      if (sel) await page.locator(sel).first().evaluate((el) => el.scrollIntoView({ block: 'center' })).catch(() => {});
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `${out}/${T}-${n}.png` });
+    };
+    const st = () => page.evaluate(() => window.rebound.state);
+    const d = () => page.evaluate(() => window.rebound.d);
+    const closeToasts = () => page.evaluate(() => document.querySelectorAll('.toast-x').forEach((x) => x.click()));
+    const go = async (hash) => { await page.goto(mock + hash); await page.waitForTimeout(1300); await closeToasts(); };
+    const noOverflow = async (what) => { const o = await overflow(page); if (o.sw > o.cw) throw new Error(`sideways scroll at ${what} (${o.sw} > ${o.cw})`); };
+
+    await go('#mock:m2,away=held');
+    await step('return ledger, held: under the gauges, names the hold', async () => {
+      if (!(await page.locator('.away:not([hidden])').count())) throw new Error('no ledger');
+      const held = await page.locator('.aw-held').textContent();
+      if (!/waited for you: smoke at \d+%/.test(held)) throw new Error(`hold not named: ${held}`);
+      const g = await page.locator('.gauges').boundingBox(), a = await page.locator('.away').boundingBox();
+      if (a.y < g.y + g.height - 1 && sz.tag !== 'desk') throw new Error('ledger over the gauges');
+      await shot('away-held', '.away');
+      await noOverflow('ledger');
+    });
+    await step('no AudioContext before sound is turned on', async () => {
+      if (await page.evaluate(() => window.__ac)) throw new Error('an AudioContext exists');
+    });
+    await step('tabs: six Industries, "more" cue, selected in view, dividend badges', async () => {
+      const t = await page.evaluate(() => { const r = document.querySelector('.tabs-row'); return { sw: r.scrollWidth, cw: r.clientWidth, more: document.querySelector('.tabs').classList.contains('more-r') }; });
+      if (sz.tag !== 'desk' && t.sw > t.cw && !t.more) throw new Error('row scrolls with no cue');
+      if (!(await page.locator('.tab.has-div').count())) throw new Error('no dividend badge on a tab');
+      await page.evaluate(() => window.rebound.ctx.selectSector('code')); await page.waitForTimeout(500);
+      const vis = await page.evaluate(() => { const b = document.querySelector('.tab.sel').getBoundingClientRect(), r = document.querySelector('.tabs-row').getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; });
+      if (!vis) throw new Error('the selected tab is off the edge');
+      await shot('tabs-code');
+      await page.evaluate(() => window.rebound.ctx.selectSector('steam')); await page.waitForTimeout(500);
+    });
+    await step('reserve row keeps the whole resource name', async () => {
+      await page.evaluate(() => window.rebound.ctx.selectSector('code')); await page.waitForTimeout(400);
+      const clip = await page.evaluate(() => { const e = document.querySelector('.res-lbl'); return e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth; });
+      const txt = await page.locator('.res-lbl').textContent();
+      if (clip || txt !== 'Human attention') throw new Error(`reserve name cut: ${txt}`);
+      await page.evaluate(() => window.rebound.ctx.selectSector('steam')); await page.waitForTimeout(400);
+    });
+    await page.click('.away button:has-text("Carry on")').catch(() => {});
+    await step('sink line on the sparkline', async () => {
+      const pts = await page.locator('.sp-sink').getAttribute('points');
+      if (!pts || pts.split(' ').length < 2) throw new Error('no sink line');
+      if (!(await page.locator('.k-sink:visible').count())) throw new Error('no "the sink" key');
+    });
+    await step('the dividend card: oldest offer, amounts × pace, count; choose one', async () => {
+      await page.locator('.divs').scrollIntoViewIfNeeded();
+      const n0 = (await st()).pendingDividends.length;
+      if (!(await page.locator('.divs:not([hidden]) .dv-opt').count())) throw new Error('no card');
+      const fx = await page.locator('.dv-fx').first().textContent();
+      if (!/96 seconds/.test(fx)) throw new Error(`amount not × pace: ${fx}`);
+      if (!(await page.locator('.dv-n:visible').count())) throw new Error('no count of waiting offers');
+      await shot('dividend', '.divs');
+      await page.locator('.dv-opt').nth(1).click(); await page.waitForTimeout(250);
+      const s = await st();
+      if (s.pendingDividends.length !== n0 - 1) throw new Error('not chosen');
+      if (!s.sectors.steam.dividends.includes('dv.reading')) throw new Error('wrong option recorded');
+    });
+    await step('budget: decade against the drawn wellbeing, lean/full ledger, the sky, Settle', async () => {
+      await page.locator('.budget').scrollIntoViewIfNeeded();
+      if (!(await page.locator('.bud-sub:visible').count())) throw new Error('no decade wellbeing line');
+      if (!(await page.locator('.ledger li.lean').count()) || !(await page.locator('.ledger li.full').count())) throw new Error('ledger does not mark lean and full');
+      if (!(await page.locator('.sky-clear:visible').count())) throw new Error('clear level not marked');
+      await shot('budget', '.budget');
+      await page.click('.bud-settle'); await page.waitForTimeout(250);
+      if (!(await page.locator('.settle-sheet .paper-head:has-text("Steam settles")').count())) throw new Error('no ceremony');
+      await shot('settle-ceremony');
+      await page.click('.settle-sheet button:has-text("Settle Steam")'); await page.waitForTimeout(300);
+      if (!(await st()).sectors.steam.settled) throw new Error('not settled');
+      if (!(await page.locator('.settled-row:visible').count())) throw new Error('no settled row');
+      await shot('settled', '.budget');
+      await page.click('.settled-row button:has-text("Unsettle")'); await page.waitForTimeout(150);
+      const q = await page.locator('.settled-row .confirm-box p').textContent();
+      if (!/dividend stops/.test(q)) throw new Error('unsettle confirm does not name the loss');
+      await page.click('.settled-row button:has-text("Unsettle it")'); await page.waitForTimeout(250);
+      if ((await st()).sectors.steam.settled) throw new Error('not unsettled');
+    });
+    await step('a settled Industry: quiet row with held since', async () => {
+      await page.evaluate(() => window.rebound.ctx.selectSector('light')); await page.waitForTimeout(500);
+      const t = await page.locator('.st-t').textContent();
+      if (!/Held since \d{4}/.test(t)) throw new Error(`no "held since": ${t}`);
+      await shot('settled-light', '.budget');
+      await page.evaluate(() => window.rebound.ctx.selectSector('steam')); await page.waitForTimeout(400);
+    });
+    await step('the Commons: grouped, fund first, build one', async () => {
+      await page.locator('.commons').scrollIntoViewIfNeeded();
+      if (!(await page.locator('.commons:not([hidden]) .cm-gt').count())) throw new Error('no groups');
+      await shot('commons', '.commons');
+      const lv0 = (await st()).commons.levels['cm.park'] ?? 0;
+      await page.locator('.up.cm[data-cm="cm.park"] .buy').click(); await page.waitForTimeout(250);
+      if (((await st()).commons.levels['cm.park'] ?? 0) !== lv0 + 1) throw new Error('not built');
+    });
+    await step('recycle offers the Commons', async () => {
+      if (!(await page.locator('.recycle .seg-b:has-text("To the Commons")').count())) throw new Error('no Commons option');
+    });
+    await step('standing orders: payback, a switch per Industry, Civil Service levers, Treasury list', async () => {
+      await page.locator('.orders').scrollIntoViewIfNeeded();
+      await page.click('.od-market .seg-b:has-text("10 min")'); await page.waitForTimeout(200);
+      if ((await st()).meta.orders.market.paybackMax !== 600) throw new Error('payback not set');
+      if (!/10 minutes/.test(await page.locator('.od-market .od-txt').textContent())) throw new Error('payback not worded');
+      await page.locator('.od-market .chip-t:has-text("Motion")').click(); await page.waitForTimeout(200);
+      if ((await st()).meta.orders.market.sectors.motion !== false) throw new Error('switch did not patch');
+      await page.locator('.od-treasury .chip-t').first().click(); await page.waitForTimeout(200);
+      if ((await st()).meta.orders.treasury.projects.length !== 3) throw new Error('project not added');
+      if (!/Next look at the books/.test(await page.locator('.od-next').textContent())) throw new Error('no next tick line');
+      await shot('orders', '.orders');
+    });
+    await step('purchase moment: card stamped, needles swing', async () => {
+      await page.evaluate(() => { const r = window.rebound; r.ctx.state = { ...r.state, capital: 1e9 }; r.ctx.refreshAll(); });
+      await page.waitForTimeout(400);
+      const card = page.locator('.up.afford:not(.cm)').filter({ hasNot: page.locator('.holdable') }).first();
+      await card.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await card.locator('.buy').click(); await page.waitForTimeout(150);
+      if (await page.locator('.layer:not([hidden]) button:has-text("Take it")').count()) { await page.click('.layer:not([hidden]) button:has-text("Take it")'); await page.waitForTimeout(150); }
+      await page.waitForTimeout(150);
+      const stamped = await page.locator('.stamped').count();
+      if (!stamped) throw new Error('no stamp');
+      await shot('purchase');
+    });
+    await step('settings: sound off until tapped, survey disclosed, closing deletes it', async () => {
+      await page.evaluate(() => localStorage.setItem('rebound.playledger', '{"v":1,"days":{}}'));
+      await page.click('.tb-menu'); await page.waitForTimeout(250);
+      await page.locator('.setting.survey').scrollIntoViewIfNeeded();
+      const txt = await page.locator('.setting.survey p').textContent();
+      if (!/never leaves the device and is not in your save/.test(txt)) throw new Error('disclosure missing');
+      await shot('settings', '.setting.snd');
+      if (await page.evaluate(() => window.__ac)) throw new Error('AudioContext before the tap');
+      await page.click('.setting.snd .tog'); await page.waitForTimeout(300);
+      if (!(await page.evaluate(() => window.__ac))) throw new Error('no AudioContext after the tap');
+      if (!(await page.locator('.snd-more:visible').count())) throw new Error('no volumes');
+      await page.click('.setting.snd .tog'); await page.waitForTimeout(100);
+      await page.click('.setting.survey .tog'); await page.waitForTimeout(150);
+      if (await page.evaluate(() => localStorage.getItem('rebound.playledger'))) throw new Error('survey not deleted');
+      await page.click('.setting.survey .tog'); await page.waitForTimeout(100);
+      await page.keyboard.press('Escape');
+    });
+    await step('run history in the statistics', async () => {
+      await page.click('.tb-menu'); await page.waitForTimeout(200);
+      await page.click('.sheet button:has-text("Statistics")'); await page.waitForTimeout(250);
+      if ((await page.locator('.run-row').count()) < 2) throw new Error('no run history');
+      await page.locator('.run-row').first().evaluate((el) => { el.open = true; el.scrollIntoView({ block: 'center' }); });
+      if (!(await page.locator('.run-row[open] .run-secs li').count())) throw new Error('no per-Industry summary');
+      await shot('runs');
+      await page.keyboard.press('Escape');
+    });
+    await step('rebound past 1,000% reads "well past"', async () => {
+      await go('#mock:rich,reveal,late');
+      const v = await page.locator('.dial-reb .dial-val').textContent();
+      if (v !== '>1,000%') throw new Error(`dial reads ${v}`);
+      await shot('rebound-late');
+    });
+    await step('return ledger, plain', async () => {
+      await go('#mock:m2,away=plain');
+      if (!(await page.locator('.away:not([hidden]) .aw-lines li.awl-broken').count())) throw new Error('no broken line');
+      await shot('away-plain', '.away');
+    });
+    await step('between runs: Charter choice, respec confirm; the run header names the Charter', async () => {
+      await go('#mock:m2,fresh');
+      if (!(await page.locator('.sheet .charters:not([hidden]) .ch-card').count())) throw new Error('no Charter offer');
+      await page.click('.sheet .unlearn'); await page.waitForTimeout(150);
+      const q = await page.locator('.sheet .kh .confirm-box p').first().textContent();
+      if (!/\d+ Hindsight comes back/.test(q)) throw new Error('respec confirm does not state the refund');
+      await shot('respec');
+      const h0 = (await st()).meta.hindsight;
+      await page.click('.sheet .kh button:has-text("Unlearn it")'); await page.waitForTimeout(200);
+      if (!((await st()).meta.hindsight > h0)) throw new Error('no refund');
+      const card = page.locator('.sheet .ch-card').first();
+      await card.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      const name = await card.locator('.ch-n').textContent();
+      await card.click(); await page.waitForTimeout(200);
+      if (!(await st()).meta.charter) throw new Error('not chosen');
+      await shot('charter');
+      await page.click('.sheet button:has-text("Begin the next run")'); await page.waitForTimeout(400);
+      const rl = await page.locator('.runline').textContent();
+      if (!rl.includes(name)) throw new Error(`header does not name the Charter: ${rl}`);
+    });
+    await step('the Reckoning: time-lapse replay and "Save picture"', async () => {
+      await go('#mock:rich,reveal,light');
+      await page.evaluate(async () => {
+        const r = window.rebound;
+        for (let i = 0; i < 60; i++) {
+          let s = r.ctx.state;
+          for (const u of r.model.upgradeViews(s, r.content)) if (u.affordable && !u.def.excludes) s = r.model.buyUpgrade(s, r.content, u.def.id);
+          for (const id of r.content.sectorOrder) for (const a of r.content.sectors[id].applications) { const n = r.model.foundApp(s, r.content, a.id); if (n !== s) s = n; }
+          r.ctx.state = r.model.tick(s, r.content, 10); r.ctx.refreshAll();
+          await new Promise((ok) => setTimeout(ok, 5));
+        }
+        r.ctx.state._forcePending = true; r.ctx.refreshAll();
+      });
+      await page.waitForTimeout(600);
+      await page.click('text=Face the Reckoning'); await page.waitForTimeout(big ? 6000 : 1500);
+      if (!(await page.locator('.lapse .lp-stage .scn, .lapse .lp-stage svg').count())) throw new Error('no replay picture');
+      await shot('timelapse');
+      if (sz.tag === 'phone') {
+        const dl = page.waitForEvent('download', { timeout: 20000 });
+        await page.click('.lapse button:has-text("Save before and after")');
+        const f = await dl;
+        await f.saveAs(`${out}/${T}-card.png`);
+      }
+      await page.locator('.sheet .charters').evaluate((el) => el.scrollIntoView({ block: 'center' })).catch(() => {});
+      await shot('summary-charter');
+      await noOverflow('summary');
+    });
+    const o = await overflow(page);
+    if (o.sw > o.cw) fail(`OVERFLOW ${T}`);
+    if (errs.length) fail(`console ${T}: ${errs.slice(0, 4).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
 if (mode === 'scenes' || mode === 'all') await scenes();
 if (mode === 'flow' || mode === 'all') await flow(mock);
 if (mode === 'checks' || mode === 'all') await checks();
@@ -994,6 +1248,7 @@ if (mode === 'real') await real();
 if (mode === 'realplay') await realplay();
 if (mode === 'looks') await looks();
 if (mode === 'first') await first();
+if (mode === 'm2') await m2();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

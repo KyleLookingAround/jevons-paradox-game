@@ -15,6 +15,8 @@ import { installKeys } from './keys';
 import type { BackupInfo } from './sheets';
 import { prof, timed } from './prof';
 import { createEventFeed } from './events';
+import { startPlayLedger, type PlayLedger } from './playledger';
+import { initSound } from './sound';
 
 const SAVE_KEY = 'rebound.save.v1';          // kept from v1: deserialize migrates
 const AT_KEY = 'rebound.save.v1.at';
@@ -254,9 +256,17 @@ function boot(o: GameOpts): void {
     if (!persist || !state) return;
     const txt = guard('serialize', () => model.serialize(state!));
     if (txt != null) { lsSet(saveKey, txt); lsSet(atKey, String(Date.now())); }
+    ui?.saveLocal();
   }
 
+  // Sound exists only if the player turned it on in an earlier visit (and then waits for a tap); otherwise nothing.
+  initSound();
+  let ledger: PlayLedger | null = null;
   ui = mountUI(document.getElementById('app')!, ctx, {
+    survey: {
+      close: () => ledger?.close(),
+      open: () => ledger?.open(),
+    },
     exportText: () => guard('serialize', () => model.serialize(state!)) ?? '',
     importText(t: string) {
       const s = guard('deserialize', () => model.deserialize(t.trim(), content));
@@ -307,6 +317,9 @@ function boot(o: GameOpts): void {
     return b ? { at: b.at, reckonings: b.reckonings, year: b.year } : null;
   }
 
+  // The household survey (playledger.ts): local only, disclosed in the settings, off with one switch. The mock without
+  // `persist` keeps nothing, as it keeps no save.
+  ledger = startPlayLedger(ctx, persist);
   mark('rebound-mounted');
   installKeys(ctx, ui);
   void installManifest();
@@ -335,6 +348,9 @@ function boot(o: GameOpts): void {
   mark('rebound-ready');
   viewsAfterPaint();
   if (unread != null) ui.unreadSave(unread);
+  // A save made between runs (after a Reckoning, before the next run began) reopens between runs: the shop and the
+  // Charter choice, with "Begin the next run", and no clock until then.
+  else if (d.freshRun && (state.meta?.reckonings ?? 0) >= 1) ui.openShopBetweenRuns();
   // A save made between runs (the shop was open) stays fresh: no catch-up until the next run begins.
   if (away > 0 && !d.freshRun) catchUp(away, true);
 

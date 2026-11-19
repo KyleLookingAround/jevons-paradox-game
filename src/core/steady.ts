@@ -39,11 +39,18 @@ export interface SectorSteady {
   floor: number;
   choices: [string, string][];
 }
-const sectorSteadyCache = new WeakMap<Content, Map<SectorId, SectorSteady>>();
+const sectorSteadyCache = new WeakMap<Content, Record<SectorId, SectorSteady>>();
+let lastContent: Content | null = null;
+let lastMap: Record<SectorId, SectorSteady> | null = null;
 export function sectorSteady(content: Content, s: SectorId): SectorSteady {
-  let m = sectorSteadyCache.get(content);
-  if (!m) { m = new Map(); sectorSteadyCache.set(content, m); }
-  const hit = m.get(s);
+  let m: Record<SectorId, SectorSteady> | undefined;
+  if (content === lastContent) m = lastMap!;
+  else {
+    m = sectorSteadyCache.get(content);
+    if (!m) { m = Object.create(null) as Record<SectorId, SectorSteady>; sectorSteadyCache.set(content, m); }
+    lastContent = content; lastMap = m;
+  }
+  const hit = m[s];
   if (hit) return hit;
   const g = content.global?.steady;
   const o = content.sectors[s]?.steady;
@@ -65,7 +72,7 @@ export function sectorSteady(content: Content, s: SectorId): SectorSteady {
     floor: clamp(fin(o?.budgetFloor ?? g?.budgetFloor ?? 0), 0, 1),
     choices,
   };
-  m.set(s, r);
+  m[s] = r;
   return r;
 }
 export const pacesOf = (content: Content, s: SectorId): PaceDef[] => sectorSteady(content, s).paces;
@@ -81,11 +88,13 @@ export function paceOf(content: Content, s: SectorId, id: string | undefined): P
 /* ------------------------------------------------------------------ */
 
 /** M1 balance: the line declines until held (Steady State reached on it), never below floor × r0. M2: d = the pace's. */
-export function budgetROf(es: SectorState | undefined, def: SectorDef, content: Content, time: number): number | null {
+export function budgetROf(es: SectorState | undefined, def: SectorDef, content: Content, time: number, st0?: SectorSteady): number | null {
   const b = es?.budget;
   if (!b) return null;
-  const st = sectorSteady(content, def.id);
-  const d = paceOf(content, def.id, b.pace).declinePerDecade;
+  const st = st0 ?? sectorSteady(content, def.id);
+  let pace = st.paces[0];
+  for (const p of st.paces) if (p.id === b.pace) { pace = p; break; }
+  const d = pace.declinePerDecade;
   const until = b.heldAt !== undefined && Number.isFinite(b.heldAt) ? Math.min(time, b.heldAt) : time;
   return fin(Math.max(st.floor * b.r0, b.r0 * Math.pow(Math.max(0, 1 - d), ((until - b.since) * YEARS_PER_SECOND) / 10)));
 }
@@ -103,19 +112,20 @@ export function newBudget(content: Content, s: SectorId, R: number, time: number
 /* ------------------------------------------------------------------ */
 
 /** The wellbeing decades are judged against now: target without a budget or in 'target' mode; else min(target, w0 × (1 − slack)). */
-export function decadeWellbeingOf(es: SectorState | undefined, content: Content, s: SectorId): number {
+export function decadeWellbeingOf(es: SectorState | undefined, content: Content, s: SectorId, st0?: SectorSteady): number {
   const target = content.global.wellbeingTarget;
   const b = es?.budget;
-  const st = sectorSteady(content, s);
+  if (!b) return target;
+  const st = st0 ?? sectorSteady(content, s);
   if (!b || st.mode === 'target' || !(b.w0 >= 0)) return target;
   return Math.min(target, b.w0 * (1 - st.slack));
 }
 
 /** clearP = clamp(clearBelow × p0, clearFloor × collapseAt, clearCeiling × collapseAt) (the lower bound wins), or null. */
-export function clearPOf(es: SectorState | undefined, def: SectorDef, content: Content): number | null {
+export function clearPOf(es: SectorState | undefined, def: SectorDef, content: Content, st0?: SectorSteady): number | null {
   const b = es?.budget;
   if (!b) return null;
-  const st = sectorSteady(content, def.id);
+  const st = st0 ?? sectorSteady(content, def.id);
   const lo = st.clearFloor * def.collapseAt, hi = st.clearCeiling * def.collapseAt;
   const v = st.clearBelow * Math.max(0, fin(b.p0));
   return Math.max(lo, Math.min(hi, v));
@@ -127,15 +137,15 @@ export function pressureNet(pressureIn: number, deletionOut: number, absorption:
 }
 
 /** Clear skies (unsettled sectors): a budget, P ≤ clearP and the net rate not rising (within the tolerance). */
-export function isClear(es: SectorState, def: SectorDef, content: Content, pressureIn: number, deletionOut: number, absorption: number): boolean {
-  const cp = clearPOf(es, def, content);
+export function isClear(es: SectorState, def: SectorDef, content: Content, pressureIn: number, deletionOut: number, absorption: number, clearP?: number | null): boolean {
+  const cp = clearP !== undefined ? clearP : clearPOf(es, def, content);
   if (cp === null) return false;
   return es.pressure <= cp && pressureNet(pressureIn, deletionOut, absorption, es.pressure) <= CLEAR_RATE_TOLERANCE * def.collapseAt;
 }
 
 /** The sink line: (clearP × absorption + deletionOut) × R / pressureIn; null without a budget, absorption ≤ 0, no inflow or R ≤ 0. */
-export function sinkROf(es: SectorState, def: SectorDef, content: Content, R: number, pressureIn: number, deletionOut: number, absorption: number): number | null {
-  const cp = clearPOf(es, def, content);
+export function sinkROf(es: SectorState, def: SectorDef, content: Content, R: number, pressureIn: number, deletionOut: number, absorption: number, clearP?: number | null): number | null {
+  const cp = clearP !== undefined ? clearP : clearPOf(es, def, content);
   if (cp === null || !(absorption > 0) || !(pressureIn > 0) || !(R > 0)) return null;
   return fin((cp * absorption + deletionOut) * R / pressureIn);
 }

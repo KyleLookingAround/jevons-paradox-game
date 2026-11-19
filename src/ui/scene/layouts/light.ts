@@ -2,13 +2,18 @@
 // a tram street across the middle, a high street of shops in front, a canal on the right, gasholders far off whose
 // bells sink as the gas runs down, and stars that go out as the light comes on.
 import type { Layout, Slot } from '../layout';
-import { scatter, weave } from '../layout';
+import { scatter, weave, row } from '../layout';
 import { P, R, C, L, f, ridge, rng, hash } from '../svg';
 import { bprop, waterLines } from './util';
 import { gasholder } from '../props/gaslight';
 import { poplar, church } from '../props/common';
 import { COUNTRY, hills, sea, viaductArches, millShells, built } from '../geography';
 
+/** The streets that climb from the tram street up the hill: the gas mains run under them and the town builds along
+ *  them, from the bottom up (bottom x, y → top x, y). */
+const STREETS: [number, number, number, number][] = [[128, 292, 66, 214], [300, 292, 326, 210], [474, 292, 540, 214]];
+const along = (p: string | string[], side: number, n: number, seed: string, k = 1.15) =>
+  STREETS.map(([x0, y0, x1, y1], i) => row(p, x0 + side, y0 - 10, x1 + side * 0.7, y1 + 4, n, `${seed}${i}`, 0, { k }));
 const SHOPS = Array.from({ length: 9 }, (_, i) => 26 + i * 38);
 const POSTS = Array.from({ length: 13 }, (_, i) => i * 50);
 
@@ -61,7 +66,10 @@ export const light: Layout = {
       P(shells.body, 'heri') + P(shells.windows, 'heriw') +
       bprop(church, 410, 190, 0.8, 0.5, c) + bprop(poplar, 380, 192, 0.6, 0.3, c) +
       bprop(gasholder, 500, 204, 0.9, 0.3, c) + bprop(gasholder, 548, 205, 0.8, 0.8, c) + bprop(gasholder, 586, 206, 0.6, 0.5, c);
-    const mid = P(ridge([[0, 204], [150, 198], [300, 206], [450, 200], [600, 206]], 400), 'b sil1') + P('M0 292H600V300H0Z', 'gd');
+    const mid = P(ridge([[0, 204], [150, 198], [300, 206], [450, 200], [600, 206]], 400), 'b sil1') + P('M0 292H600V300H0Z', 'gd') +
+      // The streets up the hill, and the gas mains under them: the lit skeleton the town grows along.
+      P(STREETS.map(([x0, y0, x1, y1]) => `M${x0 - 5} ${y0}L${x1 - 2} ${y1}M${x0 + 5} ${y0}L${x1 + 2} ${y1}`).join(''), 'k k2', 'opacity=".5"') +
+      P(STREETS.map(([x0, y0, x1, y1]) => `M${x0} ${y0}L${x1} ${y1}`).join('') + 'M0 289H600', 'main');
     let shops = '';
     for (const x of SHOPS) {
       const h = 34 + ((x * 7) % 13);
@@ -80,7 +88,12 @@ export const light: Layout = {
   },
 
   plots: [
-    { key: 'town', driver: 'population', slots: scatter('terrace', [6, 206, 588, 74], 24, 'light-town', { from: [300, 238], gap: [44, 9], k: 1.2 }) },
+    {
+      // Terraces line the three streets from the tram street up (infill), then spread across the hill (sprawl).
+      key: 'town', driver: 'population', curve: 0.7,
+      slots: [...weave(...along('terrace', -24, 4, 'lt-l'), ...along('terrace', 24, 4, 'lt-r')),
+        ...scatter('terrace', [6, 206, 588, 30], 8, 'light-town', { from: [300, 220], gap: [46, 9], k: 1.05 })],
+    },
     { key: 'homes', match: ['house'], overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 196, 210, 76], site: [440, 252, 70, 8] },
     {
       key: 'night', match: ['factory-night'],
@@ -113,7 +126,8 @@ export const light: Layout = {
       slots: weave(
         POSTS.map((x): Slot => ({ p: 'lampGlow', x, y: 360, s: 1, band: 'near' })).sort((p, q) => Math.abs(p.x - 300) - Math.abs(q.x - 300)),
         Array.from({ length: 15 }, (_, i): Slot => ({ p: 'farLamp', x: 20 + i * 40, y: 292, s: 0.8, band: 'mid' })).sort((p, q) => Math.abs(p.x - 300) - Math.abs(q.x - 300)),
-        scatter('farLamp', [10, 200, 580, 50], 14, 'light-farlamps', { gap: [30, 6], k: 0.8 }),
+        // The gas mains climbing the streets: lamps light from the tram street upwards.
+        ...along('farLamp', 0, 5, 'light-mains', 0.8),
       ),
       hit: [360, 298, 240, 74],
       site: [450, 352, 70, 8],
@@ -131,6 +145,10 @@ export const light: Layout = {
     greenSpending: { p: 'park', x: 410, y: 316, s: 0.9 },
   },
   restraintSpare: [{ p: 'notice', x: 520, y: 316 }, { p: 'notice', x: 380, y: 316 }],
+  // The Commons on the tram street, where the town meets: the free library and the clock either side of Church Street,
+  // allotments on the hill, bunting across the high street; a Charter's gasholder by the canal.
+  commons: [{ p: '', x: 212, y: 288, band: 'mid' }, { p: '', x: 392, y: 288, band: 'mid' }, { p: '', x: 236, y: 232 }, { p: '', x: 190, y: 334, band: 'near' }],
+  landmark: { p: '', x: 452, y: 286, band: 'mid' },
 };
 
 import { moon as GAS_MOON } from '../props/gaslight';

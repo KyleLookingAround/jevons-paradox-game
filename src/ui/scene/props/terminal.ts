@@ -36,6 +36,15 @@ export const link: Prop = (a, o) => {
   return P(d, 'k lnk');
 };
 
+/** A power feed drawn as a CAD trace: from a substation down, across and up into a hall, w,h = offset to the hall;
+ *  current runs along it as packets do along a link. */
+export const cable: Prop = (a, o) => {
+  const dx = a.w || 60, dy = a.h || 0, mid = Math.max(dy, 0) + 6;
+  const d = `M0 0V${f(mid)}H${f(dx)}V${f(dy)}`;
+  o.fx('flow', 0, 0, 1, `<path d="${d}"/>`);
+  return P(d, 'k feed') + P(`M-1.4 -1.4h2.8v2.8h-2.8zM${f(dx - 1.4)} ${f(dy - 1.4)}h2.8v2.8h-2.8z`, 'k');
+};
+
 /** A data hall. The racks inside change with each stage; LEDs blink. */
 export const hall: Prop = (a, o) => {
   const st = a.stage, w = 56 + st * 8, h = 14 + st * 2;
@@ -90,7 +99,7 @@ export const solar: Prop = () => {
 };
 
 export const TERMINAL: Record<string, Prop> = {
-  office, exchange, link, hall, homeScreen, storage, campus, cooling, substation, pylon, solar,
+  office, exchange, link, cable, hall, homeScreen, storage, campus, cooling, substation, pylon, solar,
   officeL: tagged(office, 'SHEETS.01', -78), exchangeL: tagged(exchange, 'EXCH-A', -40), storageL: tagged(storage, 'COLD STORE', -26),
   hallL: tagged(hall, 'STREAM-HALL', -26), campusL: tagged(campus, 'TRAIN/CLUSTER', -30),
 };

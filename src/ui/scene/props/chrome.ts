@@ -58,6 +58,14 @@ export const suburb: Prop = (a) => {
   return s;
 };
 
+/** A stretch of road from the origin to (w, h): tarmac, white edges, a centre dash; width tapers with distance. */
+export const road: Prop = (a) => {
+  const dx = a.w || 60, dy = a.h || 0, len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * 3.4, ny = (dx / len) * 1.6 + 0.01;
+  const d = `M${f(nx)} ${f(ny)}L${f(dx + nx * 0.8)} ${f(dy + ny * 0.8)}L${f(dx - nx * 0.8)} ${f(dy - ny * 0.8)}L${f(-nx)} ${f(-ny)}Z`;
+  return P(d, 'road') + P(`M0 0L${f(dx)} ${f(dy)}`, 'dash');
+};
+
 /** A modern slab block (the town grows upward). */
 export const slab: Prop = (a) => {
   const w = 12 + a.v * 10, h = 20 + a.v * 34;
@@ -158,6 +166,6 @@ export const cloudPuff: Prop = (a) => {
 };
 
 export const CHROME: Record<string, Prop> = {
-  contrail, car, van, lorry, depot, lanes, motorway, suburb, slab, mall, carpark, airport, plane, derrick, tanks, petrol, gantry, cycle,
+  contrail, road, car, van, lorry, depot, lanes, motorway, suburb, slab, mall, carpark, airport, plane, derrick, tanks, petrol, gantry, cycle,
   scrapyard, tree, turbines, cloudPuff,
 };

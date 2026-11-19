@@ -82,7 +82,7 @@ export function setLeverRecycle(state: GameState, content: Content, leverId: str
   if (!def || !recycleOptions(def).includes(option)) return state;
   if (option === 'commons' && !commonsOpen(state, content)) return state;
   const cur = state.levers[leverId] ?? { level: 0, ref: 0 };
-  if (recycleOf(def, cur) === option) return state;
+  if (recycleOf(def, cur) === option || computeFlows(state, content).pending) return state;
   return { ...state, levers: { ...state.levers, [leverId]: { ...cur, recycle: option } } };
 }
 

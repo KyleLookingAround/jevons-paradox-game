@@ -2,13 +2,13 @@
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd, lookFor, openSectors, ageOfSector } from './ctx';
 import type { GameEvent, SectorDef, SectorId } from '../types';
-import { h, setText, setAttr, show, cls, reducedMotion, motionOverride } from './dom';
-import { fmt, money, fmtPrice, pct, num, clamp, lower, perUnit } from './fmt';
+import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
+import { fmt, money, fmtPrice, pct, num, clamp, lower, unitOne } from './fmt';
 import { infoBtn } from './gauges';
 import { createScene, sceneViewFrom, type SceneView } from './scene';
 import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
-import { soundUpdate, soundSector, sound } from './sound';
+import { soundUpdate, soundSector, sound, soundUnlock, panOf } from './sound';
 
 /* ------------------------------------------------------------------ */
 /* Broadsheet                                                          */
@@ -67,9 +67,7 @@ export function buildNews(ctx: Ctx): Comp & { backfire(): void } {
       lastKey = k;
       setText(yr, top ? String(Math.floor(num(top.year, 1780))) : '');
       setText(txt, top ? top.text : 'Nothing in the papers yet.');
-      if (fresh && !reducedMotion()) {
-        txt.classList.remove('fresh'); void txt.offsetWidth; txt.classList.add('fresh');
-      }
+      if (fresh && !reducedMotion()) replay(txt, 'fresh', 1200);
       if (fresh) sound('headline', { sector: top?.sector });
     }
     if (open && listKey !== ctx.sector + k + news.length) {
@@ -207,6 +205,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
   // Events not yet handed to the scene (cleared each time a view is built), and the moments they make on the frame.
   let sceneEvents: GameEvent[] = [];
   let lastView: SceneView | null = null;
+  let deferred: SceneView | null = null, deferTimer = 0;
   const visited = new Set<SectorId>();
   let ageKey: string | null = null;
   let sector = '';
@@ -239,8 +238,18 @@ export function buildWorld(ctx: Ctx): WorldComp {
       const evs = sceneEvents;
       sceneEvents = [];
       const view = timed('scene.view', () => viewFrom(ctx.content, ctx.state, ctx.d, def.id, evs));
+      // A new machine stage rebuilds the picture (the heaviest single thing the scene does, 75–150 ms at 4× CPU): it
+      // waits for the frame after the tap, so the purchase itself paints first (the stamp, the needles, the figures).
+      const rebuild = !!lastView && lastView.sectorId === view.sectorId && lastView.stage !== view.stage;
       lastView = view;
-      timed('scene.update', () => renderer.update(view));
+      if (rebuild || deferred) {
+        deferred = view;
+        if (!deferTimer) deferTimer = requestAnimationFrame(() => setTimeout(() => {
+          deferTimer = 0;
+          const v = deferred; deferred = null;
+          if (v) timed('scene.update', () => renderer.update(v));
+        }, 0));
+      } else timed('scene.update', () => renderer.update(view));
       soundUpdate(view);
     } else if (!arming) {
       arming = true;
@@ -258,8 +267,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
     const e = sd(ctx);
     setText(title, `Uses of ${lower(def.service.name)}`);
     // The sell button names the service; this line is the price alone, so it fits one line in every look.
-    setText(price, e ? `Sells at £${fmtPrice(e.servicePrice)} per ${perUnit(def.service.unit)}` : '');
-    setAttr(price, 'title', e ? `${def.service.name} sells at £${fmtPrice(e.servicePrice)} per ${perUnit(def.service.unit)}` : null);
+    setText(price, e ? `Sells at £${fmtPrice(e.servicePrice)} per ${unitOne(def.service)}` : '');
+    setAttr(price, 'title', e ? `${def.service.name} sells at £${fmtPrice(e.servicePrice)} per ${unitOne(def.service)}` : null);
     const pf = clamp(num(e?.pressureFraction), 0, 1.2);
     // The caption under the picture says the weather in words; this line carries the figure.
     setText(sky, `${def.pressure.name} ${pf >= 0.005 ? pct(pf, false) : 'nil'}`);
@@ -291,8 +300,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
    * back to it, so the moment is not missed.
    */
   function moment(kind: 'stage' | 'crisis' | 'lever' | 'found' | 'backfire', note?: string, action?: string): void {
-    frame.classList.remove('m-stage', 'm-crisis', 'm-lever', 'm-found', 'm-backfire'); void frame.offsetWidth; frame.classList.add('m-' + kind);
-    setTimeout(() => frame.classList.remove('m-' + kind), 2400);
+    frame.classList.remove('m-stage', 'm-crisis', 'm-lever', 'm-found', 'm-backfire');
+    replay(frame, 'm-' + kind, 2400);
     document.dispatchEvent(new CustomEvent('rebound:moment', { detail: kind }));
     if (note && action && !inView()) ctx.toast(`${note}.`, { label: action, run: () => showPlace(null) });
   }
@@ -365,13 +374,16 @@ export function buildDock(ctx: Ctx): Comp {
   const pool: HTMLElement[] = [];
   for (let i = 0; i < 5; i++) { const p = h('span', { class: 'pop num' }); pool.push(p); pops.append(p); }
   let pi = 0;
-  const btn = h('button', { class: 'sell', type: 'button', onclick: () => {
+  const btn = h('button', { class: 'sell', type: 'button', onclick: (ev: Event) => {
     const v = num(ctx.d?.clickValue);
-    if (ctx.act('click', (m, s, c) => m.click(s, c)) && !reducedMotion()) {
+    soundUnlock();
+    const ok = ctx.act('click', (m, s, c) => m.click(s, c));
+    if (ok) sound('sell', { pan: panOf(ev), sector: ctx.sector });
+    if (ok && !reducedMotion()) {
       const p = pool[pi++ % pool.length];
       p.textContent = '+' + money(v);
       p.style.setProperty('--dx', ((pi * 37) % 60 - 30) + 'px');
-      p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
+      replay(p, 'go', 1000);
     }
   } }, h('span', { class: 'sell-txt' }, lbl, val), pops);
   const el = h('div', { class: 'dock' }, btn);

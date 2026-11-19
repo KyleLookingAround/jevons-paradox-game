@@ -251,7 +251,10 @@ describe('Reckoning', () => {
     const d = model.derive(s, C);
     expect(d.pendingReckoning).toEqual({ cause: 'exhausted', sector: 'steam' });
     expect(model.tick(s, C, 1)).toBe(s);
-    expect(model.fastForward(s, C, 100)).toBe(s);
+    // M2: fastForward from a pending state simulates nothing and says so
+    const ff = model.fastForward(s, C, 100);
+    expect(ff.time).toBe(s.time);
+    expect(ff.lastOffline?.heldBy).toBe('pending');
     expect(model.click(s, C)).toBe(s);
     expect(d.hindsightIfReckonNow).toBeGreaterThan(0);
     const r = model.reckon(s, C);
@@ -522,7 +525,7 @@ describe('persistence', () => {
     expect(badNumbers(run(back, 30))).toEqual([]);
   });
   test('garbage → null', () => {
-    for (const t of ['', 'nope', '{}', '[]', 'null', '{"time":"x","eras":{}}', '{"time":1}', '{"time":1,"version":2}', '{"time":1,"version":3,"sectors":{}}']) expect(model.deserialize(t, C)).toBeNull();
+    for (const t of ['', 'nope', '{}', '[]', 'null', '{"time":"x","eras":{}}', '{"time":1}', '{"time":1,"version":2}', '{"time":1,"version":4,"sectors":{}}']) expect(model.deserialize(t, C)).toBeNull();
   });
 });
 
@@ -618,7 +621,7 @@ describe('robustness', () => {
     const a = model.tick(s, C, 10);
     expect(a.time).toBeCloseTo(10, 9);
     const f = model.fastForward(s, C, 1e9);
-    expect(f.time).toBeLessThanOrEqual(C.global.offlineCapSeconds + 1e-6);
+    expect(f.time).toBeLessThanOrEqual((C.global.offlineCapSeconds ?? 14400) + 1e-6);
     expect(badNumbers(f)).toEqual([]);
   });
   test('large dt: tick advances at most MAX_TICK_SECONDS and returns promptly', () => {
@@ -740,7 +743,7 @@ describe('decoupling', () => {
     expect(s.run.decoupledYears).toBeGreaterThan(0);
     expect(s.sectors.steam.steadyYears).toBeCloseTo(1, 6);
     // fifty years of it: per-sector Steady State
-    const near = patchSector(s, 'steam', { steadyYears: 49.99 });
+    const near = patchSector(s, 'steam', { steadyYears: 49.99, clearYears: 49.99 }); // M2: the Steady streak is clearYears
     const t = model.tick(near, C2, 1);
     expect(t.meta.steadySectors.steam).toBe(true);
     expect(t.run.steadySectors.steam).toBe(true);

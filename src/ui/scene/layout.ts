@@ -153,6 +153,10 @@ export interface Layout {
   depth?: [number, number, number, number]; // [yFar, sFar, yNear, sNear]
   /** Optional: what the reserve looks like here, for the text alternative ("one warm window left"). */
   reserveWords?(reserveFraction: number): string;
+  /** M2: civic sites for the Commons, in the order projects take them (default: every third house of the town). */
+  commons?: Slot[];
+  /** M2: where a Charter's landmark stands (default: the last civic site). */
+  landmark?: Slot;
   /** Birds / clear-sky movers for Steady State (optional). */
   steadyMovers?: MoverDef[];
 }

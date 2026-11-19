@@ -38,8 +38,10 @@ export const halftone = (a: { u(id: string): string }, x: number, y: number, r: 
   C(x, y, r, 'gl', `fill="${a.u('ht3')}"`) + C(x, y, r * 0.64, 'gl', `fill="${a.u('ht2')}"`) + C(x, y, r * 0.36, 'gl', `fill="${a.u('ht1')}"`);
 export const lampGlow: Prop = (a) => {
   const r = 9 + a.stage * 3.5;
-  return E(0, 0, 14 + a.stage * 4, 3.2, 'gl', `fill="${a.u('ht3')}"`) + E(0, 0, 7 + a.stage * 2, 1.8, 'gl', `fill="${a.u('ht1')}"`) + halftone(a, 0, -27, r) +
-    P('M-2.2 -24.6L-2.9 -29.4H2.9L2.2 -24.6Z', 'lit');
+  const pool = E(0, 0, 14 + a.stage * 4, 3.2, 'gl', `fill="${a.u('ht3')}"`) + E(0, 0, 7 + a.stage * 2, 1.8, 'gl', `fill="${a.u('ht1')}"`);
+  // Stage 3, the fluorescent tube: a swan-neck bracket and a long lit tube instead of the lantern.
+  if (a.stage >= 3) return pool + halftone(a, 4, -29, r * 0.9) + P('M0 -24Q0 -31 6 -31', 'k post') + R(-1, -30.4, 11, 1.8, 'lit') + R(-1.4, -31, 11.8, 0.7, 'b');
+  return pool + halftone(a, 0, -27, r) + P('M-2.2 -24.6L-2.9 -29.4H2.9L2.2 -24.6Z', 'lit');
 };
 
 /** A far street lamp: a speck of light. */
@@ -53,17 +55,27 @@ export const tramLine: Prop = (a) => {
   return P(d, 'k post') + P(`M0 -26.5H${f(w)}`, 'k k2') + P(`M0 0.6H${f(w)}M0 2H${f(w)}`, 'k k2');
 };
 
-/** An electric tram, single-deck at first, double-deck later; windows lit; a spark at the trolley. */
+/** An electric tramcar in the corporation's crimson and cream: platforms at both ends, dash panels, a trolley pole to
+ *  the wire with a spark at the head; single-deck at first, double-deck with a staircase from stage 2, top-covered at
+ *  stage 3. Windows lit warm behind dark mullions; the light falls as a pool on the setts, not as a box. */
 export const tram: Prop = (a, o) => {
-  const dbl = a.stage >= 2;
-  const h = dbl ? 20 : 12, w = 34;
-  o.fx('blink', 6, -26.5, 1, C(0, 0, 2.2, 'lit') + C(0, 0, 5, 'gl', `fill="${a.u('glow')}"`));
-  let win = '';
-  for (let i = 0; i < 6; i++) win += `M${f(-w / 2 + 3 + i * 5)} ${-h + 3}h3.4v4h-3.4z`;
-  if (dbl) for (let i = 0; i < 6; i++) win += `M${f(-w / 2 + 3 + i * 5)} ${-h + 11}h3.4v4h-3.4z`;
-  return R(-w / 2 - 4, -h - 6, w + 8, h + 10, 'gl', `fill="${a.u('ht3')}" opacity=".8"`) +
-    R(-w / 2, -h, w, h - 2, 'b') + R(-w / 2 - 1, -h - 1.5, w + 2, 2, 'rf') + P(win, 'lit') +
-    C(-w / 2 + 6, -1.5, 2, 'd') + C(w / 2 - 6, -1.5, 2, 'd') + L(-4, -h - 1, 6, -26.5, 'k');
+  const dbl = a.stage >= 2, top = a.stage >= 3;
+  const w = 28, lo = 7.5, h = dbl ? 13 : 8.5;
+  o.fx('blink', 7, -26.5, 1, C(0, 0, 1.6, 'lit') + C(0, 0, 4, 'gl', `fill="${a.u('glow')}"`));
+  // Lower saloon: dark body, lit windows with mullions, cream rocker panel, crimson dash panels at the platforms.
+  let s = E(0, 1.2, 22, 2.4, 'gl', `fill="${a.u('ht3')}" opacity=".7"`);
+  s += R(-w / 2 + 3, -lo - 1, w - 6, lo - 1, 'b') + R(-w / 2 + 4, -lo + 0.2, w - 8, 3.6, 'lit') + P(`M${f(-w / 2 + 8)} ${f(-lo)}v3.8M${f(-w / 2 + 12.5)} ${f(-lo)}v3.8M${f(-w / 2 + 17)} ${f(-lo)}v3.8M${f(-w / 2 + 21)} ${f(-lo)}v3.8`, 'k k2');
+  s += R(-w / 2 + 3, -3, w - 6, 2.2, 'tcream') + P(`M${f(-w / 2)} -1L${f(-w / 2 + 0.6)} -5.5H${f(-w / 2 + 3)}V-1ZM${f(w / 2)} -1L${f(w / 2 - 0.6)} -5.5H${f(w / 2 - 3)}V-1Z`, 'tlive');
+  s += R(-w / 2 + 0.5, -lo - 2, w - 1, 1.4, 'rf');
+  if (dbl) {
+    s += R(-w / 2 + 1, -h + 1.6, w - 2, 3.6, 'tlive') + P(`M${f(-w / 2 + 1)} ${f(-h + 1.6)}h${f(w - 2)}`, 'k');
+    if (top) s += R(-w / 2 + 2, -h - 2.4, w - 4, 4, 'b') + R(-w / 2 + 3, -h - 1.8, w - 6, 2.6, 'lit') + P(`M${f(-w / 2 + 9)} ${f(-h - 1.8)}v2.6M${f(-w / 2 + 15)} ${f(-h - 1.8)}v2.6M${f(-w / 2 + 21)} ${f(-h - 1.8)}v2.6`, 'k k2') + R(-w / 2 + 1.5, -h - 3, w - 3, 1, 'rf');
+    else s += P(`M${f(-w / 2 + 1)} ${f(-h + 0.6)}h${f(w - 2)}`, 'k k2') + P(`M${f(-w / 2 + 6)} ${f(-h + 0.6)}v-2M${f(-w / 2 + 12)} ${f(-h + 0.6)}v-2M${f(-w / 2 + 18)} ${f(-h + 0.6)}v-2`, 'k k2');
+    s += P(`M${f(w / 2 - 3)} -2Q${f(w / 2 + 0.5)} ${f(-h / 2)} ${f(w / 2 - 2)} ${f(-h + 1.6)}`, 'k');
+  }
+  const pole = dbl ? -h - (top ? 3 : 0.6) : -lo - 2;
+  s += L(-2, pole, 7, -26.5, 'k') + C(-w / 2 + 6, -0.6, 1.6, 'd') + C(w / 2 - 6, -0.6, 1.6, 'd') + C(0, -0.6, 1.6, 'd');
+  return s;
 };
 
 /** A shop sign over a lit shop window: bracket lantern → lettered fascia → electric sign with bulbs. */
@@ -97,6 +109,7 @@ export const gasholder: Prop = (a) => {
     P(cols + `M${f(-w / 2)} ${-h - 4}H${f(w / 2)}M${f(-w / 2)} ${-h / 2}H${f(w / 2)}`, 'k post');
 };
 
+/** Cream panel and crimson livery (style tokens; gaslight defines them, others fall back). */
 const FASCIA = ['TEAS', 'HATS', 'ALES', 'DRAPER', 'CHEMIST', 'OYSTERS', 'TOBACCO', 'BOOKS', 'LAMPS', 'BAKER', 'GLOVES'];
 
 export const moon: Prop = () => P('M0 -10A10 10 0 1 0 7 7A8 8 0 1 1 0 -10Z', 'moon');

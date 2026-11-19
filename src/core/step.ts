@@ -72,7 +72,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let allSink = W >= target;
   let levers = state.levers;
   const sectors = { ...state.sectors };
-  const tmp = { ...state, time };
+  const tmp = state; // headlines read the seed, the news count and the open sectors, not the time (passed apart)
 
   for (const s of ix.ids) {
     const es0 = state.sectors[s];
@@ -89,7 +89,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
     const def = content.sectors[s];
     const lev = levs[s] ?? NO_LEVERS;
-    const sv = steadyView(state, content, fl, s);
+    const sv = steadyView(state, content, fl, s, mods, false);
     let es: SectorState = { ...es0 };
     es.openFor = es0.openFor + dt;
     es.eta = etaAt(def, mods, es.openFor);

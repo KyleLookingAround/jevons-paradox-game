@@ -128,7 +128,8 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
   const commons: SceneCommons[] = [];
   const levels = (state as { commons?: { levels?: Record<string, number> } } | undefined)?.commons?.levels ?? {};
   for (const c of Array.isArray((content as { commons?: unknown[] })?.commons) ? (content as { commons: { id: string; icon?: string; name?: string; sector?: string }[] }).commons : []) {
-    if (!c || c.sector !== sectorId) continue;
+    // This Industry's projects, and the general ones (no sector: drawn modestly in whichever town is on screen).
+    if (!c || (c.sector && c.sector !== sectorId)) continue;
     const lv = n(levels[c.id]);
     if (lv >= 1) commons.push({ id: String(c.id), icon: String(c.icon ?? ''), level: Math.floor(lv), name: String(c.name ?? c.id) });
   }
@@ -179,4 +180,23 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
     landmark,
     events: sceneEvents(events, sectorId),
   };
+}
+
+/**
+ * A SceneView trimmed for recording (the time-lapse at each Reckoning, replay, a saved picture): everything the
+ * picture draws, nothing the card or the text alternative alone needs (blurbs, demand, costs, events), numbers
+ * rounded to what the picture can show. Still a valid SceneView. About 1.7 KB of JSON (2.2 KB uncompacted) for Steam's six-application
+ * Industry (see adapter.test.ts).
+ */
+export function compactView(v: SceneView): SceneView {
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const out: SceneView = {
+    ...v,
+    apps: v.apps.map((a) => ({ ...a, blurb: '', demand: 0, foundCost: 0, canFound: false, affordFraction: 0, visibleBelow: null, adoption: r2(a.adoption) })),
+    etaFold: r2(v.etaFold), rFold: r2(v.rFold), pace: r2(v.pace), reserveFraction: r2(v.reserveFraction), pressureFraction: r2(v.pressureFraction),
+    popFraction: r2(v.popFraction), population: Math.round(v.population), steadyProgress: r2(v.steadyProgress), nextCrisisFraction: null,
+    clearProgress: v.clearProgress == null ? undefined : r2(v.clearProgress), pressureToClear: v.pressureToClear == null ? undefined : r2(v.pressureToClear),
+    events: undefined,
+  };
+  return out;
 }

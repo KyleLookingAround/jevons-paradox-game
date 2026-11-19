@@ -118,6 +118,17 @@ export function perUnit(unit: string | undefined | null): string {
   return /[a-z]{2}s$/.test(unit) ? unit.slice(0, -1) : unit;
 }
 
+/** The singular of a unit for "per" and for exactly one (content's `unitSingular`, else the plural as authored with a
+ *  plural s taken off, else the unit itself: "hp"). */
+export function unitOne(u: { unit?: string; unitSingular?: string } | undefined | null): string {
+  if (!u) return '';
+  return u.unitSingular || perUnit(u.unit);
+}
+/** "1 ton", "2 tons", "0.5 tons". */
+export function units(n: number, u: { unit?: string; unitSingular?: string } | undefined | null): string {
+  return `${fmt(n)} ${Math.abs(n) === 1 ? unitOne(u) : u?.unit ?? ''}`.trim();
+}
+
 export function lower(s: string | undefined | null): string {
   if (!s) return '';
   // keep acronyms intact

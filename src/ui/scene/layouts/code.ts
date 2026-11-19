@@ -297,4 +297,6 @@ export const code: Layout = {
     substitution: { p: 'solarC', x: 120, y: 206, s: 0.9, band: 'far' },
   },
   restraintSpare: [{ p: 'notice', x: 90, y: 368 }, { p: 'notice', x: 520, y: 368 }],
+  // The Commons at street level, under the elevated line: bunting strung between the pillars.
+  commons: [{ p: '', x: 300, y: 366, band: 'near' }, { p: '', x: 440, y: 366, band: 'near' }],
 };

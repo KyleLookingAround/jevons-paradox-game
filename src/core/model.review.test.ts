@@ -134,32 +134,36 @@ describe('review: dt-scaling', () => {
 /* ------------------------------------------------------------------ */
 
 describe('review: Steady State across all sectors (end to end)', () => {
-  /** M1: every open sector within a generous budget line, wellbeing high. */
-  function decouplingEverywhere(c: Content = C): GameState {
+  /** M1: every open sector within a generous budget line, wellbeing high. M2: no pressure anywhere, so every sector is
+   *  clear (the win needs every open sector within budget AND clear). */
+  const CLEAN: Content = { ...C, sectors: Object.fromEntries(Object.entries(C.sectors).map(([k, d]) => [k, { ...d, pressureIntensity: 0 }])) };
+  function decouplingEverywhere(c: Content = CLEAN): GameState {
     let s = openAll(c);
     for (const e of SECTORS) expect(s.sectors[e].open).toBe(true);
     for (const e of SECTORS) s = patchSector(s, e, { openFor: 500, pressure: 0 });
     const d = model.derive(s, c);
-    for (const e of SECTORS) s = patchSector(s, e, { budget: { r0: 3 * d.sectors[e]!.resourceUse + 1, since: s.time, drawnYear: 1900 } });
+    for (const e of SECTORS) s = patchSector(s, e, { budget: { r0: 3 * d.sectors[e]!.resourceUse + 1, since: s.time, drawnYear: 1900, w0: 1e3, p0: 0, pace: "gentle" } });
     expect(d.wellbeing).toBeGreaterThanOrEqual(c.global.wellbeingTarget);
     return s;
   }
 
   test('verify: steadyYearsAll accrues while every era decouples, and 50 years sets flags.won with a steadyAll headline', () => {
     let s = decouplingEverywhere();
-    const t1 = model.tick(s, C, 1);
+    const t1 = model.tick(s, CLEAN, 1);
     expect(t1.steadyYearsAll).toBeCloseTo(0.05, 9);
     s = { ...s, steadyYearsAll: STEADY_STATE_YEARS - 0.01 };
-    const t = model.tick(s, C, 1);
+    const t = model.tick(s, CLEAN, 1);
     expect(t.flags.won).toBe(true);
     expect(t.news.some((n) => n.key === 'steadyAll')).toBe(true);
     // won is sticky and does not re-announce
-    const t2 = model.tick(t, C, 1);
+    const t2 = model.tick(t, CLEAN, 1);
     expect(t2.flags.won).toBe(true);
     expect(t2.news.filter((n) => n.key === 'steadyAll').length).toBe(1);
     // and one sector failing the test resets the all-sector counter
-    const broken = patchSector(t2, 'light', { budget: { r0: 1e-6, since: t2.time, drawnYear: 1900 } });
-    expect(model.tick(broken, C, 1).steadyYearsAll).toBe(0);
+    const broken = patchSector(t2, 'light', { budget: { r0: 1e-6, since: t2.time, drawnYear: 1900, w0: 1e3, p0: 0, pace: "gentle" } });
+    expect(model.tick(broken, CLEAN, 1).steadyYearsAll).toBe(0);
+    // M2: a sector within budget but not clear (pressure rising) also resets it
+    expect(model.tick(t2, C, 1).steadyYearsAll).toBe(0);
   });
 
   test('defect (contract): steadyYearsAll counts years in which every OPEN sector decouples (types.ts), won still needs all of sectorOrder', () => {
@@ -168,7 +172,7 @@ describe('review: Steady State across all sectors (end to end)', () => {
     let s = foundAll(model.createState(C2), C2, 'steam');
     s = { ...s, population: 5, upgrades: Object.fromEntries(STEAM_EFFICIENCY.map((id) => [id, 1])) };
     s = run(s, C2, 2);
-    s = patchSector(s, 'steam', { budget: { r0: 3 * model.derive(s, C2).sectors.steam!.resourceUse, since: s.time, drawnYear: 1800 } });
+    s = patchSector(s, 'steam', { budget: { r0: 3 * model.derive(s, C2).sectors.steam!.resourceUse, since: s.time, drawnYear: 1800, w0: 1e3, p0: 0, pace: "gentle" } });
     expect(model.derive(s, C2).sectors.steam!.decoupling).toBe(true);
     const t = model.tick({ ...s, steadyYearsAll: STEADY_STATE_YEARS - 0.01 }, C2, 1);
     expect(t.steadyYearsAll).toBeGreaterThan(STEADY_STATE_YEARS - 0.01);
