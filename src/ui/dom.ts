@@ -48,6 +48,14 @@ export function setAttr(el: Element | null | undefined, k: string, v: string | n
 export function setStyle(el: HTMLElement | SVGElement | null | undefined, k: string, v: string): void {
   if (el && el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v);
 }
+/**
+ * A bar's fill as a fraction, drawn with transform (composited; no layout) and quantised to `steps` so that a value
+ * creeping every tick does not restyle every tick. The element must span its track (CSS class `fillx`).
+ */
+export function setFill(el: HTMLElement | null | undefined, frac: number, steps = 200): void {
+  const f = Number.isFinite(frac) ? Math.min(1, Math.max(0, frac)) : 0;
+  setStyle(el, 'transform', `scaleX(${(Math.round(f * steps) / steps).toFixed(3)})`);
+}
 export function show(el: HTMLElement | SVGElement | null | undefined, on: boolean): void {
   if (!el) return;
   if (el instanceof HTMLElement) { if (el.hidden === on) el.hidden = !on; }

@@ -2,7 +2,7 @@
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, sectorWarning, openSectors, sectorIndex, roman, ageDef, lookFor, leversVisible } from './ctx';
 import type { SectorId } from '../types';
-import { h, svg, setText, setStyle, show, cls, setAttr, syncChildren } from './dom';
+import { h, svg, setText, setStyle, setFill, show, cls, setAttr, syncChildren } from './dom';
 import { fmt, money, num, clamp } from './fmt';
 import { UI_ICONS } from './icons';
 
@@ -16,7 +16,7 @@ export function buildTopbar(ctx: Ctx): Comp {
   const man = h('span', { class: 'tb-v num' });
   const manRate = h('span', { class: 'tb-s num' });
   const wb = h('span', { class: 'tb-v num' });
-  const wbFill = h('span', { class: 'wb-fill' });
+  const wbFill = h('span', { class: 'wb-fill fillx' });
   const wbBar = h('span', { class: 'wb-bar', 'aria-hidden': 'true' }, wbFill, h('span', { class: 'wb-tgt' }));
   // A rate rides on its label's line (the label is short; the value line is not), so neither is cut off on a phone.
   const cell = (cl: string, label: string | HTMLElement, rate: HTMLElement | null, ...kids: Node[]) =>
@@ -59,7 +59,7 @@ export function buildTopbar(ctx: Ctx): Comp {
     setText(wb, `${Math.floor(w)}/${fmt(tgt)}${w >= tgt ? ' ✓' : ''}`);
     setAttr(cWb, 'aria-label', `Wellbeing ${Math.floor(w)} of a target of ${fmt(tgt)}${w >= tgt ? ', met' : ''}`);
     const scale = Math.max(tgt * 1.5, w);
-    setStyle(wbFill, 'width', (clamp(w / scale, 0, 1) * 100).toFixed(1) + '%');
+    setFill(wbFill, w / scale, 100);
     setStyle(wbBar, '--tgt', (clamp(tgt / scale, 0, 1) * 100).toFixed(1) + '%');
     cls(cWb, 'met', w >= tgt);
   }

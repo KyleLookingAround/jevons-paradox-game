@@ -22,7 +22,9 @@ const MOCK_KEY = 'rebound.mock.save';         // #mock:persist only
 const TAB_KEY = 'rebound.ui.sector';
 const STEP = 0.1;             // fixed 10 Hz simulation step
 const MAX_CATCHUP = 5;        // seconds of ticks per frame; longer gaps go through fastForward
-const VIEWS_EVERY = 1000;     // ms between view refreshes (upgrade views run projections)
+const VIEWS_EVERY = 1000;     // ms between view refreshes at least (upgrade views run projections)
+const VIEWS_MAX_EVERY = 4000; // ... and at most
+const VIEWS_SHARE = 0.05;     // the share of the main thread the periodic view refresh may take (cost / interval)
 const SAVE_EVERY = 10000;     // ms between autosaves
 
 export interface GameOpts { realModel?: ModelApi; realContent?: Content }
@@ -140,7 +142,10 @@ function boot(o: GameOpts): void {
       state = next;
       const bought = ui.afterAct(before, next);
       if (bought.length) askPersist();
-      refresh(true);
+      // The tap paints first: derive and patch now; the views (projections, the slow part) follow in their own task
+      // after the frame. A sale changes only capital: its views wait for the next periodic refresh.
+      refresh(false);
+      if (name !== 'click') viewsAfterPaint();
       return true;
     },
     replace,
@@ -177,9 +182,21 @@ function boot(o: GameOpts): void {
     if (views) refreshViews();
     if (!halted) timed('ui.update', () => ui.update());
   }
-  let lastViews = 0;
+  let lastViews = 0, viewsEvery = VIEWS_EVERY, viewsPending = false;
+  /** Refresh the views in a task of their own after the next frame (coalesced), then patch the page again. */
+  function viewsAfterPaint(): void {
+    if (viewsPending) return;
+    viewsPending = true;
+    requestAnimationFrame(() => setTimeout(() => {
+      viewsPending = false;
+      if (halted || !state) return;
+      refreshViews();
+      if (!halted) timed('ui.update', () => ui.update());
+    }, 0));
+  }
   function refreshViews(): void {
-    lastViews = performance.now();
+    const t0 = performance.now();
+    lastViews = t0;
     const u = guard('upgradeViews', () => model.upgradeViews(state!, content));
     if (u) ups = u;
     const l = guard('leverViews', () => model.leverViews(state!, content));
@@ -189,6 +206,9 @@ function boot(o: GameOpts): void {
     if (k) khs = k;
     const i = guard('institutionViews', () => model.institutionViews(state!, content));
     if (i) insts = i;
+    // The periodic refresh backs off when the views are slow (late game, slow phone), to keep within VIEWS_SHARE.
+    const cost = performance.now() - t0;
+    viewsEvery = Math.min(VIEWS_MAX_EVERY, Math.max(VIEWS_EVERY, cost / VIEWS_SHARE));
   }
 
   function replace(s: GameState): void {
@@ -303,7 +323,10 @@ function boot(o: GameOpts): void {
         acc -= STEP;
         n++;
       }
-      if (n > 0) refresh(now - lastViews >= VIEWS_EVERY);
+      if (n > 0) {
+        refresh(false);
+        if (now - lastViews >= viewsEvery) viewsAfterPaint();
+      }
       if (now - lastSave >= SAVE_EVERY) { lastSave = now; save(); }
     } catch (err) {
       fail(lastCall, err);

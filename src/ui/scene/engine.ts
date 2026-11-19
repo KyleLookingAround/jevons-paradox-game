@@ -17,7 +17,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const VB = '0 0 600 400';
 const W = 600, H = 400;
 const BANDS: Band[] = ['far', 'mid', 'near'];
-const MAX_LIVE_SMOKE = 12;
+const MAX_LIVE_SMOKE = 10, MAX_LIVE_SMOKE_LOW = 4;
 let instances = 0;
 
 interface FxSpec { kind: FxKind; x: number; y: number; size: number; markup?: string }
@@ -99,7 +99,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   // of those further away, while static layers still never repaint for motion.
   const bw: Record<Band, HTMLDivElement> = { far: div('scn-bw bw-far'), mid: div('scn-bw bw-mid'), near: div('scn-bw bw-near') };
   let st: Record<Band, SVGSVGElement[]> = { far: [], mid: [], near: [] };
-  let fx: Record<Band, SVGSVGElement[]> = { far: [], mid: [], near: [] };
+  let fx: Record<Band, HTMLDivElement[]> = { far: [], mid: [], near: [] };
   const mist1 = div('scn-hz mist'), mist2 = div('scn-hz mist m2');
   const hz1 = div('scn-hz smog h1'), hz2 = div('scn-hz smog h2'), hz3 = div('scn-hz smog h3');
   const fog = div('scn-fog');
@@ -161,12 +161,42 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   let destroyed = false;
   let steadyMoverEls: Element[] = [];
   let style: ArtStyle | undefined;
+  // Detail: 'full', 'low' (fewer movers and live chimneys, no second rain sheet or signal noise), or 'auto' (full,
+  // dropping to low for the rest of the session if frames run long while the scene is on screen).
+  let detailOpt: 'auto' | 'low' | 'full' = opts.detail ?? 'auto';
+  let lowDetail = detailOpt === 'low';
+  let lastSig = '', captionDirty = false;
+  let moverAnims: Animation[] = [];
+  const animOf = new WeakMap<Element, Animation>();
+  let planeK = 0;
 
   const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const rm = () => (rmOverride ?? !!mq?.matches);
+  function setLow(on: boolean): void {
+    lowDetail = on;
+    root.classList.toggle('lowd', on);
+    assignSmoke();
+  }
+  /** Auto detail: watch frames for a few seconds after a build; if a quarter run long (> 24 ms), go low for good. */
+  let watchId = 0;
+  function watchFrames(): void {
+    if (detailOpt !== 'auto' || lowDetail || typeof requestAnimationFrame !== 'function' || typeof performance === 'undefined') return;
+    const my = ++watchId;
+    let n = 0, slow = 0, last = 0;
+    const tick = (t: number) => {
+      if (destroyed || my !== watchId || lowDetail) return;
+      if (rm() || root.classList.contains('paused') || root.classList.contains('halt')) { last = 0; requestAnimationFrame(tick); return; }
+      if (last) { n++; if (t - last > 24) slow++; }
+      last = t;
+      if (n >= 150) { if (slow / n > 0.25) setLow(true); return; }
+      requestAnimationFrame(tick);
+    };
+    window.setTimeout(() => requestAnimationFrame(tick), 1500);
+  }
   function applyMotion(): void {
     root.classList.toggle('rm', rm());
     root.classList.toggle('live', !rm());
+    syncPlay();
   }
   const onMq = () => applyMotion();
   mq?.addEventListener?.('change', onMq);
@@ -174,6 +204,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
 
   const onVis = () => {
     root.classList.toggle('paused', document.hidden || !visible);
+    syncPlay();
   };
   document.addEventListener('visibilitychange', onVis);
   let io: IntersectionObserver | null = null;
@@ -187,7 +218,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   let ro: ResizeObserver | null = null;
   if (typeof ResizeObserver === 'function') {
     ro = new ResizeObserver((es) => {
-      for (const e of es) root.classList.toggle('wide', e.contentRect.width >= 640);
+      for (const e of es) { root.classList.toggle('wide', e.contentRect.width >= 640); sizePlane(e.contentRect.width); }
     });
     ro.observe(stage);
   }
@@ -240,14 +271,17 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return { y: sl.y, ord: 0, band, html, fx: fxHtml };
   }
 
+  // Moving things are HTML sprites in a 600×400 px plane scaled to the stage, animated by transform and opacity
+  // only, so the compositor runs them without restyling or repainting the drawing (an animation inside an SVG
+  // repaints that SVG every frame). Each sprite holds a tiny overflow-visible SVG drawn about its own origin.
   function fxMarkup(e: FxSpec, gx: number, gy: number, s: number, key: string): string {
     const k = Math.round(e.size * s * 1000) / 1000;
-    const t = `transform="translate(${f(gx)} ${f(gy)}) scale(${k || 0.01})"`;
+    const pos = `left:${f(gx)}px;top:${f(gy)}px`;
     if (e.kind === 'smoke' || e.kind === 'steam') {
-      return `<g class="fx smk${e.kind === 'steam' ? ' wht' : ''}" data-k="${key}" data-sz="${k}" ${t}><circle r="2.6"/><circle r="2.6"/><circle r="2.6"/><circle r="2.6"/></g>`;
+      return `<div class="fx smk${e.kind === 'steam' ? ' wht' : ''}" data-k="${key}" data-sz="${k}" style="${pos};transform:scale(${k || 0.01})"><i></i><i></i><i></i></div>`;
     }
     const sc = Math.round(s * 1000) / 1000;
-    return `<g class="fx ${e.kind}" data-k="${key}" transform="translate(${f(gx)} ${f(gy)}) scale(${sc})"><g>${e.markup ?? ''}</g></g>`;
+    return `<div class="fx ${e.kind}" data-k="${key}" style="${pos};transform:scale(${sc})"><b>${spr(e.markup ?? '')}</b></div>`;
   }
 
   function moverMarkup(l: Layout, look: string, m: MoverDef, i: number, key: string, stageN: number, seedStr: string): { html: string; band: Band; dur: number; phase: number; z: number } {
@@ -262,8 +296,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const phase = (i + 0.15 + r() * 0.5) / m.n;
     const sx = f(m.x0 + (m.x1 - m.x0) * phase), sy = f(m.y0 + (m.y1 - m.y0) * phase);
     const band = m.band ?? bandOf(l, m.y0);
-    const html = `<g class="fx mv" data-k="${key}" style="--x0:${f(m.x0)}px;--y0:${f(m.y0)}px;--x1:${f(m.x1)}px;--y1:${f(m.y1)}px;--sx:${sx}px;--sy:${sy}px">` +
-      `<g transform="scale(${flip ? -s : s} ${s})">${inner}</g></g>`;
+    // Placed at its resting point (what reduced motion shows); the animation runs from one end of the track to the other.
+    const html = `<div class="fx mv" data-k="${key}" data-tr="${f(m.x0 - +sx)},${f(m.y0 - +sy)},${f(m.x1 - +sx)},${f(m.y1 - +sy)}" style="left:${sx}px;top:${sy}px">` +
+      spr(`<g transform="scale(${flip ? -s : s} ${s})">${inner}</g>`) + `</div>`;
     return { html, band, dur: m.dur, phase, z: moverZ(m) };
   }
 
@@ -417,9 +452,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       // A mover at depth z draws after every item at y ≤ z: in fx layer i where splits[i] ≥ z.
       for (const e of fxBand[b]) { const k = e.z <= -1e5 ? 0 : Math.min(n - 1, layerOf(e.z)); fh[k] = e.html + fh[k]; }
       st[b] = []; fx[b] = [];
-      const kids: SVGSVGElement[] = [];
+      const kids: Element[] = [];
       for (let i = 0; i < n; i++) {
-        const s = svgEl(`scn-l band-${b}`), x = svgEl(`scn-l fx-${b}`);
+        const s = svgEl(`scn-l band-${b}`), x = div(`scn-fxl fx-${b}`);
         s.innerHTML = sh[i]; x.innerHTML = fh[i];
         st[b].push(s); fx[b].push(x);
         kids.push(s);
@@ -443,7 +478,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     smokeEls.sort((p, q) => q.size - p.size);
     restraintEls = new Map();
     elsByKey.forEach((els, k) => { if (k.startsWith('r:')) restraintEls.set(k.slice(2), els); });
-    steadyMoverEls = Array.from(root.querySelectorAll('.stdy'));
+    steadyMoverEls = Array.from(root.querySelectorAll('.mv.stdy'));
+    moverAnims.forEach((a) => a.cancel());
+    moverAnims = [];
     for (const p of plots) {
       const mk = (p as PlotRt & { mkeys?: string[] }).mkeys ?? [];
       p.movers = mk.map((k) => (elsByKey.get(k) ?? [])[0]).filter(Boolean);
@@ -453,6 +490,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       p.scaf = (elsByKey.get(`${p.idx}:f`) ?? [])[0] ?? null;
     }
     prevPace = -1;
+    sizePlane();
+    for (const p of plots) p.moverDefs.forEach((m) => { if (m.el) animateMover(m.el as HTMLElement, m.dur, m.phase); });
+    // Steady-state movers (birds) have no plot: give them a crossing of their own.
+    steadyMoverEls.forEach((el, i) => animateMover(el as HTMLElement, 40 + i * 7, (i * 0.37) % 1));
+    syncPlay();
+    root.classList.toggle('lowd', lowDetail);
+    watchFrames();
 
     // Places (buttons) for applications.
     places.replaceChildren();
@@ -482,6 +526,38 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(enable)); else enable();
   }
   const baseOrd = new Map<string, number>();
+
+  /** One crossing per mover, as a Web Animation with concrete keyframes (composited; no var() in keyframes). */
+  function animateMover(el: HTMLElement, durS: number, phase: number): void {
+    const tr = (el.getAttribute('data-tr') ?? '0,0,0,0').split(',').map(Number);
+    if (typeof el.animate !== 'function') return;
+    try {
+      const a = el.animate([{ transform: `translate(${tr[0]}px,${tr[1]}px)` }, { transform: `translate(${tr[2]}px,${tr[3]}px)` }],
+        { duration: durS * 1000, iterations: Infinity, easing: 'linear' });
+      a.currentTime = phase * durS * 1000;
+      a.pause();
+      moverAnims.push(a);
+      animOf.set(el, a);
+    } catch { /* no Web Animations: movers stay at their resting points */ }
+  }
+  /** Run, pause or drop the mover animations to match reduced motion, visibility and a Reckoning. */
+  function syncPlay(): void {
+    const still = rm(), stop = root.classList.contains('paused') || root.classList.contains('halt');
+    for (const a of moverAnims) {
+      try {
+        if (still) { if (a.playState !== 'idle') a.cancel(); }
+        else if (stop) { if (a.playState === 'idle') a.play(); a.pause(); }
+        else if (a.playState !== 'running') a.play();
+      } catch { /* ignore */ }
+    }
+  }
+  /** The sprite plane is 600×400 px scaled to the stage (one write on build and on resize). */
+  function sizePlane(w?: number): void {
+    const k = (w ?? stage.clientWidth) / W;
+    if (!k || Math.abs(k - planeK) < 0.001) return;
+    planeK = k;
+    root.style.setProperty('--k', k.toFixed(4));
+  }
 
   function siteFromHit(def: PlotDef): [number, number, number, number] | null {
     if (!def.anchor) return null;
@@ -546,7 +622,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (pace !== prevPace) { root.classList.remove('pace0', 'pace1', 'pace2'); root.classList.add('pace' + pace); }
     root.classList.toggle('steady', !!v.steady);
     root.classList.toggle('decoupling', !!v.decoupling);
-    root.classList.toggle('halt', !!v.reckoning);
+    if (root.classList.contains('halt') !== !!v.reckoning) { root.classList.toggle('halt', !!v.reckoning); syncPlay(); }
     // A city under strain (pressure near collapse, not yet clearing): styles may stage blackouts, failing signs.
     root.classList.toggle('stress', pf >= 0.8 && !v.steady && clear < 0.3);
 
@@ -620,14 +696,19 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         const want = (p.app ? st === 'founded' : true) ? mc : 0;
         if (want !== p.mcount) {
           p.mcount = want;
-          p.movers.forEach((el, i) => el.classList.toggle('on', i < want));
+          // In low detail every second mover beyond the first is dropped (by class, so no rebuild is needed).
+          p.movers.forEach((el, i) => { el.classList.toggle('on', i < want); el.classList.toggle('thin', i > 0 && i % 2 === 1); });
         }
         if (pace !== prevPace) {
           for (const md of p.moverDefs) {
-            if (!md.el) continue;
-            const dur = md.dur * durK;
-            (md.el as SVGGElement).style.animationDuration = dur.toFixed(1) + 's';
-            (md.el as SVGGElement).style.animationDelay = (-md.phase * dur).toFixed(1) + 's';
+            const a = md.el ? animOf.get(md.el) : undefined;
+            if (!a) continue;
+            try {
+              const t = Number(a.currentTime ?? 0), d0 = Number(a.effect?.getTiming().duration ?? 1) || 1;
+              const d1 = md.dur * durK * 1000;
+              a.effect?.updateTiming({ duration: d1 });
+              a.currentTime = (t % d0) / d0 * d1;
+            } catch { /* ignore */ }
           }
         }
       }
@@ -683,7 +764,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     for (const s of smokeEls) {
       const on = s.key === 'bd' ? true : (elsByKey.get(s.key)?.[0]?.classList.contains('on') ?? false);
       if (s.key === 'bd') s.el.classList.add('on');
-      const isLive = on && live < MAX_LIVE_SMOKE;
+      const isLive = on && live < (lowDetail ? MAX_LIVE_SMOKE_LOW : MAX_LIVE_SMOKE);
       if (isLive) live++;
       s.el.classList.toggle('live', isLive);
     }
@@ -707,7 +788,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     captionText = t;
     captionUntil = Date.now() + ms;
     clearTimeout(flashTimer);
-    flashTimer = window.setTimeout(() => { if (lastView && !destroyed) patch(lastView); }, ms + 50);
+    flashTimer = window.setTimeout(() => { if (lastView && !destroyed) { captionDirty = true; patch(lastView); } }, ms + 50);
   }
 
   function placeLabel(a: SceneApp, v: SceneView): string {
@@ -763,6 +844,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         const stageChanged = builtKey !== '' && prevSector === view.sectorId && prevStage !== view.stage;
         if (prevSector !== view.sectorId) { selected = null; prevCrises = -1; prevSteady = view.steady; }
         builtKey = key;
+        lastSig = '';
         build(view);
         if (stageChanged && !rm()) {
           // The machines evolve: founded landmarks re-draw themselves.
@@ -772,6 +854,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           })), 40);
         }
       }
+      // Skip the patch when nothing has moved past what the picture or card can show.
+      const sig = viewSig(view);
+      if (sig === lastSig && lastView && key === builtKey && !captionDirty) { lastView = view; return; }
+      lastSig = sig; captionDirty = false;
       lastView = view;
       patch(view);
     } catch (e) {
@@ -782,6 +868,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   function destroy(): void {
     destroyed = true;
     io?.disconnect(); ro?.disconnect();
+    moverAnims.forEach((a) => a.cancel());
     document.removeEventListener('visibilitychange', onVis);
     mq?.removeEventListener?.('change', onMq);
     clearTimeout(crisisTimer); clearTimeout(flashTimer); clearTimeout(toastTimer);
@@ -793,9 +880,15 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     setSector,
     select: (a) => select(a, false),
     setReducedMotion: (on) => { rmOverride = on; applyMotion(); },
+    setDetail: (d) => { detailOpt = d; if (d === 'auto') { setLow(false); watchFrames(); } else setLow(d === 'low'); },
     describe: () => summaryText,
     destroy,
   };
+}
+
+/** A sprite's drawing: an overflow-visible SVG drawn about the sprite's origin. */
+function spr(inner: string): string {
+  return `<svg class="spr" width="1" height="1" overflow="visible" aria-hidden="true" focusable="false">${inner}</svg>`;
 }
 
 /** Depth at which a mover is drawn among the static scenery: its own z, else the nearer end of its track. */
@@ -824,6 +917,17 @@ function sparePlot(l: Layout, rect: [number, number, number, number], a: SceneAp
     key: 'spare:' + a.id, match: [a.icon], anchor: { p: a.icon || 'works', x: x + w / 2, y: y + h, v: 0.5 }, slots,
     hit: [x, y - h * 0.4, w, h * 1.4],
   };
+}
+
+/** A coarse signature of everything the scene shows: equal signatures draw the same picture and card. */
+function viewSig(v: SceneView): string {
+  const q = (x: number, n: number) => Math.round(x * n);
+  const sig2 = (x: number) => (x ? Number(x.toPrecision(2)) : 0);
+  let s = `${v.sectorId}|${v.look}|${v.stage}|${q(v.pace, 20)}|${q(v.reserveFraction, 50)}|${q(v.pressureFraction, 50)}|${q(v.popFraction, 50)}|${v.crises}|` +
+    `${v.decoupling ? 1 : 0}${v.steady ? 1 : 0}|${q(v.steadyProgress, 50)}|${v.reckoning ? v.reckoning.cause + v.reckoning.here : ''}|`;
+  for (const a of v.apps) s += `${a.id}:${a.status[0]}${q(a.adoption, 100)}:${sig2(a.demand)}:${a.canFound ? 1 : 0}${q(a.affordFraction, 100)};`;
+  for (const l of v.levers) s += `${l.kind}${l.level},`;
+  return s;
 }
 
 function normalise(v: SceneView): SceneView {

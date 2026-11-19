@@ -148,7 +148,7 @@ svg { overflow: visible; }
 .tb-man.draining .tb-s { color: var(--bad); }
 .tb-wb .tb-row { align-items: center; }
 .wb-bar { position: relative; width: 30px; height: 6px; background: var(--track); display: inline-block; }
-.wb-fill { position: absolute; inset: 0 auto 0 0; background: var(--muted); }
+.wb-fill { position: absolute; background: var(--muted); }
 .tb-wb.met .wb-fill { background: var(--good); }
 .wb-tgt { position: absolute; top: -2px; bottom: -2px; left: var(--tgt, 66%); width: 1.5px; background: var(--ink); }
 .tb-menu {
@@ -203,7 +203,7 @@ svg { overflow: visible; }
 .d-bezel { fill: none; stroke: var(--rule); stroke-width: 1; }
 .d-track { fill: none; stroke: var(--track); stroke-width: 7; }
 .d-zone { fill: none; stroke: var(--bad); stroke-opacity: .16; stroke-width: 7; }
-.d-sweep { fill: none; stroke: var(--accent); stroke-width: 7; transition: d .4s; }
+.d-sweep { fill: none; stroke: var(--accent); stroke-width: 7; }
 .dial-cons .d-sweep { stroke: var(--bad); }
 .dial-cons .d-sweep.down { stroke: var(--good); }
 .tk { stroke: var(--muted); stroke-width: 1; }
@@ -219,8 +219,8 @@ svg { overflow: visible; }
 .dial-reb.unknown .dial-val { color: var(--muted); }
 .dial-reb.backfire .dial-val { font-size: calc(19px * var(--ts)); }
 .dial-reb.backfire .d-sweep { stroke: var(--bad); filter: drop-shadow(0 0 2.5px var(--bad)); }
-.dial-reb.backfire .dial-val { color: var(--bad); text-shadow: 0 0 10px color-mix(in srgb, var(--bad) 55%, transparent); animation: glow 2.4s ease-in-out infinite; }
-@keyframes glow { 50% { text-shadow: 0 0 2px color-mix(in srgb, var(--bad) 30%, transparent); } }
+/* Backfire glows, steadily: an endless text-shadow animation repaints the header every frame (battery). */
+.dial-reb.backfire .dial-val { color: var(--bad); text-shadow: 0 0 10px color-mix(in srgb, var(--bad) 45%, transparent); }
 
 .gauge-foot { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; margin-top: 4px; align-items: end; }
 .spark-wrap { min-width: 0; }
@@ -240,7 +240,7 @@ svg { overflow: visible; }
 .res-lbl { overflow: hidden; text-overflow: ellipsis; }
 .res-left { color: var(--bad); }
 .res-bar { height: 5px; background: var(--track); position: relative; overflow: hidden; border-radius: calc(var(--radius) / 4); }
-.res-fill { position: absolute; inset: 0 auto 0 0; background: var(--ink); transition: width .5s; }
+.res-fill { position: absolute; background: var(--ink); transition: transform .5s; }
 .reserve.low .res-fill { background: var(--bad); }
 .trend { display: flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .trend-arrow { width: 13px; height: 13px; flex: 0 0 auto; transition: transform .6s; }
@@ -326,7 +326,9 @@ html:not(.fonts-in) .world-mount { visibility: hidden; }
   text-decoration: none; touch-action: manipulation; transition: background-color .15s, color .15s;
 }
 .btn > * { position: relative; }
-.btn .btn-fill { position: absolute; inset: 0 auto 0 0; background: currentColor; opacity: .12; transition: width .4s; }
+/* Bars drawn with transform (see setFill in dom.ts): they span the track and scale from the left. */
+.btn > .fillx, .fillx { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); }
+.btn .btn-fill { position: absolute; background: currentColor; opacity: .12; transition: transform .4s; }
 .btn.primary { background: var(--ink); color: var(--bg-solid); }
 .btn.big { min-height: 54px; font-size: calc(17px * var(--ts)); padding: 8px 24px; }
 .btn.small { min-height: 34px; font-size: calc(13px * var(--ts)); padding: 4px 10px; }
@@ -650,7 +652,7 @@ html[data-look='agentic'] .reach-l { font-family: var(--f-mono); font-size: calc
 .ss { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: calc(13px * var(--ts)); color: var(--muted); }
 .ss.on { color: var(--good); }
 .ss-bar { flex: 1; height: 4px; background: var(--track); position: relative; }
-.ss-bar span { position: absolute; inset: 0 auto 0 0; background: var(--good); transition: width .5s; }
+.ss-bar span { position: absolute; background: var(--good); transition: transform .5s; }
 
 /* Levers: repeat pips, levy, recycling */
 .pip-wrap { display: inline-flex; align-items: center; gap: 4px; }

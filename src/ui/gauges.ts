@@ -4,7 +4,7 @@
 // sparkline with the budget line, the reserve, the population gauge and the budget readout.
 import type { Ctx, Comp, FormulaKind } from './ctx';
 import { sectorDef, sd, ageOfSector } from './ctx';
-import { h, svg, setText, setAttr, setStyle, show, cls } from './dom';
+import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
 import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch } from './fmt';
 import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
@@ -15,7 +15,9 @@ const pt = (t: number, r = R): [number, number] => {
   return [CX + r * Math.cos(th), CY - r * Math.sin(th)];
 };
 const arc = (t0: number, t1: number, r = R): string => {
-  const a = clamp(Math.min(t0, t1), 0, 1), b = clamp(Math.max(t0, t1), 0, 1);
+  // Quantised (1/360 of the dial, half a degree) for the same reason as the needles.
+  const qz = (t: number) => Math.round(clamp(t, 0, 1) * 360) / 360;
+  const a = qz(Math.min(t0, t1)), b = qz(Math.max(t0, t1));
   if (b - a < 0.002) return '';
   const [x0, y0] = pt(a, r), [x1, y1] = pt(b, r);
   return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
@@ -36,7 +38,8 @@ function dialSvg(extra = ''): SVGSVGElement {
 
 function rot(el: Element | null, t: number): void {
   if (!el) return;
-  setStyle(el as SVGElement, 'transform', `rotate(${((clamp(t, 0, 1) - 0.5) * 180).toFixed(2)}deg)`);
+  // Quantised to half a degree: a needle creeping every tick would otherwise restart its transition every tick.
+  setStyle(el as SVGElement, 'transform', `rotate(${(Math.round((clamp(t, 0, 1) - 0.5) * 360) / 2).toFixed(1)}deg)`);
 }
 
 export function infoBtn(ctx: Ctx, kind: FormulaKind, label: string): HTMLButtonElement {
@@ -125,7 +128,7 @@ export function buildGauges(ctx: Ctx): Comp {
 
   const resLbl = h('span', { class: 'res-lbl' });
   const resLeft = h('span', { class: 'res-left num' });
-  const resFill = h('span', { class: 'res-fill' });
+  const resFill = h('span', { class: 'res-fill fillx' });
   const reserve = h('div', { class: 'reserve' }, h('div', { class: 'res-row' }, resLbl, resLeft), h('div', { class: 'res-bar' }, resFill));
 
   // Population gauge: headcount and growth, over a wellbeing scale marking where growth starts (subsistence) and
@@ -271,7 +274,7 @@ export function buildGauges(ctx: Ctx): Comp {
     setText(resLbl, flow ? `${resName} spare ${pct(rf, false)}` : `${resName} left ${pct(rf, false)}`);
     const sl = num(e?.secondsLeft, Infinity);
     setText(resLeft, !flow && Number.isFinite(sl) && sl < 7200 ? `≈ ${dur(sl)}` : '');
-    setStyle(resFill, 'width', (rf * 100).toFixed(1) + '%');
+    setFill(resFill, rf);
     cls(reserve, 'low', rf < 0.15);
 
     // Population
@@ -283,7 +286,7 @@ export function buildGauges(ctx: Ctx): Comp {
     cls(pop, 'shrinking', perYear <= -0.0005);
     const W = num(ctx.d?.wellbeing), sub = num(g?.subsistence), tgt = num(g?.wellbeingTarget), wt = g?.demography?.transitionWellbeing;
     const top = Math.max((wt ?? tgt) * 1.2, W * 1.05, tgt * 1.3, 1);
-    const at = (v: number) => (clamp(v / top, 0, 1) * 100).toFixed(1) + '%';
+    const at = (v: number) => (Math.round(clamp(v / top, 0, 1) * 200) / 2).toFixed(1) + '%';
     setStyle(popZone, 'left', at(sub));
     setStyle(popZone, 'right', wt != null ? (100 - clamp(wt / top, 0, 1) * 100).toFixed(1) + '%' : '0%');
     setStyle(popTgt, 'left', at(tgt));

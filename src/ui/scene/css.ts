@@ -94,39 +94,43 @@ const BASE = `
 .scn.live .evolve>.gr{animation:scn-evolve 1.4s ease both}
 @keyframes scn-evolve{0%{opacity:.2;transform:scaleY(.9)}60%{opacity:1}100%{transform:none}}
 
-/* --- fx: smoke, spin, rock, blink, flow, drift, movers --- */
+/* --- fx: smoke, spin, rock, blink, flow, drift, movers ---
+   Sprites (HTML) in a 600×400 px plane scaled to the stage; every animation is transform/opacity on an HTML element
+   so it runs on the compositor. Keyframes hold no var(): per-sprite values are inline or Web Animations. */
+.scn-fxl{position:absolute;left:0;top:0;width:600px;height:400px;transform-origin:0 0;transform:scale(var(--k,1));pointer-events:none;overflow:visible}
+.scn-fxl>.fx{position:absolute;width:0;height:0;transform-origin:0 0}
 .scn .fx{display:none}
-.scn .fx.on{display:inline}
-.scn .smk circle{fill:rgba(var(--s-smk),var(--smk-a,.35));stroke:none;transform-box:fill-box;transform-origin:50% 50%}
-.scn .smk.wht circle{fill:rgba(240,240,236,.55)}
-.scn[data-look=terminal] .smk circle{fill:none;stroke:rgba(var(--s-smk),.55);stroke-width:.8px}
-.scn[data-look=ledger] .smk circle{stroke:rgba(42,31,21,.35);stroke-width:.5px}
-.scn .smk circle:nth-child(1){transform:translate(1px,-3px) scale(.7)}
-.scn .smk circle:nth-child(2){transform:translate(5px,-10px) scale(1.1)}
-.scn .smk circle:nth-child(3){transform:translate(11px,-18px) scale(1.6);opacity:.7}
-.scn .smk circle:nth-child(4){transform:translate(19px,-25px) scale(2.1);opacity:.45}
-.scn.live .smk.live circle{animation:scn-puff var(--smk-d,3.6s) linear infinite}
-.scn.live .smk.live circle:nth-child(2){animation-delay:calc(var(--smk-d,3.6s)*-.25)}
-.scn.live .smk.live circle:nth-child(3){animation-delay:calc(var(--smk-d,3.6s)*-.5)}
-.scn.live .smk.live circle:nth-child(4){animation-delay:calc(var(--smk-d,3.6s)*-.75)}
+.scn .fx.on{display:block}
+.scn .spr{position:absolute;left:0;top:0;overflow:visible}
+.scn .fx>b{position:absolute;left:0;top:0;width:1px;height:1px;transform-origin:0 0}
+.scn .smk i{position:absolute;left:-2.6px;top:-2.6px;width:5.2px;height:5.2px;border-radius:50%;background:rgba(var(--s-smk),var(--smk-a,.35))}
+.scn .smk.wht i{background:rgba(240,240,236,.55)}
+.scn[data-look=terminal] .smk i{background:none;box-shadow:inset 0 0 0 .8px rgba(var(--s-smk),.55)}
+.scn[data-look=ledger] .smk i{box-shadow:inset 0 0 0 .5px rgba(42,31,21,.35)}
+.scn .smk i:nth-child(1){transform:translate(2px,-5px) scale(.8)}
+.scn .smk i:nth-child(2){transform:translate(9px,-15px) scale(1.4);opacity:.75}
+.scn .smk i:nth-child(3){transform:translate(18px,-24px) scale(2);opacity:.45}
+.scn.live .smk.live i{animation:scn-puff var(--smk-d,3.6s) linear infinite}
+.scn.live .smk.live i:nth-child(2){animation-delay:calc(var(--smk-d,3.6s)*-.333)}
+.scn.live .smk.live i:nth-child(3){animation-delay:calc(var(--smk-d,3.6s)*-.667)}
 @keyframes scn-puff{0%{transform:translate(0,0) scale(.4);opacity:0}12%{opacity:1}100%{transform:translate(24px,-30px) scale(2.5);opacity:0}}
 .scn.pace0{--smk-d:4.6s}.scn.pace1{--smk-d:3.4s}.scn.pace2{--smk-d:2.5s}
-.scn.live .spin>g{animation:scn-spin var(--spin-d,3s) linear infinite}
-.scn.pace0 .spin>g{--spin-d:4.2s}.scn.pace2 .spin>g{--spin-d:1.8s}
+.scn.live .spin>b{animation:scn-spin 3s linear infinite}
+.scn.live.pace0 .spin>b{animation-duration:4.2s}.scn.live.pace2 .spin>b{animation-duration:1.8s}
 @keyframes scn-spin{to{transform:rotate(360deg)}}
-.scn.live .rock>g{animation:scn-rock var(--rock-d,2.8s) ease-in-out infinite alternate}
-.scn.pace0 .rock>g{--rock-d:3.6s}.scn.pace2 .rock>g{--rock-d:1.7s}
+.scn.live .rock>b{animation:scn-rock 2.8s ease-in-out infinite alternate}
+.scn.live.pace0 .rock>b{animation-duration:3.6s}.scn.live.pace2 .rock>b{animation-duration:1.7s}
 @keyframes scn-rock{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}
-.scn.live .blink>g{animation:scn-blink 1.6s steps(2,jump-none) infinite}
+.scn.live .blink>b{animation:scn-blink 1.6s steps(2,jump-none) infinite}
 @keyframes scn-blink{50%{opacity:.15}}
 .scn .flow path{fill:none;stroke:var(--s-lit);stroke-width:calc(1.4px*var(--sw));stroke-dasharray:2 14}
 .scn.live .flow path{animation:scn-flow 2.2s linear infinite}
 @keyframes scn-flow{to{stroke-dashoffset:-32}}
-.scn.live .drift>g{animation:scn-drift 70s ease-in-out infinite alternate}
+.scn.live .drift>b{animation:scn-drift 70s ease-in-out infinite alternate}
 @keyframes scn-drift{from{transform:translateX(-28px)}to{transform:translateX(28px)}}
-.scn .mv{transform:translate(var(--sx),var(--sy))}
-.scn.live .mv{animation:scn-mv linear infinite}
-@keyframes scn-mv{from{transform:translate(var(--x0),var(--y0))}to{transform:translate(var(--x1),var(--y1))}}
+.scn.lowd .flow path,.scn.lowd .drift>b{animation:none!important}
+.scn.lowd .mv.thin{display:none}
+.scn.lowd .scn-noise{display:none}
 .scn .rx{transform-box:fill-box;transform:scaleX(var(--res,1));transition:transform 1.5s}
 .scn .ry{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(var(--res,1));transition:transform 1.5s}
 .scn .dx{transform-box:fill-box;transform:scaleX(var(--dep,0));transition:transform 1.5s}

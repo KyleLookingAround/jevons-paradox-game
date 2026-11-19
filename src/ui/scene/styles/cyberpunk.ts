@@ -67,7 +67,8 @@ export const cyberpunk: ArtStyle = {
 .scn[data-look=cyberpunk] .mt{fill:#2c2840;stroke:#3a3356}
 .scn[data-look=cyberpunk] .ghost *{stroke:#3ef2ff!important}
 .scn[data-look=cyberpunk] .svk{stroke:#3ef2ff}
-.scn[data-look=cyberpunk] .smk circle{fill:rgba(160,90,190,var(--smk-a,.3))}
+.scn[data-look=cyberpunk] .smk i{background:rgba(160,90,190,var(--smk-a,.3))}
+.scn[data-look=cyberpunk] .smk.wht i{background:rgba(200,170,230,.22)}
 .scn .nh{fill:none;stroke-width:calc(4.6px*var(--sw));opacity:.26}
 .scn .nt{fill:none;stroke-width:calc(1.3px*var(--sw))}
 .scn .nm{stroke:#ff4fd8}.scn .nc{stroke:#3ef2ff}.scn .na{stroke:#ffb347}.scn .nr{stroke:#ff3b5c}.scn .ng{stroke:#4dff9a}.scn .nv{stroke:#9d7dff}
@@ -104,10 +105,10 @@ export const cyberpunk: ArtStyle = {
 .scn.live[data-look=cyberpunk] .rain.r2{animation:cb-rain2 .8s linear infinite}
 @keyframes cb-rain1{from{transform:translate3d(0,0,0)}to{transform:translate3d(-12px,90px,0)}}
 @keyframes cb-rain2{from{transform:translate3d(0,0,0)}to{transform:translate3d(-8px,60px,0)}}
-.scn[data-look=cyberpunk].steady .rain,.scn[data-look=cyberpunk].halt .rain{display:none}
-.scn.live[data-look=cyberpunk] .blink>g{animation:cb-flick 2.6s steps(1,end) infinite}
+.scn[data-look=cyberpunk].lowd .rain.r2,.scn[data-look=cyberpunk].steady .rain,.scn[data-look=cyberpunk].halt .rain{display:none}
+.scn.live[data-look=cyberpunk] .blink>b{animation:cb-flick 2.6s steps(1,end) infinite}
 @keyframes cb-flick{0%{opacity:1}43%{opacity:.25}46%{opacity:1}71%{opacity:.4}73%{opacity:1}}
-.scn[data-look=cyberpunk].steady .blink>g{animation:none}
+.scn[data-look=cyberpunk].steady .blink>b{animation:none}
 .scn .cbarc{fill:#2a1842}.scn .cbfar0{fill:#1d1233}.scn .cbwin0{fill:#a77fd0;opacity:.35}
 .scn .beam{fill:rgba(160,200,255,.05)}
 .scn .pier{fill:#0d0b19;stroke:#2b2450;stroke-width:.5px}.scn .deck{fill:#120f22;stroke:#2b2450;stroke-width:.6px}.scn .trn{fill:#1d1934;stroke:#4a4373;stroke-width:.6px}

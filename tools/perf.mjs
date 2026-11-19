@@ -395,12 +395,13 @@ const f1 = (x) => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(1));
 const f0 = (x) => (x == null || !Number.isFinite(x) ? '—' : Math.round(x).toString());
 console.log(`bundle app.js ${(results.sizes['app.js'].raw / 1024).toFixed(0)} KB (${(results.sizes['app.js'].gz / 1024).toFixed(0)} KB gz), styles.css ${(results.sizes['styles.css'].raw / 1024).toFixed(0)} KB (${(results.sizes['styles.css'].gz / 1024).toFixed(0)} KB gz)`);
 const saves = await makeStates();
+try { mkdirSync(resolve(root, 'design/scratch'), { recursive: true }); writeFileSync(resolve(root, 'design/scratch/perf-states.json'), JSON.stringify(saves)); } catch { /* optional */ }
 for (const k of ['mid', 'late']) console.log(`state ${k}: ${saves[k]?.info ?? saves[k]?.error}`);
 
 for (const st of STATES) {
   results.states[st] = {};
   for (const rate of THROTTLES) {
-    if (saves[st]?.error) continue;
+    if (!(st in saves) || saves[st]?.error) continue;
     const r = await measureState(st, saves[st], rate);
     results.states[st][rate] = r;
     const P = r.prof || {};

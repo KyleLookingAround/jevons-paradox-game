@@ -87,6 +87,9 @@ export interface SceneOptions {
   money?(n: number): string;
   /** Number formatter for the card (default 1.23k style). */
   num?(n: number): string;
+  /** Drawing detail. 'auto' (default): full, dropping to 'low' for the session if frames run long on screen.
+   *  'low': fewer movers and live chimneys, one rain sheet, no signal noise. 'full': never drop. */
+  detail?: 'auto' | 'low' | 'full';
 }
 
 export interface SceneHandle {
@@ -98,6 +101,8 @@ export interface SceneHandle {
   select(appId: string | null): void;
   /** Override reduced motion at runtime (null = follow the media query). */
   setReducedMotion(on: boolean | null): void;
+  /** Change the drawing detail at runtime (optional; see SceneOptions.detail). */
+  setDetail?(d: 'auto' | 'low' | 'full'): void;
   /** The current one-paragraph text alternative. */
   describe(): string;
   destroy(): void;

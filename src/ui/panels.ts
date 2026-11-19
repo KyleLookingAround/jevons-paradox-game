@@ -4,7 +4,7 @@ import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, SectorDef, UpgradeView } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
-import { h, setText, setStyle, setAttr, show, cls, syncChildren, reducedMotion } from './dom';
+import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion } from './dom';
 import { fmt, money, pct, num, clamp, lower, fmtEpoch } from './fmt';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
@@ -56,7 +56,7 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
   const name = h('h3', { class: 'up-name', text: def.name });
   const lvl = h('span', { class: 'up-lvl num' });
   const blurb = h('p', { class: 'up-blurb', text: def.blurb });
-  const fill = h('span', { class: 'btn-fill', 'aria-hidden': 'true' });
+  const fill = h('span', { class: 'btn-fill fillx', 'aria-hidden': 'true' });
   const cost = h('span', { class: 'btn-c num' });
   const buyLbl = kind === 'research' ? 'Commission' : 'Buy';
   const nope = () => { if (!reducedMotion()) { buy.classList.remove('nope'); void buy.offsetWidth; buy.classList.add('nope'); } };
@@ -126,7 +126,7 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
     cur = v;
     setText(cost, money(v.cost));
     setAttr(buy, 'aria-disabled', v.affordable ? null : 'true');
-    setStyle(fill, 'width', v.affordable ? '0%' : (clamp(num(ctx.state.capital) / Math.max(1e-9, v.cost), 0, 1) * 100).toFixed(1) + '%');
+    setFill(fill, v.affordable ? 0 : num(ctx.state.capital) / Math.max(1e-9, v.cost), 100);
     cls(el, 'afford', v.affordable);
     const max = def.maxLevel;
     setText(lvl, def.repeatable ? (max && Number.isFinite(max) ? `${v.level}/${max}` : `Lv ${v.level}`) : '');
@@ -268,7 +268,7 @@ export function buildBudget(ctx: Ctx): Comp {
       h('button', { class: 'btn', type: 'button', onclick: () => { show(confirmBox, false); show(draw, true); draw.focus(); } }, 'Keep the line')));
   const ledger = h('ol', { class: 'ledger', 'aria-label': 'Decades within budget' });
   const ssTxt = h('span', { class: 'num' });
-  const ssFill = h('span', {});
+  const ssFill = h('span', { class: 'fillx' });
   const ss = h('div', { class: 'ss' }, ssTxt, h('span', { class: 'ss-bar' }, ssFill));
   const el = h('section', { class: 'budget', 'aria-label': 'The budget', hidden: true },
     h('header', { class: 'sec-h' }, h('h2', { class: 'sec-t', text: 'The budget' })), status, line, h('div', { class: 'm-row' }, draw), confirmBox, ledger, ss);
@@ -325,7 +325,7 @@ export function buildBudget(ctx: Ctx): Comp {
     }
     const yrs = Math.floor(num(e?.steadyYears));
     setText(ssTxt, `Steady State: ${Math.min(yrs, STEADY_STATE_YEARS)} of ${STEADY_STATE_YEARS} years`);
-    setStyle(ssFill, 'width', clamp(yrs / STEADY_STATE_YEARS * 100, 0, 100).toFixed(1) + '%');
+    setFill(ssFill, yrs / STEADY_STATE_YEARS, 100);
     cls(ss, 'on', !!e?.decoupling);
   }
   return { el, update };

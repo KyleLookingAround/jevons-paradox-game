@@ -52,8 +52,8 @@ offline time can still end a run while the player is away (fixed in M2).
 
 ## Next steps, in order
 
-1. **M2 "Restraint has a game; run 2 is different"**: first split `src/model.ts` into `src/core/` and `src/content.ts`
-   into `src/content/` (behaviour unchanged, alone); then the contract (save version 3) and the lanes. See the roadmap.
+1. **M2 "Restraint has a game; run 2 is different"**: the split into `src/core/` and `src/content/` is done; next the
+   contract (save version 3), then the lanes. `src/core/step.ts` is a shared hotspot: one owner per milestone.
 2. **M3** every Industry its own mechanic, the second reveal, a first ending; then stop and look.
 3. **M4–M9** per `design/roadmap.md`.
 
