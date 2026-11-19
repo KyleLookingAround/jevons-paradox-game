@@ -29,11 +29,17 @@ export function noteGroup(ctx: Ctx, subject: string): SectorId | '' {
   return '';
 }
 
+/** Unread notes: worked out only when the notes found or the read marks change (it is asked for every frame). */
+let unreadMemo = { arc: null as object | null, read: null as readonly string[] | null, n: 0 };
 export function archiveUnread(ctx: Ctx): number {
   if (!ctx.d?.features?.archive || typeof ctx.model.archiveViews !== 'function') return 0;
-  const read = new Set(getPrefs().archiveRead);
+  const arc = ctx.state.meta?.archive ?? {};
+  const readList = getPrefs().archiveRead;
+  if (unreadMemo.arc === arc && unreadMemo.read === readList) return unreadMemo.n;
+  const read = new Set(readList);
   let n = 0;
-  for (const id of Object.keys(ctx.state.meta?.archive ?? {})) if (!read.has(id)) n++;
+  for (const id of Object.keys(arc)) if (!read.has(id)) n++;
+  unreadMemo = { arc, read: readList, n };
   return n;
 }
 
@@ -138,5 +144,5 @@ export function archiveSheet(ctx: Ctx, sheets: Sheets, onChange?: () => void): v
     q.addEventListener('input', apply);
     updCount();
     apply();
-  }, { label: 'The Archive', cls: 'archive-sheet' });
+  }, { label: 'The Archive', cls: 'archive-sheet full-ish' });
 }

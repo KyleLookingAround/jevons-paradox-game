@@ -130,9 +130,9 @@ export function buildSurvey(ctx: Ctx): Comp {
     const on = !!ctx.d?.features?.survey;
     const sv = ctx.d?.survey ?? null;
     const revealed = !!ctx.state.meta?.flags?.proprietor;
-    const card = (ctx.ups || []).find((u) => u.def.id.endsWith('proprietorsDay') && u.visible && u.level === 0);
     show(el, on || (revealed && !!sv));
     if (!on && !(revealed && sv)) return;
+    const card = revealed ? undefined : (ctx.ups || []).find((u) => u.def.id.endsWith('proprietorsDay') && u.visible && u.level === 0);
     setText(title, revealed && sv?.published ? 'The proprietor’s day' : 'The household survey');
     show(pamphlet, !!pp && !!card && !revealed);
     const published = !!sv?.published && revealed;

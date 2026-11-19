@@ -87,6 +87,7 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
   const dCast = h('div', { class: 'od-chips', role: 'group', 'aria-label': 'Correspondents answered by standing reply' });
   const dispatchOd = h('div', { class: 'od od-dispatch', hidden: true }, h('div', { class: 'od-h' }, dOn.el, dKind), dTxt, dCast);
   let castKey = '';
+  let per: number | null = null, perAt = -Infinity;
   let prioKey = '', keepKey = '';
   const KEEP = [0, 60, 300, 1800];
 
@@ -233,7 +234,9 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
 
     // After the Proprietor's Day: the label on each order, and what the ledger says it saves.
     const reveal = !!ctx.state.meta?.flags?.proprietor;
-    const per = reveal ? ctx.ledger?.automatedPerSession() ?? null : null;
+    // The ledger is read at most every few seconds (it is a local record, not a per-frame figure).
+    const now = performance.now();
+    if (reveal && now - perAt > 5000) { perAt = now; per = ctx.ledger?.automatedPerSession() ?? null; }
     const label = (el: HTMLElement, k: OrderId) => {
       const kd = ov.kind?.[k];
       show(el, reveal && !!kd);

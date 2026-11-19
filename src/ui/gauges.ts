@@ -171,6 +171,11 @@ export function buildGauges(ctx: Ctx): GaugesComp {
   const el = h('section', { class: 'gauges', 'aria-label': 'Efficiency and consumption gauges' }, dials, foot);
 
   let scaleKey = '';
+  // Whether the dials are drawn small: measured once, and again only when the window is resized.
+  let tight = false;
+  const measure = () => { const w = eff.box.getBoundingClientRect().width; tight = w > 0 && w < 128; };
+  requestAnimationFrame(measure);
+  window.addEventListener('resize', () => requestAnimationFrame(measure), { passive: true });
   let sparkKey = '';
   let lastTv = { cons: 0.5 };
 
@@ -195,10 +200,11 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     const tv = (v: number) => 0.5 + Math.log(Math.max(v, 1e-12)) / (2 * Lg);
     const revealed = !!ctx.state.flags?.revealed;
 
-    if (scaleKey !== `${hi}|${fmtEpoch()}`) {
-      scaleKey = `${hi}|${fmtEpoch()}`;
+    // A small dial (landscape phone, 320 px) labels every other tick, so the scale never crowds (QA carry-over).
+    if (scaleKey !== `${hi}|${fmtEpoch()}|${tight}`) {
+      scaleKey = `${hi}|${fmtEpoch()}|${tight}`;
       const ts = ticksFor(hi);
-      const every = ts.length > 7 ? 2 : 1;
+      const every = ts.length > 7 || (tight && ts.length > 4) ? 2 : 1;
       const mid = (ts.length - 1) / 2;
       let m = '';
       ts.forEach((v, i) => {

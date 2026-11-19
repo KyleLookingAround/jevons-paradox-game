@@ -2,8 +2,10 @@
 // bundled and minified into one string, which the engine starts as a Blob worker. Run after changing recipes, synth,
 // music or jobs:  bun run tools/audio-worker.ts   (audio.test.ts fails while the string is stale).
 import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+const ROOT = resolve(import.meta.dir, '..');
 export async function workerSource(): Promise<string> {
-  const r = await Bun.build({ entrypoints: ['src/ui/audio/worker.ts'], minify: true, target: 'browser', format: 'iife' });
+  const r = await Bun.build({ entrypoints: [resolve(ROOT, 'src/ui/audio/worker.ts')], minify: true, target: 'browser', format: 'iife' });
   if (!r.success) { for (const l of r.logs) console.error(l); throw new Error('worker build failed'); }
   return (await r.outputs[0].text()).trim();
 }
@@ -14,6 +16,6 @@ export function workerModule(src: string): string {
 }
 if (import.meta.main) {
   const src = await workerSource();
-  writeFileSync('src/ui/audio/worker-src.ts', workerModule(src));
+  writeFileSync(resolve(ROOT, 'src/ui/audio/worker-src.ts'), workerModule(src));
   console.log(`src/ui/audio/worker-src.ts ${(src.length / 1024).toFixed(1)} KB`);
 }

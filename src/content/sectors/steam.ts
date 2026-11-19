@@ -61,8 +61,11 @@ const sector: SectorDef = {
    * get there; slack recovery stretches the coal but not the air, so it is water wheels, temperance and the absorption
    * Institutions that reach the sink sooner.
    */
+  /* M3 balance (the first ending): 0.65, not 0.3. Held under the line's floor (half the drawn use), long budget runs
+   * settled Steam's smoke at 1.6–1.8× the 0.3 level for three hours and never cleared, so no run could put every
+   * Industry at Steady State together (at 0.55 it still sat 2% above); at 0.65 a well-held line clears in a long run. */
   steady: {
-    clearBelow: 0.3,
+    clearBelow: 0.65,
     decadeChoices: decadeSequence([
       ['div.steam.pitheadBaths', 'div.steam.dividendInCoal'],
       ['div.steam.smokeFund', 'div.steam.engineBounty'],

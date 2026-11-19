@@ -56,6 +56,47 @@ good (`MetaState.features`). Saves from before the change keep everything the ol
 
 ## Per-run summary
 
-Run 1: the reveal, the levers, people (three arrivals, 5 min apart). Run 2: the shop, the Market, more levers.
-Run 3: Charters, the budget, Tighten, dividends, the pace, clear skies (the budget's own unfolding, each tied to a
-decade the player has just earned). Run 4: the Commons, Steady State. Run 5: Settlement.
+Run 1: the reveal, the levers, people (three arrivals, 5 min apart). Run 2: the shop, the Market, ambient news, more
+levers, the first letter. Run 3: Charters, the budget, Tighten, dividends, the pace, clear skies (the budget's own
+unfolding, each tied to a decade the player has just earned), Steady State. From run 4: at most two arrivals a run,
+one at the Reckoning and one mid-run (M3, below).
+
+## M3: from run 4, two arrivals a run at most (balance lane, 19 Nov 2026)
+
+The owner's direction again: "options should be unlocked more slowly". The content lane had put the Archive, the seams,
+the load curve and the travel dial into run 4 at five-minute steps, on top of the Commons. Now, from run 4 on, a run
+brings **at most two** systems: one **at the Reckoning** that begins it, and one **mid-run**, never within five minutes
+of each other. The rule is in the data (`src/content/features.ts`), not the core:
+
+- **Mid-run** arrivals (the seams, the load curve, the travel dial, the bite) share one window, **minutes 20 to 24** of a
+  run. The window is shorter than the five-minute gap, so at most one of them can arrive in a run. Each needs the one
+  before it and a run floor, so they come one run apart and in order. Twenty minutes in, the run's Industries are open
+  and the player knows them.
+- **Reckoning** arrivals (Settlement, the Archive, the free price, the household survey, Histories) hold only while the
+  run is under two seconds old, which only the check in `reckon()` sees; one per Reckoning, in `FEATURE_IDS` order.
+  The quiet ones (the Archive, the free price) give way to the survey when it is due, so the Proprietor's Day stays near
+  hour 6–7. Settlement moved here too: a Steady State earned early in a run used to bring it mid-run.
+- The letters stay at **run 2, from minute 15** (not later: a burning run 2 collapses at about 21–27 minutes, and an
+  arrival in its last five minutes would push the Charters, which are drawn only at a Reckoning, out of run 3).
+  Ambient news stays at run 2, minute 5.
+
+| What | When (scripted players: budget · mixed · human) | Gated by | Introduced by |
+|---|---|---|---|
+| Ambient news (`ambient`) | run 2, 5 min (all) | 1 Reckoning | none: the paper has more in it |
+| Letters (`dispatches`) | run 2, 15 min (all) | 1 Reckoning, revealed, 15 min in | the correspondent's first letter |
+| The Commons (M2) | run 4 at the Reckoning (all) | 3 Reckonings | "Ratepayers petition for baths and libraries…" |
+| The seams (`seams`) | run 4 · run 6 · run 4, at 20 min | Steady State has arrived (an earlier run), 3 Reckonings, Steam's price ≤ 0.6 (the condenser), the window | "Colliery agents report good coal below the old workings" |
+| Settlement (M2) | the Reckoning after the first Steady State: run 5–6 · run 6 · run 8 | Steady State achieved, 4 Reckonings, at the Reckoning | "A settled industry proposed…" |
+| The load curve (`load`) | the run after the seams, 20 min: run 5–6 · run 7 · run 5 | the seams, 4 Reckonings, Light delivering, the window | "Evening Lamp notes the works stand idle every afternoon" |
+| The Archive (`archive`) | a Reckoning from run 6 · run 7 · run 6 | 5 Reckonings, at the Reckoning, gives way to the survey | "The Gazette opens its archive to subscribers" |
+| Travel time (`travel`) | the run after the load curve, 20 min: run 6–7 · run 8 · run 6 | the load curve, 5 Reckonings, Motion delivering, the window | "Motorist survey: faster roads, and the same hour at the wheel" |
+| Free at the point of use (`freeAtUse`) | a Reckoning after the travel dial: run 7–8 · run 9 · run 7 | the travel dial, 6 Reckonings, a business model ever bought in Compute (its Archive note), at the Reckoning, gives way to the survey | "info: price shown to user: £0.00" |
+| The household survey (`survey`) | the first Reckoning from hour 6 with the Civil Service owned: ≈ 7–10 h · ≈ 13 h · ≈ 7.8 h | 5 Reckonings, hour 6, the Civil Service, at the Reckoning | "Statistics Office proposes a survey of how households spend the day" |
+| The Proprietor's Day (card) | minutes after the survey once a return is on file (`--file-return=6`): ≈ 7–10 h · — · 8.2 h | the survey, three sessions each side | its own card |
+| Levers that bite back (`sideEffects`) | the window of a run after the free price, once a lever has bitten (0.3) — the scripted players seldom let one bite | the free price, 7 Reckonings, a bite ≥ 0.3, the window | the first 'biteBack' headline |
+| Histories (`histories`) | the first Reckoning from hour 8 after a Steady State: ≈ 10–15 h · ≈ 10 h · 9.5 h | Steady State achieved, hour 8, 6 Reckonings, at the Reckoning | "Historians invited to run the century again, under other rules" |
+| Banked time (`bank`) | never in M3 | — | — |
+
+Measured with `bun run tools/balance.ts <budget|mixed|human> 1 --total-hours=12 --summary --unlocks --file-return=6`
+(19 Nov 2026); asserted in `src/balance.test.ts` ("the unfolding"). The budget player's runs from run 5 last about
+three hours, so its later Reckoning arrivals come late in hours; the human player's runs are 40–110 minutes.

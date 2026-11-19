@@ -677,17 +677,20 @@ const W: Record<string, Recipe> = {
   seamSink: ({ rng, key, v }) => { // a seam sunk: the blast underground, the cage bell, a pump stroke rising (deeper: lower)
     const x = buf(4.6);
     const f = 50 - 4 * v;
-    add(x, thump(rng, f, 1.8, 0.2), 0, 0.8);
-    const rum = svf(brown(sec(2.6), rng), 'lp', 260 - 25 * v, 0.7);
+    add(x, thump(rng, f, 1.8, 0.2), 0, 0.55);
+    // The blast heard through rock: a muffled crack in the low mids (what a phone speaker can carry), then the rumble.
+    add(x, noiseBurst(rng, 'bp', 420 - 40 * v, 0.9, 0.003, 0.35, 0.5, 'p'), 0, 0.55);
+    add(x, knock(rng, 230 - 15 * v, 0.25), sec(0.01), 0.35);
+    const rum = svf(brown(sec(2.6), rng), 'bp', 300 - 30 * v, 0.6);
     envPts(rum, [[0, 0], [0.04, 1], [0.6, 0.6], [2.6, 0]]);
-    add(x, rum, sec(0.02), 0.7);
+    add(x, rum, sec(0.02), 0.6);
     add(x, svf(bell(rng, freq(key, 0, 3), 0.9, 1.0), 'lp', 3000, 0.7), sec(1.5), 0.22);
     add(x, svf(bell(rng, freq(key, 0, 3), 0.9, 1.0), 'lp', 3000, 0.7), sec(1.85), 0.18);
     const st = svf(brown(sec(1.8), rng), 'bp', (i) => (110 - 8 * v) + (300 - 20 * v) * (i / sec(1.8)), 1.4);
     envPts(st, [[0, 0], [1.0, 1], [1.5, 0.8], [1.8, 0]]);
     add(x, st, sec(2.3), 0.6);
     for (let k = 0; k < 4; k++) add(x, knock(rng, 560 + 40 * k, 0.05, true), sec(2.45 + 0.28 * k), 0.12);
-    return x;
+    return svf(x, 'hp', 70, 0.7);
   },
   cricket: ({ rng }) => { const x = buf(1.2); for (let k = 0; k < 3; k++) { const y = osc(sec(0.18), 3500 + 200 * rng(), 'sine'); for (let i = 0; i < y.length; i++) y[i] *= Math.max(0, Math.sin((2 * Math.PI * 30 * i) / SR)); envAD(y, 0.01, 0.17); add(x, y, sec(0.35 * k), 0.6); } return x; },
 

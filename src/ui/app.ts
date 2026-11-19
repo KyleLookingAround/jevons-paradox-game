@@ -323,7 +323,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
           endingNow = true;
           sound('ending');
           // The credits wait for any sheet the player is in, and never cover a pending Reckoning.
-          setTimeout(() => { if (!ctx.d?.pendingReckoning) ui.openCredits(); }, reducedMotion() ? 0 : 2200);
+          setTimeout(() => { if (!ctx.d?.pendingReckoning) ui.openCredits(); }, reducedMotion() ? 0 : 1200);
           break;
         default: break; // unknown kinds are ignored (the union grows)
       }

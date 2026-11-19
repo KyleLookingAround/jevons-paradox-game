@@ -94,7 +94,7 @@ const upkeepStep = (s: GameState, id: string): number => {
   return (v.next?.mandateUpkeep ?? 0) - (v.current?.mandateUpkeep ?? 0);
 };
 
-interface Memo { revealAt: number | null; lastSpare: number }
+interface Memo { revealAt: number | null; lastSpare: number; lastStock?: number; stockP?: Record<string, number> }
 
 /** Before budgets arrive (the unfolding: runs 1–2), restraint is levers only: the cheapest lever raised whenever Mandate
  *  allows and the net rate stays positive (tools/balance.ts `levers` rule), authored levels only. */
@@ -153,10 +153,32 @@ function budgetStep(s: GameState, m: Memo, marketOff: boolean): GameState {
       .sort((a, b) => (a.nextCost ?? 0) - (b.nextCost ?? 0))[0];
     if (circ) { const n = model.setLever(s, C, circ.def.id, circ.level + 1); if (n !== s) { s = n; m.lastSpare = s.time; } }
   }
+  s = tendStock(s, m);
   const d = D(s);
   if (d.mandatePerSec < 0 && s.mandate < -60 * d.mandatePerSec) {
     const worst = model.leverViews(s, C).filter((l) => l.level > 0 && l.def.kind !== 'cap').sort((a, b) => b.upkeep - a.upkeep)[0];
     if (worst) s = model.setLever(s, C, worst.def.id, worst.level - 1);
+  }
+  return s;
+}
+
+/** M3 (tools/balance.ts tendStock): a stock nothing absorbs (Code's) is held by its own levers, one a minute while it is
+ *  above 15% of collapse and rising: deletion, then shared libraries, then review. */
+function tendStock(s: GameState, m: Memo): GameState {
+  if (s.time - (m.lastStock ?? -Infinity) < 60) return s;
+  const d = D(s);
+  for (const e of ORDER) {
+    const def = C.sectors[e], x = d.sectors[e];
+    if (!x || x.settled || def.pressureSource !== 'service' || def.absorption > 0) continue;
+    const prevP = m.stockP?.[e];
+    m.stockP = { ...(m.stockP ?? {}), [e]: s.sectors[e].pressure };
+    if (x.pressureFraction < 0.15 || prevP === undefined || s.sectors[e].pressure <= prevP) continue;
+    const order = ['deletion', 'sharedLibs', 'reviewGate'];
+    const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null && d.mandatePerSec - upkeepStep(s, v.def.id) > 0)
+      .sort((a, b) => order.indexOf(a.def.kind) - order.indexOf(b.def.kind))[0];
+    if (!l) continue;
+    const n = model.setLever(s, C, l.def.id, l.level + 1);
+    if (n !== s) { s = n; m.lastStock = s.time; }
   }
   return s;
 }
@@ -246,7 +268,7 @@ function instRank(d: InstitutionDef): number {
   const effs = [d.effects, ...(d.nextLevels ?? []).map((l) => l.effects)].flat();
   const lever = (k: string) => effs.some((e) => e.type === 'startLever' && C.levers.find((l) => l.id === e.lever)?.kind === k);
   return lever('cap') ? 0 : effs.some((e) => e.type === 'wellbeingAdd') ? 1 : effs.some((e) => e.type === 'reveal') ? 2
-    : effs.some((e) => e.type === 'absorptionAdd') ? 3 : lever('duty') ? 9 : 5;
+    : effs.some((e) => e.type === 'absorptionAdd') ? 3 : effs.some((e) => e.type === 'orderUnlock') ? 4 : lever('duty') ? 9 : 5;
 }
 
 /** Between runs: restraint buys Institutions by rank then Know-how and seats the best loadout; backfire buys Know-how. */
@@ -259,7 +281,7 @@ function spend(s: GameState, restraint: boolean, capsOnly = false): GameState {
     s = n;
   }
   if (!restraint) return s;
-  const owned = C.institutions.filter((i) => (s.meta.institutions[i.id] ?? 0) >= 1 && instRank(i) < (capsOnly ? 1 : 9)).sort((a, b) => instRank(a) - instRank(b));
+  const owned = C.institutions.filter((i) => (s.meta.institutions[i.id] ?? 0) >= 1 && instRank(i) < (capsOnly ? 1 : 9) && instRank(i) !== 4).sort((a, b) => instRank(a) - instRank(b));
   const ids: string[] = [];
   let used = 0;
   for (const i of owned) if (used + (i.slots ?? 1) <= s.meta.slots) { ids.push(i.id); used += i.slots ?? 1; }
@@ -682,13 +704,40 @@ describe('the unfolding: one system at a time', () => {
     const first = BUD.runs.findIndex((r) => r.steadyAt !== null);
     expect(within(at(BUD, 'settlement'), first + 2, 0, 0)).toEndWith('true');
   });
-  test('never two systems within five minutes of each other (runs 1–3, both styles)', () => {
-    for (const c of [EFF, BUD]) {
+  test('never two systems within five minutes of each other, through hour 10 (efficiency, budget, mixed, human)', () => {
+    for (const c of [EFF, BUD, MIX, HUM]) {
       const times: number[] = [];
-      c.runs.slice(0, 3).forEach((r, i) => { for (const t of Object.values(r.features)) times.push(cum(c.runs, i) + t!); });
+      c.runs.forEach((r, i) => { if (cum(c.runs, i) < 36000) for (const t of Object.values(r.features)) times.push(cum(c.runs, i) + t!); });
       times.sort((a, b) => a - b);
       for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeGreaterThanOrEqual(299);
     }
+  });
+  // M3 balance (owner's direction, 19 Nov 2026: "options should be unlocked more slowly"; design/unlock-schedule.md)
+  test('from run 4, at most two arrivals a run: one at the Reckoning, one mid-run (through hour 10, every style)', () => {
+    for (const [name, c] of Object.entries({ EFF, BUD, MIX, HUM })) c.runs.forEach((r, i) => {
+      if (i < 3 || cum(c.runs, i) >= 36000) return;
+      const ts = Object.values(r.features) as number[];
+      expect(`${name} run ${i + 1}: ${ts.length <= 2 && ts.filter((t) => t > 0).length <= 1 && ts.filter((t) => t === 0).length <= 1}`).toBe(`${name} run ${i + 1}: true`);
+    });
+  });
+  test('M3 arrivals in their windows: letters in run 2; nothing M3 in run 3; the mechanics mid-run (20–24 min), one run apart', () => {
+    for (const c of [BUD, MIX, HUM]) {
+      expect(within(at(c, 'ambient'), 2, 4.9, 6)).toEndWith('true');
+      expect(within(at(c, 'dispatches'), 2, 15, 21)).toEndWith('true');
+      for (const f of ['archive', 'seams', 'load', 'travel', 'freeAtUse', 'sideEffects', 'survey', 'histories'] as FeatureId[]) expect(`${f} ${c.runs[2]?.features[f] === undefined}`).toBe(`${f} true`);
+      let prev = 0;
+      for (const f of ['seams', 'load', 'travel'] as FeatureId[]) {
+        const x = at(c, f);
+        if (!x) break; // a campaign may end first
+        expect(`${f} ${x.run > prev && x.run >= 4 && x.min >= 20 && x.min < 24}`).toBe(`${f} true`);
+        prev = x.run;
+      }
+      // the seams wait for Steady State's arrival (the budget player's run 4)
+      if (at(c, 'seams')) expect(at(c, 'seams')!.run).toBeGreaterThan(at(c, 'steadyState')!.run);
+      for (const f of ['archive', 'freeAtUse', 'survey', 'histories', 'settlement'] as FeatureId[]) if (at(c, f)) expect(`${f} ${at(c, f)!.min}`).toBe(`${f} 0`);
+    }
+    expect(at(BUD, 'seams')?.run).toBe(4);
+    expect(at(BUD, 'load')?.run).toBe(5);
   });
 });
 

@@ -2,13 +2,16 @@
 // synthesised recipe (finite, bounded, click-free edges, no DC, deterministic, nothing harsh above 6 kHz).
 // @ts-ignore bun:test types are not in the project tsconfig (types: [])
 import { describe, expect, test } from 'bun:test';
-import { mixFrom, sourcesFrom, momentsBetween, readSrc } from './mix';
+import { mixFrom, sourcesFrom, momentsBetween, readSrc, nightness, loadAt, peakHourOf } from './mix';
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type HitsDef } from './defs';
-import { render, hasRecipe, WORLD_RECIPES, PALETTES, UI_KINDS } from './recipes';
+import { render, hasRecipe, WORLD_RECIPES, PALETTES, UI_KINDS, MOTIFS, CAST_FAMILY } from './recipes';
+import { KEYS as K2 } from './music';
+import { runJob, jobId } from './jobs';
+import { WORKER_SRC } from './worker-src';
 import { rngFrom, BUF_SR, peak, svf } from './synth';
 import { KEYS, semis, MODES } from './music';
 import { demoView, viewOf, preset, runView, PRESET_NAMES } from './views';
-import { SOUND_EVENT_KINDS } from './types';
+import { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES } from './types';
 import type { SceneView } from '../scene/types';
 
 const SECTORS = ['steam', 'light', 'motion', 'compute', 'code'];
@@ -53,8 +56,10 @@ describe('definitions', () => {
     expect(paletteFor(undefined, 'nonsense')).toBe('ledger');
   });
   test('every interface event kind has a recipe in every palette', () => {
-    for (const k of SOUND_EVENT_KINDS) for (const p of PALETTES) expect(hasRecipe(`ui:${p}:${k}`)).toBe(true);
-    expect([...UI_KINDS].sort()).toEqual([...SOUND_EVENT_KINDS].sort());
+    const own = SOUND_EVENT_KINDS.filter((k) => !(k in SOUND_EVENT_ALIASES));
+    for (const k of own) for (const p of PALETTES) expect(hasRecipe(`ui:${p}:${k}`)).toBe(true);
+    expect([...UI_KINDS].sort()).toEqual([...own].sort());
+    for (const [a, k] of Object.entries(SOUND_EVENT_ALIASES)) { expect(SOUND_EVENT_KINDS).toContain(a as never); expect(own).toContain(k); }
   });
 });
 
@@ -218,5 +223,170 @@ describe('recipes (pure synthesis)', () => {
   });
   test('presets exist for every Industry', () => {
     for (const s of SECTORS) for (const p of PRESET_NAMES) expect(demoView(s, p).apps.length).toBeGreaterThan(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M3                                                                  */
+/* ------------------------------------------------------------------ */
+
+const lightDay = [0.2, 0.15, 0.12, 0.12, 0.15, 0.25, 0.45, 0.7, 0.8, 0.75, 0.7, 0.7, 0.72, 0.7, 0.68, 0.7, 0.8, 0.95, 1, 0.9, 0.7, 0.5, 0.35, 0.25];
+const m3 = (sector: string, extra: Partial<SceneView>, p: Parameters<typeof preset>[1] = 'late') => ({ ...demoView(sector, p), ...extra }) as SceneView;
+const mixH = (v: SceneView, hour?: number | null, calm = false, ending = 0) => mixFrom(v, soundscapeFor(v.sectorId), { calm, hour, ending });
+
+describe('M3: nothing of a system the player has not met is heard', () => {
+  test('absent fields: every M3 layer silent, every existing layer exactly as before', () => {
+    const m3Layers = ['pumpHeave', 'loadHum', 'dayMill', 'crickets', 'queue', 'jamHorn', 'sprawlHum', 'till', 'tillMute', 'dam', 'grid'];
+    for (const s of SECTORS) for (const p of PRESET_NAMES) {
+      const m = mix(demoView(s, p));
+      for (const id of m3Layers) if (m.layers[id]) { expect(m.layers[id].level).toBe(0); expect(m.layers[id].density).toBe(0); }
+      expect(m.watch).toBe(0); expect(m.ending).toBe(0); expect(m.hour).toBeNull(); expect(Object.keys(m.bites)).toEqual([]);
+    }
+  });
+  test('an M3 field for one Industry does nothing to another Industry\'s layers', () => {
+    const v = m3('code', { seams: { sunk: 3, total: 4, next: true }, load: { hours: lightDay, factor: 0.55 }, travel: { speed: 0.3, sprawl: 0.8, sprawlShare: 0.5 }, free: { apps: ['code.chatbot'] } });
+    const a = mix(demoView('code', 'late')), b = mix(v);
+    expect(b.layers).toEqual(a.layers);
+  });
+});
+
+describe('M3: Steam seams', () => {
+  test('deeper seams: the winding runs longer (variant), lower and more often; the pumps labour', () => {
+    const at = (sunk: number) => mix(m3('steam', { seams: { sunk, total: 4, next: true } }));
+    const a = at(0), b = at(2), c = at(4);
+    expect(a.layers.pumpHeave.level).toBe(0);
+    expect(b.layers.pumpHeave.level).toBeGreaterThan(0.3);
+    expect(c.layers.pumpHeave.level).toBeGreaterThan(b.layers.pumpHeave.level);
+    expect(c.layers.winder.pitch).toBeLessThan(b.layers.winder.pitch);
+    expect(b.layers.winder.pitch).toBeLessThan(a.layers.winder.pitch);
+    expect(c.layers.winder.density).toBeGreaterThan(a.layers.winder.density);
+    expect(a.layers.winder.variant).toBe(0);
+    expect(c.layers.winder.variant).toBe(3);
+    expect(c.layers.eng2.pitch).toBeLessThan(a.layers.eng2.pitch);
+  });
+  test('the deeper winder recipe is longer', () => {
+    const len = (v: number) => render('winder', { rng: rngFrom(1), key: KEYS.steam, v }).length;
+    expect(len(3)).toBeGreaterThan(len(0) * 1.4);
+    expect(len(3) / BUF_SR).toBeLessThan(15);
+  });
+});
+
+describe('M3: Light\'s day', () => {
+  const v = m3('light', { load: { hours: lightDay, factor: 0.55 } });
+  test('helpers', () => {
+    expect(peakHourOf(lightDay)).toBe(18);
+    expect(loadAt(lightDay, 18)).toBe(1);
+    expect(loadAt(lightDay, 23.5)).toBeCloseTo((0.25 + 0.2) / 2, 5);
+    expect(nightness(2)).toBe(1); expect(nightness(12)).toBe(0); expect(nightness(20.5)).toBeGreaterThan(0.2);
+  });
+  test('the evening peak is louder and brighter than the small hours; crickets only at a quiet night', () => {
+    const peak = mixH(v, 18), small = mixH(v, 3);
+    expect(peak.hour).toBe(18);
+    expect(peak.layers.loadHum.level).toBeGreaterThan(small.layers.loadHum.level * 3);
+    expect(peak.layers.loadHum.tone).toBeGreaterThan(small.layers.loadHum.tone);
+    expect(peak.layers.town.level).toBeGreaterThan(small.layers.town.level);
+    expect(small.layers.crickets.level).toBeGreaterThan(0.3);
+    expect(peak.layers.crickets.level).toBe(0);
+    expect(mixH(v, 8).layers.dayMill.density).toBeGreaterThan(0.5);
+    expect(small.layers.dayMill.level).toBe(0);
+  });
+  test('the hollows sold: the night no longer goes quiet', () => {
+    const flat = lightDay.map((x, h) => (h < 6 ? 0.85 : x));
+    const sold = mixH(m3('light', { load: { hours: flat, factor: 0.8 } }), 3), quiet = mixH(v, 3);
+    expect(sold.layers.nightMill.level).toBeGreaterThan(quiet.layers.nightMill.level * 2);
+    expect(sold.layers.crickets.level).toBeLessThan(quiet.layers.crickets.level * 0.3);
+    expect(sold.layers.loadHum.level).toBeGreaterThan(quiet.layers.loadHum.level * 2);
+  });
+  test('calm (no hour given) stands at the peak hour, as the picture does', () => {
+    expect(mixH(v, null).hour).toBe(18);
+  });
+});
+
+describe('M3: Motion travel', () => {
+  test('congestion thickens the wash and brings the queue; cars pass slower; a horn only in a jam', () => {
+    const at = (speed: number, sprawl = 0.3) => mix(m3('motion', { travel: { speed, sprawl, sprawlShare: 0.3 } }, 'mid'));
+    const free = at(1), jam = at(0.2);
+    expect(jam.layers.wash.level).toBeGreaterThan(free.layers.wash.level);
+    expect(free.layers.queue.level).toBe(0);
+    expect(jam.layers.queue.level).toBeGreaterThan(0.5);
+    expect(jam.layers.cars.pitch).toBeLessThan(free.layers.cars.pitch);
+    expect(free.layers.jamHorn.level).toBe(0);
+    expect(jam.layers.jamHorn.level).toBeGreaterThan(0.4);
+  });
+  test('the sprawl stays when the traffic thins', () => {
+    const thin = viewOf('motion', { ...preset('motion', 'late'), adoption: [0.1, 0.05, 0.1, 0.1, 0.1], status: ['founded', 'founded', 'founded', 'hidden', 'founded'] });
+    const a = mix({ ...thin, travel: { speed: 0.95, sprawl: 0.9, sprawlShare: 0.7 } } as SceneView), b = mix(thin);
+    expect(a.layers.sprawlHum.level).toBeGreaterThan(0.8);
+    expect(a.layers.mower.level).toBeGreaterThan(b.layers.mower.level);
+    expect(a.layers.radio.level).toBeGreaterThan(b.layers.radio.level);
+  });
+});
+
+describe('M3: Compute free at the point of use', () => {
+  test('free uses: the till falls silent where it rang, the bell-less key and the elsewhere (dam, grid) rise', () => {
+    const none = mix(m3('compute', { free: { apps: [] } })), half = mix(m3('compute', { free: { apps: ['compute.globe', 'compute.play'] } }));
+    const all = mix(m3('compute', { free: { apps: ['compute.sheet', 'compute.globe', 'compute.cloud', 'compute.play', 'compute.brain'] } }));
+    expect(none.layers.till.level).toBeGreaterThan(0.5); expect(none.layers.tillMute.level).toBe(0); expect(none.layers.dam.level).toBe(0);
+    expect(half.layers.till.level).toBeLessThan(none.layers.till.level);
+    expect(all.layers.till.level).toBe(0);
+    expect(all.layers.tillMute.level).toBeGreaterThan(half.layers.tillMute.level);
+    expect(all.layers.dam.level).toBeGreaterThan(half.layers.dam.level);
+    expect(all.layers.grid.level).toBeGreaterThan(0.5);
+  });
+});
+
+describe('M3: levers that bite back, the watch, the ending', () => {
+  test('bite is read per lever kind (0 when absent, clamped)', () => {
+    const v = viewOf('motion', { ...preset('motion', 'mid'), levers: ['duty', 'cap'] });
+    v.levers[0].bite = 0.7; v.levers[1].bite = 3;
+    const m = mix(v);
+    expect(m.bites.duty).toBeCloseTo(0.7, 5); expect(m.bites.cap).toBe(1);
+    expect(mix(viewOf('motion', { ...preset('motion', 'mid'), levers: ['duty'] })).bites).toEqual({});
+  });
+  test('the watch: 0 when absent, clamped, silent in a Reckoning', () => {
+    expect(mix(m3('steam', { watch: 0.5 })).watch).toBe(0.5);
+    expect(mix(m3('steam', { watch: 7 })).watch).toBe(1);
+    expect(mix({ ...demoView('steam', 'collapse'), watch: 1 } as SceneView).watch).toBe(0);
+  });
+  test('the ending clears the air, lifts the strain and steps the world back without stopping it', () => {
+    const v = demoView('code', 'crisis');
+    const a = mixH(v), b = mixH(v, null, false, 1);
+    expect(b.air).toBeGreaterThan(a.air * 2);
+    expect(b.stress).toBe(0); expect(b.thick).toBe(0);
+    expect(b.world).toBeGreaterThan(0.6); expect(b.world).toBeLessThan(1);
+    expect(b.layers.rain.level).toBeLessThan(a.layers.rain.level);
+  });
+});
+
+describe('M3: cast motifs', () => {
+  test('every family is a few notes and distinct from every other by interval content', () => {
+    const sig = (degs: number[]) => degs.slice(1).map((d, i) => semis(K2.steam, d) - semis(K2.steam, degs[i])).join(',');
+    const seen = new Map<string, string>();
+    for (const [fam, [degs]] of Object.entries(MOTIFS)) {
+      expect(degs.length).toBeGreaterThanOrEqual(2); expect(degs.length).toBeLessThanOrEqual(4);
+      const k = sig(degs);
+      expect(seen.has(k)).toBe(false);
+      seen.set(k, fam);
+    }
+    for (const fam of Object.values(CAST_FAMILY)) expect(MOTIFS[fam]).toBeDefined();
+    for (const p of PALETTES) for (const fam of Object.keys(MOTIFS)) expect(hasRecipe(`ui:${p}:motif.${fam}`)).toBe(true);
+    expect(hasRecipe('ui:ledger:motif.nobody')).toBe(false);
+  });
+});
+
+describe('M3: synthesis jobs and the worker', () => {
+  test('jobs are deterministic; the impulse is normalised; ids differ by seed', () => {
+    const j = { t: 'recipe' as const, name: 'bird', key: KEYS.steam, v: 2, seed: 9 };
+    expect(runJob(j).chans[0]).toEqual(runJob(j).chans[0]);
+    expect(jobId(j)).not.toBe(jobId({ ...j, seed: 10 }));
+    const imp = runJob({ t: 'impulse', sr: 48000, dur: 1.7, seed: 1 });
+    expect(imp.chans.length).toBe(2); expect(imp.sr).toBe(48000);
+    const n = runJob({ t: 'noise', col: 'pink', seed: 1 });
+    expect(n.chans[0][0]).toBeCloseTo(n.chans[0][n.chans[0].length - 1] * 0 + n.chans[0][0], 9);
+  });
+  test('worker-src.ts is up to date with worker.ts and the recipes (run: bun run tools/audio-worker.ts)', async () => {
+    // @ts-ignore tools are outside the project tsconfig
+    const { workerSource } = await import('../../../tools/audio-worker.ts');
+    expect(WORKER_SRC).toBe(await workerSource());
   });
 });

@@ -84,7 +84,7 @@ interface Graph {
 }
 
 /** The sound's own kinds (aliases resolve to these first). */
-type OwnKind = Exclude<SoundEventKind, keyof typeof SOUND_EVENT_ALIASES>;
+type OwnKind = Exclude<SoundEventKind, 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared'>;
 const KIND_GAIN: Record<OwnKind, number> = {
   sell: 0.22, buy: 0.3, cannotAfford: 0.26, found: 0.34, lever: 0.34, fork: 0.3, headline: 0.26, reveal: 0.42, backfire: 0.42,
   crisis: 0.32, decade: 0.3, steady: 0.38, reckoning: 0.4, industryOpened: 0.34, ageBegun: 0.4,
@@ -231,8 +231,13 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       if (sync) for (let k = 0; k < REV_SEGS; k++) one(k);
       else { let k = 0; const next = () => { one(k++); if (k < REV_SEGS) idle(next); }; idle(next); }
     };
-    const ib = obtain({ t: 'impulse', sr: c.sampleRate, dur: REV_DUR, seed }, { sync, pin: true, ctx: c, cb: (b) => { if (b) fill(b); } });
-    if (ib) fill(ib);
+    const ask = () => {
+      if (ctx !== c || destroyed) return;
+      const ib = obtain({ t: 'impulse', sr: c.sampleRate, dur: REV_DUR, seed }, { sync, pin: true, ctx: c, cb: (b) => { if (b) fill(b); } });
+      if (ib) fill(ib);
+    };
+    // Live, even asking (which starts the worker the first time) waits until the tap is over.
+    if (sync) ask(); else idle(ask);
     ramp(master.gain, vol.master ** 2, 0.15);
   }
 
@@ -601,7 +606,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function applyWatch(g: Graph, m: Mix): void {
     if (m.watch <= 0) { if (g.watch) { g.watch.density = 0; } return; }
     if (!g.watch) {
-      const def: HitsDef = { id: 'watch', kind: 'hits', recipe: 'watchTick', variants: 2, rate: 0.5, minGap: 2, pan: [0.15, 0.3], gain: 0.05, level: { add: [['one', 1]] }, send: 0.05, lp: 4000 };
+      const def: HitsDef = { id: 'watch', kind: 'hits', recipe: 'watchTick', variants: 2, rate: 0.5, minGap: 2, pan: [0.15, 0.3], gain: 0.07, level: { add: [['one', 1]] }, send: 0.05, lp: 4000 };
       g.watch = buildLayer(g, def, g.def.key, g.air, g.send, 'watch');
     }
     applyLayer(g, g.watch, { level: 1, density: m.watch * (calm() ? 0.6 : 1), pitch: 1, tone: 1, blackout: false });

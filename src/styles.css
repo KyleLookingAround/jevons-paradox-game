@@ -1614,3 +1614,6 @@ html[data-motion='reduce'] .cr-line { animation: none; }
 .rt-y { font-family: var(--display); font-weight: 700; font-size: calc(15px * var(--ts)); }
 .rt-h { font-family: var(--display); font-weight: var(--display-wt); font-stretch: var(--display-stretch); font-size: calc(15px * var(--ts)); line-height: 1.25; text-wrap: balance; }
 .rt-s { grid-column: 2; font-size: calc(11.5px * var(--ts)); }
+.lp-short { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lp-fig { margin: 0; min-width: 0; }
+.lp-fig svg { display: block; width: 100%; height: auto; }

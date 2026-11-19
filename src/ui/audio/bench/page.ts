@@ -4,7 +4,7 @@ import { createSoundscape } from '../engine';
 import { SOUNDSCAPES, registerSoundscape, type SoundscapeDef, type LayerDef } from '../defs';
 import { demoView, runView, viewOf, preset, type PresetName } from '../views';
 import type { SceneView } from '../../scene/types';
-import type { SoundEventKind } from '../types';
+import type { SoundEventKind, SoundEventDetail } from '../types';
 
 const SR = 48000;
 
@@ -14,7 +14,9 @@ export interface Case {
   /** View at time t (s). */
   view: (t: number) => SceneView | null;
   /** Interface events: [time, kind, sector?]. */
-  events?: [number, SoundEventKind, string?][];
+  events?: [number, SoundEventKind, string?, SoundEventDetail?][];
+  /** Extra actions at times: [t, f(soundscape)]. */
+  acts?: [number, (ss: ReturnType<typeof createSoundscape>) => void][];
   calm?: boolean;
   analyseFrom?: number;
 }
@@ -31,7 +33,8 @@ async function renderCase(c: Case): Promise<Rendered> {
     const t = k * 0.1;
     put(t, () => { const v = c.view(t); if (v) ss.update(v); });
   }
-  for (const [et, kind, sector] of c.events ?? []) put(et, () => ss.event(kind, sector ? { sector } : undefined));
+  for (const [et, kind, sector, det] of c.events ?? []) put(et, () => ss.event(kind, { ...(sector ? { sector } : {}), ...(det ?? {}) }));
+  for (const [at, f] of c.acts ?? []) put(at, () => f(ss));
   for (let k = 0; k * 0.1 < c.dur - 0.05; k++) put(k * 0.1, () => ss.tick());
   for (const [q, fs] of acts) {
     if (q === 0) continue;
@@ -276,5 +279,71 @@ const api = {
   },
 };
 
-(window as unknown as { bench: typeof api }).bench = api;
+/* ---------------- M3 ---------------- */
+
+const LIGHT_DAY = [0.2, 0.15, 0.12, 0.12, 0.15, 0.25, 0.45, 0.7, 0.8, 0.75, 0.7, 0.7, 0.72, 0.7, 0.68, 0.7, 0.8, 0.95, 1, 0.9, 0.7, 0.5, 0.35, 0.25];
+/** The day curve rotated so that the engine's clock (which starts at 18:00) stands at `hour` when the render begins. */
+const dayAt = (hours: number[], hour: number) => Array.from({ length: 24 }, (_, h) => hours[(((h - 18 + hour) % 24) + 24) % 24]);
+
+const m3api = {
+  LIGHT_DAY,
+  /** A held state with M3 fields merged into a preset; `spec` true saves a spectrogram. */
+  async state(sector: string, p: PresetName, extra: Partial<SceneView>, name: string, dur = 14, img = true, bites?: Record<string, number>) {
+    const base = { ...demoView(sector, p), ...extra } as SceneView;
+    if (bites) base.levers = base.levers.map((l) => ({ ...l, bite: bites[l.kind] ?? 0 }));
+    const out = await renderCase({ name, dur, view: hold(base) });
+    return { a: analyse(out.l, out.r, 3), png: img ? spectrogram(out.l, out.r, name) : null };
+  },
+  /** Light's day held at an hour (8 s, the clock moves ~3 h in that time; the rotated curve starts at `hour`). */
+  async lightHour(hour: number, hours = LIGHT_DAY, dur = 8) {
+    const v = { ...demoView('light', 'late'), load: { hours: dayAt(hours, hour), factor: 0.55 } } as SceneView;
+    const out = await renderCase({ name: 'h', dur, view: hold(v) });
+    return { a: analyse(out.l, out.r, 2) };
+  },
+  async lightDay(dur = 60) {
+    const v = { ...demoView('light', 'late'), load: { hours: LIGHT_DAY, factor: 0.55 } } as SceneView;
+    const out = await renderCase({ name: 'day', dur, view: hold(v) });
+    const marks: [number, string][] = [[0, '18h'], [15, '0h'], [30, '6h'], [45, '12h']];
+    return { a: analyse(out.l, out.r, 1), png: spectrogram(out.l, out.r, 'light · a day in a minute from dusk (late town, load curve with an evening peak)', marks) };
+  },
+  /** One interface moment alone, with detail. */
+  async event(sector: string, kind: SoundEventKind, det: SoundEventDetail = {}, dur = 9) {
+    const out = await renderCase({ name: 'ev', dur, view: () => null, events: [[0.2, kind, sector, det]] });
+    return { a: analyse(out.l, out.r, 0) };
+  },
+  /** Moments over a bed: each at its time over the held `p` state; analysis of the bed alone and with. */
+  async overBed(sector: string, p: PresetName, evs: [number, SoundEventKind, SoundEventDetail?][], dur: number, name: string, extra: Partial<SceneView> = {}) {
+    const v = { ...demoView(sector, p), ...extra } as SceneView;
+    const out = await renderCase({ name, dur, view: hold(v), events: evs.map(([t, k, d]) => [t, k, sector, d] as [number, SoundEventKind, string, SoundEventDetail | undefined]) });
+    return { a: analyse(out.l, out.r, 2), png: spectrogram(out.l, out.r, name, evs.map(([t, k]) => [t, k] as [number, string])) };
+  },
+  /** The first ending over a held state: the credits bed for `dur` s, analysed from 10 s on (after the sting). */
+  async ending(sector: string, p: PresetName, dur = 72, stopAt = 0) {
+    const v = demoView(sector, p);
+    const evs: [number, SoundEventKind, string][] = [[2, 'ending', sector]];
+    if (stopAt) evs.push([stopAt, 'ledgerContinues', sector]);
+    const out = await renderCase({ name: 'end', dur, view: hold(v), events: evs });
+    return { a: analyse(out.l, out.r, 12), whole: analyse(out.l, out.r, 0), png: spectrogram(out.l, out.r, `${sector} · the first ending at 2 s (${p} world under the credits)${stopAt ? ', the ledger continues at ' + stopAt + ' s' : ''}`, evs.map(([t, k]) => [t, k] as [number, string])) };
+  },
+  /** What a change adds: renders the same held state with and without `extra`; returns the level of the difference
+   *  (the added sound alone, since every source is seeded the same) and its spectrum. */
+  async diff(sector: string, p: PresetName, extra: Partial<SceneView>, dur = 30, bites?: Record<string, number>) {
+    const mk = (e: Partial<SceneView>) => { const v = { ...demoView(sector, p), ...e } as SceneView; if (bites && e === extra) v.levers = v.levers.map((l) => ({ ...l, bite: bites[l.kind] ?? 0 })); return v; };
+    const base = extra.levers ? { levers: extra.levers } : {};
+    const a = await renderCase({ name: 'a', dur, view: hold(mk(base)) });
+    const b = await renderCase({ name: 'b', dur, view: hold(mk(extra)) });
+    const l = new Float32Array(a.l.length), r = new Float32Array(a.l.length);
+    for (let i = 0; i < l.length; i++) { l[i] = b.l[i] - a.l[i]; r[i] = b.r[i] - a.r[i]; }
+    return { added: analyse(l, r, 3), base: analyse(a.l, a.r, 3) };
+  },
+  /** Sound turned off (the page: setEnabled(false), destroy) mid-scene: is the tail click-free? */
+  async offMidway(sector: string) {
+    const v = demoView(sector, 'late');
+    const out = await renderCase({ name: 'off', dur: 8, view: (t) => (t < 5 ? v : null), acts: [[5, (ss) => { ss.setEnabled(false); ss.destroy(); }]] });
+    return { a: analyse(out.l, out.r, 4), tail: analyse(out.l, out.r, 5.6) };
+  },
+};
+
+(window as unknown as { bench: typeof api; m3: typeof m3api }).bench = api;
+(window as unknown as { m3: typeof m3api }).m3 = m3api;
 document.title = 'audio bench ready';

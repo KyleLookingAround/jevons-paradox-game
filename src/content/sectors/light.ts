@@ -85,7 +85,9 @@ const sector: SectorDef = {
    */
   steady: {
     clearBelow: 0.3,
-    clearFloor: 0.005,
+    /* M3 balance (the first ending): floor 1.2%, not 0.5%. A line drawn as Light opens has its fog still rising to
+     * the level the line holds (0.9–1.1% in long runs), so half the drawn fog was below where it settles. */
+    clearFloor: 0.012,
     decadeChoices: decadeSequence([
       ['div.light.earlyClosing', 'div.light.lateOpening'],
       ['div.light.fogWardens', 'div.light.meterRebate'],
@@ -169,7 +171,9 @@ const sector: SectorDef = {
       halfPrice: 0.15,
       saturation: 25_000,
       steepness: 3.6,
-      visibleBelow: 0.24,
+      /* M3 balance: 0.27, not 0.24: with the load curve live Light's price runs about a tenth above M2's until the
+       * hollows fill, and the carbon filament must still bring the homes within reach (src/balance.test.ts). */
+      visibleBelow: 0.27,
       foundCost: 40_000,
       profile: 'evening',
     },

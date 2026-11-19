@@ -267,8 +267,9 @@ async function flow(base, tag0 = 'flow') {
       await page.click('.sheet-foot button:has-text("Begin the next run")'); await page.waitForTimeout(400);
     });
     await step('win card', async () => {
-      await page.goto(base + '#mock:won'); await page.waitForTimeout(4500); await shot('win');
-      if (!(await page.locator('.paper-head:has-text("Steady State")').count())) throw new Error('no win card');
+      await page.goto(base + '#mock:won'); await page.waitForTimeout(6500); await shot('win');
+      // M3: the first win is the first ending: its credits card (Content.ending.credits; the mock carries the real one).
+      if (!(await page.locator('.paper-head:has-text("Steady State"), .credits .paper-head').count())) throw new Error('no win card');
     });
     const o = await overflow(page);
     if (o.sw > o.cw) fail(`OVERFLOW ${T}`);
@@ -1355,7 +1356,7 @@ async function m2() {
       await page.click('.tb-menu'); await page.waitForTimeout(250);
       await page.locator('.setting.survey').scrollIntoViewIfNeeded();
       const txt = await page.locator('.setting.survey p').textContent();
-      if (!/never leaves the device and is not in your save/.test(txt)) throw new Error('disclosure missing');
+      if (!/kept on this device, never in the save and never sent anywhere/.test(txt)) throw new Error('disclosure missing');
       await shot('settings', '.setting.snd');
       if (await page.evaluate(() => window.__ac)) throw new Error('AudioContext before the tap');
       await page.click('.setting.snd .tog'); await page.waitForTimeout(300);
@@ -1576,8 +1577,9 @@ async function m3() {
     await step('left alone, it lapses to its default, reported once', async () => {
       await closeToasts();
       await page.evaluate(() => {
-        const r = window.rebound; let s = r.state;
-        for (let i = 0; i < 260; i++) s = r.model.tick(s, r.content, 1);
+        const r = window.rebound; let s = JSON.parse(JSON.stringify(r.state));
+        s.dispatch.pending[0].expiresAt = s.time + 1.5;
+        for (let i = 0; i < 3; i++) s = r.model.tick(s, r.content, 1);
         r.ctx.state = s; r.ctx.refreshAll();
       });
       // Other notes from the same stretch queue ahead of it: step through them.

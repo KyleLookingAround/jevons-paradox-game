@@ -18,6 +18,9 @@ const SECTORS = ['steam', 'light', 'motion', 'compute', 'code'];
 const MID: Cond[] = [{ stat: 'time', op: '>=', value: 1200 }, { stat: 'time', op: '<', value: 1440 }];
 /** M3: only the unlock check in reckon() sees a run this young (the step's checks read the state at 5 s and later). */
 const AT_RECKONING: Cond[] = [{ stat: 'time', op: '<', value: 2 }];
+/** M3: the household survey is not due (it has arrived, or waits on hour 6 or the Civil Service): the quiet Reckoning
+ *  arrivals (the Archive, the free price) give way to it, so the Proprietor's Day stays near hour 6–7. */
+const SURVEY_NOT_DUE: Cond = { any: [{ stat: 'totalHours', op: '<', value: 6 }, { not: { owns: 'inst.civilService' } }, { feature: 'survey' }] };
 const skiesDue: Cond = { all: [steamDecades(1), { any: [{ stat: 'wellbeing', op: '>=', value: 34 }, steamDecades(5)] }] };
 
 export const features: Partial<Record<FeatureId, FeatureDef>> = {
@@ -72,8 +75,9 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
   },
   /* The third Reckoning: run 4 (moved from run 3, so it does not arrive with the budget). */
   commons: { when: rk(3), intro: 'Ratepayers petition for baths and libraries out of the levies', name: 'The Commons' },
-  /* The Reckoning after the first Steady State (from run 5): the next Steady State can be kept as it is. */
-  settlement: { when: { all: [{ owns: 'steadyState' }, rk(4)] }, intro: 'A settled industry proposed: burn at the sink line, and no more', name: 'Settlement' },
+  /* The Reckoning after the first Steady State (from run 5): the next Steady State can be kept as it is. M3 balance:
+   * at the Reckoning only (AT_RECKONING): a Steady State earned early in a run no longer brings Settlement mid-run. */
+  settlement: { when: { all: [{ owns: 'steadyState' }, rk(4), ...AT_RECKONING] }, intro: 'A settled industry proposed: burn at the sink line, and no more', name: 'Settlement' },
 
   /* ---------------- M3 (design/m3-contract-notes.md §0; the schedule and its reasons: design/unlock-schedule.md) ----
    * Owner's direction (19 Nov 2026): "options should be unlocked more slowly". From run 4 on, at most two arrivals a run:
@@ -81,12 +85,12 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    *   - Mid-run arrivals (the four mechanics' widgets and the bite) share one window, minutes 20 to 24 of a run
    *     (MID below). The window is shorter than the five-minute gap, so at most one of them can arrive in any run; each
    *     also needs the one before it (a chain) and a run floor, so they come one run apart, in order: the seams (run 4,
-   *     or the run after the first Steady State), the load curve, the travel dial; then the free price (from minute 20
-   *     of a later run, when a business model is bought) and the bite (in the window of a still later run, once a lever
-   *     has bitten). Twenty minutes in, the run's own Industries are open and known.
+   *     or the run after the first Steady State), the load curve, the travel dial, and later the bite (once a lever has
+   *     bitten). Twenty minutes in, the run's own Industries are open and known.
    *   - Reckoning arrivals (AT_RECKONING: run time under two seconds, which only the check in reckon() sees): the
-   *     Commons (run 4) and Settlement (M2), then the Archive, the household survey (hour 6 or later) and Histories
-   *     (hour 8 or later), one per Reckoning, in that order.
+   *     Commons (run 4) and Settlement (M2), then the Archive, the free price (once a business model has been bought,
+   *     after the travel dial), the household survey (hour 6 or later) and Histories (hour 8 or later), one per
+   *     Reckoning, in FEATURE_IDS order.
    * Nothing M3 arrives in run 3 (the budget's own unfolding). Banked time stays off. */
 
   /* Run 2, five minutes in (the first check after the Market): the paper simply has more in it. No intro: its first
@@ -107,7 +111,7 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    * nothing). Notes have been kept since the first minute of play, so nothing is lost by waiting. Gives way to the
    * survey when that is due at the same Reckoning. */
   archive: {
-    when: { all: [rk(5), ...AT_RECKONING, { any: [{ stat: 'totalHours', op: '<', value: 6 }, { not: { owns: 'inst.civilService' } }, { feature: 'survey' }] }] },
+    when: { all: [rk(5), ...AT_RECKONING, SURVEY_NOT_DUE] },
     intro: 'The Gazette opens its archive to subscribers',
     name: 'The Archive',
   },
@@ -123,15 +127,18 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
     intro: 'Motorist survey: faster roads, and the same hour at the wheel',
     name: 'Travel time',
   },
-  /* Mid-run, the run after the travel dial (run 7 or later), once Compute's business model is chosen (something is now
-   * free, or flat): from minute 20, with no upper bound (the card is often bought later in the run than the window). */
+  /* At a Reckoning after the travel dial (run 7 or later), once a business model has ever been bought in Compute
+   * (its Archive note is kept from the first purchase): something can now be free, or flat. The tag shows as soon as
+   * the card is bought again in the run. (Not mid-run: the card is often bought late in a run, after the window.)
+   * Gives way to the survey when that is due at the same Reckoning. */
   freeAtUse: {
-    when: { all: [rk(6), { feature: 'travel' }, MID[0], { any: [{ owns: 'compute.adFunded' }, { owns: 'compute.subscriptions' }] }] },
+    when: { all: [rk(6), { feature: 'travel' }, ...AT_RECKONING, { any: [{ owns: 'arc.compute.adFunded' }, { owns: 'arc.compute.subscriptions' }] }, SURVEY_NOT_DUE] },
     intro: 'info: price shown to user: £0.00',
     name: 'Free at the point of use',
   },
   /* Mid-run, in the window, a run after the free price at the earliest, once a lever's side effect has taken hold
-   * anywhere: introduced by the 'biteBack' headline itself (a player who never lets a lever bite never needs it). */
+   * anywhere: introduced by the 'biteBack' headline itself (a player who never lets a lever bite never needs it).
+   * (The free price arrives at a Reckoning, so the two may share a run, five minutes and more apart.) */
   sideEffects: {
     when: { all: [rk(7), { feature: 'freeAtUse' }, ...MID, { any: SECTORS.map((sector): Cond => ({ stat: 'bite', sector, op: '>=', value: 0.3 })) }] },
     name: 'Levers that bite back',

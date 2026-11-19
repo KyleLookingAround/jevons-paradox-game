@@ -121,11 +121,11 @@ const steam: SoundscapeDef = {
     { id: 'looms', kind: 'hits', recipe: 'loom', variants: 4, grid: { every: 0.5, pattern: [1, 0.35, 0.8, 0.5], jitter: 0.012 }, mech: true, pan: [0, 0.35], lp: 2400,
       gain: 0.32, level: { add: [['app:mill', 1]] }, density: { add: [['app:mill', 1.1]] }, send: 0.25 },
     // The winding engine; with the seam ladder (M3) it winds deeper seams: longer runs, lower, more often.
-    { id: 'winder', kind: 'hits', recipe: 'winder', variants: 4, variantBy: 'depth', rate: 1 / 28, minGap: 12, pan: [-0.5, -0.35], mech: true, pitch: ['depth', 1, 0.8],
-      gain: 0.36, level: { add: [['app:winder', 1], ['depth', 0.6]], max: 1 }, density: { add: [['app:winder', 1], ['depth', 0.9]], max: 1.4 } },
+    { id: 'winder', kind: 'hits', recipe: 'winder', variants: 4, variantBy: 'depth', rate: 1 / 28, minGap: 12, pan: [-0.5, -0.35], mech: true, pitch: ['depth', 1, 0.88],
+      gain: 0.16, level: { add: [['app:winder', 1], ['depth', 0.3]], max: 1 }, density: { add: [['app:winder', 1], ['depth', 0.4]], max: 1.2 } },
     // M3: the pumps labour as the seams go deeper: a slow heave on every other beat (silent without the ladder).
-    { id: 'pumpHeave', kind: 'bed', src: 'brown', filter: ['bandpass', 170, 1.1], lfo: { rate: 0.5, beats: true, depth: 0.7, to: 'gain' }, mech: true, pan: -0.25,
-      pitch: ['depth', 1, 0.85], gain: 0.2, level: { add: [['depth', 1]], mul: [['seamsOn', 1], ['app:pump', 0.4]] } },
+    { id: 'pumpHeave', kind: 'bed', src: 'brown', filter: ['bandpass', 230, 1.2], lfo: { rate: 0.5, beats: true, depth: 0.7, to: 'gain' }, mech: true, pan: -0.25,
+      pitch: ['depth', 1, 0.85], gain: 0.1, level: { add: [['depth', 1]], mul: [['seamsOn', 1], ['app:pump', 0.4]] } },
     { id: 'train', kind: 'hits', recipe: 'trainPass', rate: 1 / 25, minGap: 14, sweep: true, mech: true,
       gain: 0.3, level: { add: [['app:train', 1]] }, density: { add: [['app:train', 1.2], one(0.2)], mul: [['app:train', 1]] }, send: 0.3 },
     { id: 'horn', kind: 'hits', recipe: 'shipHorn', rate: 1 / 45, minGap: 25, pan: [0.55, 0.75], lp: 1500,
@@ -201,7 +201,7 @@ const motion: SoundscapeDef = {
     // the sprawl's distant traffic, which stays when the traffic thins.
     { id: 'queue', kind: 'bed', src: 'tones', tones: [[0, 0, 'sawtooth', 0.4, -8], [0, 0, 'sawtooth', 0.4, 9], [4, 0, 'sawtooth', 0.25, 3]], filter: ['lowpass', 260, 0.7],
       lfo: { rate: 0.23, depth: 0.3, to: 'gain' }, mech: true, pan: -0.1, gain: 0.06, level: { add: [['congestion', 1]], mul: [['travelOn', 1]], pow: 1.3 } },
-    { id: 'horn', kind: 'hits', recipe: 'carHorn', variants: 3, rate: 1 / 25, minGap: 8, pan: [-0.6, 0.6], lp: 2500,
+    { id: 'jamHorn', kind: 'hits', recipe: 'carHorn', variants: 3, rate: 1 / 25, minGap: 8, pan: [-0.6, 0.6], lp: 2500,
       gain: 0.07, level: { add: [['congestion', 1]], mul: [['travelOn', 1]], pow: 2 }, send: 0.3 },
     { id: 'sprawlHum', kind: 'bed', src: 'brown', filter: ['bandpass', 320, 0.6], stereo: true, lp: 600,
       gain: 0.09, level: { add: [['sprawl', 1]], mul: [['travelOn', 1]] } },

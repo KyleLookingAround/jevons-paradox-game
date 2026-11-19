@@ -116,7 +116,8 @@ const C0: Content = useFixture ? (FIXTURE === 'm2' ? fixture : FIXTURE === 'bank
 /**
  * --off=load,travel,free (balance experiments): the content with a mechanic's physics stripped, to attribute a change in
  * pacing to it. load: no LoadDef (capCost × the load term the sector would have at its opening profile is NOT restored;
- * compare like with like); travel: roads infinite, no speed or roads effects, no lockInDecay; free: no priceSeen anywhere.
+ * compare like with like); travel: roads infinite, no speed or roads effects, no lockInDecay; free: no priceSeen anywhere;
+ * dispatch: no letters at all.
  */
 const OFF = new Set(flag('off', '').split(',').filter(Boolean));
 /** --feature-on=<id>[,…]: those features dropped from Content.features, so they are on from the start (views print). */
@@ -134,9 +135,26 @@ function stripMechanics(c: Content): Content {
       ...(OFF.has('free') ? { priceSeen: undefined } : {}),
     })),
   }]));
-  return { ...c, sectors, features: FEATURE_ON.size ? Object.fromEntries(Object.entries(c.features ?? {}).filter(([k]) => !FEATURE_ON.has(k))) : c.features, upgrades: c.upgrades.map((u) => ({ ...u, effects: u.effects.filter(keep) })), levers: c.levers.map((l) => ({ ...l, ...(l.effects ? { effects: l.effects.filter(keep) } : {}) })) } as Content;
+  return { ...c, sectors, ...(OFF.has('dispatch') ? { dispatches: [] } : {}), features: FEATURE_ON.size ? Object.fromEntries(Object.entries(c.features ?? {}).filter(([k]) => !FEATURE_ON.has(k))) : c.features, upgrades: c.upgrades.map((u) => ({ ...u, effects: u.effects.filter(keep) })), levers: c.levers.map((l) => ({ ...l, ...(l.effects ? { effects: l.effects.filter(keep) } : {}) })) } as Content;
 }
-const C: Content = stripMechanics(C0);
+/** --set=<sector>.<field>.<sub>=<number>[,…] (balance experiments): override one numeric field of a sector's def,
+ *  e.g. --set=steam.steady.clearBelow=0.45 or --set=code.unlock.minReckonings=6. */
+function applySets(c: Content): Content {
+  const sets = flag('set', '').split(',').filter(Boolean);
+  if (!sets.length) return c;
+  const sectors = { ...c.sectors };
+  for (const kv of sets) {
+    const [path, val] = kv.split('=');
+    const [sec, ...keys] = path.split('.');
+    const root: any = structuredClone(sectors[sec]);
+    let o = root;
+    for (const k of keys.slice(0, -1)) o = o[k] ??= {};
+    o[keys[keys.length - 1]] = parseFloat(val);
+    sectors[sec] = root;
+  }
+  return { ...c, sectors };
+}
+const C: Content = applySets(stripMechanics(C0));
 const HOURS = parseFloat(flag('hours', '3'));
 const EVERY = parseFloat(flag('every', '120'));
 const CPS = parseFloat(flag('cps', '5'));
@@ -172,6 +190,9 @@ const DISPATCH = flag('dispatch', 'random');
 const DISPATCH_AUDIT = flag('dispatch-audit', 'false') === 'true';
 const IGNORE = new Set(flag('ignore', '').split(',').filter(Boolean));
 const HISTORY = flag('history', '');
+/** --history-at=K: choose the History only from the K-th Reckoning (with --feature-on=histories, a History audit can
+ *  share runs 1–K with the plain strategy and compare run K+1 like with like). Default 0: whenever offered. */
+const HISTORY_AT = parseInt(flag('history-at', '0'), 10) || 0;
 const UNLOCKS = flag('unlocks', 'false') === 'true';
 const FILE_RETURN = parseFloat(flag('file-return', '0'));
 const RETURN_JSON = flag('return-json', '');
@@ -385,7 +406,7 @@ function raiseLevers(s: GameState, ctx: RunCtx): GameState {
 
 /* ---------------- the budget player ---------------- */
 
-interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number> }
+interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number>; lastStock?: number; stockP?: Record<string, number> }
 
 function budgetFoundOk(prev: GameState): (next: GameState, e: SectorId) => string | null {
   return (next, e) => {
@@ -463,6 +484,7 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
       if (next !== s) { s = next; memo.lastSpare = s.time; ctx.ev.push({ t: s.time, text: `lever ${circ.def.id} → L${circ.level + 1} (spare Mandate)` }); }
     }
   }
+  s = tendStock(s, ctx, memo);
   // keep Mandate positive: drop the costliest non-cap lever while net Mandate is negative and the reserve is thin
   const d = model.derive(s, C);
   if (d.mandatePerSec < 0 && s.mandate < -60 * d.mandatePerSec) {
@@ -471,6 +493,34 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
       s = model.setLever(s, C, worst.def.id, worst.level - 1);
       ctx.ev.push({ t: s.time, text: `lever ${worst.def.id} ↓ L${worst.level - 1} (Mandate)` });
     }
+  }
+  return s;
+}
+
+/**
+ * M3 balance: a stock nothing absorbs (Code's code stock: pressure fed by service, absorption 0) cannot be held by a cap
+ * on the resource; only its own levers lower it (deletion first, then shared libraries and review). The restraint
+ * player raises one a minute while that pressure is above 15% of collapse and still rising, keeping net Mandate
+ * positive. (Without it every long budget run from run 5 ended in Code's collapse at 160–175 minutes.)
+ */
+function tendStock(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
+  if (s.time - (memo.lastStock ?? -Infinity) < 60) return s;
+  const d = model.derive(s, C);
+  for (const e of ORDER) {
+    const def = C.sectors[e], x = d.sectors[e];
+    if (!x || x.settled || def.pressureSource !== 'service' || def.absorption > 0) continue;
+    const prevP = memo.stockP?.[e];
+    memo.stockP = { ...(memo.stockP ?? {}), [e]: s.sectors[e].pressure };
+    if (x.pressureFraction < 0.15 || prevP === undefined || s.sectors[e].pressure <= prevP) continue;
+    const order: string[] = ['deletion', 'sharedLibs', 'reviewGate'];
+    const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null)
+      .filter((v) => d.mandatePerSec - upkeepStep(s, v.def.id) > 0)
+      .sort((a, b) => order.indexOf(a.def.kind) - order.indexOf(b.def.kind))[0];
+    if (!l) continue;
+    const next = model.setLever(s, C, l.def.id, l.level + 1);
+    if (next === s) continue;
+    s = next; memo.lastStock = s.time;
+    ctx.ev.push({ t: s.time, text: `lever ${l.def.id} → L${l.level + 1} (the code stock at ${pct(x.pressureFraction)}, rising)` });
   }
   return s;
 }
@@ -610,6 +660,9 @@ function instRank(d: InstitutionDef): number {
   if (effs.some((e) => e.type === 'wellbeingAdd')) return 1;
   if (effs.some((e) => e.type === 'reveal')) return 2;
   if (effs.some((e) => e.type === 'absorptionAdd')) return 3;
+  // M3 balance: an automation (the Civil Service, Treasury rules) before further levels of anything; a person buys the
+  // Civil Service once it is on offer, and the household survey (hour 6) waits for it
+  if (effs.some((e) => e.type === 'orderUnlock')) return 4;
   if (lever('duty')) return 9; // a standing duty holds the price up and strangles the growth a capped economy needs
   return 5;
 }
@@ -622,6 +675,7 @@ function seatLoadout(s: GameState): GameState {
   for (const i of owned) {
     if (used + (i.slots ?? 1) > s.meta.slots) continue;
     if ((strategy === 'budget' || strategy === 'mixed') && instRank(i) >= 9) continue;
+    if (instRank(i) === 4) continue; // owned (the survey waits for it), not seated: the bots do their own orders
     ids.push(i.id);
     used += i.slots ?? 1;
   }
@@ -631,6 +685,12 @@ function seatLoadout(s: GameState): GameState {
 function spendHindsight(s: GameState, mode: Strategy): { s: GameState; bought: string[] } {
   const bought: string[] = [];
   const instFirst = mode === 'levers' || mode === 'budget';
+  // M3: from the fourth Reckoning, an affordable automation's first level (the Civil Service) is bought at once, not
+  // saved behind dearer levels (earlier, its 120 Hindsight cost run 3 its Steady State: the Reckon rule is fragile)
+  if (instFirst && s.meta.reckonings >= 4) for (const v of model.institutionViews(s, C).filter((x) => x.canBuy && x.level === 0 && instRank(x.def) === 4)) {
+    const next = model.buyInstitution(s, C, v.def.id);
+    if (next !== s) { s = next; bought.push(`${v.def.id} L1`); }
+  }
   for (let guard = 0; guard < 400; guard++) {
     const inst = model.institutionViews(s, C).filter((v) => v.canBuy)
       .sort((a, b) => (mode === 'budget' ? instRank(a.def) - instRank(b.def) : 0) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
@@ -751,7 +811,7 @@ interface RunReport {
   sectors: Record<SectorId, {
     etaFold: number; rFold: number; peakRFold: number; peakRebound: number | null; reboundAtReveal: number | null;
     frontierFold: number; budgetRatio: number | null; steadyYears: number; decades: number; steady: boolean;
-    reserveFraction: number; pressureFraction: number; openedMin: number | null;
+    reserveFraction: number; pressureFraction: number; openedMin: number | null; clearFraction: number | null; clearYears: number;
   }>;
   steadyYearsAll: number; won: boolean; slots: number; loadout: string[]; peakWellbeing: number; yearsAtTarget: number;
   sectorsOpen: SectorId[];
@@ -1076,6 +1136,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       budgetRatio: x.budgetR !== null && x.resourceUse > 0 ? x.budgetR / x.resourceUse : null, steadyYears: x.steadyYears,
       decades: x.budgetDecades, steady: !!s.run.steadySectors[e], reserveFraction: x.reserveFraction, pressureFraction: x.pressureFraction,
       openedMin: openedAt[e] !== undefined ? openedAt[e] / 60 : e === ORDER[0] ? 0 : null,
+      clearFraction: x.clearP !== null ? x.clearP / C.sectors[e].collapseAt : null, clearYears: es.clearYears,
     };
     log(`    ${e.padEnd(8)} η× ${pad(n(x.etaFold), 5)}  R× now ${pad(n(x.rFold), 5)}  peak R× ${pad(n(sectors[e].peakRFold), 5)}` +
       `  rebound peak ${pct(peakRebound[e])} at reveal ${pct(reboundAtReveal[e])} now ${pct(x.rebound)}  frontier× ${n(x.frontierFold)}` +
@@ -1176,7 +1237,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
 interface CampaignOpts { seed?: number; chooseCharter?: (s: GameState) => string | null; quietSummary?: boolean }
 function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: string[], opts: CampaignOpts = {}): RunReport[] {
   let s = model.createState(C, undefined, opts.seed ?? SEED);
-  if (HISTORY && model.historyViews(s, C).find((v) => v.def.id === HISTORY)?.canChoose) s = model.chooseHistory(s, C, HISTORY);
+  if (HISTORY && HISTORY_AT <= 0 && model.historyViews(s, C).find((v) => v.def.id === HISTORY)?.canChoose) s = model.chooseHistory(s, C, HISTORY);
   const reports: RunReport[] = [];
   let cum = 0;
   const cumDecisions: number[] = [];
@@ -1204,7 +1265,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
         (R.m3 ? ` · m3 seams ${Object.entries(R.m3.seams).map(([e, v]) => `${e}:${v}`).join(',') || '-'} LF ${Object.entries(R.m3.loadFactor).map(([e, v]) => `${e}:${v.toFixed(2)}`).join(',') || '-'}` +
           ` speed ${Object.entries(R.m3.speed).map(([e, v]) => `${e}:${v.toFixed(2)}`).join(',') || '-'} sprawl ${Object.entries(R.m3.sprawl).map(([e, v]) => `${e}:${n(v)}`).join(',') || '-'}` +
           ` disp ${R.m3.answered}/${R.m3.defaulted} hist ${R.m3.history ?? '-'}${R.m3.history ? ` ${R.m3.historyClearedMin !== null ? `cleared@${R.m3.historyClearedMin.toFixed(1)}` : 'not cleared'}` : ''}` +
-          ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'}${mode === 'crisisFarm' ? ` mandate ${n(R.m3.mandateEnd)}` : ''}` +
+          ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'} mandate ${n(R.m3.mandateEnd)}` +
           ` Wy ${Object.entries(R.m3.wy).map(([e, v]) => `${e}:${v.toFixed(0)}`).join(',')}` : '') +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }
@@ -1214,7 +1275,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
       s = sp.s;
       if (sp.bought.length) log(`  spent Hindsight on: ${sp.bought.join(', ')} (left ${n(s.meta.hindsight)}); loadout ${s.meta.loadout.join(', ') || '—'}`);
     }
-    if (HISTORY) {
+    if (HISTORY && s.meta.reckonings >= HISTORY_AT) {
       const h = model.historyViews(s, C).find((v) => v.def.id === HISTORY);
       if (h?.canChoose) { s = model.chooseHistory(s, C, HISTORY); log(`  history: ${HISTORY}`); }
     }

@@ -13,8 +13,8 @@
 import type { Ctx } from './ctx';
 import { sectorDef, openSectors } from './ctx';
 import type { SceneView } from './scene';
-import { createScene, sceneViewFrom, renderStill } from './scene';
-import { lsGet, lsSet } from './store';
+import { createScene, sceneViewFrom, renderStill, viewFromSummary } from './scene';
+import { lsGet, lsSet, download } from './store';
 import { h, setText, show, reducedMotion } from './dom';
 import { fold, num, clamp, lower, fmt } from './fmt';
 
@@ -196,8 +196,45 @@ function sparkPath(vals: number[], upto: number, lo: number, hi: number, w: numb
 
 export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLElement {
   const el = h('section', { class: 'lapse', 'aria-label': 'The run, from start to end' });
-  if (!lapse || lapse.frames.length < 2) {
-    el.append(h('p', { class: 'muted small', text: 'No picture was kept of this run on this device.' }));
+  // A run of under a minute has nothing to replay ("1780 to 1780"): it gets the before-and-after instead.
+  const tooShort = !lapse || lapse.frames.length < 2 || num(lapse.frames[lapse.frames.length - 1].t) - num(lapse.frames[0].t) < 60;
+  if (tooShort) {
+    // A run too short (or a page reloaded) to have a record of its own: the first morning and the end, rebuilt by the
+    // scene from the run summary (viewFromSummary), so even a short run keeps its before-and-after picture (QA carry-over).
+    const lr = ctx.state.meta?.lastRun;
+    const sec = lapse?.sector ?? lr?.causeSector ?? Object.keys(lr?.sectors ?? {})[0];
+    if (!lr || !sec || !lr.sectors?.[sec]) { el.append(h('p', { class: 'muted small', text: 'No picture was kept of this run on this device.' })); return el; }
+    const pair = h('div', { class: 'lp-pair lp-short' });
+    const status = h('span', { class: 'muted small lp-status', 'aria-live': 'polite' });
+    const def = sectorDef(ctx, sec);
+    const row = lr.sectors[sec];
+    const svgs: string[] = [];
+    const saveBtn = h('button', { class: 'btn small', type: 'button', disabled: true, onclick: () => {
+      if (svgs.length < 2) return;
+      // One SVG holding both pictures side by side, with the run's figures under them.
+      const inner = svgs.map((x, i) => x.replace('<svg', `<svg x="${i * 610}" y="0" width="600" height="400"`)).join('');
+      const cap = `${def?.name ?? ''}: efficiency ${fold(row.etaFold)}, peak ${lower(def?.resource.name ?? 'use')} ${fold(row.peakRFold)}`;
+      const out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1210 440" width="1210" height="440"><rect width="1210" height="440" fill="#efe6d0"/>${inner}<text x="605" y="428" text-anchor="middle" font-family="Georgia, serif" font-size="18">${cap.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text></svg>`;
+      setText(status, download(`rebound-run-${num(lr.index, 0)}.svg`, out) ? ' Saved.' : ' Saving was blocked.');
+    } }, 'Save before and after');
+    el.append(h('h3', { class: 'paper-sub', text: `${def?.name ?? 'The valley'}, before and after` }), pair,
+      h('p', { class: 'lp-story num', text: `Efficiency ${fold(row.etaFold)} · peak ${lower(def?.resource.name ?? 'use')} use ${fold(row.peakRFold)}` }),
+      h('div', { class: 'm-row lp-btns' }, saveBtn, status));
+    let base: SceneView | null = null;
+    try { base = sceneViewFrom(ctx.content, ctx.state, ctx.d, sec); } catch { base = null; }
+    if (base) {
+      const b0 = base;
+      void Promise.all([renderStill(viewFromSummary(b0, lr, true), { format: 'svg' }), renderStill(viewFromSummary(b0, lr), { format: 'svg' })]).then((r) => {
+        for (const [i, x] of r.entries()) {
+          if (typeof x !== 'string') continue;
+          svgs.push(x);
+          const fig = h('figure', { class: 'lp-fig' }, h('figcaption', { class: 'muted small', text: i ? 'At the end' : 'The first morning' }));
+          fig.insertAdjacentHTML('afterbegin', x);
+          pair.append(fig);
+        }
+        saveBtn.disabled = svgs.length < 2;
+      }).catch(() => setText(status, ' The pictures could not be drawn.'));
+    }
     return el;
   }
   const def = sectorDef(ctx, lapse.sector);
