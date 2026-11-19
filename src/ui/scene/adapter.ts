@@ -64,6 +64,21 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
     if (lv >= 1) levers.push({ id: l.id, kind: String(l.kind), level: lv, name: String(l.name ?? l.id) });
   }
 
+  // What the earlier Industries built: it still stands in this one's picture (cosmetic, 0–1 each).
+  const heritage: Record<string, number> = {};
+  const order = Array.isArray(content?.sectorOrder) ? content.sectorOrder : [];
+  for (const sid of order.slice(0, Math.max(0, order.indexOf(sectorId)))) {
+    const sdef = content?.sectors?.[sid];
+    const list = Array.isArray(sdef?.applications) ? sdef!.applications : [];
+    if (!list.length) continue;
+    let tot = 0;
+    for (const a of list) {
+      const ad = derived?.sectors?.[sid]?.apps?.[a.id], as = state?.sectors?.[sid]?.apps?.[a.id];
+      if (ad?.founded ?? as?.founded) tot += 0.3 + 0.7 * clamp(n(ad?.adoption), 0, 1);
+    }
+    heritage[sid] = Math.round((tot / list.length) * 100) / 100;
+  }
+
   const pop = n(state?.population, 1);
   const pr = derived?.pendingReckoning ?? null;
   const steadyYears = n(sd?.steadyYears ?? ss?.steadyYears);
@@ -95,5 +110,6 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
     steady: !!state?.run?.steadySectors?.[sectorId],
     reckoning: pr ? { cause: String(pr.cause), here: !pr.sector || pr.sector === sectorId } : null,
     year: Number.isFinite(derived?.year) ? Math.floor(derived!.year) : null,
+    heritage,
   };
 }

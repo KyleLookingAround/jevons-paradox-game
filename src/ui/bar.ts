@@ -18,11 +18,12 @@ export function buildTopbar(ctx: Ctx): Comp {
   const wb = h('span', { class: 'tb-v num' });
   const wbFill = h('span', { class: 'wb-fill fillx' });
   const wbBar = h('span', { class: 'wb-bar', 'aria-hidden': 'true' }, wbFill, h('span', { class: 'wb-tgt' }));
-  // A rate rides on its label's line (the label is short; the value line is not), so neither is cut off on a phone.
+  // Label over value; a rate gets a small line of its own under the value, so nothing is cut off on a 360 px phone
+  // or in the narrow desk column.
   const cell = (cl: string, label: string | HTMLElement, rate: HTMLElement | null, ...kids: Node[]) =>
     h('div', { class: 'tb-cell ' + cl },
-      h('span', { class: 'tb-lrow' }, typeof label === 'string' ? h('span', { class: 'tb-l', text: label }) : label, rate),
-      h('span', { class: 'tb-row' }, ...kids));
+      h('span', { class: 'tb-lrow' }, typeof label === 'string' ? h('span', { class: 'tb-l', text: label }) : label),
+      h('span', { class: 'tb-row' }, ...kids), rate ? h('span', { class: 'tb-rrow' }, rate) : null);
   const cYear = cell('tb-year', ageLbl, null, year);
   const cCap = cell('tb-cap', 'Capital', inc, cap);
   const cMan = cell('tb-man', 'Mandate', manRate, man);
@@ -121,13 +122,17 @@ export function buildTabs(ctx: Ctx): Comp {
       setAttr(b, 'aria-label', `${nm}${warn ? ', under strain' : ''}${buy ? ', something affordable' : ''}`);
     }
     // Keep the selected tab in view when the row scrolls sideways (many industries on a phone).
+    // Read layout in the next frame, not here: right after a change of look this read would force the whole page's
+    // restyle and layout inside the update (measured at 55–140 ms at 4× CPU throttle).
     if (shown !== ctx.sector) {
       shown = ctx.sector;
-      const b = btns.get(ctx.sector);
-      if (b && el.scrollWidth > el.clientWidth) {
-        const left = b.offsetLeft - el.offsetLeft - 16;
-        if (left < el.scrollLeft || left + b.offsetWidth + 32 > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, left);
-      }
+      requestAnimationFrame(() => {
+        const b = btns.get(ctx.sector);
+        if (b && el.scrollWidth > el.clientWidth) {
+          const left = b.offsetLeft - el.offsetLeft - 16;
+          if (left < el.scrollLeft || left + b.offsetWidth + 32 > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, left);
+        }
+      });
     }
     for (const n of next) {
       const l = lockFor(n.id);
@@ -144,7 +149,7 @@ export function buildTabs(ctx: Ctx): Comp {
       }
       setText(l.sub, parts.join(' · '));
       cls(l.b, 'ready', !!n.ready);
-      setAttr(l.b, 'aria-label', `${def?.name ?? n.id}, a locked industry: ${parts.join(', ') || 'conditions'}. Show what it needs.`);
+      setAttr(l.b, 'aria-label', `${def?.name ?? n.id}, a locked Industry: ${parts.join(', ') || 'conditions'}. Show what it needs.`);
     }
   }
   return { el, update };

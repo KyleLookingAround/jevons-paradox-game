@@ -5,13 +5,13 @@ import { sectorDef, sd } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, SectorDef, UpgradeView } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
 import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion } from './dom';
-import { fmt, money, pct, num, clamp, lower, fmtEpoch } from './fmt';
+import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit } from './fmt';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
 export function effectText(ctx: Ctx, e: EffectDef): string {
   const def = 'sector' in e ? sectorDef(ctx, e.sector) : undefined;
   const res = lower(def?.resource.name ?? 'resource');
-  const svc = def?.service.unit ?? 'unit';
+  const svc = perUnit(def?.service.unit) || 'unit';
   const appName = (id?: string) => (id && def ? def.applications.find((a) => a.id === id)?.name : undefined);
   switch (e.type) {
     case 'etaMul': return `${pct(1 / e.value - 1)} ${res} per ${svc}`;
@@ -161,8 +161,10 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
         reach.replaceChildren(...list.map((r) => {
           const a = sec?.applications.find((x) => x.id === r.appId);
           const ch = num(r.projectedChange);
+          // The place is named as a link to it in the picture.
+          const place = a ? h('button', { class: 'place-link', type: 'button', title: `Show ${a.name} in the picture`, onclick: () => ctx.showPlace(a.id) }, a.name) : 'a new use';
           return h('p', { class: 'reach-l' + (ch > 0.0005 ? ' worse' : ch < -0.0005 ? ' better' : '') },
-            `Brings ${a?.name ?? 'a new use'} within reach: `, h('b', { class: 'num', text: `${ch > 0.0005 ? '▲ ' : ch < -0.0005 ? '▼ ' : ''}${pct(ch)}` }), ` ${res} if founded`);
+            'Brings ', place, ' within reach: ', h('b', { class: 'num', text: `${ch > 0.0005 ? '▲ ' : ch < -0.0005 ? '▼ ' : ''}${pct(ch)}` }), ` ${res} if founded`);
         }));
       }
       show(reach, list.length > 0);
@@ -237,8 +239,9 @@ export function buildUpgrades(ctx: Ctx): Comp {
     const n = (ctx.afford?.items || []).filter((x) => x.kind === 'up' && x.sector === ctx.sector).length;
     show(badge, n > 0);
     setText(badge, `${n} affordable`);
-    show(empty, avail.length === 0);
-    setText(empty, `Nothing more to buy in ${def?.name ?? 'this industry'} for now.`);
+    // No views at all yet (the first frame of the page, before they are worked out) is not "nothing to buy".
+    show(empty, avail.length === 0 && (ctx.ups || []).length > 0);
+    setText(empty, `Nothing more to buy in ${def?.name ?? 'this Industry'} for now.`);
 
     const own = views.filter((v) => v.level > 0);
     const ok = own.map((v) => v.def.id + ':' + v.level).join(',');
@@ -299,8 +302,8 @@ export function buildBudget(ctx: Ctx): Comp {
     // standingDrawYears; the years remaining are not exposed by derive(), so the total is given, not a countdown.
     const standing = !has && (ctx.levs || []).some((v) => v?.def?.sector === ctx.sector && v.def.kind === 'cap' && num(v.level) > 0);
     const drawYrs = def?.steady?.standingDrawYears ?? g?.steady?.standingDrawYears;
-    if (standing) setText(status, `A standing cap is in force, with no line to hold it to yet. The line is drawn once ${def?.name ?? 'the industry'} has been open ${drawYrs ? `${fmt(drawYrs)} years` : 'a while'}; drawing it, or tightening the cap, draws it now.`);
-    else if (!has) setText(status, `No line drawn for ${def?.name ?? 'this industry'}. Nothing counts towards Steady State until one is.`);
+    if (standing) setText(status, `A standing cap is in force, with no line to hold it to yet. The line is drawn once ${def?.name ?? 'the Industry'} has been open ${drawYrs ? `${fmt(drawYrs)} years` : 'a while'}; drawing it, or tightening the cap, draws it now.`);
+    else if (!has) setText(status, `No line drawn for ${def?.name ?? 'this Industry'}. Nothing counts towards Steady State until one is.`);
     else if (e?.withinBudget) setText(status, e.decoupling ? `Within budget · ${Math.floor(num(e.steadyYears) % dec)} of ${dec} years to the next decade` : 'Within budget, but wellbeing is below target: the years do not count.');
     else setText(status, `Over budget by ${pct(bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN, false)}`);
     cls(status, 'ok', !!e?.decoupling);
@@ -349,6 +352,8 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
   const upk = h('span', { class: 'lev-upk num' });
   const levy = h('p', { class: 'lev-levy num' });
   const noLineEl = h('p', { class: 'lev-noline', hidden: true });
+  // A lever in force stands in the world (the scene draws it as a thing): a way to go and look.
+  const seeIt = h('button', { class: 'place-link lev-see', type: 'button', hidden: true, onclick: () => ctx.showPlace(null) }, 'in the picture ↑');
   const lowerBtn = h('button', { class: 'btn lev-lower', type: 'button', onclick: () => {
     const lv = num(cur?.level);
     if (lv > 0) ctx.act('setLever', (m, s, c) => m.setLever(s, c, def.id, lv - 1));
@@ -395,7 +400,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     h('header', { class: 'lev-h' }, h('h3', { class: 'lev-name', text: def.name }), h('span', { class: 'pip-wrap' }, pips, pipMore)),
     h('p', { class: 'lev-blurb', text: def.blurb }),
     h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), def.catch),
-    h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk),
+    h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk, seeIt),
     levy, noLineEl, next, rec,
     h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
   let cur: LeverView | null = null;
@@ -428,12 +433,13 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     show(next, !!next.textContent);
     lowerBtn.disabled = lv <= 0;
     cls(el, 'active', lv > 0);
+    show(seeIt, lv > 0);
     // A cap in force with no budget line yet does nothing until the line is drawn (standingDrawYears, or a Tighten).
     const noLine = def.kind === 'cap' && lv > 0 && !ctx.state.sectors?.[def.sector]?.budget;
     show(noLineEl, noLine);
     if (noLine) {
       const yrs = sectorDef(ctx, def.sector)?.steady?.standingDrawYears ?? ctx.content.global?.steady?.standingDrawYears;
-      setText(noLineEl, `No line yet, so the cap holds nothing back. One is drawn once the industry has been open ${yrs ? `${fmt(yrs)} years` : 'a while'}; tightening draws it now.`);
+      setText(noLineEl, `No line yet, so the cap holds nothing back. One is drawn once the Industry has been open ${yrs ? `${fmt(yrs)} years` : 'a while'}; tightening draws it now.`);
     }
     // Levy revenue (never income) for duty and cap levers in force.
     const isLevy = def.kind === 'duty' || def.kind === 'cap';
@@ -480,7 +486,7 @@ export function buildLevers(ctx: Ctx): Comp {
     for (const v of vis) cards.get(v.def.id)?.update(v);
     setText(bal, `Mandate ${fmt(Math.floor(num(ctx.state.mandate)))}`);
     show(empty, vis.length === 0);
-    setText(empty, `No levers to pull in ${sectorDef(ctx)?.name ?? 'this industry'} yet.`);
+    setText(empty, `No levers to pull in ${sectorDef(ctx)?.name ?? 'this Industry'} yet.`);
   }
   return { el, update };
 }

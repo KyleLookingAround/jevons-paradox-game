@@ -1,9 +1,9 @@
 // The world strip: broadsheet, the illustrated scene of the selected industry, and the big sell button.
 import type { Ctx, Comp } from './ctx';
-import { sectorDef, sd, lookFor, openSectors } from './ctx';
+import { sectorDef, sd, lookFor, openSectors, ageOfSector } from './ctx';
 import type { SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride } from './dom';
-import { fmt, money, fmtPrice, pct, num, clamp, lower } from './fmt';
+import { fmt, money, fmtPrice, pct, num, clamp, lower, perUnit } from './fmt';
 import { infoBtn } from './gauges';
 import { createScene, sceneViewFrom, type SceneView } from './scene';
 import { timed } from './prof';
@@ -25,7 +25,7 @@ export function buildNews(ctx: Ctx): Comp {
   const yr = h('span', { class: 'news-yr num' });
   const txt = h('span', { class: 'news-txt' });
   const more = h('span', { class: 'news-more', 'aria-hidden': 'true' });
-  const kicker = h('span', { class: 'news-kick', text: 'A new age' });
+  const kicker = h('span', { class: 'news-kick', text: 'A new Age' });
   const head = h('button', { class: 'news-head', type: 'button', 'aria-expanded': 'false', onclick: () => toggle() },
     h('span', { class: 'news-top' }, mast, yr, more), kicker, txt);
   const list = h('ol', { class: 'news-list', hidden: true });
@@ -49,6 +49,10 @@ export function buildNews(ctx: Ctx): Comp {
     const age = news.slice(0, 8).find((n) => n && n.key === 'ageBegins' && now - num(n.time) < 45 && num(n.time) <= now);
     const top = age ?? news[0];
     cls(el, 'lead-age', !!age);
+    // A crisis takes the lead as a late extra, in the same update as the picture's fog and the gauges' alarm.
+    const crisis = !age && !!top && (top.key === 'crisis' || top.key === 'collapse' || top.key === 'exhausted') && now - num(top.time) < 30;
+    cls(el, 'lead-crisis', crisis);
+    setText(kicker, crisis ? 'Late extra' : 'A new Age');
     setText(more, news.length > 1 ? (open ? 'Fold' : `${news.length} items`) : '');
     const k = top ? `${top.time}|${top.text}` : '';
     if (k !== lastKey) {
@@ -121,6 +125,25 @@ function pressureWords(def: SectorDef, pf: number): string {
 export interface WorldComp extends Comp {
   /** Scroll target for an application, with the scene's card opened on it. */
   focusApp(appId: string): HTMLElement;
+  /** Bring the picture into view (and select a place in it, if given), with a brief mark on the frame. */
+  showPlace(appId: string | null): void;
+  reset(): void;
+}
+
+/** Improvement cards (views of this Industry) that concern a place: they bring it within reach or change its appetite. */
+function cardsFor(ctx: Ctx, appId: string): string[] {
+  return (ctx.ups || []).filter((v) => v?.def && v.def.sector === ctx.sector && v.visible && !v.maxed && !v.excludedBy && (
+    (v.bringsWithinReach || []).some((r) => r.appId === appId)
+    || (v.def.effects || []).some((e) => (e as { app?: string }).app === appId))).map((v) => v.def.id);
+}
+
+/** A title card over the picture: a new Industry first visited, a new Age begun. Composited fade; gone in ~3 s. */
+function titleCard(host: HTMLElement, kicker: string, name: string, sub: string): void {
+  host.querySelector('.world-title')?.remove();
+  const card = h('div', { class: 'world-title', 'aria-hidden': 'true' },
+    h('span', { class: 'wt-k', text: kicker }), h('span', { class: 'wt-n', text: name }), h('span', { class: 'wt-s', text: sub }));
+  host.append(card);
+  setTimeout(() => card.remove(), reducedMotion() ? 2600 : 3400);
 }
 
 export function buildWorld(ctx: Ctx): WorldComp {
@@ -130,13 +153,40 @@ export function buildWorld(ctx: Ctx): WorldComp {
   const price = h('span', { class: 'price num' });
   const sky = h('span', { class: 'sky num' });
   const priceRow = h('div', { class: 'price-row' }, price, infoBtn(ctx, 'price', 'the service price'), sky);
+  // A place tapped in the picture brings its cards to hand: a line naming how many improvements concern it.
+  const handN = h('span', { class: 'hand-t' });
+  const hand = h('button', { class: 'hand linkish', type: 'button', hidden: true, onclick: () => toHand() }, handN);
   const mount = h('div', { class: 'world-mount' });
-  const el = h('section', { class: 'apps', 'aria-label': 'Uses of the service' }, title, mount, priceRow);
+  const frame = h('div', { class: 'world-frame' }, mount);
+  const el = h('section', { class: 'apps', 'aria-label': 'Uses of the service' }, title, frame, priceRow, hand);
+  let selected: string | null = null;
   const renderer = createWorldRenderer(mount, {
     onFound: (appId) => ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, appId)),
+    onSelect: (appId) => { selected = appId; markHand(); },
   });
+  function markHand(): void {
+    const ids = selected ? cardsFor(ctx, selected) : [];
+    document.querySelectorAll('.up.concerns').forEach((c) => { if (!ids.includes(c.getAttribute('data-up') ?? '')) c.classList.remove('concerns'); });
+    for (const id of ids) document.querySelector(`.upgrades .up[data-up="${CSS.escape(id)}"]`)?.classList.add('concerns');
+    const name = selected ? sectorDef(ctx)?.applications.find((a) => a.id === selected)?.name : undefined;
+    show(hand, ids.length > 0 && !!name);
+    if (ids.length && name) setText(handN, `${ids.length === 1 ? 'One improvement concerns' : `${ids.length} improvements concern`} ${name} ↓`);
+  }
+  function toHand(): void {
+    const first = document.querySelector<HTMLElement>('.upgrades .up.concerns');
+    if (!first) return;
+    scrollToEl(first, 12);
+    document.querySelectorAll<HTMLElement>('.upgrades .up.concerns').forEach((c) => { c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1800); });
+  }
+  // What the picture last showed for this Industry: an evolution of the machines, a crisis or a lever is a moment.
+  let seen: { sector: string; stage: number; crises: number; levers: number } | null = null;
+  const visited = new Set<SectorId>();
+  let ageKey: string | null = null;
   let sector = '';
   let motion = '';
+  // The picture's first build is the heaviest single piece of the first frame: it waits one frame, so the page
+  // (header, gauges, the sell button) paints first.
+  let armed = false, arming = false;
   // Applications already known to be available (per sector), to say once when a new use becomes thinkable.
   const known = new Map<SectorId, Set<string>>();
   const toastOf = new Map<string, () => void>();
@@ -144,14 +194,45 @@ export function buildWorld(ctx: Ctx): WorldComp {
   function update(): void {
     const def = sectorDef(ctx);
     if (!def) return;
-    if (def.id !== sector) { sector = def.id; renderer.setSector(def.id); }
+    // Industries already open when the page loads have been seen before: only one opened since is a first visit.
+    if (sector === '') for (const id of openSectors(ctx)) visited.add(id);
+    if (def.id !== sector) {
+      const first = sector !== '' && !visited.has(def.id);
+      sector = def.id; renderer.setSector(def.id); selected = null; markHand();
+      visited.add(def.id);
+      // A first visit to an Industry opened this session is an event: its name over the picture.
+      if (first) titleCard(frame, ageOfSector(ctx.content, def.id)?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
+    }
     const m = document.documentElement.getAttribute('data-motion') ?? '';
     if (m !== motion) { motion = m; renderer.setReducedMotion(motionOverride()); }
-    const view = timed('scene.view', () => sceneViewFrom(ctx.content, ctx.state, ctx.d, def.id));
-    timed('scene.update', () => renderer.update(view));
+    if (armed) {
+      const view = timed('scene.view', () => sceneViewFrom(ctx.content, ctx.state, ctx.d, def.id));
+      timed('scene.update', () => renderer.update(view));
+      const lv = (view.levers || []).length;
+      if (seen && seen.sector === def.id) {
+        if (view.stage > seen.stage) moment('stage', 'The machines are rebuilt', 'See them');
+        if (view.crises > seen.crises) moment('crisis');
+        else if (lv > seen.levers) moment('lever', 'The lever shows in the world', 'See it');
+      }
+      seen = { sector: def.id, stage: view.stage, crises: view.crises, levers: lv };
+    } else if (!arming) {
+      arming = true;
+      requestAnimationFrame(() => setTimeout(() => { armed = true; update(); }, 0));
+    }
+    // A new Age begun (its headline is news) is an event over the picture, as a first visit is.
+    const news = Array.isArray(ctx.state.news) ? ctx.state.news : [];
+    const ab = news.slice(0, 6).find((n) => n && n.key === 'ageBegins');
+    const ak = ab ? `${ab.time}|${ab.text}` : '';
+    if (ageKey !== null && ak && ak !== ageKey && num(ctx.state.time) - num(ab!.time) < 10) {
+      const age = ab!.sector ? ageOfSector(ctx.content, ab!.sector) : undefined;
+      if (age) titleCard(frame, 'A new Age', age.name, age.tagline);
+    }
+    ageKey = ak;
     const e = sd(ctx);
     setText(title, `Uses of ${lower(def.service.name)}`);
-    setText(price, e ? `${def.service.name} sells at £${fmtPrice(e.servicePrice)} per ${def.service.unit}` : '');
+    // The sell button names the service; this line is the price alone, so it fits one line in every look.
+    setText(price, e ? `Sells at £${fmtPrice(e.servicePrice)} per ${perUnit(def.service.unit)}` : '');
+    setAttr(price, 'title', e ? `${def.service.name} sells at £${fmtPrice(e.servicePrice)} per ${perUnit(def.service.unit)}` : null);
     const pf = clamp(num(e?.pressureFraction), 0, 1.2);
     // The caption under the picture says the weather in words; this line carries the figure.
     setText(sky, `${def.pressure.name} ${pf >= 0.005 ? pct(pf, false) : 'nil'}`);
@@ -177,19 +258,43 @@ export function buildWorld(ctx: Ctx): WorldComp {
     }
   }
 
+  /**
+   * A moment in the picture: a brief mark on its frame, and the page around it answers (app.ts listens for
+   * `rebound:moment` to pulse the gauges with a crisis). If the picture is scrolled out of sight, a note offers a way
+   * back to it, so the moment is not missed.
+   */
+  function moment(kind: 'stage' | 'crisis' | 'lever', note?: string, action?: string): void {
+    frame.classList.remove('m-stage', 'm-crisis', 'm-lever'); void frame.offsetWidth; frame.classList.add('m-' + kind);
+    setTimeout(() => frame.classList.remove('m-' + kind), 2400);
+    document.dispatchEvent(new CustomEvent('rebound:moment', { detail: kind }));
+    if (note && action && !inView()) ctx.toast(`${note}.`, { label: action, run: () => showPlace(null) });
+  }
+  function inView(): boolean {
+    const r = mount.getBoundingClientRect();
+    const top = document.querySelector('.cockpit')?.getBoundingClientRect();
+    const beside = !!top && top.right <= r.left + 1;
+    const y0 = beside || !top ? 0 : top.bottom;
+    return r.bottom > y0 + 60 && r.top < innerHeight - 80;
+  }
+  function scrollToEl(t: HTMLElement, gap: number): void {
+    const cockpit = document.querySelector('.cockpit');
+    const cr = cockpit?.getBoundingClientRect();
+    const beside = !!cr && cr.right <= t.getBoundingClientRect().left + 1;
+    const top = t.getBoundingClientRect().top + window.scrollY - (beside || !cr ? 16 : cr.height + gap);
+    window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion() ? 'auto' : 'smooth' });
+  }
   function focusApp(appId: string): HTMLElement {
     renderer.select(appId);
     return el;
   }
-  function jump(appId: string): void {
-    focusApp(appId);
-    const cockpit = document.querySelector('.cockpit');
-    const cr = cockpit?.getBoundingClientRect();
-    const beside = !!cr && cr.right <= el.getBoundingClientRect().left + 1;
-    const top = el.getBoundingClientRect().top + window.scrollY - (beside || !cr ? 16 : cr.height + 8);
-    window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion() ? 'auto' : 'smooth' });
+  function showPlace(appId: string | null): void {
+    if (appId) renderer.select(appId);
+    scrollToEl(el, 8);
+    frame.classList.remove('flash'); void frame.offsetWidth; frame.classList.add('flash');
+    setTimeout(() => frame.classList.remove('flash'), 1800);
   }
-  return { el, update, focusApp, reset() { known.clear(); } } as WorldComp & { reset(): void };
+  function jump(appId: string): void { showPlace(appId); }
+  return { el, update, focusApp, showPlace, reset() { known.clear(); seen = null; } };
 }
 
 /* ------------------------------------------------------------------ */

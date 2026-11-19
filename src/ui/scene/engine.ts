@@ -165,7 +165,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   // dropping to low for the rest of the session if frames run long while the scene is on screen).
   let detailOpt: 'auto' | 'low' | 'full' = opts.detail ?? 'auto';
   let lowDetail = detailOpt === 'low';
-  let lastSig = '', captionDirty = false;
+  let lastSig = '', captionDirty = false, moversDirty = true, prevSteadyOn: boolean | null = null;
   let moverAnims: Animation[] = [];
   const animOf = new WeakMap<Element, Animation>();
   let planeK = 0;
@@ -176,6 +176,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     lowDetail = on;
     root.classList.toggle('lowd', on);
     assignSmoke();
+    syncPlay();
   }
   /** Auto detail: watch frames for a few seconds after a build; if a quarter run long (> 24 ms), go low for good. */
   let watchId = 0;
@@ -328,6 +329,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       hatch: (s: number, level: 0 | 1 = 0) => `url(#${id}${level ? 'x' : 'h'}${hatchLevel(s)})`,
       r: rng(hash(l.id)),
       stage: stageN,
+      heritage: v.heritage,
     };
     let bd: ReturnType<Layout['backdrop']> = {};
     try { bd = l.backdrop(bctx); } catch (e) { console.warn('scene backdrop', e); }
@@ -359,6 +361,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       if (def.anchor) {
         const key = `${idx}:a`;
         const it = renderSlot(l, look, def.anchor, key, 'sl0 anc', stageN, `${seedBase}:a`);
+        // Ground it: a contact shadow / trodden yard under the landmark, sized from its site, inside its own group.
+        if ((def.driver ?? 'app') === 'app' && !def.anchor.w) {
+          const sc0 = def.anchor.s ?? depthScale(l, def.anchor.y);
+          const site0 = def.site ?? siteFromHit(def);
+          const rx = Math.min(site0 ? site0[2] : 40, 64) / sc0 / 2;
+          it.html = it.html.replace('<g class="gr">', `<g class="gr"><ellipse class="cs" cx="0" cy="0.5" rx="${f(rx)}" ry="${f(Math.max(2, rx * 0.16))}"/>`);
+        }
         it.ord = uid++;
         baseOrd.set(key, it.ord);
         items.push(it);
@@ -473,12 +482,15 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         if (arr) arr.push(el); else elsByKey.set(k, [el]);
       });
     }
+    // Backdrop emitters (far aircraft lights, vents) are always on.
+    for (const b of BANDS) for (const lay of fx[b]) lay.querySelectorAll('[data-k="bd"]').forEach((el) => el.classList.add('on'));
     smokeEls = [];
     for (const b of BANDS) for (const lay of fx[b]) lay.querySelectorAll('.smk').forEach((el) => smokeEls.push({ el, key: el.getAttribute('data-k') ?? '', size: parseFloat(el.getAttribute('data-sz') ?? '1') }));
     smokeEls.sort((p, q) => q.size - p.size);
     restraintEls = new Map();
     elsByKey.forEach((els, k) => { if (k.startsWith('r:')) restraintEls.set(k.slice(2), els); });
     steadyMoverEls = Array.from(root.querySelectorAll('.mv.stdy'));
+    prevSteadyOn = null; moversDirty = true;
     moverAnims.forEach((a) => a.cancel());
     moverAnims = [];
     for (const p of plots) {
@@ -543,10 +555,15 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   /** Run, pause or drop the mover animations to match reduced motion, visibility and a Reckoning. */
   function syncPlay(): void {
     const still = rm(), stop = root.classList.contains('paused') || root.classList.contains('halt');
+    const steady = root.classList.contains('steady'), low = root.classList.contains('lowd');
     for (const a of moverAnims) {
       try {
+        // A hidden mover's animation would still tick on the main thread every frame (it cannot be composited
+        // without a box): only shown movers run.
+        const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
+        const shown = !!el && el.classList.contains('on') && (!el.classList.contains('stdy') || steady) && !(low && el.classList.contains('thin'));
         if (still) { if (a.playState !== 'idle') a.cancel(); }
-        else if (stop) { if (a.playState === 'idle') a.play(); a.pause(); }
+        else if (stop || !shown) { if (a.playState === 'idle') a.play(); if (a.playState !== 'paused') a.pause(); }
         else if (a.playState !== 'running') a.play();
       } catch { /* ignore */ }
     }
@@ -698,6 +715,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
           p.mcount = want;
           // In low detail every second mover beyond the first is dropped (by class, so no rebuild is needed).
           p.movers.forEach((el, i) => { el.classList.toggle('on', i < want); el.classList.toggle('thin', i > 0 && i % 2 === 1); });
+          moversDirty = true;
         }
         if (pace !== prevPace) {
           for (const md of p.moverDefs) {
@@ -725,7 +743,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       leverKey = lvKey;
     }
     restraintEls.forEach((els, k) => els.forEach((el) => el.classList.toggle('on', inForce.has(k))));
-    steadyMoverEls.forEach((el) => el.classList.toggle('on', !!v.steady));
+    if (prevSteadyOn !== !!v.steady) { prevSteadyOn = !!v.steady; steadyMoverEls.forEach((el) => el.classList.toggle('on', !!v.steady)); moversDirty = true; }
+    if (moversDirty) { moversDirty = false; syncPlay(); }
 
     // Reckoning: the world stops.
     if (v.reckoning) {
@@ -792,9 +811,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   }
 
   function placeLabel(a: SceneApp, v: SceneView): string {
-    if (a.status === 'founded') return `${a.name}: founded, ${Math.round(a.adoption * 100)}% adopted, ${numf(a.demand)} ${v.serviceUnit} a second`;
-    if (a.status === 'available') return `${a.name}: surveyed, can be founded for ${money(a.foundCost)}`;
-    return `An empty plot: not yet thinkable`;
+    if (a.status === 'founded') return `${a.name}, ${busyWord(a.adoption)}: ${Math.round(a.adoption * 100)}% adopted, ${numf(a.demand)} ${v.serviceUnit} a second`;
+    if (a.status === 'available') return `${a.name}: staked out. Found for ${money(a.foundCost)}${a.canFound ? '' : ', not yet affordable'}`;
+    return 'An empty plot, not yet thinkable';
   }
 
   function renderCard(v: SceneView): void {
@@ -839,7 +858,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     try {
       const view = normalise(v);
       const key = [view.sectorId, view.look, clamp(Math.round(view.stage), 0, 3), view.apps.map((a) => a.id + '/' + a.icon).join(','),
-        view.levers.map((x) => x.kind).filter((k) => !layout?.restraint[k]).sort().join(',')].join('|');
+        view.levers.map((x) => x.kind).filter((k) => !layout?.restraint[k]).sort().join(','),
+        Object.entries(view.heritage ?? {}).map(([k, x]) => k + Math.round(x * 3)).join(',')].join('|');
       if (key !== builtKey || !layout) {
         const stageChanged = builtKey !== '' && prevSector === view.sectorId && prevStage !== view.stage;
         if (prevSector !== view.sectorId) { selected = null; prevCrises = -1; prevSteady = view.steady; }
@@ -897,8 +917,8 @@ function moverZ(m: MoverDef): number { return m.z ?? Math.max(m.y0, m.y1); }
 const LAMP: [string, string][] = [
   ['#e9a24a', '233,162,74'],   // tallow and oil: dim orange
   ['#f6c65b', '246,198,91'],   // gas flame
-  ['#f8e7a2', '248,231,162'],  // mantle: whiter
-  ['#eef3ff', '238,243,255'],  // filament and tube: cold white
+  ['#fae6a8', '250,230,168'],  // mantle: whiter
+  ['#fff1cf', '255,241,207'],  // filament: warm white (the poster never prints it blue)
 ];
 
 function fmtPrice(p: number): string {
@@ -915,7 +935,7 @@ function sparePlot(l: Layout, rect: [number, number, number, number], a: SceneAp
   slots.sort((p, q) => Math.abs(p.x - (x + w / 2)) - Math.abs(q.x - (x + w / 2)));
   return {
     key: 'spare:' + a.id, match: [a.icon], anchor: { p: a.icon || 'works', x: x + w / 2, y: y + h, v: 0.5 }, slots,
-    hit: [x, y - h * 0.4, w, h * 1.4],
+    hit: [x, y + h - Math.max(74, h * 1.4), Math.max(74, w), Math.max(74, h * 1.4)],
   };
 }
 
@@ -951,6 +971,7 @@ function normalise(v: SceneView): SceneView {
     population: n(v.population, 1), popFraction: clamp(n(v.popFraction), 0, 1), crises: n(v.crises),
     levers: Array.isArray(v.levers) ? v.levers.filter((x) => x && typeof x.kind === 'string') : [],
     decoupling: !!v.decoupling, steadyProgress: clamp(n(v.steadyProgress), 0, 1), steady: !!v.steady,
+    heritage: v.heritage && typeof v.heritage === 'object' ? v.heritage : undefined,
     reckoning: v.reckoning && typeof v.reckoning === 'object' ? { cause: String(v.reckoning.cause ?? 'chosen'), here: v.reckoning.here !== false } : null,
   };
 }
@@ -976,18 +997,24 @@ function caption(v: SceneView): string {
   return s;
 }
 
+const busyWord = (x: number) => (x > 0.75 ? 'everywhere' : x > 0.4 ? 'spreading' : x > 0.1 ? 'a few' : 'just begun');
+
+/** The scene in words, as a screen-reader user would want it: the place, what stands in it, the weather, the stakes. */
 export function describeView(v: SceneView): string {
   const f = v.apps.filter((a) => a.status === 'founded');
   const av = v.apps.filter((a) => a.status === 'available');
-  const busy = (a: SceneApp) => (a.adoption > 0.75 ? 'everywhere' : a.adoption > 0.4 ? 'spreading' : a.adoption > 0.1 ? 'a few' : 'just begun');
-  let s = `${v.sectorName}. `;
-  s += f.length ? `Built: ${f.map((a) => `${a.name} (${busy(a)})`).join(', ')}. ` : 'Nothing built yet. ';
-  if (av.length) s += `Staked out, ready to found: ${av.map((a) => a.name).join(', ')}. `;
-  s += `${v.pressureName} ${weatherWord(v.pressureFraction)}; ${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}. `;
+  const lay = layoutFor(v.sectorId, v.apps.length), place = lay.place;
+  let s = `${v.sectorName}: ${place}. `;
+  s += f.length ? f.map((a) => `${a.name} ${busyWord(a.adoption)}`).join('; ') + '. ' : 'Nothing built yet. ';
+  if (av.length) s += `Ready to found: ${av.map((a) => a.name).join(', ')}. `;
+  s += `${v.pressureName} ${weatherWord(v.pressureFraction)}; ${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`;
+  const rw = lay.reserveWords?.(v.reserveFraction);
+  s += rw ? `: ${rw}. ` : '. ';
   if (v.levers.length) s += `In force: ${v.levers.map((x) => x.name).join(', ')}. `;
-  if (v.steady) s += 'The sky has cleared: steady state. ';
-  else if (v.decoupling) s += `Holding within budget, ${Math.round(v.steadyProgress * 100)}% of the way to steady state. `;
   if (v.reckoning) s += 'Everything has stopped: a Reckoning is due.';
+  else if (v.steady) s += 'The sky has cleared: steady state.';
+  else if (v.decoupling) s += `Holding within budget, ${Math.round(v.steadyProgress * 100)}% of the way to steady state.`;
+  else if (v.pressureFraction >= 0.8) s += 'Close to breaking.';
   return s.trim();
 }
 

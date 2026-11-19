@@ -5,7 +5,7 @@
 import type { Ctx, Comp, FormulaKind } from './ctx';
 import { sectorDef, sd, ageOfSector } from './ctx';
 import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
-import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch } from './fmt';
+import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, perUnit } from './fmt';
 import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
 
@@ -126,10 +126,12 @@ export function buildGauges(ctx: Ctx): Comp {
     h('div', { class: 'spark-key', 'aria-hidden': 'true' },
       h('span', { class: 'k-r', text: 'use' }), h('span', { class: 'k-eta', text: 'efficiency' }), kProm, kBud));
 
-  const resLbl = h('span', { class: 'res-lbl' });
+  // The resource's name may be cut short on a narrow phone (it is in the title); its figures never are.
+  const resLbl = h('span', { class: 'res-lbl', 'data-clip': 'ok' });
+  const resPct = h('span', { class: 'res-pct num' });
   const resLeft = h('span', { class: 'res-left num' });
   const resFill = h('span', { class: 'res-fill fillx' });
-  const reserve = h('div', { class: 'reserve' }, h('div', { class: 'res-row' }, resLbl, resLeft), h('div', { class: 'res-bar' }, resFill));
+  const reserve = h('div', { class: 'reserve' }, h('div', { class: 'res-row' }, resLbl, resPct, resLeft), h('div', { class: 'res-bar' }, resFill));
 
   // Population gauge: headcount and growth, over a wellbeing scale marking where growth starts (subsistence) and
   // stops (the demographic transition), with the current wellbeing as a needle.
@@ -191,7 +193,10 @@ export function buildGauges(ctx: Ctx): Comp {
     setAttr(eff.svgEl.querySelector('.d-sweep'), 'd', arc(0.5, tv(etaF)));
     rot(eff.svgEl.querySelector('.d-needle'), tv(etaF));
     setText(eff.val, fold(etaF));
-    setText(eff.sub, `${lower(svcName)} per ${unit ? unit.replace(/s$/, '') : lower(resName)}`);
+    // Units, not names: "hp per ton" fits a third of a 360 px phone where "motive power per ton" did not.
+    const svcUnit = def?.service.unit;
+    setText(eff.sub, svcUnit && unit ? `${svcUnit} per ${perUnit(unit)}` : `${lower(svcName)} per ${perUnit(unit) || lower(resName)}`);
+    setAttr(eff.box, 'title', `${svcName} per ${perUnit(unit) || lower(resName)} of ${lower(resName)}, against the start`);
 
     // Consumption (with the cosmetic trend as an arrow)
     const sweep = cons.svgEl.querySelector('.d-sweep');
@@ -220,10 +225,11 @@ export function buildGauges(ctx: Ctx): Comp {
     // Needle at or right of the 100% tick: label to its left; otherwise to its right.
     placeRebLbl(has && rv >= 0.9 ? -1 : 1);
     if (!revealed) { setText(reb.val, '?'); setText(reb.sub, 'not yet understood'); }
-    else if (!has) { setText(reb.val, '—'); setText(reb.sub, 'nothing promised yet'); }
+    else if (!has) { setText(reb.val, '—'); setText(reb.sub, 'no promise yet'); }
     else {
-      setText(reb.val, rv > 1 ? '▲ Backfire' : pct(rv, false));
-      setText(reb.sub, rv > 1 ? `${pct(rv, false)} of savings eaten` : rv > 0.5 ? 'most savings eaten' : rv > 0 ? 'some savings eaten' : 'savings kept');
+      // The figure is the reading; the word under it says what it means. Short enough for a third of a 360 px phone.
+      setText(reb.val, pct(rv, false));
+      setText(reb.sub, rv > 1 ? '▲ backfire' : rv > 0 ? 'of savings eaten' : 'savings kept');
     }
 
     // Sparkline (only when history moved)
@@ -271,7 +277,9 @@ export function buildGauges(ctx: Ctx): Comp {
     // Reserve
     const rf = clamp(num(e?.reserveFraction, 1), 0, 1);
     const flow = def?.resourceKind === 'flow';
-    setText(resLbl, flow ? `${resName} spare ${pct(rf, false)}` : `${resName} left ${pct(rf, false)}`);
+    setText(resLbl, resName);
+    setText(resPct, `${pct(rf, false)} ${flow ? 'spare' : 'left'}`);
+    setAttr(reserve, 'title', `${resName}: ${pct(rf, false)} ${flow ? 'spare' : 'left'}`);
     const sl = num(e?.secondsLeft, Infinity);
     setText(resLeft, !flow && Number.isFinite(sl) && sl < 7200 ? `≈ ${dur(sl)}` : '');
     setFill(resFill, rf);
@@ -304,7 +312,7 @@ export function buildGauges(ctx: Ctx): Comp {
     } else if (e?.withinBudget) {
       // Compact, to keep the pinned header to one note line; the Budget panel below has the full sentence.
       const into = Math.floor(num(e.steadyYears) % dec);
-      setText(budTxt, e.decoupling ? `✓ Within budget · year ${into} of ${dec}` : '✓ Within budget · wellbeing short');
+      setText(budTxt, e.decoupling ? `✓ Within budget · ${into} of ${dec} years` : '✓ Within budget · wellbeing short');
       setAttr(budTxt, 'title', e.decoupling ? `Within budget: ${into} of ${dec} years to the next decade` : 'Within budget, but wellbeing is below the target: the years do not count');
       cls(budTxt, 'ok', !!e.decoupling); cls(budTxt, 'over', false);
     } else {

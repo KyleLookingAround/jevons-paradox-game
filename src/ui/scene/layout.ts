@@ -117,6 +117,8 @@ export interface BackdropCtx {
   hatch(s: number, level?: 0 | 1): string;
   r: () => number;
   stage: number;
+  /** How built-up each earlier Industry is (0–1), from SceneView.heritage; see geography.ts `built()`. */
+  heritage?: Record<string, number>;
 }
 
 export interface Backdrop {
@@ -149,6 +151,8 @@ export interface Layout {
   bands?: [number, number];
   /** Depth curve: scale at the horizon and at the front. */
   depth?: [number, number, number, number]; // [yFar, sFar, yNear, sNear]
+  /** Optional: what the reserve looks like here, for the text alternative ("one warm window left"). */
+  reserveWords?(reserveFraction: number): string;
   /** Birds / clear-sky movers for Steady State (optional). */
   steadyMovers?: MoverDef[];
 }

@@ -7,6 +7,7 @@ import { P, R, L, f, ridge } from '../svg';
 import { bprop, ribbon, waterLines, tufts, engravedSun, birds } from './util';
 import { tree, poplar, church, cottage, hedge } from '../props/common';
 import { field } from '../props/ledger';
+import { hills, hills2 } from '../geography';
 
 const SHAFT_X = 70;
 const FIELDS: Slot[] = [
@@ -23,8 +24,9 @@ export const steam: Layout = {
   depth: [110, 0.4, 372, 1.15],
 
   backdrop(c) {
-    const farRidge = ridge([[0, 108], [70, 92], [150, 104], [230, 88], [320, 100], [390, 94], [430, 108], [452, 121]], 230);
-    const midRidge = ridge([[0, 138], [60, 128], [130, 142], [200, 132], [270, 146], [340, 140], [400, 152], [440, 162], [462, 180]], 260);
+    // The country itself (geography.ts): every later Industry is drawn on this hill line, coast and town site.
+    const farRidge = hills(0, 230);
+    const midRidge = hills2(0, 260);
     const valley = ridge([[0, 168], [100, 164], [200, 174], [300, 170], [400, 182], [450, 196], [470, 214], [478, 300]], 400);
     const fore = ridge([[0, 300], [120, 304], [260, 310], [380, 316], [446, 320]], 372);
     const sky =
@@ -78,13 +80,26 @@ export const steam: Layout = {
       key: 'pump', match: ['pump'],
       anchor: { p: 'engine', x: SHAFT_X, y: 284, s: 1.1 },
       slots: scatter('engine', [0, 172, 210, 40], 3, 'steam-pumps', { from: [110, 190], gap: [64, 14], k: 0.9 }),
-      hit: [20, 196, 100, 92],
+      hit: [24, 200, 96, 90],
     },
     {
       key: 'winder', match: ['winder'],
       anchor: { p: 'headframe', x: 162, y: 290, s: 1.05 },
-      slots: scatter('headframe', [0, 196, 230, 70], 5, 'steam-winders', { from: [160, 250], gap: [48, 14], k: 0.95 }),
-      hit: [128, 230, 70, 64],
+      // The wagonway carries the coal the winders raise: pit head → mills → quay, the tubs running full one way.
+      slots: [{ p: 'wagonway', x: 168, y: 292, s: 1, w: 128, h: 10, band: 'near' }, { p: 'wagonway', x: 330, y: 304, s: 1, w: 120, h: 14, band: 'near' },
+        ...scatter('headframe', [0, 196, 230, 70], 5, 'steam-winders', { from: [160, 250], gap: [48, 14], k: 0.95 })],
+      movers: [
+        { p: 'tubs', x0: 168, y0: 292, x1: 296, y1: 302, dur: 14, n: 2, s: 1, band: 'near' },
+        { p: 'tubs', x0: 330, y0: 304, x1: 450, y1: 318, dur: 13, n: 2, s: 1, from: 0.3, band: 'near' },
+      ],
+      hit: [124, 222, 76, 76],
+    },
+    {
+      // The smoke of the valley, engraved: plumes from the mill town and the pits, all on one wind, thickening with
+      // pressure.
+      key: 'smog', driver: 'pressure', curve: 1,
+      slots: ([[318, 214, 150], [260, 232, 120], [384, 200, 160], [120, 206, 130], [190, 188, 170], [300, 176, 200], [40, 190, 150], [420, 168, 170]] as [number, number, number][])
+        .map(([x, y, w]): Slot => ({ p: 'smogPlume', x, y, w, s: 1, band: 'far' })),
     },
     {
       key: 'spoil', driver: 'depletion', curve: 0.9,
@@ -101,7 +116,7 @@ export const steam: Layout = {
         scatter('mill', [222, 186, 215, 92], 8, 'steam-mills', { from: [312, 260], gap: [52, 12], k: 0.95 }),
         scatter('chimney', [214, 184, 232, 80], 6, 'steam-stacks', { from: [300, 240], gap: [18, 8] }),
       ),
-      hit: [250, 222, 124, 84],
+      hit: [244, 220, 130, 86],
     },
     {
       key: 'rail', match: ['train'],
@@ -116,7 +131,7 @@ export const steam: Layout = {
         { p: 'train', x0: -70, y0: 174.5, x1: 480, y1: 174.5, dur: 26, n: 3, s: 0.56, band: 'far' },
         { p: 'train', x0: 690, y0: 261.6, x1: -100, y1: 261.6, dur: 18, n: 2, s: 0.92, from: 0.2, band: 'mid' },
       ],
-      hit: [60, 150, 210, 46],
+      hit: [40, 124, 200, 76],
       site: [110, 190, 120, 9],
     },
     {
@@ -138,7 +153,7 @@ export const steam: Layout = {
       key: 'plough', match: ['plough'],
       anchor: { p: 'ploughField', x: 112, y: 346, s: 1.05, w: 66 },
       slots: FIELDS.map((s) => ({ ...s, s: 1 })),
-      hit: [20, 312, 200, 56],
+      hit: [20, 300, 200, 74],
       site: [82, 334, 60, 12],
     },
   ],

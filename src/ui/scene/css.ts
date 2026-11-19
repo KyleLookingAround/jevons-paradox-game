@@ -65,6 +65,9 @@ const BASE = `
 .scn .plm{fill:none;stroke:rgba(var(--s-smk),.28);stroke-width:4.5;stroke-linecap:round;vector-effect:none!important}
 .scn .scf{stroke:var(--s-ink);stroke-width:calc(.7px*var(--sw));opacity:.85}
 .scn .gl{stroke:none}
+.scn .cs{fill:rgba(0,0,0,.13);stroke:none}
+.scn[data-look=ledger] .cs{fill:rgba(42,31,21,.13)}.scn[data-look=gaslight] .cs{fill:rgba(8,4,10,.45)}
+.scn[data-look=terminal] .cs{fill:none;stroke:rgba(120,200,110,.25);stroke-width:.6px;stroke-dasharray:2 2}.scn[data-look=cyberpunk] .cs{fill:rgba(62,242,255,.06)}
 .scn .svf{fill:var(--s-sv);fill-opacity:.07;stroke:none}
 .scn .svs{fill:none;stroke:var(--s-sv);stroke-width:calc(.8px*var(--sw));stroke-dasharray:3 3}
 .scn .svk{fill:none;stroke:var(--s-ink);stroke-width:calc(1.2px*var(--sw))}
@@ -73,7 +76,8 @@ const BASE = `
 /* --- appearance: slots grow out of the ground; ghosts are faint dashed hints --- */
 .scn .sl0{display:none}
 .scn .sl0.on{display:inline}
-.scn .gr{transform-box:fill-box;transform-origin:50% 100%}
+/* The slot's own origin is its foot (bottom centre), so grow from 0 0 in view-box terms: no fill-box needed (Safari). */
+.scn .gr{transform-box:view-box;transform-origin:0 0}
 .scn.live .sl0.on>.gr{animation:scn-rise .9s cubic-bezier(.2,.9,.3,1.15) both}
 .scn .sl0.fd{display:inline;opacity:0;transition:opacity 2.2s cubic-bezier(.6,0,.9,.4)}
 .scn .sl0.fd.on{opacity:1;transition:opacity .8s ease-out}
@@ -115,18 +119,18 @@ const BASE = `
 .scn.live .smk.live i:nth-child(3){animation-delay:calc(var(--smk-d,3.6s)*-.667)}
 @keyframes scn-puff{0%{transform:translate(0,0) scale(.4);opacity:0}12%{opacity:1}100%{transform:translate(24px,-30px) scale(2.5);opacity:0}}
 .scn.pace0{--smk-d:4.6s}.scn.pace1{--smk-d:3.4s}.scn.pace2{--smk-d:2.5s}
-.scn.live .spin>b{animation:scn-spin 3s linear infinite}
+.scn.live .spin.on>b{animation:scn-spin 3s linear infinite}
 .scn.live.pace0 .spin>b{animation-duration:4.2s}.scn.live.pace2 .spin>b{animation-duration:1.8s}
 @keyframes scn-spin{to{transform:rotate(360deg)}}
-.scn.live .rock>b{animation:scn-rock 2.8s ease-in-out infinite alternate}
+.scn.live .rock.on>b{animation:scn-rock 2.8s ease-in-out infinite alternate}
 .scn.live.pace0 .rock>b{animation-duration:3.6s}.scn.live.pace2 .rock>b{animation-duration:1.7s}
 @keyframes scn-rock{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}
-.scn.live .blink>b{animation:scn-blink 1.6s steps(2,jump-none) infinite}
+.scn.live .blink.on>b{animation:scn-blink 1.6s steps(2,jump-none) infinite}
 @keyframes scn-blink{50%{opacity:.15}}
 .scn .flow path{fill:none;stroke:var(--s-lit);stroke-width:calc(1.4px*var(--sw));stroke-dasharray:2 14}
-.scn.live .flow path{animation:scn-flow 2.2s steps(11,end) infinite}
+.scn.live .flow.on path{animation:scn-flow 2.2s steps(11,end) infinite}
 @keyframes scn-flow{to{stroke-dashoffset:-32}}
-.scn.live .drift>b{animation:scn-drift 70s ease-in-out infinite alternate}
+.scn.live .drift.on>b{animation:scn-drift 70s ease-in-out infinite alternate}
 @keyframes scn-drift{from{transform:translateX(-28px)}to{transform:translateX(28px)}}
 .scn.lowd .flow path,.scn.lowd .drift>b{animation:none!important}
 .scn.lowd .mv.thin{display:none}
@@ -134,7 +138,7 @@ const BASE = `
 .scn .rx{transform-box:fill-box;transform:scaleX(var(--res,1));transition:transform 1.5s}
 .scn .ry{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(var(--res,1));transition:transform 1.5s}
 .scn .dx{transform-box:fill-box;transform:scaleX(var(--dep,0));transition:transform 1.5s}
-.scn .ly{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(var(--pfc,0));transition:transform 1.5s}
+.scn .ly{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(var(--pfc,0))}
 .scn .starf{opacity:calc(1 - var(--light,0)*1.15 - var(--pf2,0))}
 .scn .sunf{opacity:calc(1 - var(--pf2,0)*.85)}
 .scn .rst{display:none}.scn .rst.on{display:inline}
@@ -144,7 +148,7 @@ const BASE = `
 /* --- places: tap targets over the picture --- */
 .scn-places{pointer-events:none}
 .scn-place{position:absolute;pointer-events:auto;margin:0;padding:0;border:0;background:transparent;cursor:pointer;
-  border-radius:4px;-webkit-tap-highlight-color:transparent}
+  border-radius:4px;-webkit-tap-highlight-color:transparent;min-width:44px;min-height:44px}
 .scn-place:focus-visible{outline:2px solid var(--focus,var(--s-sv));outline-offset:1px}
 .scn-place.sel{outline:1.5px dashed var(--s-sv);outline-offset:1px}
 .scn-pin{position:absolute;left:50%;bottom:4%;width:20px;height:20px;margin-left:-10px;border-radius:50%;display:none;

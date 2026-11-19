@@ -109,6 +109,15 @@ export function clamp(x: number, lo: number, hi: number): number {
   return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : lo;
 }
 
+/**
+ * A unit after "per": content gives units in the plural ("tons", "features"); after "per" they read singular
+ * ("per ton"). Symbols without a plural s (hp, GWh, klm·h, PFLOP) pass through.
+ */
+export function perUnit(unit: string | undefined | null): string {
+  if (!unit) return '';
+  return /[a-z]{2}s$/.test(unit) ? unit.slice(0, -1) : unit;
+}
+
 export function lower(s: string | undefined | null): string {
   if (!s) return '';
   // keep acronyms intact

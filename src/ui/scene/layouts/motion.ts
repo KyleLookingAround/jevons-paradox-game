@@ -6,6 +6,8 @@ import { scatter, weave } from '../layout';
 import { P, R, L, ridge, rng, hash, f } from '../svg';
 import { bprop } from './util';
 import { derrick, tanks, tree, cloudPuff } from '../props/chrome';
+import { gasholder } from '../props/gaslight';
+import { COUNTRY, hills, sea, viaductArches, millShells, built } from '../geography';
 
 function fields(): string {
   const r = rng(hash('motion-fields'));
@@ -37,7 +39,12 @@ export const motion: Layout = {
   backdrop(c) {
     const sky = `<g class="sunf"><circle cx="492" cy="96" r="70" fill="${c.u('sunhalo')}"/>${P('M492 96m-24 0a24 24 0 1 0 48 0a24 24 0 1 0 -48 0', 'sun')}</g>`;
     const far =
-      P(ridge([[0, 142], [100, 126], [220, 140], [340, 120], [460, 136], [600, 124]], 260), 'hill1', `style="fill:${c.u('hillg1')}"`) +
+      // The same country (geography.ts): the hill line, the estuary under the sun, and what the Coal and Light ages
+      // left: the viaduct, disused now, the mill chimneys, the gasholders by the shore.
+      P(hills(30, 260), 'hill1', `style="fill:${c.u('hillg1')}"`) + P(sea(30, 190), 'seaM') + P('M470 158h40M500 166h60M478 174h30M540 180h40', 'seaL') +
+      (built(c.heritage, 'steam') > 0.12 ? P(viaductArches(COUNTRY.viaduct[0], COUNTRY.viaduct[1], 168, 12), 'heri') : '') +
+      P(millShells(Math.round(built(c.heritage, 'steam') * 4), 184, 0.6).body, 'heri') +
+      (built(c.heritage, 'light') > 0.12 ? bprop(gasholder, 520, 186, 0.7, 0.3, c) + bprop(gasholder, 556, 187, 0.6, 0.7, c) : '') +
       P(ridge([[0, 170], [120, 160], [260, 172], [400, 162], [600, 174]], 260), 'hill2', `style="fill:${c.u('hillg2')}"`) +
       bprop(derrick, 34, 186, 0.75, 0.2, c) + bprop(derrick, 86, 190, 0.7, 0.5, c) + bprop(derrick, 140, 188, 0.65, 0.8, c) +
       bprop(tanks, 178, 192, 0.8, 0.5, c) + bprop(tree, 230, 184, 0.7, 0.3, c) + bprop(tree, 244, 186, 0.6, 0.8, c);
@@ -66,13 +73,13 @@ export const motion: Layout = {
         { p: 'van', x0: -40, y0: 260.5, x1: 640, y1: 260.5, dur: 20, n: 3, s: 0.85, band: 'mid' },
         { p: 'van', x0: 640, y0: 265.5, x1: -40, y1: 265.5, dur: 23, n: 2, s: 0.85, from: 0.3, band: 'mid' },
       ],
-      hit: [40, 206, 150, 56],
+      hit: [20, 190, 180, 74],
     },
     {
       key: 'suburbs', match: ['suburb'],
       anchor: { p: 'suburb', x: 300, y: 228, k: 1.15 },
       slots: scatter('suburb', [236, 204, 364, 88], 20, 'motion-suburbs', { from: [300, 226], gap: [66, 12], k: 1.15 }),
-      hit: [360, 196, 220, 60],
+      hit: [220, 200, 200, 76],
       site: [280, 220, 50, 8],
     },
     {
@@ -80,7 +87,7 @@ export const motion: Layout = {
       anchor: { p: 'mall', x: 506, y: 322, s: 1.3, band: 'near' },
       slots: ([[400, 312], [400, 322], [346, 322], [346, 312], [584, 322], [400, 302], [346, 302], [292, 322], [292, 312]] as [number, number][])
         .map(([x, y], i): Slot => ({ p: 'carpark', x, y, s: 1.2, v: (i * 0.29) % 1, band: 'near' })),
-      hit: [270, 284, 330, 42],
+      hit: [430, 252, 170, 74],
     },
     {
       key: 'commute', match: ['car'],
@@ -91,7 +98,7 @@ export const motion: Layout = {
         LANE_FWD(336, 3, 0.4, 8.5), LANE_BACK(343, 3, 0.45, 9.5),
         LANE_FWD(366, 2, 0.75, 8), LANE_BACK(373, 2, 0.8, 9),
       ],
-      hit: [0, 332, 300, 40],
+      hit: [0, 326, 600, 74],
       site: [150, 348, 80, 8],
     },
     {
@@ -104,7 +111,7 @@ export const motion: Layout = {
           .map(([x, y, w]): Slot => ({ p: 'contrail', x, y, w, s: 1, band: 'far' })),
       ),
       movers: [{ p: 'plane', x0: 470, y0: 186, x1: 720, y1: 90, dur: 13, n: 3, s: 1, band: 'far' }],
-      hit: [380, 130, 220, 70],
+      hit: [420, 120, 180, 74],
       site: [440, 186, 80, 6],
     },
   ],

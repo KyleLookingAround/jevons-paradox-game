@@ -11,6 +11,7 @@ import type { Layout, Slot } from '../layout';
 import { scatter, row, weave } from '../layout';
 import { P, R, C, L, f, rng, hash } from '../svg';
 import { sign, neon, VW, VH } from '../props/cyberpunk';
+import { hills, sea, viaductArches } from '../geography';
 
 const STREET = 334;
 const AG = [524, 568];
@@ -65,7 +66,8 @@ function skyline(): { far: string; mid: string; fx: { kind: 'blink'; x: number; 
     }
     x += w + r() * 3;
   }
-  const far = P(arc, 'cbarc') + P(aw, 'cbwin0') + `<rect x="0" y="110" width="600" height="150" fill="url(#HZ)"/>` +
+  // The same country (geography.ts): the hill line still there behind the towers, and the estuary with ships' lights.
+  const far = P(hills(70, 262), 'cbhill') + P(sea(70, 262), 'cbsea') + P('M470 196h3M512 199h2M560 194h3M590 201h2', 'nt na', 'opacity=".7"') + P(arc, 'cbarc') + P(aw, 'cbwin0') + `<rect x="0" y="110" width="600" height="150" fill="url(#HZ)"/>` +
     P(a0, 'cbfar0') + P(aw0, 'cbwin0') + `<rect x="0" y="150" width="600" height="112" fill="url(#HZ)"/>` +
     P(b, 'cbfar') + `<g class="delgap">${P(gap, 'cbfar')}</g>` + P(w1, 'cbwin') + P(w2, 'cbwin2') + P(w3, 'cbwin3');
   // 4. The low city between the skyline and the street (mid band, behind the viaduct), hazed at its top.
@@ -94,9 +96,8 @@ function stars(): string {
 
 /** The viaduct of the elevated railway, behind the towers and in front of the low city. */
 function viaduct(): string {
-  let piers = '';
-  for (const x of [282, 352, 426, 500, 574]) piers += `M${x - 2.5} 268V336h5V268Z`;
-  return P(piers, 'pier') + R(-4, 262, 608, 6, 'deck') + P('M-4 262H604', 'nt nc', 'opacity=".55"') + P('M-4 268.5H604', 'k');
+  // Steam's brick viaduct, its arches now carrying the elevated line.
+  return P(viaductArches(-4, 608, 268, 68, 38), 'pier') + R(-4, 262, 608, 6, 'deck') + P('M-4 262H604', 'nt nc', 'opacity=".55"') + P('M-4 268.5H604', 'k');
 }
 
 /** The old block: brick-dark buildings with fire escapes, tanks and signs; dark window frames for the vignettes. */
@@ -183,6 +184,10 @@ export const code: Layout = {
   place: 'a night city of software, in rain',
   caption: 'The stack, by night',
   bands: [258, 326],
+  reserveWords: (r) => {
+    const n = r <= 0.001 ? 0 : Math.min(VIG.length, Math.round(VIG.length * Math.pow(r, 0.9)));
+    return n === 0 ? 'every warm window dark' : n === 1 ? 'one warm window left, somebody still in it' : `${n} warm windows with somebody in them`;
+  },
   depth: [150, 0.95, 372, 1.15],
 
   backdrop(c) {
@@ -226,13 +231,13 @@ export const code: Layout = {
       key: 'bots', match: ['chatbot'], overlayOf: 'city', overlayProp: 'ctowerCold', curve: 0.8,
       anchor: { p: 'hoarding', x: 340, y: 236, s: 1.05, band: 'near' },
       slots: [],
-      hit: [296, 196, 92, 50],
+      hit: [300, 170, 90, 76],
     },
     {
       key: 'tools', match: ['wrench'],
       anchor: { p: 'workshop', x: 70, y: STREET, s: 1.1, v: 0.1, band: 'near' },
       slots: row('workshop', 20, STREET, 236, STREET, 6, 'cb-tools', 0.2, { band: 'near' }).filter((s) => Math.abs(s.x - 70) > 30).slice(0, 4),
-      hit: [24, 296, 130, 46],
+      hit: [20, 264, 200, 76],
     },
     {
       key: 'apps', match: ['phone-app'],
@@ -241,14 +246,14 @@ export const code: Layout = {
         scatter('kiosk', [150, STREET - 2, 300, 8], 8, 'cb-kiosks', { from: [268, STREET], gap: [18, 4], band: 'near' }),
         scatter('blade', [262, 214, 130, 80], 10, 'cb-blades', { from: [290, 260], gap: [20, 10], band: 'near' }),
       ),
-      hit: [226, 290, 90, 50],
+      hit: [226, 262, 100, 76],
     },
     {
       key: 'legacy', match: ['scroll'],
       anchor: { p: 'oldTower', x: 430, y: 320, s: 1, band: 'mid' },
       slots: weave(GLASS, [{ p: 'scaffoldC', x: 404, y: 320, s: 1, v: 0.9, band: 'mid' }, { p: 'scaffoldC', x: 456, y: 320, s: 1, v: 0.5, band: 'mid' },
         { p: 'scaffoldC', x: 430, y: 320, s: 1, v: 0.2, band: 'mid' }]),
-      hit: [400, 160, 82, 160],
+      hit: [396, 160, 86, 160],
     },
     {
       key: 'agents', match: ['robots'],
@@ -259,7 +264,7 @@ export const code: Layout = {
         { p: 'drone', x0: 470, y0: 250, x1: 610, y1: 230, dur: 8, n: 2, s: 1.1, from: 0.25, band: 'mid' },
         { p: 'drone', x0: 620, y0: 120, x1: -20, y1: 140, dur: 18, n: 3, s: 1, from: 0.5, band: 'far' },
       ],
-      hit: [500, 110, 100, 210],
+      hit: [490, 110, 110, 210],
       site: [506, 312, 50, 8],
     },
     {

@@ -149,3 +149,36 @@ What each new style needs: a `styles/<id>.ts` (tokens, class treatments, defs, p
 weights), a props file for its distinctive props (the shared props render acceptably in any style meanwhile), and a
 layout per Industry. Rough sizes: a style in an existing family (Iron, Proof-of-work) is S–M; a new family (Plenty,
 Freight & Flight's top-down chart, Transition) is L.
+
+## Cohesion and performance pass (Nov 2026)
+
+What was wrong: each Industry was its own drawing on its own land; props sat on the picture rather than in it; places
+were unconnected; the depth bands read as strips; moving things drew over everything in their band; and every
+animation inside an SVG repainted the whole drawing each frame.
+
+What changed (see `src/ui/scene/README.md`, "One country"):
+
+- One geography for all five Industries (`src/ui/scene/geography.ts`): Steam's hill line, coast and estuary, viaduct
+  and mill town reappear in Light (at dusk), Motion (the estuary under the sun, the disused viaduct, Light's
+  gasholders), Compute (a survey contour; the mills as data halls) and Code (the hills behind the towers; the viaduct
+  arches carrying the elevated line). `SceneView.heritage` lets what the player built earlier show later.
+- Routes with traffic on them (Steam's wagonway: coal tubs pit → mills → quay), one wind, contact shadows under
+  landmarks, haze between tower rows, draw order by depth (a train passes behind nearer buildings).
+- Light re-inked as a printed dusk (prussian blue through plum and vermilion to an ochre and cream horizon; cream
+  title band with a vermilion title); the lamps fade on one by one in a warm white.
+- Steam's smog is a pale murk that lifts the far bands and engraved, hatched plumes on one wind, so the drawing stays
+  legible at the worst.
+- Code begins as a city already there: an arcology, two hazed skyline rows, an old block with six lamplit rooms,
+  people under umbrellas, steam from the gratings, trains on the viaduct, reflections on the wet street; under strain
+  the grid sheds load tower by tower and the emergency lights come on; at a Reckoning the machine light goes out and
+  only the red and any warm room remain.
+- Motion is composited: paint per second at 4× CPU in the real game went from 62–94 ms to 0–26 ms.
+
+For the page to meet the scene halfway (not done here; the page is another lane):
+
+- Light: the page is cool navy while the picture is now warm; a warmer surface (a plum-navy such as `#1d1830`) and the
+  scene's cream (`#efdfb6`) and vermilion (`#b8321e`) as secondary accents would make the plate and the chrome one
+  print.
+- Offer the scene's `detail` option as a setting ("Scene detail: automatic / low / full") beside reduced motion.
+- Every look: the scene card (`.scn-card`) inherits page type; using the page's label font for its caption line and
+  the page rule colour for its top border would seat it.

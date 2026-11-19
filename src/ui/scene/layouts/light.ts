@@ -7,6 +7,7 @@ import { P, R, C, L, f, ridge, rng, hash } from '../svg';
 import { bprop, waterLines } from './util';
 import { gasholder } from '../props/gaslight';
 import { poplar, church } from '../props/common';
+import { COUNTRY, hills, sea, viaductArches, millShells, built } from '../geography';
 
 const SHOPS = Array.from({ length: 9 }, (_, i) => 26 + i * 38);
 const POSTS = Array.from({ length: 13 }, (_, i) => i * 50);
@@ -47,11 +48,17 @@ export const light: Layout = {
       `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9845a" stop-opacity="0"/><stop offset=".7" stop-color="#c9845a" stop-opacity=".55"/><stop offset="1" stop-color="#e8a35e" stop-opacity=".75"/></linearGradient></defs>` +
 
       stars(70, 'stars') + bprop(GAS_MOON, 92, 66, 1.4, 0, c);
-    const farHills = ridge([[0, 150], [90, 136], [180, 146], [280, 130], [380, 144], [470, 136], [600, 150]], 260);
-    let via = '';
-    for (let x = 60; x < 360; x += 15) via += `M${x} 196V184H${x + 15}V196H${x + 12}V190A4.5 4.5 0 0 0 ${x + 3} 190V196Z`;
+    // The same country as Steam (geography.ts): its hill line against the dusk, the estuary catching the last light,
+    // the viaduct, and the mill town Steam built, its shells dark now or working a night shift.
+    const steamBuilt = built(c.heritage, 'steam');
+    const shells = millShells(Math.round(steamBuilt * 5), 198, 0.7);
+    let glit = '';
+    for (let i = 0; i < 9; i++) glit += `M${470 + ((i * 53) % 120)} ${166 + i * 4.4}h${8 + (i % 3) * 6}`;
     const far =
-      P(farHills, 'b sil0') + skyline(c, 190) + P(via, 'b') + R(60, 182, 300, 2.5, 'b') +
+      P(hills(40, 262), 'sil0') + P(sea(40, 207), 'seaD') + P(glit, 'seaG') +
+      skyline(c, 190) +
+      (steamBuilt > 0.12 ? P(viaductArches(COUNTRY.viaduct[0], COUNTRY.viaduct[1], 182, 14), 'b') : '') +
+      P(shells.body, 'heri') + P(shells.windows, 'heriw') +
       bprop(church, 410, 190, 0.8, 0.5, c) + bprop(poplar, 380, 192, 0.6, 0.3, c) +
       bprop(gasholder, 500, 204, 0.9, 0.3, c) + bprop(gasholder, 548, 205, 0.8, 0.8, c) + bprop(gasholder, 586, 206, 0.6, 0.5, c);
     const mid = P(ridge([[0, 204], [150, 198], [300, 206], [450, 200], [600, 206]], 400), 'b sil1') + P('M0 292H600V300H0Z', 'gd');
@@ -74,12 +81,12 @@ export const light: Layout = {
 
   plots: [
     { key: 'town', driver: 'population', slots: scatter('terrace', [6, 206, 588, 74], 24, 'light-town', { from: [300, 238], gap: [44, 9], k: 1.2 }) },
-    { key: 'homes', match: ['house'], overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 206, 200, 60], site: [440, 252, 70, 8] },
+    { key: 'homes', match: ['house'], overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 196, 210, 76], site: [440, 252, 70, 8] },
     {
       key: 'night', match: ['factory-night'],
       anchor: { p: 'nightFactory', x: 112, y: 270, s: 1, v: 0.7 },
       slots: scatter('nightFactory', [14, 212, 240, 48], 5, 'light-fac', { from: [112, 250], gap: [56, 10], k: 0.95 }),
-      hit: [30, 200, 160, 74],
+      hit: [20, 196, 170, 78],
     },
     {
       key: 'tram', match: ['tram'],
@@ -89,7 +96,7 @@ export const light: Layout = {
         { p: 'tram', x0: -50, y0: 292, x1: 660, y1: 292, dur: 24, n: 2, s: 0.95, band: 'mid' },
         { p: 'tram', x0: 660, y0: 294, x1: -50, y1: 294, dur: 27, n: 2, s: 0.95, from: 0.3, band: 'mid' },
       ],
-      hit: [220, 256, 160, 42],
+      hit: [196, 222, 180, 74],
       site: [270, 288, 60, 6],
     },
     {
@@ -97,18 +104,18 @@ export const light: Layout = {
       anchor: { p: 'sign', x: SHOPS[4], y: 332, s: 1, v: 0.6 },
       slots: SHOPS.filter((_, i) => i !== 4).map((x, i): Slot => ({ p: 'sign', x, y: 332, s: 1, v: ((i * 37) % 10) / 10 }))
         .sort((p, q) => Math.abs(p.x - SHOPS[4]) - Math.abs(q.x - SHOPS[4])),
-      hit: [10, 290, 330, 46],
+      hit: [10, 298, 330, 74],
       site: [150, 326, 50, 6],
     },
     {
-      key: 'lamps', match: ['lamp'],
+      key: 'lamps', match: ['lamp'], fade: true,
       anchor: { p: 'lampPosts', x: 0, y: 360, s: 1, w: 600, h: 50, band: 'near' },
       slots: weave(
         POSTS.map((x): Slot => ({ p: 'lampGlow', x, y: 360, s: 1, band: 'near' })).sort((p, q) => Math.abs(p.x - 300) - Math.abs(q.x - 300)),
         Array.from({ length: 15 }, (_, i): Slot => ({ p: 'farLamp', x: 20 + i * 40, y: 292, s: 0.8, band: 'mid' })).sort((p, q) => Math.abs(p.x - 300) - Math.abs(q.x - 300)),
         scatter('farLamp', [10, 200, 580, 50], 14, 'light-farlamps', { gap: [30, 6], k: 0.8 }),
       ),
-      hit: [380, 300, 220, 72],
+      hit: [360, 298, 240, 74],
       site: [450, 352, 70, 8],
     },
   ],

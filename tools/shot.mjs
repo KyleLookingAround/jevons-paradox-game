@@ -1,5 +1,5 @@
 // Screenshots and a scripted play-through of the game, for visual checks.
-//   node tools/shot.mjs [scenes|flow|checks|audit|real|all] [filter]
+//   node tools/shot.mjs [scenes|flow|checks|audit|real|realplay|looks|first|all] [filter]
 // Builds a mock-only page (src/ui/mock-main.ts bundled with `bun build`, inlined into index.html) at shots/mock.html,
 // so the UI can be checked while the real model or content does not build. `real` runs `bun run build.ts` and plays
 // dist/index.html. Sizes: 390×844 (phone), 1280×800 (desk), 360×740 (narrow: overflow check only).
@@ -884,6 +884,104 @@ async function realFlow(url) {
   }
 }
 
+/* ---------------------------------------------------------------- first (real game, every look) */
+// The first screen of every Industry in the real game, at phone (also at the largest text size and at 360 px) and
+// desk sizes, for the cohesion pass: screenshots plus two checks. (1) Nothing important is cut off with an ellipsis.
+// (2) A phone's first screen shows the header and gauges, the picture and a way to act (the sell button, the chip).
+// All five Industries are opened through the console handle and given a few uses and improvements (screenshot use
+// only: not a balance or unlock test). Writes shots/first-<industry>-<size>.png.
+async function makeLate(page) {
+  return page.evaluate(() => {
+    const r = window.rebound, m = r.model, c = r.content;
+    let s = r.state;
+    const sectors = { ...s.sectors };
+    for (const id of c.sectorOrder) {
+      if (sectors[id].open) continue;
+      const def = c.sectors[id]; const apps = {};
+      for (const a of def.applications) { const av = a.visibleBelow === Infinity; apps[a.id] = { available: av, founded: av && a.foundCost <= 0, satMul: 1, peakD: 0 }; }
+      sectors[id] = { ...sectors[id], open: true, reserve: def.reserve, reserveMax: def.reserve, apps };
+    }
+    s = { ...s, sectors };
+    const safe = (x) => !m.derive(m.fastForward(x, c, 120), c).pendingReckoning;
+    const kept = [s];
+    for (let round = 0; round < 30; round++) {
+      s = { ...s, capital: s.capital + 1e4 * Math.pow(1.8, round), mandate: (s.mandate || 0) + 50 };
+      const vs = m.upgradeViews(s, c).filter((v) => v.visible && !v.maxed && v.affordable && !v.excludedBy).sort((a, b) => a.cost - b.cost);
+      for (const v of vs.slice(0, 4)) { const n = m.buyUpgrade(s, c, v.def.id); if (n !== s) s = n; }
+      const d = m.derive(s, c);
+      for (const id of c.sectorOrder) for (const a of c.sectors[id].applications) if (d.sectors[id]?.apps[a.id]?.canFound) s = m.foundApp(s, c, a.id);
+      const prev = s; s = m.fastForward(s, c, 10);
+      if (m.derive(s, c).pendingReckoning) { s = prev; break; }
+      kept.push(s);
+    }
+    while (kept.length > 1 && !safe(s)) s = kept.pop();
+    for (const id of c.sectorOrder) { const n = m.drawBudget(s, c, id); if (n) s = n; }
+    for (const v of m.leverViews(s, c).filter((v) => v.visible && v.canRaise).slice(0, 3)) { const n = m.setLever(s, c, v.def.id, 1); if (n) s = n; }
+    return m.serialize(s);
+  });
+}
+const cutOff = (page) => page.evaluate(() => {
+  const bad = [];
+  for (const el of document.querySelectorAll('.cockpit *, .feed *, .dock *')) {
+    if (!el.childNodes.length || !el.textContent.trim()) continue;
+    const cs = getComputedStyle(el);
+    if (cs.textOverflow !== 'ellipsis' || cs.display === 'none' || !el.getClientRects().length || el.closest('[data-clip="ok"]')) continue;
+    if (el.scrollWidth > el.clientWidth + 1) bad.push(`${el.className || el.tagName}: "${el.textContent.trim().slice(0, 40)}"`);
+  }
+  return bad.slice(0, 8);
+});
+const firstScreen = (page) => page.evaluate(() => {
+  const vh = innerHeight;
+  const box = (s) => document.querySelector(s)?.getBoundingClientRect();
+  const sell = box('.sell'), cockpit = box('.cockpit'), scene = box('.world-mount'), chip = document.querySelector('.afford-chip');
+  const dockTop = box('.dock')?.top ?? vh;
+  return {
+    cockpit: Math.round(cockpit?.height ?? 0),
+    sell: !!sell && sell.bottom <= vh + 1 && sell.top >= 0,
+    // At least half the picture's height is between the header and the dock.
+    scene: !!scene && (Math.min(scene.bottom, dockTop) - Math.max(scene.top, cockpit?.bottom ?? 0)) >= scene.height * 0.5,
+    chip: !chip || chip.hidden || (chip.getBoundingClientRect().top >= 0 && chip.getBoundingClientRect().bottom <= vh),
+  };
+});
+async function first() {
+  try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); } catch (e) { console.log('FIRST: build failed'); return; }
+  const url = 'file://' + resolve(root, 'dist/index.html');
+  // Make the save once.
+  const { ctx: c0, page: p0 } = await newPage({ w: 390, h: 844, tag: 'phone' });
+  await p0.goto(url); await p0.waitForTimeout(800);
+  const save = await makeLate(p0);
+  await c0.close();
+  const sizes = [{ w: 390, h: 844, tag: 'phone' }, { w: 390, h: 844, tag: 'phone-big', text: 2 }, { w: 360, h: 740, tag: 'narrow' }, { w: 1280, h: 800, tag: 'desk' }];
+  for (const sz of sizes) {
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: sz.tag === 'desk' ? 1 : 2 });
+    await ctx.addInitScript(([t, ts]) => {
+      if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('rebound.save.v1', t); localStorage.setItem('rebound.save.v1.at', String(Date.now()));
+      if (ts) localStorage.setItem('rebound.ui.prefs', JSON.stringify({ textSize: ts }));
+    }, [save, sz.text ?? 0]);
+    await page.goto(url); await page.waitForTimeout(1500);
+    const ids = await page.evaluate(() => window.rebound.content.sectorOrder);
+    for (const id of ids) {
+      if (filter && !id.includes(filter)) continue;
+      await page.evaluate((i) => { window.rebound.ctx.selectSector(i); document.querySelectorAll('.toast-x').forEach((x) => x.click()); window.scrollTo(0, 0); }, id);
+      await page.waitForTimeout(1400);
+      await page.evaluate(() => document.querySelectorAll('.toast-x').forEach((x) => x.click()));
+      await page.waitForTimeout(300);
+      const look = await page.evaluate(() => document.documentElement.dataset.look);
+      const o = await overflow(page);
+      if (o.sw > o.cw) fail(`OVERFLOW first ${id}/${sz.tag}: ${o.sw} > ${o.cw}`);
+      const cut = await cutOff(page);
+      if (cut.length && sz.tag !== 'desk-x') fail(`CUT OFF first ${id}/${sz.tag}: ${cut.join(' | ')}`);
+      const fs = await firstScreen(page);
+      if (sz.tag !== 'desk' && !(fs.sell && fs.scene && fs.chip)) fail(`FIRST SCREEN ${id}/${sz.tag}: sell ${fs.sell} scene ${fs.scene} chip ${fs.chip}`);
+      await page.screenshot({ path: `${out}/first-${id}-${sz.tag}.png` });
+      console.log(`first ${id} (${look}) ${sz.tag}: cockpit ${fs.cockpit}px of ${sz.h}, sell ${fs.sell}, scene ${fs.scene}, chip ${fs.chip}${cut.length ? `, cut off ${cut.length}` : ''}`);
+    }
+    if (errs.length) fail(`first/${sz.tag}: ${errs.slice(0, 3).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
 if (mode === 'scenes' || mode === 'all') await scenes();
 if (mode === 'flow' || mode === 'all') await flow(mock);
 if (mode === 'checks' || mode === 'all') await checks();
@@ -891,6 +989,7 @@ if (mode === 'audit' || mode === 'all') await audit();
 if (mode === 'real') await real();
 if (mode === 'realplay') await realplay();
 if (mode === 'looks') await looks();
+if (mode === 'first') await first();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

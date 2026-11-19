@@ -8,9 +8,9 @@
 <meta name="theme-color" content="#efe6d0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- The font stylesheet never blocks the first paint: it is fetched as a preload and applied when it arrives (the
-     fallback stacks in styles.css carry the page until then; display=swap does the rest). -->
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Fraunces:ital,opsz,wght@0,9..144,400..800;1,9..144,400..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<!-- The font stylesheet never blocks the first paint: it loads as a print stylesheet (not render-blocking) and
+     switches to all media when it arrives; the fallback stacks in styles.css carry the page until then. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Fraunces:ital,opsz,wght@0,9..144,400..800;1,9..144,400..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Fraunces:ital,opsz,wght@0,9..144,400..800;1,9..144,400..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"></noscript>
 <style>/*__CSS__*/</style>
 </head>

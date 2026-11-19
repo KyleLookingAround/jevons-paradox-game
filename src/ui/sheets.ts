@@ -445,7 +445,7 @@ export function lockedSheet(ctx: Ctx, sheets: Sheets, id: SectorId): void {
       cls(rk, 'met', have >= need);
       show(ready, !!n?.ready);
     };
-  }, { label: `${def?.name ?? 'An industry'}, locked`, cls: 'small-sheet' });
+  }, { label: `${def?.name ?? 'An Industry'}, locked`, cls: 'small-sheet' });
 }
 
 /* ------------------------------------------------------------------ */
@@ -554,7 +554,7 @@ export function winSheet(ctx: Ctx, sheets: Sheets): void {
     b.append(h('div', { class: 'paper' },
       h('div', { class: 'paper-mast' }, h('span', { text: 'Late final' }), h('span', { class: 'num', text: String(Math.floor(num(ctx.d?.year))) })),
       h('h1', { class: 'paper-head', text: 'Steady State' }),
-      h('p', { class: 'paper-stand', text: `${STEADY_STATE_YEARS} years of a decent life inside the line, in every industry at once. Nobody is quite sure when it happened. The engines kept improving; the burning stopped following them.` }),
+      h('p', { class: 'paper-stand', text: `${STEADY_STATE_YEARS} years of a decent life inside the line, in every Industry at once. Nobody is quite sure when it happened. The engines kept improving; the burning stopped following them.` }),
       h('p', { class: 'muted', text: 'The game carries on. So, presumably, does everyone.' })),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn primary', type: 'button', onclick: close }, 'Carry on')));
   }, { label: 'Credits', full: true, cls: 'reckon-sheet' });
@@ -660,11 +660,11 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
 
     // How it works. The budget and Jevons' sentence wait for the reveal: before it, they would answer the question the
     // run is asking.
-    const howBudget = h('p', { text: 'Draw a budget line for an industry and hold its use under it, with wellbeing at the target: every ten years of that is a decade in the ledger, and fifty is Steady State.' });
+    const howBudget = h('p', { text: 'Draw a budget line for an Industry and hold its use under it, with wellbeing at the target: every ten years of that is a decade in the ledger, and fifty is Steady State.' });
     const howQuote = h('p', { class: 'muted', text: 'W. S. Jevons, 1865: “It is wholly a confusion of ideas to suppose that the economical use of fuel is equivalent to a diminished consumption.”' });
     b.append(h('section', { class: 'm-sec how' }, h('h3', { text: 'How it works' }),
       h('div', { class: 'formula' }, h('div', { class: 'f-line', text: 'R = D(pₛ) ÷ η' }), h('div', { class: 'f-line', text: 'pₛ = pᵣ ÷ η + c (+ any levy)' })),
-      h('p', { text: 'R is resource burned, D demand for the service, η efficiency, pₛ the price of the service, pᵣ the price of the resource, c everything else. Each industry runs on its own pair of these; an age is the stretch of the calendar they belong to.' }),
+      h('p', { text: 'R is resource burned, D demand for the service, η efficiency, pₛ the price of the service, pᵣ the price of the resource, c everything else. Each Industry runs on its own pair of these; an Age is the stretch of the calendar they belong to.' }),
       howBudget, howQuote));
 
     // Save

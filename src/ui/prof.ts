@@ -3,7 +3,8 @@
 export interface ProfEntry { n: number; t: number; max: number }
 
 export const prof = {
-  on: false,
+  // tools/perf.mjs sets window.__reboundProf before the page loads, to time the boot as well.
+  on: !!(globalThis as { __reboundProf?: boolean }).__reboundProf,
   acc: {} as Record<string, ProfEntry>,
   reset(): void { prof.acc = {}; },
 };

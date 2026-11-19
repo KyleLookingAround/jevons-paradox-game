@@ -6,6 +6,7 @@ import { scatter, weave } from '../layout';
 import { P, R, L, f, rng, hash } from '../svg';
 import { bprop } from './util';
 import { pylon } from '../props/terminal';
+import { hillCrest, millShells, built } from '../geography';
 
 const NODES: [number, number][] = [[300, 262], [236, 236], [366, 230], [196, 258], [414, 254], [272, 214], [338, 210], [440, 222]];
 const LINKS: Slot[] = NODES.slice(1).map(([x, y], i) => {
@@ -36,7 +37,14 @@ export const compute: Layout = {
     let wires = '';
     const px = [20, 110, 200, 290, 380, 470, 560];
     for (let i = 0; i < px.length - 1; i++) wires += `M${px[i] - 7} 147Q${(px[i] + px[i + 1]) / 2} 156 ${px[i + 1] - 7} 147M${px[i] + 7} 147Q${(px[i] + px[i + 1]) / 2} 156 ${px[i + 1] + 7} 147`;
-    const far = floor() + px.map((x) => bprop(pylon, x, 174, 0.8, 0.5, c)).join('') + P(wires, 'k k2') +
+    // The same country, as a survey contour: the hill line (geography.ts) falling to the estuary, and the mill shells
+    // Steam built, now data halls.
+    const steamBuilt = built(c.heritage, 'steam');
+    const shells = millShells(Math.round(steamBuilt * 4), 196, 0.5);
+    const far = P(hillCrest(30), 'k cont') + P(hillCrest(36), 'k k2 cont') + P(hillCrest(43), 'k k2 dim') +
+      P('M452 151H600M466 156H600M486 162H600', 'k k2 dim') +
+      (shells.body ? P(shells.body, 'b dim') + `<text x="330" y="${shells.stacks.length ? 205 : -9}" text-anchor="middle" class="thud dimt">[ MILL.1851 &gt; DC ]</text>` : '') +
+      floor() + px.map((x) => bprop(pylon, x, 174, 0.8, 0.5, c)).join('') + P(wires, 'k k2') +
       P('M14 192L30 164H150L160 192Z', 'b') + `<g class="ry">${R(32, 166, 116, 24, 'wa')}${P('M36 172H144M36 178H144M36 184H144', 'k k2 wl')}</g>` + P('M150 164L160 192', 'k');
     const near = R(0, 300, 600, 72, 'gd', 'opacity=".55"');
     const cut = R(0, 372, 600, 28, 'b') + L(0, 372, 600, 372, 'k') + P('M0 380H600M0 386H600M0 392H600', 'k k2 dim') +
@@ -56,13 +64,13 @@ export const compute: Layout = {
       key: 'web', match: ['globe'],
       anchor: { p: 'exchangeL', x: NODES[0][0], y: NODES[0][1], s: 1 },
       slots: weave(NODES.slice(1).map(([x, y]): Slot => ({ p: 'exchange', x, y, k: 0.9 })), LINKS),
-      hit: [200, 200, 220, 70],
+      hit: [190, 192, 200, 76],
     },
     {
       key: 'cloud', match: ['cloud'],
       anchor: { p: 'storageL', x: 486, y: 292, s: 1.1, v: 0.6 },
       slots: scatter('storage', [410, 224, 186, 64], 5, 'compute-sheds', { from: [486, 270], gap: [70, 14] }),
-      hit: [420, 250, 170, 50],
+      hit: [420, 236, 170, 74],
     },
     {
       key: 'stream', match: ['play'],
@@ -71,7 +79,7 @@ export const compute: Layout = {
         scatter('homeScreen', [10, 318, 580, 46], 16, 'compute-homes', { from: [300, 340], gap: [30, 8], k: 1.4 }),
         [{ p: 'hall', x: 170, y: 314, s: 0.95 }, { p: 'hall', x: 430, y: 316, s: 0.95 }],
       ),
-      hit: [200, 304, 200, 52],
+      hit: [190, 300, 220, 74],
     },
     {
       key: 'train', match: ['brain'],

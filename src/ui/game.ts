@@ -155,9 +155,10 @@ function boot(o: GameOpts): void {
     replace,
     selectSector(id) {
       if (!state!.sectors?.[id]?.open) return;
-      ctx.sector = id;
-      lsSet(TAB_KEY, id);
-      ui.update();
+      const apply = () => { ctx.sector = id; lsSet(TAB_KEY, id); timed('ui.update', () => ui.update()); };
+      // Another Industry is another look, picture and set of panels: one composed transition, not a flash of restyle.
+      if (id !== ctx.sector) ui.composeSwitch(ctx.sector, id, apply);
+      else apply();
     },
     openFormula: (k) => ui.openFormula(k),
     openMenu: () => ui.openMenu(),
@@ -168,6 +169,7 @@ function boot(o: GameOpts): void {
     save,
     get afford() { return ui ? ui.afford : { items: [], bySector: new Map() }; },
     jumpToAffordable: () => ui.jumpToAffordable(),
+    showPlace: (id) => ui.showPlace(id),
     confirmFork: (id, onYes) => ui.confirmFork(id, onYes),
     refreshAll: () => refresh(true),
   };
@@ -290,7 +292,8 @@ function boot(o: GameOpts): void {
     const s = guard('fastForward', () => model.fastForward(before, content, seconds));
     if (!s) return;
     state = s;
-    refresh(true);
+    refresh(false);
+    viewsAfterPaint();
     if (note && seconds > 60) {
       const gained = (s.capital ?? 0) - (before.capital ?? 0);
       const capped = Math.min(seconds, content.global?.offlineCapSeconds ?? seconds);
@@ -298,10 +301,10 @@ function boot(o: GameOpts): void {
     }
   }
 
-  refreshViews();
-  mark('rebound-views');
+  // First paint without the views (they run projections; slow on a late save): they follow in their own task.
   ui.update();
   mark('rebound-ready');
+  viewsAfterPaint();
   if (unread != null) ui.unreadSave(unread);
   // A save made between runs (the shop was open) stays fresh: no catch-up until the next run begins.
   if (away > 0 && !d.freshRun) catchUp(away, true);

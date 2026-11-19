@@ -72,6 +72,9 @@ export interface SceneView {
   /** A pending Reckoning stops the world. `here` = it was caused by this sector. */
   reckoning: { cause: string; here: boolean } | null;
   year: number | null;
+  /** Optional: how built-up each EARLIER Industry is (sector id → 0–1). What it built still stands in this
+   *  picture (the same country, later). Absent: earlier Industries are drawn as built. */
+  heritage?: Record<string, number>;
 }
 
 export interface SceneOptions {

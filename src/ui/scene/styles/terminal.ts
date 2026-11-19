@@ -6,7 +6,9 @@ import { TERMINAL } from '../props/terminal';
 export const terminal: ArtStyle = {
   id: 'terminal',
   idiom: 'Vector display, early CAD, 1980s',
-  css: `.scn[data-look=terminal]{
+  css: `
+.scn[data-look=terminal] .cont{stroke:#4f8a48}.scn .cdim{fill:#4f8a48}
+.scn[data-look=terminal]{
   --s-paper:#070b08;--s-ink:#9ff08f;--s-b:#070b08;--s-b2:#0b140d;--s-rf:#0b140d;--s-w:#16301a;--s-lit:#e9b44a;
   --s-tr:#0b140d;--s-wa:#071618;--s-gd:#08100a;--s-gd2:#0b160d;--s-sp:#102016;--s-ac:#e9b44a;--s-ac2:#5fd0e0;
   --s-mt:#5c9a55;--s-smk:120,160,120;--s-hz:150,90,30;--s-mist:7,11,8;--s-sun:#e9b44a;

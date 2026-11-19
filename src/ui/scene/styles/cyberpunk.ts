@@ -106,10 +106,10 @@ export const cyberpunk: ArtStyle = {
 @keyframes cb-rain1{from{transform:translate3d(0,0,0)}to{transform:translate3d(-12px,90px,0)}}
 @keyframes cb-rain2{from{transform:translate3d(0,0,0)}to{transform:translate3d(-8px,60px,0)}}
 .scn[data-look=cyberpunk].lowd .rain.r2,.scn[data-look=cyberpunk].steady .rain,.scn[data-look=cyberpunk].halt .rain{display:none}
-.scn.live[data-look=cyberpunk] .blink>b{animation:cb-flick 2.6s steps(1,end) infinite}
+.scn.live[data-look=cyberpunk] .blink.on>b{animation:cb-flick 2.6s steps(1,end) infinite}
 @keyframes cb-flick{0%{opacity:1}43%{opacity:.25}46%{opacity:1}71%{opacity:.4}73%{opacity:1}}
 .scn[data-look=cyberpunk].steady .blink>b{animation:none}
-.scn .cbarc{fill:#2a1842}.scn .cbfar0{fill:#1d1233}.scn .cbwin0{fill:#a77fd0;opacity:.35}
+.scn .cbarc{fill:#2a1842}.scn .cbhill{fill:#241536}.scn .cbsea{fill:#1a1030}.scn .cbfar0{fill:#1d1233}.scn .cbwin0{fill:#a77fd0;opacity:.35}
 .scn .beam{fill:rgba(160,200,255,.05)}
 .scn .pier{fill:#0d0b19;stroke:#2b2450;stroke-width:.5px}.scn .deck{fill:#120f22;stroke:#2b2450;stroke-width:.6px}.scn .trn{fill:#1d1934;stroke:#4a4373;stroke-width:.6px}
 .scn .rim{fill:none;stroke:rgba(255,79,216,.35);stroke-width:1px}
@@ -117,7 +117,7 @@ export const cyberpunk: ArtStyle = {
 .scn .rfb{fill:#8f8cff;opacity:.05}
 .scn .oldb{fill:#1b1530;stroke:#2f2752;stroke-width:.6px}.scn .oldb2{fill:#130f24}.scn .oldl{fill:#2a2348}.scn .oldw{fill:#09080f;stroke:#2f2752;stroke-width:.6px}
 .scn .sil{fill:#2a1305;stroke:none}.scn .vk{fill:none;stroke:#2a1305;stroke-width:1.1px}
-.scn .vspill{fill:#ffb347;opacity:.13}.scn .vhalo{fill:#ffb347;opacity:.22}
+.scn .vspill{fill:#ff9a3c;opacity:.07}.scn .vhalo{fill:#ffb347;opacity:.22}
 .scn .vcone{fill:#fff4c8;opacity:.75}.scn .vscr{fill:#9fe8ff;opacity:.85}.scn .vbook{fill:#fff4d8}.scn .vlamp{fill:#fff6d0}
 .scn .vleaf{fill:none;stroke:#2a3a12;stroke-width:1.3px}.scn .vgtr{fill:#5a2a0a}.scn .vpic{fill:#c76a2a}.scn .vcur{fill:#b4501e;opacity:.85}.scn .vpaper{fill:#fff8e8}
 .scn .vbar{fill:none;stroke:#3a1d0a;stroke-width:1px}.scn .vsill{fill:#2f2752}

@@ -239,7 +239,40 @@ export const rails: Prop = (a) => {
   return P(d, 'k k2') + L(0, -0.4, w, -0.4, 'k K') + L(0, 1, w, 1, 'k');
 };
 
+/** A smoke plume as the engraver draws it: a long billow, outlined and hatched, rising downwind (to the right). */
+export const smogPlume: Prop = (a) => {
+  const w = a.w || 120, r = a.r;
+  let top = 'M0 0', bot = '';
+  const n = 6;
+  for (let i = 1; i <= n; i++) {
+    const x = (w * i) / n, y = -(w * 0.22) * (i / n) - r() * 4, b = 5 + (i / n) * 12;
+    top += `Q${f(x - w / n / 2)} ${f(y - b - r() * 5)} ${f(x)} ${f(y - b * 0.6)}`;
+    bot = `Q${f(x - w / n / 2)} ${f(y + b * 0.5)} ${f(x - w / n)} ${f(-(w * 0.22) * ((i - 1) / n) + 1)}` + bot;
+  }
+  const end = -(w * 0.22) - 4;
+  const d = top + `L${f(w)} ${f(end + 6)}` + bot.replace(/^Q/, 'Q') + 'Z';
+  return P(d, 'smb') + P(d, 'hz smh', `fill="${a.hatch(1)}" opacity=".55"`);
+};
+
+/** The colliery wagonway: rails from the slot to (w, h), with sleepers. */
+export const wagonway: Prop = (a) => {
+  const w = a.w || 100, h = a.h || 0, len = Math.hypot(w, h), nx = -h / len, ny = w / len;
+  let sl = '';
+  for (let t = 0; t <= len; t += 5) { const x = (w * t) / len, y = (h * t) / len; sl += `M${f(x - nx * 1.6)} ${f(y - ny * 1.6)}L${f(x + nx * 1.6)} ${f(y + ny * 1.6)}`; }
+  return P(sl, 'k k2') + P(`M${f(-nx)} ${f(-ny)}L${f(w - nx)} ${f(h - ny)}M${f(nx)} ${f(ny)}L${f(w + nx)} ${f(h + ny)}`, 'k');
+};
+
+/** Coal tubs on the wagonway, a horse (stage 0) or a little engine (later) at the head. */
+export const tubs: Prop = (a) => {
+  let s = '';
+  for (let i = 0; i < 4; i++) s += P(`M${-6 - i * 8} -5h7l-1 5h-5z`, 'b') + P(`M${-5.5 - i * 8} -5.6h6`, 'k K') + `<circle cx="${-4.6 - i * 8}" cy="0.4" r="1" class="d"/><circle cx="${-1.4 - i * 8}" cy="0.4" r="1" class="d"/>`;
+  s += a.stage === 0 ? P('M1 0l1 -5h6l2 -3 2 1-2 3v4M3 0v-2M8 0v-2', 'k') + P('M2 -5h6v-3h-6z', 'b')
+    : P('M1 0V-7h8v7z', 'b') + P('M6 -7v-4h2v4', 'b') + `<circle cx="3" cy="0.4" r="1.4" class="d"/><circle cx="7" cy="0.4" r="1.4" class="d"/>`;
+  return s;
+};
+
 export const LEDGER: Record<string, Prop> = {
+  smogPlume, wagonway, tubs,
   rails, engine, headframe, spoil, mill, viaduct, train, station, signal, goodsShed, quay, warehouse, crane, ship,
   ploughField, furrows, field,
 };

@@ -35,7 +35,10 @@ export interface UI {
   afterAct(before: GameState, after: GameState): string[];
   afford: AffordState;
   jumpToAffordable(): void;
+  showPlace(appId: string | null): void;
   confirmFork(id: string, onYes: () => void): void;
+  /** Run `apply` (which switches the selected Industry) inside one composed page transition where the browser can. */
+  composeSwitch(from: SectorId, to: SectorId, apply: () => void): void;
 }
 
 const THEME_COLOUR: Record<string, string> = {
@@ -61,7 +64,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const gauges = buildGauges(ctx);
   const dock = buildDock(ctx);
   const news = buildNews(ctx);
-  const world = buildWorld(ctx) as ReturnType<typeof buildWorld> & { reset(): void };
+  const world = buildWorld(ctx);
   const ups = buildUpgrades(ctx);
   const budget = buildBudget(ctx);
   const levs = buildLevers(ctx);
@@ -88,6 +91,14 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // improvements (the affordable chip by the sell button covers the rest).
   const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, onboard, world.el, news.el, ups.el, budget.el, levs.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, toasts.el, live);
+
+  // A crisis is one event: the picture's fog (the scene), the headline (the broadsheet) and the gauges arrive together.
+  document.addEventListener('rebound:moment', (e) => {
+    const kind = (e as CustomEvent<string>).detail;
+    if (kind !== 'crisis') return;
+    cockpit.classList.remove('m-crisis'); void cockpit.offsetWidth; cockpit.classList.add('m-crisis');
+    setTimeout(() => cockpit.classList.remove('m-crisis'), 2400);
+  });
 
   const comps: [string, Comp][] = [['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs]];
 
@@ -137,9 +148,22 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     afterAct: (before, after) => afford.afterAct(before, after),
     afford: afford.state,
     jumpToAffordable,
+    showPlace: (id) => world.showPlace(id),
     confirmFork: (id, onYes) => forkSheet(ctx, sheets, id, onYes),
+    composeSwitch,
     update,
   };
+
+  // View Transitions (Chrome 111+, Safari 18+): the old screen is held as a picture while the new look, picture and
+  // panels are built underneath, then the two cross-fade (the picture slides a little, in the direction of travel).
+  // Elsewhere, under reduced motion, or with a sheet up, the switch is immediate.
+  function composeSwitch(from: SectorId, to: SectorId, apply: () => void): void {
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (typeof doc.startViewTransition !== 'function' || reducedMotion() || sheets.blocking() || document.hidden) { apply(); return; }
+    const ids = sectorIds(ctx.content);
+    document.documentElement.setAttribute('data-dir', ids.indexOf(to) >= ids.indexOf(from) ? 'next' : 'prev');
+    try { doc.startViewTransition(apply); } catch { apply(); }
+  }
 
   function update(): void {
     const open = openSectors(ctx);
@@ -157,7 +181,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     const ss = ctx.state.run?.steadySectors || {};
     if (knownSteady) for (const id of Object.keys(ss)) if (ss[id] && !knownSteady.has(id)) {
       const def = sectorDef(ctx, id);
-      toasts.push(`Steady State in ${def?.name ?? 'an industry'}: fifty years of a decent life inside the line. The line holds level from here.`,
+      toasts.push(`Steady State in ${def?.name ?? 'an Industry'}: fifty years of a decent life inside the line. The line holds level from here.`,
         id !== ctx.sector ? { label: 'Go there', run: () => ctx.selectSector(id) } : undefined, 12000);
     }
     knownSteady = new Set(Object.keys(ss).filter((k) => ss[k]));
