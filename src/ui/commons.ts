@@ -26,8 +26,10 @@ function makeCard(ctx: Ctx, v0: CommonsView): Card {
     if (ctx.act('buyCommons', (m, s, c) => m.buyCommons(s, c, def.id))) stamp(el, r, cur.level + 1 < cur.maxLevel);
     else { sound('cannotAfford'); if (!reducedMotion()) { buy.classList.remove('nope'); void buy.offsetWidth; buy.classList.add('nope'); } }
   } }, fill, h('span', { class: 'btn-l', text: 'Build' }), cost);
+  // A built project stands in its Industry's picture: a way to go and look (the scene rings it).
+  const see = h('button', { class: 'place-link lev-see', type: 'button', hidden: true, onclick: () => { if (def.sector && def.sector !== ctx.sector) ctx.selectSector(def.sector); ctx.showPlace({ commons: def.id }); } }, 'in the picture ↑');
   const el = h('article', { class: 'up cm' },
-    h('header', { class: 'up-h' }, h('h3', { class: 'up-name', text: def.name }), lvl),
+    h('header', { class: 'up-h' }, h('h3', { class: 'up-name', text: def.name }), lvl, see),
     h('p', { class: 'up-blurb', text: def.blurb }), wb, inten, fx ? h('p', { class: 'up-eff', text: fx }) : null, how, buy);
   el.setAttribute('data-cm', def.id);
 
@@ -50,6 +52,7 @@ function makeCard(ctx: Ctx, v0: CommonsView): Card {
     }
     show(how, !v.maxed);
     cls(el, 'afford', v.canBuy);
+    show(see, v.level > 0 && !!def.sector);
     cls(el, 'maxed', v.maxed);
   }
   update(v0);

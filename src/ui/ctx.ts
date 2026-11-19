@@ -37,7 +37,7 @@ export interface Ctx {
   /** The affordable signal (afford.ts), refreshed before the components update. */
   afford: AffordState;
   /** Bring the picture into view, selecting a place in it (null: the picture as a whole). */
-  showPlace(appId: string | null): void;
+  showPlace(target: string | null | { lever: string } | { commons: string }): void;
   /** Scroll to (and focus) the first offer worth telling the player about. */
   jumpToAffordable(): void;
   /** Refresh views and redraw now (after a display setting changed). */

@@ -13,7 +13,7 @@
 import type { Ctx } from './ctx';
 import { sectorDef, openSectors } from './ctx';
 import type { SceneView } from './scene';
-import { createScene, sceneViewFrom } from './scene';
+import { createScene, sceneViewFrom, renderStill } from './scene';
 import { lsGet, lsSet } from './store';
 import { h, setText, show, reducedMotion } from './dom';
 import { fold, num, clamp, lower, fmt } from './fmt';
@@ -141,8 +141,6 @@ export function createRecorder(ctx: Ctx, preferred: () => string): Recorder {
 /* The replay, in the run summary                                      */
 /* ------------------------------------------------------------------ */
 
-/** Hooks the scene lane may add (requested; all optional): render a SceneView as a still image. */
-type StillHook = (view: SceneView, opts: { width: number; height: number }) => Promise<HTMLCanvasElement | Blob | null>;
 
 function sparkPath(vals: number[], upto: number, lo: number, hi: number, w: number, hgt: number): string {
   if (vals.length < 2) return '';
@@ -209,17 +207,18 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
     }
     return scene;
   }
-  function show_(i: number): void {
+  function show_(i: number): void { showFigs(i, true); }
+  function showFigs(i: number, picture: boolean): void {
     if (i === idx) return;
     idx = i;
-    try { ensureScene()?.update(views[i]); } catch { /* a scene error must not take the summary down */ }
+    if (picture) { try { ensureScene()?.update(views[i]); } catch { /* a scene error must not take the summary down */ } }
     setText(yearEl, String(fr[i].y));
     setText(effV, fold(fr[i].ef));
     setText(useV, fold(fr[i].rf));
     chart.querySelector('.lp-eff')!.setAttribute('points', sparkPath(effs, i, lo, hi, W, HG));
     chart.querySelector('.lp-use')!.setAttribute('points', sparkPath(uses, i, lo, hi, W, HG));
   }
-  function stop(): void { if (raf) cancelAnimationFrame(raf); raf = 0; }
+  function stop(): void { if (raf) cancelAnimationFrame(raf); raf = 0; try { scene?.stopReplay?.(); } catch { /* ignore */ } }
   function alive(): boolean {
     if (el.isConnected) return true;
     stop();
@@ -231,15 +230,18 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
     show(pair, false); show(stageHost, true);
     stop();
     if (reduced) { show_(views.length - 1); return; }
+    const sc = ensureScene();
+    // The scene's own replay draws the picture (no moments, no toasts, update() held off); the figures and the lines
+    // follow the same ten seconds, evenly, beside it. Without the hook, the page steps the views itself.
+    const own = !sc?.replay;
+    if (!own) { idx = -1; show_(0); try { sc!.stopReplay?.(); void sc!.replay!(views, { seconds: REPLAY_MS / 1000 }); } catch { /* fall back below */ } }
     const t0 = performance.now();
     const step = (now: number) => {
       if (!alive()) return;
       const p = clamp((now - t0) / REPLAY_MS, 0, 1);
-      // Ease out a little at the end so the stopped valley holds.
-      show_(Math.round((1 - Math.pow(1 - p, 1.4)) * (views.length - 1)));
+      showFigs(Math.round(p * (views.length - 1)), own);
       if (p < 1) raf = requestAnimationFrame(step); else raf = 0;
     };
-    show_(0);
     raf = requestAnimationFrame(step);
   }
   let pairScenes: ReturnType<typeof createScene>[] = [];
@@ -284,16 +286,11 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
     g.fillStyle = ink; g.fillRect(60, 96, 960, 2);
     g.font = `700 54px ${display}`;
     wrap(g, title, 60, 120, 960, 62, 2);
-    // The picture(s): the scene's still hook if it offers one; else a rasterised copy of the replay's own drawing.
+    // The picture(s): the scene's renderStill (PNG; the SVG drawn as an image if the PNG is refused).
     const top = 220;
-    const still = (createScene as unknown as { renderStill?: StillHook }).renderStill
-      ?? (sceneViewFrom as unknown as { renderStill?: StillHook }).renderStill;
     const draw = async (v: SceneView, x: number, w: number): Promise<number> => {
       let img: CanvasImageSource | null = null;
-      try {
-        const out = still ? await still(v, { width: w * 2, height: Math.round(w * 2 * 2 / 3) }) : await rasterScene(v, w);
-        img = out instanceof Blob ? await blobImage(out) : out;
-      } catch { img = null; }
+      img = await stillImage(v, w, Math.round(w * 2 / 3));
       const hgt = Math.round(w * 2 / 3);
       if (img) g.drawImage(img, x, top, w, hgt);
       else { g.strokeStyle = muted; g.lineWidth = 2; g.strokeRect(x, top, w, hgt); }
@@ -345,13 +342,26 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
     setText(status, 'Drawing…');
     try {
       const b = await blobOf(pairMode);
-      if (!b) { setText(status, 'This browser would not draw the picture.'); return; }
+      if (!b) { await saveSvg(); return; }
       const url = URL.createObjectURL(b);
       const a = document.createElement('a');
       a.href = url; a.download = `rebound-${lapse!.sector}-${lapse!.endYear}${pairMode ? '-before-after' : ''}.png`;
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
       setText(status, 'Saved.');
+    } catch { await saveSvg(); }
+  }
+  /** Where a PNG cannot be made (Safari may refuse to rasterise), the final picture as an SVG file instead. */
+  async function saveSvg(): Promise<void> {
+    try {
+      const svg = await renderStill(views[views.length - 1], { width: 1200, height: 800, format: 'svg' });
+      const blob = typeof svg === 'string' ? new Blob([svg], { type: 'image/svg+xml' }) : svg;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `rebound-${lapse!.sector}-${lapse!.endYear}.svg`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      setText(status, 'Saved as a drawing (SVG): this browser would not make a PNG.');
     } catch { setText(status, 'This browser would not save the picture.'); }
   }
   async function share(): Promise<void> {
@@ -384,42 +394,19 @@ function blobImage(b: Blob): Promise<HTMLImageElement> {
   return new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = URL.createObjectURL(b); });
 }
 
-/**
- * Best effort without a scene hook: render the view in an off-screen scene and rasterise its markup (with the page's and
- * the scene's styles inlined) through an SVG foreignObject. Works in Chromium; Safari may refuse (tainted canvas), in
- * which case the card is drawn without the picture.
- */
-async function rasterScene(v: SceneView, w: number): Promise<HTMLImageElement | null> {
-  const W = 600, H = 400;
-  const host = h('div', { class: 'lp-raster', 'aria-hidden': 'true' });
-  host.style.cssText = `position:fixed;left:-10000px;top:0;width:${W}px;`;
-  document.body.append(host);
-  let sc: ReturnType<typeof createScene> | null = null;
+/** A still of a view as an image for the card: renderStill's PNG, or its SVG drawn as an image; null if neither works. */
+async function stillImage(v: SceneView, w: number, hgt: number): Promise<CanvasImageSource | null> {
   try {
-    sc = createScene(host, { card: false, reducedMotion: true, detail: 'low' });
-    sc.setSector(v.sectorId);
-    sc.update(v);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const styles = Array.from(document.querySelectorAll('style')).map((s) => s.textContent || '').join('\n');
-    const rootVars = (() => {
-      const cs = getComputedStyle(document.documentElement);
-      let out = '';
-      for (let i = 0; i < cs.length; i++) { const p = cs[i]; if (p.startsWith('--')) out += `${p}:${cs.getPropertyValue(p)};`; }
-      return out;
-    })();
-    const look = document.documentElement.getAttribute('data-look') ?? '';
-    const xml = new XMLSerializer().serializeToString(host.firstElementChild ?? host);
-    const svgTxt = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><foreignObject width="100%" height="100%">`
-      + `<div xmlns="http://www.w3.org/1999/xhtml" data-look="${look}" style="${rootVars.replace(/"/g, '&quot;')}width:${W}px;height:${H}px;overflow:hidden;background:var(--bg-solid)">`
-      + `<style>${styles.replace(/<\/style/gi, '')}</style>${xml}</div></foreignObject></svg>`;
-    const img = new Image();
-    img.width = w;
-    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgTxt);
-    await new Promise<void>((ok, no) => { img.onload = () => ok(); img.onerror = () => no(new Error('raster')); img.src = url; });
-    // Probe for a tainted canvas now, so the caller falls back cleanly.
-    const probe = document.createElement('canvas'); probe.width = 4; probe.height = 4;
-    probe.getContext('2d')!.drawImage(img, 0, 0, 4, 4); probe.toDataURL();
-    return img;
-  } catch { return null; }
-  finally { try { sc?.destroy(); } catch { /* ignore */ } host.remove(); }
+    const png = await renderStill(v, { width: w, height: hgt, format: 'png', scale: 2 });
+    if (png instanceof Blob) return await blobImage(png);
+  } catch { /* try the SVG */ }
+  try {
+    const svg = await renderStill(v, { width: w, height: hgt, format: 'svg' });
+    if (typeof svg === 'string') {
+      const img = new Image();
+      await new Promise<void>((ok, no) => { img.onload = () => ok(); img.onerror = () => no(new Error('svg')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); });
+      return img;
+    }
+  } catch { /* nothing */ }
+  return null;
 }

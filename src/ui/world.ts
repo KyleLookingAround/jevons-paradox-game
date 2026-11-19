@@ -5,7 +5,7 @@ import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
 import { fmt, money, fmtPrice, pct, num, clamp, lower, unitOne } from './fmt';
 import { infoBtn } from './gauges';
-import { createScene, sceneViewFrom, type SceneView } from './scene';
+import { createScene, sceneViewFrom, type SceneView, type SceneTarget } from './scene';
 import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
 import { soundUpdate, soundSector, sound, soundUnlock, panOf } from './sound';
@@ -93,11 +93,15 @@ export interface WorldRendererOpts {
   /** The player asked to found an application. Returns true if the model accepted it. */
   onFound(appId: string): boolean;
   onSelect?(appId: string | null): void;
+  /** The machines of an Industry changed generation (the scene's own cue; never on a build or a switch). */
+  onStage?(sectorId: string, stage: number): void;
 }
 export interface WorldRenderer {
   update(view: SceneView): void;
   /** Draw the eye to a place or a lever in the picture, if the scene offers it (a requested hook; optional). */
-  highlight(what: { app: string } | { lever: string }): void;
+  highlight(what: SceneTarget): boolean;
+  /** Build another Industry's world off screen when idle (the scene keeps one per Industry). */
+  prebuild(view: SceneView): void;
   setSector(id: SectorId): void;
   select(appId: string | null): void;
   setReducedMotion(on: boolean | null): void;
@@ -113,11 +117,12 @@ export function createWorldRenderer(host: HTMLElement, opts: WorldRendererOpts):
     money, num: fmt,
     reducedMotion: motionOverride() ?? undefined,
     detail: getPrefs().detail,
+    onStage: (id, n) => opts.onStage?.(id, n),
   });
-  const sc = scene as typeof scene & { highlight?(w: { app: string } | { lever: string }): void };
   return {
     update: (v) => scene.update(v),
-    highlight: (w) => { try { sc.highlight?.(w); } catch { /* optional hook */ } },
+    highlight: (w) => { try { return !!scene.highlight?.(w); } catch { return false; } },
+    prebuild: (v) => { try { scene.prebuild?.(v); } catch { /* optional */ } },
     setSector: (id) => scene.setSector(id),
     select: (id) => scene.select(id),
     setReducedMotion: (on) => scene.setReducedMotion(on),
@@ -136,6 +141,9 @@ function pressureWords(def: SectorDef, pf: number): string {
   return `${def.pressure.name}: ${w}${pf >= 0.08 ? ` (${pct(pf, false)})` : ''}`;
 }
 
+/** Something to show in the picture: a place (an application id), a lever's sign (its kind), a Commons building. */
+export type PlaceTarget = string | null | { lever: string } | { commons: string };
+
 export interface WorldComp extends Comp {
   /** New events for the scene (passed with the next view) and for the moments on the frame. */
   queueEvents(ev: GameEvent[]): void;
@@ -144,7 +152,7 @@ export interface WorldComp extends Comp {
   /** Scroll target for an application, with the scene's card opened on it. */
   focusApp(appId: string): HTMLElement;
   /** Bring the picture into view (and select a place in it, if given), with a brief mark on the frame. */
-  showPlace(appId: string | null): void;
+  showPlace(target: PlaceTarget): void;
   reset(): void;
   /** The last view given to the scene (the time-lapse samples it). */
   lastView(): SceneView | null;
@@ -158,9 +166,8 @@ function cardsFor(ctx: Ctx, appId: string): string[] {
 }
 
 /** A title card over the picture: a new Industry first visited, a new Age begun. Composited fade; gone in ~3 s. */
-/** sceneViewFrom with the M2 fifth argument (events newer than the last call), typed loosely so that this file builds
- *  against the scene before and after its lane adds the parameter. */
-const viewFrom = sceneViewFrom as unknown as (...a: unknown[]) => SceneView;
+/** sceneViewFrom with the M2 fifth argument: the events newer than those passed last. */
+const viewFrom = (c: Ctx['content'], st: Ctx['state'], d: Ctx['d'], id: string, ev?: GameEvent[]): SceneView => sceneViewFrom(c, st, d, id, ev);
 
 function titleCard(host: HTMLElement, kicker: string, name: string, sub: string): void {
   host.querySelector('.world-title')?.remove();
@@ -187,6 +194,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
   const renderer = createWorldRenderer(mount, {
     onFound: (appId) => ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, appId)),
     onSelect: (appId) => { selected = appId; markHand(); },
+    // The picture draws the new machines itself; the page only offers a way back to it if it is scrolled away.
+    onStage: (id) => { if (id === ctx.sector) moment('stage', 'The machines are rebuilt', 'See them'); },
   });
   function markHand(): void {
     const ids = selected ? cardsFor(ctx, selected) : [];
@@ -226,6 +235,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
     if (def.id !== sector) {
       const first = sector !== '' && !visited.has(def.id);
       sector = def.id; renderer.setSector(def.id); soundSector(def.id); selected = null; markHand();
+      prebuilt.add(def.id);
       visited.add(def.id);
       // A first visit to an Industry opened this session is an event: its name over the picture.
       if (first) titleCard(frame, ageOfSector(ctx.content, def.id)?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
@@ -299,11 +309,11 @@ export function buildWorld(ctx: Ctx): WorldComp {
    * `rebound:moment` to pulse the gauges with a crisis). If the picture is scrolled out of sight, a note offers a way
    * back to it, so the moment is not missed.
    */
-  function moment(kind: 'stage' | 'crisis' | 'lever' | 'found' | 'backfire', note?: string, action?: string): void {
-    frame.classList.remove('m-stage', 'm-crisis', 'm-lever', 'm-found', 'm-backfire');
-    replay(frame, 'm-' + kind, 2400);
+  // The scene draws each moment in the picture (events, moments.ts); the page adds only its own part of the beat (the
+  // gauges, through `rebound:moment`) and, when the picture is scrolled away, a note with a way back to it.
+  function moment(kind: 'stage' | 'crisis' | 'lever' | 'found' | 'backfire', note?: string, action?: string, target: PlaceTarget = null): void {
     document.dispatchEvent(new CustomEvent('rebound:moment', { detail: kind }));
-    if (note && action && !inView()) ctx.toast(`${note}.`, { label: action, run: () => showPlace(null) });
+    if (note && action && !inView()) ctx.toast(`${note}.`, { label: action, run: () => showPlace(target) });
   }
   function inView(): boolean {
     const r = mount.getBoundingClientRect();
@@ -323,39 +333,51 @@ export function buildWorld(ctx: Ctx): WorldComp {
     renderer.select(appId);
     return el;
   }
-  function showPlace(appId: string | null): void {
-    if (appId) renderer.select(appId);
+  function showPlace(t: PlaceTarget): void {
+    if (typeof t === 'string') { renderer.select(t); renderer.highlight({ app: t }); }
+    else if (t) renderer.highlight(t);
     scrollToEl(el, 8);
     frame.classList.remove('flash'); void frame.offsetWidth; frame.classList.add('flash');
     setTimeout(() => frame.classList.remove('flash'), 1800);
   }
   function jump(appId: string): void { showPlace(appId); }
-  /** A small lettered banner over the picture (a founding): composited fade, gone in ~2.5 s. */
-  function banner(kicker: string, name: string): void {
-    frame.querySelector('.world-banner')?.remove();
-    const b = h('div', { class: 'world-banner', 'aria-hidden': 'true' }, h('span', { class: 'wb-k', text: kicker }), h('span', { class: 'wb-n', text: name }));
-    frame.append(b);
-    setTimeout(() => b.remove(), reducedMotion() ? 2000 : 2600);
-  }
   function queueEvents(ev: GameEvent[]): void {
     sceneEvents = sceneEvents.concat(ev).slice(-50);
     for (const e of ev) {
       if (e.sector !== ctx.sector) continue;
-      if (e.kind === 'stageReached') moment('stage', 'The machines are rebuilt', 'See them');
-      else if (e.kind === 'crisis') moment('crisis');
-      else if (e.kind === 'leverEnacted' && e.by === 'player' && e.n === 1) { moment('lever', 'The lever shows in the world', 'See it'); if (e.id) renderer.highlight({ lever: e.id }); }
-      else if (e.kind === 'appFounded' && e.by === 'player' && e.id) {
+      if (e.kind === 'crisis') moment('crisis');
+      else if (e.kind === 'leverEnacted' && e.by === 'player' && e.n === 1) {
+        const kind = ctx.content.levers?.find((l) => l.id === e.id)?.kind;
+        moment('lever', 'The lever shows in the world', 'See it', kind ? { lever: kind } : null);
+      } else if (e.kind === 'appFounded' && e.by === 'player' && e.id) {
         const a = sectorDef(ctx)?.applications.find((x) => x.id === e.id);
-        moment('found', a ? `${a.name} founded` : undefined, 'See it');
-        renderer.highlight({ app: e.id });
-        if (a) banner(`Founded, ${Math.floor(num(e.year))}`, a.name);
+        moment('found', a ? `${a.name} founded` : undefined, 'See it', e.id);
       }
     }
   }
+  // Idle prebuild: each other open Industry's world is built once, off screen, one per idle slice, so a first visit
+  // re-attaches a kept world instead of building one (100 ms+ at 4× CPU). Never during input.
+  const prebuilt = new Set<SectorId>();
+  let idleQueued = false;
+  function queuePrebuild(): void {
+    if (idleQueued) return;
+    const next = openSectors(ctx).find((id) => id !== ctx.sector && !prebuilt.has(id));
+    if (!next) return;
+    idleQueued = true;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+    const run = () => {
+      idleQueued = false;
+      if (document.hidden || ctx.d?.pendingReckoning || !ctx.state.sectors?.[next]?.open) return;
+      prebuilt.add(next);
+      try { timed('scene.prebuild', () => renderer.prebuild(sceneViewFrom(ctx.content, ctx.state, ctx.d, next))); } catch { /* optional */ }
+    };
+    if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(run, { timeout: 4000 });
+    else setTimeout(run, 1500);
+  }
   return {
-    el, update, focusApp, showPlace, queueEvents,
+    el, update: () => { update(); if (armed) queuePrebuild(); }, focusApp, showPlace, queueEvents,
     backfire: () => moment('backfire'),
-    reset() { known.clear(); sceneEvents = []; },
+    reset() { known.clear(); sceneEvents = []; prebuilt.clear(); },
     lastView: () => lastView,
   };
 }

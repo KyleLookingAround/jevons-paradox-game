@@ -504,7 +504,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
   const levy = h('p', { class: 'lev-levy num' });
   const noLineEl = h('p', { class: 'lev-noline', hidden: true });
   // A lever in force stands in the world (the scene draws it as a thing): a way to go and look.
-  const seeIt = h('button', { class: 'place-link lev-see', type: 'button', hidden: true, onclick: () => ctx.showPlace(null) }, 'in the picture ↑');
+  const seeIt = h('button', { class: 'place-link lev-see', type: 'button', hidden: true, onclick: () => ctx.showPlace({ lever: def.kind }) }, 'in the picture ↑');
   const lowerBtn = h('button', { class: 'btn lev-lower', type: 'button', onclick: () => {
     const lv = num(cur?.level);
     if (lv > 0) ctx.act('setLever', (m, s, c) => m.setLever(s, c, def.id, lv - 1));

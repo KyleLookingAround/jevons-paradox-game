@@ -41,7 +41,7 @@ export interface UI {
   afterAct(before: GameState, after: GameState): string[];
   afford: AffordState;
   jumpToAffordable(): void;
-  showPlace(appId: string | null): void;
+  showPlace(target: string | null | { lever: string } | { commons: string }): void;
   confirmFork(id: string, onYes: () => void): void;
   /** Run `apply` (which switches the selected Industry) inside one composed page transition where the browser can. */
   composeSwitch(from: SectorId, to: SectorId, apply: () => void): void;
