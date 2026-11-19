@@ -62,7 +62,7 @@ export const light: Layout = {
     const far =
       P(hills(40, 262), 'sil0') + P(sea(40, 207), 'seaD') + P(glit, 'seaG') +
       skyline(c, 190) +
-      (steamBuilt > 0.12 ? P(viaductArches(COUNTRY.viaduct[0], COUNTRY.viaduct[1], 182, 14), 'b') : '') +
+      (steamBuilt > 0.12 ? P(viaductArches(COUNTRY.viaduct[0], COUNTRY.viaduct[1], 182, 14), 'heri') : '') +
       P(shells.body, 'heri') + P(shells.windows, 'heriw') +
       bprop(church, 410, 190, 0.8, 0.5, c) + bprop(poplar, 380, 192, 0.6, 0.3, c) +
       bprop(gasholder, 500, 204, 0.9, 0.3, c) + bprop(gasholder, 548, 205, 0.8, 0.8, c) + bprop(gasholder, 586, 206, 0.6, 0.5, c);

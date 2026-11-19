@@ -105,6 +105,10 @@ function viaduct(): string {
   return P(viaductArches(-4, 608, 268, 68, 38), 'pier') + R(-4, 262, 608, 6, 'deck') + P('M-4 262H604', 'nt nc', 'opacity=".55"') + P('M-4 268.5H604', 'k');
 }
 
+/** Emergency lighting, seen when the city is failing: a composited sprite (its blink never repaints the drawing). */
+const EMG = `<g class="emgm">${R(6, 210, 4, 2.4, 'emr') + R(118, 210, 4, 2.4, 'emr') + R(180, 242, 4, 2.4, 'emr') + R(380, 324, 4, 2.4, 'emr') +
+  R(520, 324, 4, 2.4, 'emr') + `<ellipse cx="120" cy="352" rx="70" ry="10" class="emp"/><ellipse cx="470" cy="350" rx="80" ry="9" class="emp"/>`}</g>`;
+
 /** The old block: brick-dark buildings with fire escapes, tanks and signs; dark window frames for the vignettes. */
 function oldBlock(): string {
   const r = rng(hash('cb-old'));
@@ -143,11 +147,8 @@ function oldBlock(): string {
   // reflections of those signs on the wet street
   const refl = R(53, 338, 8, 30, 'rfl nm', 'opacity=".22"') + R(54.5, 340, 5, 18, 'rfl nm', 'opacity=".2"') + R(120, 336, 44, 4, 'rfl nc', 'opacity=".14"') +
     R(228, 338, 8, 22, 'rfl na', 'opacity=".2"');
-  // emergency lighting (seen when the city is failing)
-  const emg = `<g class="emg">${R(6, 210, 4, 2.4, 'emr') + R(118, 210, 4, 2.4, 'emr') + R(180, 242, 4, 2.4, 'emr') + R(380, 324, 4, 2.4, 'emr') +
-    R(520, 324, 4, 2.4, 'emr') + `<ellipse cx="120" cy="352" rx="70" ry="10" class="emp"/><ellipse cx="470" cy="350" rx="80" ry="9" class="emp"/>`}</g>`;
   return P(body, 'oldb') + P(shade, 'oldb2') + P(ledge, 'oldl') + P(dark, 'oldw') + P(cold, 'cold', 'opacity=".55"') +
-    P(frames, 'oldw') + P(frames.replace(/h40v24h-40Z/g, 'h40'), 'k') + P(screens, 'coldscr') + P(screens, 'cold', 'opacity=".28"') + P(tank, 'mt') + P(esc, 'k') + signs + refl + emg;
+    P(frames, 'oldw') + P(frames.replace(/h40v24h-40Z/g, 'h40'), 'k') + P(screens, 'coldscr') + P(screens, 'cold', 'opacity=".28"') + P(tank, 'mt') + P(esc, 'k') + signs + refl;
 }
 
 function street(): string {
@@ -207,6 +208,7 @@ export const code: Layout = {
       near: u(oldBlock() + kerb()),
       cut: R(0, 372, 600, 28, 'wet'),
       fx: [...sk.fx,
+        { kind: 'blink', x: 0, y: 0, band: 'near', markup: EMG },
         { kind: 'steam', x: 250, y: 352, size: 1.7, band: 'near' }, { kind: 'steam', x: 418, y: 360, size: 1.9, band: 'near' }, { kind: 'steam', x: 560, y: 350, size: 1.5, band: 'near' }],
     };
   },

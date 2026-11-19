@@ -12,7 +12,7 @@ export const chrome: ArtStyle = {
   idiom: 'Travel poster and airbrushed advert, 1950s-60s',
   css: `
 .scn[data-look=chrome] .seaM{fill:#6fb3c8;opacity:.9}.scn[data-look=chrome] .seaL{fill:none;stroke:#e9f6f8;stroke-width:1px;opacity:.8}
-.scn[data-look=chrome] .heri{fill:#9fb3a8;opacity:.75;stroke:none}
+.scn[data-look=chrome] .heri{fill:#86a096;opacity:.85;stroke:none}
 .scn[data-look=chrome]{
   --s-paper:#f3eee2;--s-ink:#1a2a2d;--s-b:#fbf8f0;--s-b2:#e4ddcc;--s-rf:#0e7c77;--s-w:#2c3e40;--s-lit:#f0c35a;
   --s-tr:#7fa98a;--s-wa:#86bccb;--s-gd:#cfdcb8;--s-gd2:#e6d49a;--s-sp:#8a8f86;--s-ac:#e07a5f;--s-ac2:#e9b949;

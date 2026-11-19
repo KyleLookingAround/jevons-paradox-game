@@ -10,7 +10,7 @@ import { scatter, weave } from '../layout';
 import { P, R, L, f, rng, hash } from '../svg';
 import { bprop } from './util';
 import { pylon } from '../props/terminal';
-import { hillCrest, millShells, built } from '../geography';
+import { COUNTRY, hillCrest, millShells, viaductArches, built } from '../geography';
 
 const VP: [number, number] = [300, 150];
 /** Where the mills' label sits (over the mill town). */
@@ -118,7 +118,10 @@ export const compute: Layout = {
       `<g class="ry">${P('M27 190L42 165Q92 158 149 163L167 190Z', 'resw')}${P('M50 172H140M44 178H150M38 184H158', 'k k2 wl')}</g>` +
       P('M20 192H174L170 200H24Z', 'b') + P('M40 192V200M62 192V200M84 192V200M106 192V200M128 192V200M150 192V200', 'k k2') +
       P('M160 186V200M157 189h3M157 193h3M157 197h3', 'k k2') + `<text x="96" y="155" text-anchor="middle" class="tlab">[ RESERVOIR ]</text>`;
-    const far = hillsC + floor() + mills + `<g transform="translate(0 -8)">${reservoir}</g>` + px.map((x) => bprop(pylon, x, 168, 0.55, 0.5, c)).join('') + P(wires, 'k k2 wire');
+    // Steam's viaduct across the valley, surveyed as a wireframe, now carrying the fibre trunk on its deck.
+    const via = built(c.heritage, 'steam') > 0.12 ? P(viaductArches(COUNTRY.viaduct[0], COUNTRY.viaduct[1], 176, 11, 16), 'k k2 cont') +
+      P(`M${COUNTRY.viaduct[0]} 176H${COUNTRY.viaduct[1]}`, 'fbl') + `<text x="${COUNTRY.viaduct[1] - 4}" y="172" text-anchor="end" class="tlab dimc">VIADUCT 1848 / FIBRE</text>` : '';
+    const far = hillsC + via + floor() + mills + `<g transform="translate(0 -8)">${reservoir}</g>` + px.map((x) => bprop(pylon, x, 168, 0.55, 0.5, c)).join('') + P(wires, 'k k2 wire');
     const near = R(0, 300, 600, 72, 'gd', 'opacity=".55"');
     const cut = R(0, 372, 600, 28, 'b') + L(0, 372, 600, 372, 'k') + P('M0 380H600M0 386H600M0 392H600', 'k k2 dim') +
       P('M0 375H600', 'k lnk') +

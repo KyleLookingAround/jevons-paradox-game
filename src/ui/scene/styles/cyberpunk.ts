@@ -129,10 +129,8 @@ export const cyberpunk: ArtStyle = {
 .scn .wlk{fill:none;stroke:#0d0b16;stroke-width:1.2px}.scn .wlb{fill:#0d0b16}
 .scn .umb{fill-opacity:.35}.scn .umb.nm{fill:#ff4fd8}.scn .umb.nc{fill:#3ef2ff}.scn .umb.na{fill:#ffb347}.scn .umb.nv{fill:#9d7dff}
 .scn .pud{fill:#ff6fe0;opacity:.09}.scn .lpool{fill:#3ef2ff;opacity:.13}
-.scn .emg{display:none}.scn .emr{fill:#ff2a3a}.scn .emp{fill:#ff2a3a;opacity:.1}
-.scn[data-look=cyberpunk].stress .emg,.scn[data-look=cyberpunk].halt .emg{display:inline}
-.scn.live[data-look=cyberpunk].stress .emg{animation:cb-emg 1.8s steps(2,jump-none) infinite}
-@keyframes cb-emg{50%{opacity:.35}}
+.scn .emgm{display:none}.scn .emr{fill:#ff2a3a}.scn .emp{fill:#ff2a3a;opacity:.1}
+.scn[data-look=cyberpunk].stress .emgm,.scn[data-look=cyberpunk].halt .emgm{display:inline}
 /* Under strain the grid sheds load: towers' machine light goes out block by block, in turn; signs fail. */
 .scn.live[data-look=cyberpunk].stress .band-mid .ov{animation:cb-shed 12s steps(1,end) infinite}
 .scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(3n+1){animation-delay:-4s}
