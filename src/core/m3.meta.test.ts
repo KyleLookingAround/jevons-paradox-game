@@ -8,6 +8,7 @@ import { model } from './index';
 import { fixtureM3 as M0, fixtureM3Bank, fixtureM3Gated } from './fixture';
 import { decoupling, foundAll, patchSector, run, steamAt } from './m1.testkit';
 import { freshMeta } from './state';
+import { evalCond } from './conditions';
 
 const M: Content = { ...M0, sectors: { ...M0.sectors, steam: { ...M0.sectors.steam, pressureIntensity: 0, reserve: 1e9 } } };
 const ev = (s: GameState, kind: string) => s.events.filter((e) => e.kind === kind);
@@ -67,7 +68,7 @@ describe('M3 Histories', () => {
     expect(model.commonsViews(s, M).find((v) => v.def.id === 'commons.lido')!.visible).toBe(false);
     s = { ...s, capital: 1e6 };
     s = run(s, 40, M);
-    expect(s.meta.histories['h.rich']).toEqual({ runs: 1, cleared: true, best: 20 });
+    expect(s.meta.histories['h.rich']).toEqual({ runs: 1, cleared: true, best: 21 }); // the step's end time
     expect(s.meta.unlocks).toMatchObject({ 'commons.lido': true, 'ch.secret': true, 'cosmetic:gilt': true });
     expect(ev(s, 'historyCleared')).toHaveLength(1);
     expect(ev(s, 'historyCleared')[0].first).toBe(true);
@@ -83,7 +84,7 @@ describe('M3 Histories', () => {
     r = model.chooseHistory(r, M, 'h.rich');
     r = run(r, 30, M);
     expect(ev(r, 'historyCleared').at(-1)!.first).toBeUndefined();
-    expect(r.meta.histories['h.rich']).toMatchObject({ runs: 2, best: 20 });
+    expect(r.meta.histories['h.rich']).toMatchObject({ runs: 2, best: 21 });
   });
   test('the reward rules hold in the fixture: options only, no automation, no power', () => {
     const allowed = new Set([...M.commons!.filter((c) => c.locked).map((c) => c.id), ...M.charters!.filter((c) => c.locked).map((c) => c.id)]);
@@ -231,6 +232,7 @@ function openAllM(): GameState {
   let s = { ...model.createState(M, { ...m0, reckonings: 9, orders: { ...m0.orders, market: { ...m0.orders.market, on: false } } }), capital: 1e15 };
   for (let i = 0; i < 60 && !M.sectorOrder.every((e) => s.sectors[e].open); i++) {
     for (const v of model.upgradeViews({ ...s, flags: { ...s.flags, revealed: false } }, M)) if (v.visible && v.affordable && v.def.id !== 'steam.strike') s = model.buyUpgrade(s, M, v.def.id);
+    for (const e of M.sectorOrder) if (s.sectors[e]?.open) for (const a of M.sectors[e].applications) s = model.foundApp(s, M, a.id);
     s = model.tick(s, M, 1);
   }
   return s;
@@ -257,7 +259,7 @@ describe('M3 orders', () => {
     const slow = run(model.setOrders({ ...live, capital: 1e6 }, M, { market: { paybackMax: 1 } }), 20, M);
     expect(why(slow)).toMatchObject({ reason: 'payback' });
     expect((why(slow) as { payback: number }).payback).toBeGreaterThan(1);
-    const none = run({ ...live, capital: 1e12, upgrades: Object.fromEntries(M.upgrades.filter((u) => u.sector === 'steam' && !u.excludes).map((u) => [u.id, u.repeatable ? u.maxLevel ?? 9 : 1])) }, 20, M);
+    const none = run({ ...foundAll(live, M, 'steam'), capital: 1e12, upgrades: Object.fromEntries(M.upgrades.filter((u) => u.sector === 'steam' && !u.excludes).map((u) => [u.id, u.repeatable ? u.maxLevel ?? 9 : 1])) }, 20, M);
     expect(why(none)).toMatchObject({ reason: 'none' });
   });
   test('the Market never buys a forbidden card', () => {
@@ -283,13 +285,41 @@ describe('M3 events', () => {
     const o = openAllM();
     expect(ev(o, 'sectorOpened').find((e) => e.sector === 'light')!.first).toBe(true);
   });
-  test('the M3 order within a step: modifierEnded, default dispatchAnswered, dispatchArrived', () => {
+  // A draw never shares a step with a resolution (a resolution moves nextAt a gap ahead), so the order shown is expiries
+  // (modifierEnded before a default dispatchAnswered), all at the step's end time.
+  test('the M3 order within a step: modifierEnded, then the default dispatchAnswered', () => {
     let s = { ...foundAll(fresh(M), M, 'steam'), time: 700, capital: 1e6 };
     s = { ...s, modifiers: [{ source: 'd.mod', arm: 0, since: 0, until: 700.5 }], dispatch: { ...s.dispatch, nextAt: 0, pending: [{ id: 'd.three', arrivedAt: 0, expiresAt: 700.5 }], offered: ['d.three'] } };
     s = model.tick(s, M, 1);
     const kinds = s.events.map((e) => e.kind).filter((k) => k === 'modifierEnded' || k === 'dispatchAnswered' || k === 'dispatchArrived');
-    expect(kinds).toEqual(['modifierEnded', 'dispatchAnswered', 'dispatchArrived']);
-    expect(new Set(s.events.slice(-3).map((e) => e.time))).toEqual(new Set([701]));
+    expect(kinds).toEqual(['modifierEnded', 'dispatchAnswered']);
+    expect(new Set(s.events.slice(-2).map((e) => e.time))).toEqual(new Set([701]));
+  });
+});
+
+describe('M3 { feature } condition', () => {
+  test('true once the feature is unlocked (always for one not listed); in checklists, unlocks, dispatch and History conditions', () => {
+    const g = fixtureM3Gated;
+    const s = fresh(g);
+    expect(evalCond(s, g, { feature: 'archive' })).toBe(false);
+    expect(evalCond(s, g, { feature: 'budget' })).toBe(true); // not listed
+    expect(evalCond(s, g, { feature: 'nonsense' as never })).toBe(false);
+    const on = { ...s, meta: { ...s.meta, features: { archive: 0 } } };
+    expect(evalCond(on, g, { feature: 'archive' })).toBe(true);
+    // a dispatch that waits for a system
+    const c: Content = { ...M, features: { seams: { when: { stat: 'reckonings', op: '>=', value: 5 } } },
+      dispatches: [{ ...M.dispatches![0], id: 'd.wait', when: { feature: 'seams' } }] };
+    let t = { ...foundAll(fresh(c), c, 'steam'), time: 599.5 };
+    expect(model.tick(t, c, 1).dispatch.draws).toBe(0);
+    t = { ...t, meta: { ...t.meta, features: { seams: 0 } } };
+    expect(model.tick(t, c, 1).dispatch.pending[0].id).toBe('d.wait');
+    // a feature unlocked by another feature
+    const u: Content = { ...M, features: { archive: { when: { stat: 'time', op: '>=', value: 0 } }, ambient: { when: { feature: 'archive' } } } };
+    let x = model.tick(model.createState(u), u, 5);
+    expect(x.meta.features!.archive).toBeDefined();
+    expect(x.meta.features!.ambient).toBeUndefined();
+    x = model.tick(x, u, 5);
+    expect(x.meta.features!.ambient).toBeDefined();
   });
 });
 

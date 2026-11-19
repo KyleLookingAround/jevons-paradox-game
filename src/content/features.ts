@@ -76,13 +76,14 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    * the Commons and Settlement arrive AT a Reckoning, so an M3 arrival must never fall in the last five minutes of the
    * run before (the gap would push them into the next run's opening minutes). Hence the time floors below, and nothing
    * M3 at all in run 3, which is the budget's own unfolding (an arrival every five minutes from 1801 to clear skies).
-   * Scripted players (budget play): run 2 the Archive (5 min), more levers (M2, ~10), letters (15); run 4 ambient news
+   * Scripted players (budget play): run 2 ambient news (5 min), more levers (M2, ~10), letters (15); run 4 the Archive
    * (5 min), the seams (10), then the load curve and the travel dial as Light and Motion open; the "free" tag once a
    * business model is chosen in Compute; the bite
    * once a biting lever has bitten; the survey from hour 6; Histories from hour 8. Banked time stays off. */
 
-  /* Run 2, five minutes in (the first check after the Market): notes have been kept since the first minute of play. */
-  archive: { when: rk(1), intro: 'The Gazette opens its archive to subscribers', name: 'The Archive' },
+  /* Run 2, five minutes in (the first check after the Market): the paper simply has more in it. No intro: its first
+   * item is the news. Not a system (it asks nothing), but it still takes an arrival's slot under the five-minute gap. */
+  ambient: { when: rk(1), name: 'More news' },
   /* Run 2, from minute 15 (after more levers, ~10), the quiet stretch of a levers-only run: introduced by the
    * correspondent's first letter. Not later: a burning run 2 ends by collapse at about 21 minutes, and an arrival in its
    * last five minutes would push the Charters out of run 3 (their offer is drawn only at the Reckoning). */
@@ -95,9 +96,9 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
     intro: 'Colliery agents report good coal below the old workings',
     name: 'The seams',
   },
-  /* Run 4, five minutes in (run 2 has the Market, the Archive, more levers and the letters; run 3 is the budget's): the
-   * paper simply has more in it. No intro: its first item is the news. */
-  ambient: { when: { all: [rk(3), { stat: 'time', op: '>=', value: 300 }] }, name: 'More news' },
+  /* Run 4, five minutes in, after the Commons (run 2 is full: the Market, ambient news, more levers, the letters; run 3
+   * is the budget's). Notes have been kept quietly since the first minute of play, so nothing is lost by waiting. */
+  archive: { when: { all: [rk(3), { feature: 'commons' }, { stat: 'time', op: '>=', value: 300 }] }, intro: 'The Gazette opens its archive to subscribers', name: 'The Archive' },
   /* Run 4, a few minutes after Light opens (not in run 3: the budget's run). */
   load: {
     when: { all: [rk(3), { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 600 }] },

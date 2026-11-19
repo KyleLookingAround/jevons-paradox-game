@@ -3,6 +3,8 @@
  * achievements. Imports the rest of the content read-only. The general lint (content.test.ts) also walks these once the
  * registry wires them; this file checks what that lint does not know about.
  */
+// bun-types are not installed and tsconfig has "types": [], so the test runner's own module has no declarations.
+// @ts-ignore
 import { describe, expect, test } from 'bun:test';
 import { content as C } from '../index';
 import { archive } from './index';
@@ -38,7 +40,7 @@ const IZE_OK = new Set(['size', 'sizes', 'sized', 'prize', 'prizes', 'seize', 's
 const styleErrors = (where: string, t: string): string[] => {
   const out: string[] = [];
   if (STYLE_BAD.test(t)) out.push(`${where}: banned mark or word in “${t.match(STYLE_BAD)![0]}”`);
-  if (UNIT_WORDS.test(t)) out.push(`${where}: sector/era`);
+  if (UNIT_WORDS.test(t.replace(/\{[a-zA-Z]+\}/g, ''))) out.push(`${where}: sector/era`);
   const am = t.match(AMERICAN);
   if (am && !/computer programs?/i.test(t)) out.push(`${where}: Americanism ${am[0]}`);
   for (const w of t.match(new RegExp(IZE.source, 'gi')) ?? []) if (!IZE_OK.has(w.toLowerCase())) out.push(`${where}: ${w}`);

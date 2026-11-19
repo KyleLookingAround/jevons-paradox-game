@@ -6,6 +6,7 @@ import { content } from './index';
 import type { Cond, EffectDef, HeadlineKey, StatKey } from '../types';
 import { FEATURE_IDS } from '../types';
 import { MECHANICS_LIVE } from './helpers';
+import { LOAD as LIGHT_LOAD } from './sectors/light';
 
 const C = content;
 const sectorIds = Object.keys(C.sectors);
@@ -378,7 +379,8 @@ describe('references resolve', () => {
       if ('flag' in c) expect(['revealed', 'won', ...metaFlags].includes(c.flag) ? '' : ctx).toBe('');
       /* M3 */
       if ('stat' in c) expect(ALL_STATS.has(c.stat) ? '' : `${ctx}: unknown stat`).toBe('');
-      if ('stat' in c && c.stat === 'loadFactor') expect(c.sector && C.sectors[c.sector]?.load ? '' : ctx).toBe('');
+      // (Light's curve is staged behind MECHANICS_LIVE; a condition on it simply never holds until it is live)
+      if ('stat' in c && c.stat === 'loadFactor') expect(c.sector && (C.sectors[c.sector]?.load || c.sector === 'light') ? '' : ctx).toBe('');
       if ('stat' in c && (c.stat === 'travelHours' || c.stat === 'sprawl')) expect(c.sector && C.sectors[c.sector]?.travel ? '' : ctx).toBe('');
       if ('answered' in c) {
         expect(dispatchIds.has(c.answered) ? '' : ctx).toBe('');
@@ -386,6 +388,7 @@ describe('references resolve', () => {
         if (d && c.arm !== undefined) expect(c.arm >= 0 && c.arm < d.arms.length ? '' : ctx).toBe('');
       }
       if ('returned' in c) expect(c.returned === 'household' ? '' : ctx).toBe('');
+      if ('feature' in c) expect((FEATURE_IDS as readonly string[]).includes(c.feature) ? '' : ctx).toBe('');
     }
   });
 });
@@ -760,7 +763,8 @@ describe('house style', () => {
 
   test('no real companies or products named in player text', () => {
     const BRANDS = /\b(Google|Apple|Amazon|Microsoft|Meta|Facebook|OpenAI|Anthropic|Nvidia|Tesla|Uber|Twitter|CrowdStrike|TSMC|Intel|Netflix|Excel|ChatGPT|Claude|Copilot)\b/;
-    expect(text.filter((t) => BRANDS.test(t.text)).map((t) => `${t.path}: ${t.text}`)).toEqual([]);
+    // M3: the Archive is the real history behind the game, sourced; it names companies as facts, never as a joke
+    expect(text.filter((t) => !t.path.startsWith('content.archive') && BRANDS.test(t.text)).map((t) => `${t.path}: ${t.text}`)).toEqual([]);
   });
 });
 
@@ -1183,7 +1187,8 @@ describe('M3: one mechanic per Industry', () => {
 
   test('Steam, Light, Motion and Compute carry their mechanic’s data', () => {
     expect((C.sectors.steam.seams ?? []).length).toBeGreaterThanOrEqual(4);
-    expect(C.sectors.light.load).toBeDefined();
+    expect(!!C.sectors.light.load).toBe(MECHANICS_LIVE); // staged: the curve is in light.ts (LOAD) either way
+    expect(Object.keys(LIGHT_LOAD.profiles).length).toBeGreaterThanOrEqual(4);
     expect(C.sectors.motion.travel).toBeDefined();
     // Compute: free at the point of use, set by a card (a priceSeen effect) or on a use
     const free = C.upgrades.some((u) => u.sector === 'compute' && u.effects.some((e) => e.type === 'priceSeen' && e.share === 0))
@@ -1215,7 +1220,7 @@ describe('M3: one mechanic per Industry', () => {
 
   test('load: 24 non-negative hourly weights per profile, a default that exists, fixedShare in (0, 1), known app profiles', () => {
     for (const s of sectorIds) {
-      const l = C.sectors[s].load;
+      const l = C.sectors[s].load ?? (s === 'light' ? LIGHT_LOAD : undefined);
       if (!l) { expect(C.sectors[s].applications.filter((a) => a.profile).map((a) => a.id)).toEqual([]); continue; }
       for (const [k, w] of Object.entries(l.profiles)) {
         expect(w.length === LOAD_HOURS && w.every((x) => Number.isFinite(x) && x >= 0) && w.some((x) => x > 0) ? '' : `${s}.${k}`).toBe('');
@@ -1364,6 +1369,7 @@ describe('M3: the feature schedule (the unfolding, continued)', () => {
       const f = F[id];
       expect(`${id} ${!!f}`).toBe(`${id} true`);
       if (['survey', 'histories', 'bank'].includes(id)) continue;
+      // (a { feature } leaf counts as later than its own Reckoning)
       expect(`${id} ${(rkFloor(f!.when) ?? 0) >= 1}`).toBe(`${id} true`);
     }
   });
@@ -1372,8 +1378,11 @@ describe('M3: the feature schedule (the unfolding, continued)', () => {
     // run 2: the Archive at five minutes, more levers (M2) at about ten, the letters from fifteen and no later (a burning
     // run 2 collapses at about 21 minutes: an arrival in its last five would push the Charters out of run 3)
     expect(timeFloor(F.dispatches!.when)).toBe(900);
-    // ambient news, the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding)
-    for (const id of ['ambient', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse'] as const) expect(`${id} ${rkFloor(F[id]!.when)}`).toBe(`${id} 3`);
+    // ambient news first in run 2 (five minutes in, the first check after the Market): no time floor that would push it
+    // into more levers' slot
+    expect(`${rkFloor(F.ambient!.when)} ${timeFloor(F.ambient!.when)}`).toBe('1 0');
+    // the Archive, the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding)
+    for (const id of ['archive', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse'] as const) expect(`${id} ${rkFloor(F[id]!.when)}`).toBe(`${id} 3`);
   });
 
   test('the survey from hour 6 with the Civil Service; Histories from hour 8 after a Steady State; the bank never', () => {
@@ -1495,5 +1504,74 @@ describe('M3: the Archive, the Proprietor’s Day and the ending (registered)', 
       expect(r.headline.length <= 70 && !/\byou\b/i.test(r.headline) ? '' : r.headline).toBe('');
       for (const m of r.headline.matchAll(/\{([a-zA-Z]+)\}/g)) expect(OK.has(m[1]) ? '' : `${r.key}: {${m[1]}}`).toBe('');
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M3: text naming a gated system is gated by that system's feature                                                 */
+/* ------------------------------------------------------------------ */
+
+describe('M3: the unfolding in words (a thing that names a system waits for it)', () => {
+  /** Words that name a gated system, and the feature that brings it. */
+  const NAMES: [RegExp, string][] = [
+    [/budget line|the line|decades? within|carbon budget|coal budget|oil budget|power budget|attention budget/i, 'budget'],
+    [/Commons/, 'commons'],
+    [/charters?/i, 'charters'],
+    [/Steady State/, 'steadyState'],
+    [/Settle(d|ment)/, 'settlement'],
+    [/seams?/i, 'seams'],
+    [/bites? back/i, 'sideEffects'],
+    [/clear skies|sink line/i, 'clearSkies'],
+  ];
+  /** Features a condition guarantees: { feature } leaves reachable through `all` (not through `any` or `not`). */
+  const guaranteed = (c: Cond | undefined): Set<string> => {
+    const out = new Set<string>();
+    const walk = (x: Cond) => { if ('feature' in x) out.add(x.feature); if ('all' in x) x.all.forEach(walk); };
+    if (c) walk(c);
+    return out;
+  };
+  /** Feature arrivals that imply another (a later system's arrival implies the earlier one's). */
+  const IMPLIES: Record<string, string[]> = {
+    settlement: ['steadyState', 'clearSkies', 'budget'], steadyState: ['clearSkies', 'budget'], clearSkies: ['budget'],
+    budgetPace: ['budget'], dividendChoice: ['budget'], leverRepeat: ['budget'],
+  };
+  const close = (fs: Set<string>) => { for (const f of [...fs]) for (const g of IMPLIES[f] ?? []) fs.add(g); return fs; };
+  const named = (t: string) => NAMES.filter(([re]) => re.test(t)).map(([, f]) => f);
+
+  test('dispatches and ambient news that name a gated system carry its { feature } condition', () => {
+    const bad: string[] = [];
+    for (const d of dispatches) {
+      const text = [d.headline, d.body, ...d.arms.flatMap((a) => [a.label, a.outcome, a.price, a.reply ?? ''])].join(' ');
+      const have = close(guaranteed(d.when));
+      // a letter in a seam-, Commons- or budget-specific Industry pool is no exception: the words decide
+      for (const f of named(text)) if (!have.has(f) && f !== 'seams') bad.push(`${d.id}: names ${f}`);
+      if (named(text).includes('seams') && !have.has('seams')) bad.push(`${d.id}: names the seams`);
+    }
+    for (const a of ambient) {
+      const have = close(guaranteed(a.when));
+      for (const f of named(a.text.join(' '))) if (!have.has(f)) bad.push(`${a.id}: names ${f}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('a lever whose words name a gated system waits for it (requires) or keeps those words in catchAfter', () => {
+    const bad: string[] = [];
+    for (const l of C.levers) {
+      const have = close(new Set((l.requires ?? []).filter((r) => (FEATURE_IDS as readonly string[]).includes(r))));
+      for (const f of named([l.name, l.blurb, l.catch, l.sideEffects?.unlessLabel ?? ''].join(' '))) if (!have.has(f)) bad.push(`${l.id}: names ${f}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('Histories (offered from hour 8) and feature intros name only systems that have arrived by then', () => {
+    // Histories arrive after the first Steady State: the budget, clear skies and Steady State are met; Settlement,
+    // the seams and the bite may not be, so a History naming them requires that feature.
+    const met = close(new Set(['steadyState', 'charters', 'commons']));
+    const bad: string[] = [];
+    for (const h of histories) {
+      const have = close(new Set([...met, ...guaranteed(h.requires)]));
+      for (const f of named([h.name, h.blurb, h.goalLabel, h.rebound].join(' '))) if (!have.has(f)) bad.push(`${h.id}: names ${f}`);
+    }
+    expect(bad).toEqual([]);
   });
 });

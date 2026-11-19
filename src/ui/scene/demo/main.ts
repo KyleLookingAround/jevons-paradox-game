@@ -200,8 +200,10 @@ function interactive(): void {
   };
 
   const render = () => {
-    document.documentElement.dataset.era = s.look || IND[s.ind].look;
-    document.documentElement.dataset.theme = s.look || IND[s.ind].look;
+    // Only on change: writing the same data attribute on <html> still restyles the whole page.
+    const lk = s.look || IND[s.ind].look, de = document.documentElement;
+    if (de.dataset.era !== lk) de.dataset.era = lk;
+    if (de.dataset.theme !== lk) de.dataset.theme = lk;
     scene.update(viewOf(s));
   };
 

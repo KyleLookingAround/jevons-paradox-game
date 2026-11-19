@@ -8,7 +8,7 @@
  * they stand for the rest of the run. A decade within budget pays 60 Mandate and 30 s of income: an arm is worth
  * about half a decade, never two.
  */
-import type { Cond, DispatchArm, EffectDef, SectorId } from '../../types';
+import type { Cond, DispatchArm, EffectDef, FeatureId, SectorId } from '../../types';
 
 /* ------------------------------------------------------------------ */
 /* CONDITIONS: the unfolding                                           */
@@ -28,21 +28,26 @@ export const answered = (id: string, arm?: number): Cond => (arm === undefined ?
 export const FIRST_LETTER = 'd.gen.firstLetter';
 export const AFTER_FIRST: Cond = answered(FIRST_LETTER);
 
-/** Run 3 on: the budget has arrived (feature 'budget' needs two Reckonings, the reveal and 1801), or a line or a cap is
- *  plainly in use. A letter that names the line, a decade or the cap carries this. */
-export const BUDGET: Cond = all(rk(2), any(rk(3), owns('steam.cap'), owns('light.cap'), sec('budgetDecades', 'steam', '>=', 1)));
-/** Run 3 on: Charters (feature 'charters' at the second Reckoning). */
-export const CHARTERS: Cond = rk(2);
-/** Run 4 on: the Commons (feature 'commons' at the third Reckoning). */
-export const COMMONS: Cond = rk(3);
-/** The first Steady State ever (the built-in achievement), after which Steady State is a thing the player has met. */
-export const STEADY: Cond = owns('steadyState');
-/** Settlement (feature 'settlement': the Reckoning after the first Steady State). */
-export const SETTLEMENT: Cond = all(STEADY, rk(4));
-/** A seam sunk this run: the seam ladder has been met (feature 'seams'). */
-export const SEAMS: Cond = sec('seamsSunk', 'steam', '>=', 1);
-/** A lever has begun to bite back (feature 'sideEffects' arrives at the third Reckoning). */
-export const BITING = (sector: SectorId): Cond => all(rk(3), sec('bite', sector, '>=', 0.3));
+/*
+ * The unfolding, as the contract's own condition ({ feature }: true once that feature has arrived for good; M3). A
+ * letter that names a gated system carries the feature that brings it (the content lint checks the words). Switched
+ * from stand-ins (reckonings and cards) by the content-mechanics lane once the condition existed.
+ */
+export const feature = (id: FeatureId): Cond => ({ feature: id });
+/** The budget has arrived (run 3). A letter that names the line, a decade or the cap carries this. */
+export const BUDGET: Cond = feature('budget');
+/** Charters have arrived (the second Reckoning). */
+export const CHARTERS: Cond = feature('charters');
+/** The Commons have arrived (the third Reckoning). */
+export const COMMONS: Cond = feature('commons');
+/** Steady State has arrived (with the first clear sky): the fifty-year streak is a thing the player has met. */
+export const STEADY: Cond = feature('steadyState');
+/** Settlement has arrived (the Reckoning after the first Steady State). */
+export const SETTLEMENT: Cond = feature('settlement');
+/** The seam ladder has arrived (feature 'seams'). */
+export const SEAMS: Cond = feature('seams');
+/** A lever in this Industry has begun to bite back, and the bite has been met (feature 'sideEffects'). */
+export const BITING = (sector: SectorId): Cond => all(feature('sideEffects'), sec('bite', sector, '>=', 0.3));
 
 /* ------------------------------------------------------------------ */
 /* EFFECTS                                                             */

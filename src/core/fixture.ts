@@ -293,6 +293,7 @@ const m3Steam: SectorDef = {
 };
 const m3Light: SectorDef = {
   ...light,
+  capCost: 0.02, // compensates the idle-plant mark-up so the opening price is near the M2 fixture's
   load: { profiles: { evening: EVENING, night: NIGHT }, defaultProfile: 'evening', fixedShare: 0.6 },
   applications: [
     { ...light.applications[0], profile: 'evening' }, { ...light.applications[1], profile: 'evening' },

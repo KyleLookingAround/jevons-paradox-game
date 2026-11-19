@@ -60,7 +60,8 @@ if (args.includes('--trace')) {
     const cnt = {};
     for (const e of events) if (e.name === 'Paint' || e.name === 'UpdateLayoutTree' || e.name === 'TimerFire' || e.name === 'FunctionCall') { const k = e.pid + ':' + e.tid; cnt[k] = (cnt[k] || 0) + 1; }
     const main = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0];
-    if (process.env.TRACE_DEBUG) { const nm = {}; for (const e of events) nm[e.name] = (nm[e.name] || 0) + 1; console.log(ind, events.length, main, JSON.stringify(Object.entries(nm).sort((a, b) => b[1] - a[1]).slice(0, 25))); }
+    if (process.env.TRACE_DEBUG === '2') { const ps = events.filter((e) => e.name === 'Paint' && (e.pid + ':' + e.tid) === main); const by = {}; for (const e of ps) { const k = JSON.stringify(e.args?.data?.clip?.map((x) => Math.round(x))) + ' node ' + e.args?.data?.nodeId; by[k] = (by[k] || 0) + (e.dur || 0); } console.log(Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 12)); }
+    if (process.env.TRACE_DEBUG === '1') { const nm = {}; for (const e of events) nm[e.name] = (nm[e.name] || 0) + 1; console.log(ind, events.length, main, JSON.stringify(Object.entries(nm).sort((a, b) => b[1] - a[1]).slice(0, 25))); }
     const sum = (names) => events.filter((e) => e.ph === 'X' && names.includes(e.name) && (e.pid + ':' + e.tid) === main).reduce((a, e) => a + (e.dur || 0), 0) / 1000 / 5;
     rows.push({ ind, styleMsPerS: +sum(['UpdateLayoutTree', 'RecalculateStyles']).toFixed(1), layoutMsPerS: +sum(['Layout']).toFixed(1), paintMsPerS: +sum(['Paint']).toFixed(1),
       layersMsPerS: +sum(['UpdateLayerTree', 'Layerize', 'PrePaint']).toFixed(1), scriptMsPerS: +sum(['FunctionCall', 'TimerFire', 'FireAnimationFrame', 'EventDispatch']).toFixed(1),

@@ -33,6 +33,13 @@ const FIXED_SHARE = 0.6;
  * with every use founded, more with the off-peak tariff). With MECHANICS_LIVE false: M2's 0.05.
  */
 const LIGHT_CAPCOST = MECHANICS_LIVE ? 0.05 / loadTerm([DUSK], [1], FIXED_SHARE) : 0.05;
+/** The load curve (LoadDef). Exported for the lint, which checks it whether or not it is live. */
+export const LOAD = {
+  profiles: { dusk: DUSK, evening: EVENING, night: NIGHT, day: DAY, flat: FLAT },
+  defaultProfile: 'evening',
+  fixedShare: FIXED_SHARE,
+  floor: 0.05,
+};
 
 /* ------------------------------------------------------------------ */
 /* LIGHT: the Industry                                                 */
@@ -108,13 +115,9 @@ const sector: SectorDef = {
     },
   },
 
-  /* M3: the load curve (see above). Commons intensity (the library, the clock) burns in the evening. */
-  load: {
-    profiles: { dusk: DUSK, evening: EVENING, night: NIGHT, day: DAY, flat: FLAT },
-    defaultProfile: 'evening',
-    fixedShare: FIXED_SHARE,
-    floor: 0.05,
-  },
+  /* M3: the load curve (see above). Commons intensity (the library, the clock) burns in the evening. Staged: present
+   * only with MECHANICS_LIVE (the core solves it, and without the compensated capCost it would rebalance M2's Light). */
+  ...(MECHANICS_LIVE ? { load: LOAD } : {}),
   mechanic: {
     name: 'The load curve',
     rebound: 'Utilisation',

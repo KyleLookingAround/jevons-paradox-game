@@ -2,7 +2,10 @@
  * Conditions (Cond): stat values, evaluation, and the checklist labels the UI shows.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { Cond, CondCheck, Content, GameState, SectorId, StatKey } from '../types';
+import type { Cond, CondCheck, Content, FeatureId, GameState, SectorId, StatKey } from '../types';
+import { featureOn } from './features';
+import { FEATURE_IDS } from '../types';
+const FEATURE_SET: ReadonlySet<string> = new Set(FEATURE_IDS);
 import { calendarYear } from './calendar';
 import { idx } from './contentIndex';
 import { computeFlows, instruments, reserveFractionOf, steadyView } from './flows';
@@ -162,6 +165,7 @@ export function evalCond(state: GameState, content: Content, cond: Cond): boolea
   if ('owns' in c) return typeof c.owns === 'string' && ownsId(state, content, c.owns);
   if ('flag' in c) return (state.flags as unknown as Record<string, unknown>)[c.flag as string] === true
     || (typeof c.flag === 'string' && state.meta.flags?.[c.flag] === true);
+  if ('feature' in c) return typeof c.feature === 'string' && FEATURE_SET.has(c.feature) && featureOn(content, state.meta, c.feature as FeatureId);
   if ('returned' in c) return returnedLeaf(state, c);
   if ('answered' in c) return answeredLeaf(state, c);
   if ('all' in c) return Array.isArray(c.all) && (c.all as Cond[]).every((x) => evalCond(state, content, x));
@@ -208,6 +212,7 @@ function condLabel(content: Content, cond: Cond): string {
   }
   if ('owns' in c) return `Own ${ix.names.get(c.owns as string) ?? c.owns}`;
   if ('flag' in c) return c.flag === 'revealed' ? 'The rebound revealed' : c.flag === 'won' ? 'Steady State won' : `${c.flag}`;
+  if ('feature' in c) return content.features?.[c.feature as FeatureId]?.name ?? `${c.feature} arrived`;
   if ('returned' in c) return 'A household return on file';
   if ('answered' in c) return `Answer ${ix.names.get(c.answered as string) ?? c.answered}`;
   if ('all' in c) return 'All of these';

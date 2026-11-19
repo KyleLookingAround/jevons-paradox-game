@@ -71,6 +71,8 @@ interface Built {
   prevPace: number; leverKey: string; smokeDirty: boolean; prevSteadyOn: boolean | null; moversDirty: boolean; lastSig: string;
   stageN: number; used: number; vars: Map<string, string>; scafs: number;
   /** M3: last applied state of the mechanics' drawings (so a patch touches the DOM only on change). */
+  /** Last shown values of hysteresis-stepped inputs (see hyst). */
+  hy: Map<string, number>;
   m3: {
     seams: string; free: string; bites: string; slow: number; overlay: string;
     /** Light's clock: the hand's animation (its time is the hour), the scale on lit things at that hour, the hour shown. */
@@ -632,6 +634,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       key, sectorId: v.sectorId, el, layout: l, style, look, legend: leg, place: l.place, plots, elsByKey, smokeEls, restraintEls, commonsEls,
       steadyMoverEls: Array.from(el.world.querySelectorAll('.mv.stdy')), moverAnims: [], spots,
       prevPace: -1, leverKey: '\u0000', smokeDirty: true, prevSteadyOn: null, moversDirty: true, lastSig: '', stageN, used: 0, vars: new Map(), scafs: 0,
+      hy: new Map(),
       m3: { seams: '', free: '', bites: '', slow: -1, overlay: '', hand: null, hourK: 1, hour: -1 },
     };
     for (const p of plots) {
@@ -806,7 +809,11 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   function setCount(b: Built, p: PlotRt, d: number): void {
     const n = p.keys.length;
     const curve = p.def.curve ?? 0.6;
-    const c = d <= 0.001 ? 0 : Math.min(n, Math.round(n * Math.pow(d, curve)));
+    // With hysteresis: a count moves only when the input is three quarters of a slot past the shown count, so an
+    // input hovering at a boundary does not toggle (and repaint) a slot at every update.
+    const raw = d <= 0.001 ? 0 : Math.min(n, n * Math.pow(d, curve));
+    const shown = p.overlayBase ? Math.floor(p.count / 1000) : p.count;
+    const c = raw === 0 ? 0 : shown >= 0 && Math.abs(raw - shown) < 0.75 && shown > 0 ? shown : Math.min(n, Math.round(raw));
     if (p.overlayBase) {
       const baseCount = p.overlayBase.count < 0 ? 0 : p.overlayBase.count;
       const ovKey = c * 1000 + baseCount;
@@ -840,18 +847,23 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     // Fast-moving values go straight onto the few elements that use them (a custom property on the root would
     // restyle every node of the scene); slow ones are coarsely quantised before they touch the world.
     const q20 = (x: number) => (Math.round(x * 20) / 20).toFixed(2);
-    setOp(el.sky1, q(pfv)); const hzk = style?.weather?.hz ?? [0.85, 0.55, 0.32];
-    setOp(el.hz1, q(Math.min(1, Math.pow(hb, 0.8) * hzk[0]))); setOp(el.hz2, q(Math.min(1, hb * hzk[1]))); setOp(el.hz3, q(Math.min(1, Math.pow(hb, 1.35) * hzk[2])));
+    // The weather layers follow pressure in steps of .04 with hysteresis: each step starts an opacity transition, and
+    // a pressure hovering at a boundary must not keep them transitioning (Code repainted every frame so).
+    const qh = (k: string, x: number) => hyst(b, k, x, 0.04).toFixed(2);
+    setOp(el.sky1, qh('sky1', pfv)); const hzk = style?.weather?.hz ?? [0.85, 0.55, 0.32];
+    setOp(el.hz1, qh('hz1', Math.min(1, Math.pow(hb, 0.8) * hzk[0]))); setOp(el.hz2, qh('hz2', Math.min(1, hb * hzk[1]))); setOp(el.hz3, qh('hz3', Math.min(1, Math.pow(hb, 1.35) * hzk[2])));
     setOp(el.sky2, q(clear));
     setOp(el.held, held ? '1' : '0');
-    setOp(el.noiseSvg as unknown as HTMLElement, q(held ? 0 : Math.min(1, Math.min(1, pf) * (style?.weather?.noise ?? 0) * (1 - clear))));
+    setOp(el.noiseSvg as unknown as HTMLElement, qh('noise', held ? 0 : Math.min(1, Math.min(1, pf) * (style?.weather?.noise ?? 0) * (1 - clear))));
     setOp(el.glow, q(clamp(lightMean, 0, 1)));
-    setVarOn(el.skySvg, '--pf2', q20(pfv));
+    setVarOn(el.skySvg, '--pf2', hyst(b, '--pf2', pfv, 0.05).toFixed(2));
     setVarOn(el.skySvg, '--light', q20(clamp(lightMean, 0, 1)));
     setVarOn(el.skySvg, '--clr', q20(clear));
     const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * (held ? 0.5 : 1) * 10) / 10).toFixed(1);
     for (const bd of BANDS) setVarOn(el.bw[bd], '--smk-a', smk);
-    setVarOn(el.bw.near, '--pfc', q20(Math.min(1, pf)));
+    // Pressure-driven growth inside the drawing (Code's pipework) repaints its band: step it in tenths, with
+    // hysteresis, so a pressure hovering at a boundary does not repaint the band at every update.
+    setVarOn(el.bw.near, '--pfc', hyst(b, '--pfc', Math.min(1, pf), 0.1).toFixed(2));
     setVar(b, '--res', q(clamp(v.reserveFraction, 0.02, 1)));
     setVar(b, '--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
     setVarOn(el.bw.near, '--light', q20(clamp(lightMean, 0, 1)));
@@ -1137,6 +1149,14 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   }
   const elCache = new WeakMap<Element, Record<string, string>>();
   function setOp(el: HTMLElement, val: string): void { setVarOn(el, 'opacity', val); }
+  /** A value quantised to `step` that moves only when the input has moved a whole step away from the shown one. */
+  function hyst(b: Built, k: string, x: number, step: number): number {
+    const last = b.hy.get(k);
+    if (last !== undefined && Math.abs(x - last) < step * 0.75) return last;
+    const v = Math.round(x / step) * step;
+    b.hy.set(k, v);
+    return v;
+  }
   function setVar(b: Built, k: string, val: string): void {
     if (b.vars.get(k) === val) return;
     b.vars.set(k, val);

@@ -226,6 +226,112 @@ const list: AchievementDef[] = [
   },
 ];
 
+/* ------------------------------------------------------------------ */
+/* M3 (content-archive lane): "Enough", then the M3 systems            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * "Enough" (design/paradigm-shifts.md, shift 3): a quiet family that rewards sufficiency of play: stopping, leaving a
+ * thing alone, not buying the last card. Each pays nothing but its badge (History rules: never power), never punishes,
+ * and is listed as hidden until its system has arrived (`feature`). Blurbs are ledger entries, never praise.
+ * Not expressible in the contract and so left out: "a run ended by choice" (no stat for how a run ended) and
+ * "closing the tab on a good decade" (the core never sees the tab).
+ */
+const anySteady: Cond = { any: ALL_SECTORS.map(steadyNow) };
+const anyFiveDecades: Cond = { any: ALL_SECTORS.map((s): Cond => ({ stat: 'budgetDecades', sector: s, op: '>=', value: 5 })) };
+const anyDecade: Cond = { any: ALL_SECTORS.map((s): Cond => ({ stat: 'budgetDecades', sector: s, op: '>=', value: 1 })) };
+
+const m3: AchievementDef[] = [
+  {
+    id: 'ach.enough.leftAlone', name: 'Left Alone', feature: 'settlement',
+    blurb: 'Settled an Industry in a run in which the Market bought nothing at all.',
+    when: { all: [{ stat: 'reckonings', op: '>=', value: 1 }, { stat: 'sectorsSettled', op: '>=', value: 1 }, { stat: 'automated', op: '<', value: 1 }] },
+  },
+  {
+    id: 'ach.enough.lightTouch', name: 'A Light Touch', feature: 'budget',
+    blurb: 'Kept a decade within the line in a run of fewer than forty decisions.',
+    when: { all: [anyDecade, { stat: 'decisions', op: '<', value: 40 }] },
+  },
+  {
+    id: 'ach.enough.shortDay', name: 'A Short Day’s Work', feature: 'budget',
+    blurb: 'Five decades within one line, in a run of fewer than two hundred decisions.',
+    when: { all: [anyFiveDecades, { stat: 'decisions', op: '<', value: 200 }] },
+  },
+  {
+    id: 'ach.enough.turbineUnbought', name: 'The Turbine Unbought', feature: 'steadyState',
+    blurb: 'Steam held at Steady State for fifty years without the steam turbine. Nobody missed it.',
+    when: { all: [steadyNow('steam'), { not: { owns: 'steam.turbine' } }] },
+  },
+  {
+    id: 'ach.enough.notedWithThanks', name: 'Noted With Thanks', feature: 'dispatches',
+    blurb: 'Steady State in a run in which every letter was left to take its course.',
+    when: { all: [{ feature: 'dispatches' }, { stat: 'dispatchesAnswered', op: '<', value: 1 }, anySteady] },
+  },
+  {
+    id: 'ach.enough.forTwo', name: 'Enough for Two', feature: 'steadyState',
+    blurb: 'Two Industries at Steady State at once, in a run of fewer than 250 decisions.',
+    when: { all: [anyTwoSteady, { stat: 'decisions', op: '<', value: 250 }] },
+  },
+  {
+    id: 'ach.enough.quietDays', name: 'Three Quiet Days', feature: 'survey',
+    blurb: 'Three days on the household return with one short visit each, and an Industry at Steady State.',
+    when: { all: [{ returned: 'household', figure: 'quietDays', op: '>=', value: 3 }, { stat: 'steadySectors', op: '>=', value: 1 }] },
+  },
+  {
+    id: 'ach.enough.weekOfSundays', name: 'A Week of Sundays', feature: 'survey',
+    blurb: 'Seven quiet days on the household return, with every Industry settled.',
+    when: { all: [{ returned: 'household', figure: 'quietDays', op: '>=', value: 7 }, { stat: 'sectorsSettled', op: '>=', value: 5 }] },
+  },
+
+  /* The M3 systems. */
+  {
+    id: 'ach.m3.seam', name: 'Deeper Still', feature: 'seams',
+    blurb: 'Sank the next seam. More coal in reach, and every reason to burn it.',
+    when: { stat: 'seamsSunk', sector: 'steam', op: '>=', value: 1 },
+  },
+  {
+    id: 'ach.m3.loadFactor', name: 'Lit All Night', feature: 'load',
+    blurb: 'Light’s plant ran at a load factor above 0.8. Nothing idle, and everything cheaper.',
+    when: { stat: 'loadFactor', sector: 'light', op: '>', value: 0.8 },
+  },
+  {
+    id: 'ach.m3.hourHeld', name: 'The Hour Holds', feature: 'travel',
+    blurb: 'Motion’s oil use doubled while the hour a day on the road stayed an hour.',
+    when: { all: [{ stat: 'rFold', sector: 'motion', op: '>=', value: 2 }, { stat: 'travelHours', sector: 'motion', op: '<=', value: 1.1 }] },
+  },
+  {
+    id: 'ach.m3.pairedFromStart', name: 'Paired From the Start', feature: 'sideEffects',
+    blurb: 'Ran the fleet mileage rule with the fuel duty beside it for half an hour, and it never bit.',
+    when: {
+      all: [
+        { owns: 'motion.mileageRule' }, { owns: 'motion.duty' },
+        { stat: 'time', op: '>=', value: 1_800 }, { stat: 'bite', sector: 'motion', op: '<=', value: 0.01 },
+      ],
+    },
+  },
+  {
+    id: 'ach.m3.correspondence', name: 'Correspondence Kept', feature: 'dispatches',
+    blurb: 'Answered twenty letters by hand in a single run. The editor is obliged.',
+    when: { stat: 'dispatchesAnswered', op: '>=', value: 20 },
+  },
+  {
+    id: 'ach.m3.history', name: 'A History Cleared', feature: 'histories',
+    blurb: 'Cleared a History: the same game, with one thing in the past changed.',
+    when: { stat: 'historiesCleared', op: '>=', value: 1 },
+  },
+  {
+    id: 'ach.m3.proprietor', name: 'The Proprietor’s Day', feature: 'survey',
+    blurb: 'Read the Statistics Office’s return on the proprietor’s own working day.',
+    when: { flag: 'proprietor' },
+  },
+  {
+    id: 'ach.m3.firstEnding', name: 'Within the Line', feature: 'steadyState',
+    blurb: 'Every Industry at its sink line for fifty years, with nobody going without. The ledger continued.',
+    when: { flag: 'won' },
+  },
+];
+list.push(...m3);
+
 /**
  * The unfolding (QA): an achievement that names a system the player has not met is listed as hidden until that system
  * arrives (AchievementDef.feature; display only). Matched by id prefix.
