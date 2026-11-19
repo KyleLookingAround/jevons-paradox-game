@@ -1,101 +1,162 @@
-# Rebound — design brief (shared by all workstreams)
+# Rebound — design brief
 
-An incremental game about Jevons paradox. Every efficiency upgrade makes the world burn *more*; the game is
-learning why, then learning what actually works. Mobile-first single-page web game, one self-contained HTML file.
+Read this first. An incremental game about Jevons paradox: every efficiency upgrade makes the world burn more; the game
+is learning why, then learning what actually works. Mobile-first single-page web game, served from GitHub Pages, no
+runtime dependencies. Depth is in `design/`: the structure and hours in `long-game.md`, the four paradigm shifts in
+`paradigm-shifts.md`, the build order in `roadmap.md`, the art in `visual-direction.md`, the contract decisions in
+`m1-contract-notes.md`, sourced facts in `research/`. The contract itself is `src/types.ts`.
 
-Tone: dry, ledger-and-broadsheet wit. Never lectures; the gauges do. British English.
+**Tone.** Dry broadsheet and ledger wit. British English. The game never lectures; the gauges do. Real people appear
+only in card blurbs, and only the dead; the recurring cast is fictional.
+
+**Words.** The unit of play is an **Industry** on screen and a `Sector` in code. The period is an **Age**. Player text
+never says "sector" or "era" for the unit.
 
 ## The rule
 
-    R = D(p_s) / η            p_s = p_r / η + c
+    R = D(p_s) / η          p_s = p_pre + permit + duty          p_pre = p_r / η + c
 
-η efficiency, p_r resource price, c capital cost per unit service, p_s service price, D service demand, R resource use.
+η efficiency, p_r resource price, c capital cost per unit of service, p_s service price, D demand, R resource use per
+second.
 
-Demand is a sum of **applications**, each a logistic adoption curve (N population, S_i saturation, p_i half-price, k_i steepness):
+Demand is a sum of **applications**, each a logistic adoption curve (N population, S_i saturation, p_i half-price, k_i
+steepness): `D_i = N · S_i / (1 + (p_s / p_i)^k_i)`. While p_s ≫ p_i use is elastic (k_i > 1: efficiency backfires);
+once p_s ≪ p_i it saturates and efficiency finally saves. Cheaper service brings new applications within reach, which
+the player **pays to found**: the frontier. That is the historical engine of Jevons.
 
-    D_i = N · S_i / (1 + (p_s / p_i)^k_i)
+- **Depletion** (stock resources): `p_r = p_0 · (Q_0 / Q)^α`.
+- **Pressure** (smog, carbon, the code stock): `P += source · intensity − P · absorption`; crises at set fractions of
+  `collapseAt`, collapse at it.
+- **Income** = `m · p_pre · D`. Duty and permit revenue is **levy revenue**, never income; a small share becomes
+  Mandate ('treasury') or it is paid back per head ('dividend').
+- **Compute's η rises on its own** (`autoEtaRate`, after Koomey) as well as by cards.
+- **Code's resource is a flow** (human attention), its pressure is the stock of code, fed by service shipped and never
+  absorbed; upkeep eats attention; Deletion is the only lever that lowers pressure directly.
 
-While p_s >> p_i the use is elastic (elasticity ≈ k_i > 1 → efficiency backfires). Once p_s << p_i it is saturated and
-efficiency finally saves resource. New cheaper applications restart the climb. That is the historical engine of Jevons.
+**The rebounds, each a mechanic:** direct (the adoption curve); indirect (`spill`: savings in a later Industry add
+demand to an earlier one); economy-wide (population grows with wellbeing, and saturation scales with population);
+frontier (applications within reach). Later Industries add named forms of their own (`long-game.md`).
 
-Depletion brake (stock resources): p_r = p_0 · (Q_0 / Q)^α.
-Pressure (smog, carbon, code stock): P += source · intensity − P · absorption.
-Player income = m · p_s · D (a cut of spending). Elastic demand → cheaper service → more income. Saturation → income stalls.
+## The instruments (as the contract defines them)
 
-Four rebounds, each a mechanic: **direct** (adoption curve), **indirect** (savings in a later era spill demand into an
-earlier one), **economy-wide** (population grows with wellbeing, saturation scales with population), **frontier**
-(applications become available when p_s crosses a threshold; the player pays to found them).
+**Shadow rebound.** Each Industry is solved twice: as it is, and as a **shadow** with η frozen at `etaAtBase` and
+everything else identical.
+
+    promisedR = shadowR / etaFold        rebound = (R − promisedR) / (shadowR − promisedR)        frontierFold = shadowR / baseR
+
+`rebound` is direct rebound: 100% means the savings were all eaten; above 100% reads **Backfire**. `frontierFold`
+covers new applications, population and scarcity together, and `R / baseR = frontierFold × R / shadowR`. Under a
+binding cap direct rebound reads about 100%, correctly: the savings became service and the cap set the coal.
+
+**Projections on cards.** After the reveal, efficiency and capital cards show "This decade" (projected change in total
+R over 10 model years with the card against without) and "Brings within reach" (applications the card makes foundable
+within the decade, with the effect of founding each).
+
+**The budget line.** Drawn at the current R: on the first lever raised in an Industry, when the player draws one, or
+automatically for an Institution's standing cap once the Industry has been open `standingDrawYears`.
+
+    budgetR(y) = max(floor · r0, r0 · (1 − d)^(y / 10))        d = 5% a decade        within budget: R ≤ budgetR × 1.005
+
+The line declines until the Industry reaches Steady State on it, then holds. **Decoupling** = within budget, wellbeing
+at or above target, no Reckoning pending. A **decade** is each 10-year step of the unbroken streak (it pays the decade
+effects); **Steady State** is 50 years. Redrawing resets the streak and keeps earned decades. Caps are a fraction of the
+line and follow it down.
+
+*From M2:* a decade is judged against the wellbeing on the day the line was drawn (`min(target, w0 × 0.95)`), so the
+first decade comes inside run 1; Steady State additionally needs **clear skies** (pressure down to half what it was
+when the line was drawn, and not rising: the sink line, drawn on the sparkline and shown as the sky clearing); a line
+can be drawn Gentle, Firm or Severe; each decade offers a choice of two dividends.
+
+**Demography.** Population growth per second at wellbeing W, subsistence s, transition W_t:
+`g = popGrowth · (W − s) · max(0, 1 − ((W − s) / (W_t − s))²)` above s, a quarter strength below; growth stops at W_t
+(46), above the wellbeing target (34), so a steady economy can hold the target without growing.
 
 ## Currencies
 
-- **Capital (£)** — from income; buys upgrades and founds applications.
-- **Mandate** — from wellbeing above a floor, plus a spike after each Pressure crisis; buys counter-levers and pays their upkeep.
-- **Hindsight** — from a Reckoning (prestige); buys permanent Know-how or Institutions.
+- **Capital (£):** from income and clicking; buys upgrades, founds applications.
+- **Mandate:** from wellbeing above a floor, a spike at each crisis, a share of levy revenue, decade dividends; buys
+  lever levels and pays their upkeep.
+- **Hindsight:** earned at a Reckoning, spent only between runs on Know-how and Institutions.
+- **Later layers:** Precedent (the Treaty), Legacy (the Long Now); Confidence, Attention and Ground are the binding
+  resources of Acts II, III and IV.
 
-## Arc of a run
+## Levers
 
-1. 0–2 min: one Newcomen engine pumping a pit. Click to sell power. Buy the first boiler upgrade.
-2. 2–5 min: cotton mills. Income jumps. Coal gauge ticks up, unremarked.
-3. 5–10 min: Watt's condenser, the big "−60% coal" card. Coal use rises anyway. A broadsheet asks why.
-4. ~10 min: research *The Coal Question* (Jevons, 1865) — "the reveal". Upgrade cards gain a second red line: the
-   projected change in TOTAL use. The rebound meter appears. Counter-levers appear.
-5. 10–20 min: railways; first smog crisis; first Mandate.
-6. 20–30 min: first lever choice, then the first Reckoning.
+`duty` (holds the service price up as η rises) · `cap` (a fraction of the budget line; a permit price until R meets it;
+leaks under a high permit) · `sufficiency` (saturation drifts down) · `substitution` (a share from a renewable flow, at
+1.5 × c) · `circularity` (a share of R returns to the reserve) · `greenSpending` (cuts spill) · and Code's `deletion`,
+`reviewGate`, `sharedLibs`. Every lever has a `catch` line and a repeat table. Crises open the political window. From M3
+at least one lever per Industry rebounds; from M5 the government gains `standard`, `ban`, `quota`, `borderAdjust` and
+`charge`, and the rival answers each one.
 
-Target for Era 1 on efficiency-only play: coal use rises ~1.5–2× over the first four efficiency upgrades while the
-cards cumulatively promise −80%; reserve exhaustion or smog collapse somewhere around 25–40 minutes.
+## A first run, as measured
 
-## Eras (stack; earlier ones keep running)
+Efficiency-only play (`bun run tools/balance.ts efficiency 1`, 19 Nov 2026):
 
-| Era | Service | Resource | Efficiency path | Applications | Twist |
-|---|---|---|---|---|---|
-| 1 Steam 1780–1870 | Motive power | Coal (stock) | Newcomen → better boilers → Watt separate condenser → double-acting → high-pressure → compound → triple expansion → turbine | Mine pumping, cotton mills, railways, steamships | Mine pumping adds to the coal reserve (cheap power reaches deeper seams) |
-| 2 Light 1870–1950 | Lumens | Town gas then electricity (stock) | Tallow → gas mantle → carbon filament → tungsten → fluorescent | Street lamps, night shifts, homes, shop signs | Indirect rebound: spills demand into Steam |
-| 3 Motion 1950–2000 | Vehicle-miles | Oil (stock) | Carburettor → fuel injection → lean burn → hybrid | Delivery, commuting, suburbs, flights | Lock-in: suburbs and commuting demand won't fall back |
-| 4 Compute 2000–2025 | Operations | Electricity, water, chips (stock) | Auto: energy per operation halves on a short cycle whether you like it or not; plus bought upgrades | Spreadsheets, web, streaming, model training | Efficiency outruns every brake; only caps and sufficiency hold |
-| 5 Code 2025– | Working features | Human attention (flow, has a ceiling) + draws on Compute | Autocomplete → chat assistant → coding agent → agent fleets | Internal tools, throwaway personal apps, legacy rewrites, agents writing code for other agents | Pressure = the *stock* of code (maintenance debt), fed by service shipped, no natural absorption; upkeep eats attention. Agent-on-agent app is nearly unsaturable |
+| Time | What happens |
+|---|---|
+| 0:18 | Better boilers (−33%). Coal use rises 232% within a minute: Cotton mills come within reach |
+| 0:36–4:24 | Another engine works, seven levels (the repeatable growth card) |
+| 1:00 | Cotton mills founded |
+| 5:18 | Separate condenser (−40%). Coal use +150% within two minutes |
+| 8:36 | **The Coal Question**: the reveal. Cards gain their projection lines; the rebound meter wakes; levers and Mandate appear |
+| 13:06 | Railways founded (brought within reach by the double-acting engine) |
+| 19:12 | First crisis, The Black Fog: population −8%, Mandate +150 |
+| 40:48 | Exhaustion. Efficiency ×14.9, peak coal use ×45.6. Hindsight 72 |
 
-Era 1 reference numbers: p_0 = 1, c = 0.04, m = 0.2, α = 0.6. Applications (p_i, S_i, k_i): Mine pumping (1.5, 40, 1.5),
-Cotton mills (0.6, 300, 2.0), Railways (0.3, 1200, 2.2), Steamships (0.15, 3000, 2.4). Efficiency steps
-η: 1 → 1.5 → 2.5 → 3.5 → 5 → 8 → 12 → 18. With all four apps active and N = 1 these give R ≈ 202, 257, 321, 348, 355, 324, 269, 205.
+Run 2 opens Light & Current at 10–12 minutes (about 50 minutes in all). The restraint player (`budget`) earns its first
+decade and Steady State in run 3 (24 and 40 minutes; 1.9 h in all) and out-earns backfire 4.6× there. M2 moves the
+first decade into run 1 (about 20 minutes) and Steady State to 3–4 h.
 
-An era opens when the previous era's service price falls below a threshold AND the player has enough Reckonings behind them.
+## Industries and Ages
 
-## Counter-levers (cost Mandate, mostly cut income)
+| Age (Act) | Industries | Art style | The player is |
+|---|---|---|---|
+| The Coal Age (I), 1780–1914 | **Steam** · **Light & Current** · Iron & Steel · Fishing | steel engraving · chromolithograph · foundry lithograph · harbour engraving with a chart | the industrialist |
+| The Great Acceleration (II), 1909–2010 | Plenty · **Motion** · Comfort · Freight & Flight | seed catalogue · airbrushed travel poster · appliance catalogue · route map | the government |
+| The Attention Age (III), 2000–2100 | **Compute** · Proof-of-Work · **Code** | vector CAD · red terminal · cyberpunk night city | the specifier |
+| The Transition (IV), 2030–2100 | Transition | risograph zine | the unbuilder |
 
-Fuel duty escalator (holds p_s up as η rises) · Hard cap (ceiling on R, permit price, leaks if far below demand) ·
-Sufficiency (slowly lowers saturation) · Substitution (renewable flow, capped) · Circularity (returns a share of R to the reserve) ·
-Green spending (cuts indirect spill). Era 5 adds: Deletion (spend attention to shrink the code stock — the only lever that
-lowers Pressure directly) · Review gates · Shared libraries · "Don't build it" (sufficiency).
+Bold: built. Each Industry has one mechanic of its own and one thing it teaches that no other does (`long-game.md`).
+Industries open on milestone conditions (`unlock.when`, a data-only `Cond`, plus prerequisites and Reckonings), never
+on a service price, so restraint never locks content away. Motion, Compute and Code move behind the later layers in
+M4 (owner decision D3).
 
-Crises open the window: each Pressure crisis grants a Mandate spike.
+## Prestige and the four chairs
 
-## Prestige: the Reckoning
+- **Reckoning** (layer 1). A run ends at exhaustion, collapse, or by choice after the reveal. Hindsight =
+  wellbeing-years ÷ intensity^e + per budget decade + reserve unburnt (ramped by years at target) + first backfire per
+  Industry + Industries reached + Steady States. Peak output earns nothing. **Know-how** (trees with forks) makes runs
+  faster and hits the wall sooner: the paradox one level up. **Institutions** (levels, seats in a loadout) put restraint
+  in place from minute one. From run 2 the **Market** automates efficiency; switching it off is a restraint decision.
+- **Treaty** (layer 2): **The Other Chair**. The player becomes the government; Pryce Consolidated runs the Industries
+  as the player once did, seeded from their own first run. Inspect, legislate, close loopholes, win elections.
+- **Long Now** (layer 3): **You Write the Objectives**. Agents run every Industry; the player writes their briefs and
+  reviews what they game.
+- **Unbuilding** (the last Age): progress is what is taken down while wellbeing holds.
+- Threaded through all: **the game rebounds on you**. The player's own decisions and hours are measured on the device
+  and published by the Statistics Office at about hour 7.
 
-A run ends when a reserve runs dry or a Pressure hits its collapse line; the player can also call one. Hindsight is earned
-from peak wellbeing and years spent decoupling, NOT from peak output.
+## Endings
 
-- **Know-how** (the obvious buy): permanent efficiency / cost multipliers. Runs start faster and hit the wall sooner —
-  the paradox again, one level up.
-- **Institutions** (the slow buy): permanent counter-levers in place at the start of each run — e.g. a Statistics Office
-  that reveals the rebound line from minute one, a standing fuel duty, an absorption sink.
+Three credits, and the game continues after each: the **Act I ending** (every Coal Age Industry at Steady State in one
+run, 15–17 h), the **Act II ending** (the consumption ledger within budget for 50 years, about 50 h), the **true ending**
+(everything retired or settled at its sink line, wellbeing held for 50 years, the first pit flooded into a lake, about
+100 h). Also: **Backfire** (the default Reckoning), **Degrowth by accident** (hidden: population crashes until use
+falls), **Business as usual**, and the achievement **Jevons Was Right**. Endings report as ledgers, never as verdicts.
 
-Run summary card: efficiency gained vs resource used, side by side.
+## UI and art direction
 
-## Endings and achievements
-
-- **Steady State** (true ending): wellbeing ≥ target while resource use falls, for 50 in-game years — per era (badge) and
-  then across all five eras at once (credits).
-- **Backfire**: the default Reckoning.
-- **Degrowth by accident** (hidden): population crashes until use falls; technically decoupled, wellbeing fails the bar.
-- **"Jevons Was Right"**: max out an era's efficiency tree while its resource use has grown many-fold.
-
-## UI direction
-
-Two gauges that should move in opposite directions and don't — **Efficiency** and **Consumption** — pinned at the top.
-Upgrade cards show the promise in large type; after the reveal a red second line shows projected total use.
-Rebound meter: share of promised savings eaten by demand; over 100% reads "Backfire" and glows.
-Applications are small illustrated vignettes that fill with activity as adoption rises. Pressure is weather over the
-vignettes (smog thickens), not a bar. Each era restyles the page: engraved ledger (Steam), gaslit poster (Light),
-chrome dashboard (Motion), terminal green (Compute), and a fifth look for Code. Mobile-first: one column, gauges pinned,
-thumb-reach controls, tap-and-hold (or an info button) to see the formula behind a number.
+- **The living scene.** Each Industry is an illustrated landscape that fills, speeds up and darkens with play: places
+  grow out from a landmark as adoption rises, survey stakes mark a site that can be founded, pressure is weather, the
+  cut-away under the ground shows the reserve hollowing out, a Reckoning freezes the scene grey, and Steady State clears
+  it. Every new system must have something to show in it.
+- **Art by Age.** Each Industry is drawn the way its period pictured itself; leafing through the tabs is leafing through
+  250 years of illustration, ending in a cyberpunk city, then a riso zine. Constant across styles: the 600 × 400 picture,
+  horizon in the upper third, far/mid/near bands, the cut-away strip, the frozen grey Reckoning.
+- **Instruments.** Two gauges that should move in opposite directions and do not, **Efficiency** and **Consumption**,
+  pinned at the top. Cards show the promise in large type; after the reveal, the decade and within-reach lines, with a
+  word and a glyph as well as a colour. The rebound meter over 100% reads Backfire. The budget line (and, from M2, the
+  sink line) on the sparkline. A formula sheet behind every number.
+- **Phone first.** One column, gauges pinned, thumb-reach controls, an "affordable" signal on the first screen, nothing
+  shown before it can be used, save safety, offline catch-up that never collapses a run unseen.

@@ -11,7 +11,7 @@ Read before changing anything: `DESIGN.md` (the game), `src/types.ts` (the contr
 - `bun run build.ts` — build to `dist/` (`--single` for one inlined file)
 - `bun test` — tests
 - `tsc -p .` (or `bunx tsc -p .`) — typecheck
-- `bun run tools/balance.ts [efficiency|levers|idle] [runs]` — headless balancer
+- `bun run tools/balance.ts <strategy> [runs]` — headless balancer (`--summary` for one line per run)
 
 Bun is the whole toolchain; there are no runtime dependencies. Keep it that way unless an ADR says otherwise.
 
@@ -24,37 +24,39 @@ Bun is the whole toolchain; there are no runtime dependencies. Keep it that way 
   once per layout change; never rebuild per tick).
 - British English, dry broadsheet tone. The game never lectures.
 - Words: the unit of play is a `Sector` in code and an "Industry" on screen; the period is an "Age". Player-facing text
-  never says "sector" or "era" for the unit. (`DESIGN.md` and `design/*.md` predate this and still say "era".)
+  never says "sector" or "era" for the unit.
 
-## Status (18 Nov 2026)
+## Status (19 Nov 2026)
+
+M1 is built, balanced and live on `main`: five Industries on the sector-and-age contract, honest rebound instruments,
+budget-line Steady State, milestone unlocks, Institutions with seats, Know-how trees, forks, a living illustrated scene
+per Industry in the art style of its Age, save safety and settings.
 
 | Piece | State |
 |---|---|
-| `src/types.ts` | M1 contract (save version 2). Decisions and the old → new name mapping are in `design/m1-contract-notes.md`. |
-| `src/model.ts` | All of `ModelApi`, tested (`src/model.test.ts`, fixture in `src/fixture.ts`). Independent review in progress. |
-| `src/content.ts` | Five eras drafted. Runs without error; numbers unbalanced (see `design/critique-v1.md`). |
-| `tools/balance.ts` | Headless balancer: `efficiency`, `levers`, `idle`; `--fixture` for the test content. |
-| `src/ui/`, `src/main.ts`, `index.html` | In progress per `briefs/ui.md`. |
-| `design/` | Critique of v1, ranked proposals, the long-game structure and the roadmap. `design/research/` holds sourced dossiers for content authors. |
+| `src/types.ts` | M1 contract (save version 2). Decisions and the old → new name mapping: `design/m1-contract-notes.md`. |
+| `src/model.ts` | All of `ModelApi`. Tests: `src/model.test.ts`, `model.review.test.ts`, `model.m1.test.ts`; fixture `src/fixture.ts`. |
+| `src/content.ts` | Five Industries, three Ages. Lint: `src/content.test.ts`. Pacing targets: `src/balance.test.ts`. |
+| `tools/balance.ts` | Headless balancer: `efficiency`, `budget`, `levers`, `forks`, `peakdraw`, `mixed`, `idle`; `--summary`, `--fixture`. |
+| `src/ui/` | The page. `src/ui/scene/` is the world scene engine (own README; art styles are a layer). |
+| `tools/shot.mjs` | Playwright screenshots and scripted flows. Run its modes one at a time (`scenes`, `flow`, `checks`, `audit`, `realplay`, `looks`); `all` in one go has run the container out of memory. |
+| `design/` | `long-game.md` (structure: four Ages, twelve Industries, three layers), `roadmap.md` (M2–M9), `paradigm-shifts.md`, `genre-audit.md`, `visual-direction.md`, `research/` (sourced dossiers). |
 
-The game is to be a very long one with a lot of content (true ending at roughly 110–120 active hours). The plan is
-`design/roadmap.md`; the structure is `design/long-game.md`. Owner decisions D1–D5 at the end of the roadmap are open;
-until answered, work to the recommendations given there.
+The game is to be a very long one with a lot of content: three endings (about 15–17 h, 50 h and 100 h) and a post-game.
+Each Act changes the player's role: industrialist, government, writer of the agents' objectives, the one who takes
+things down. Owner decisions D2–D6 at the end of `design/roadmap.md` are open; until answered, work to the
+recommendations given there.
+
+Known gaps: only Chromium has been tested (no Safari, Firefox or real phone); a Home Screen install is unverified;
+offline time can still end a run while the player is away (fixed in M2).
 
 ## Next steps, in order
 
-M1 is in progress: core, content and UI lanes are conforming to the new contract per `briefs/m1-*.md`, then balance.
-Until they finish, the branch does not typecheck; `main` holds the last playable build (v1).
-
-1. Finish the independent model review and the UI; browser playtest script (Playwright, phone viewport).
-2. **M1 "v1, honest"**: instruments (counterfactual rebound, decade and within-reach projections), budget-line Steady
-   State with demography, milestone unlocks, a new Hindsight formula with an Institution loadout and Know-how forks,
-   run forks, an era calendar; balance Eras 1–5; encode the pacing targets as tests; bring `DESIGN.md` in line.
-3. **M2 "Restraint has a game"**: first split `src/model.ts` into `src/core/` and `src/content.ts` into `src/content/`
-   (behaviour unchanged), then Settlement, the Commons and standing orders.
-4. **M3 "Every era its own"**: one mechanic per era, levers that rebound, the cast and dispatches, histories, the
-   Archive. Stop and evaluate before building layers.
-5. **M4–M8**: Act I complete, the World (Treaty), the Great Acceleration, the Attention Age (Long Now), the post-game.
+1. **M2 "Restraint has a game; run 2 is different"**: first split `src/model.ts` into `src/core/` and `src/content.ts`
+   into `src/content/` (behaviour unchanged, alone); then the contract (save version 3) and the lanes. See the roadmap.
+2. **M3** every Industry its own mechanic, the second reveal, a first ending; then stop and look.
+3. **M4–M9** per `design/roadmap.md`.
 
 Working rules for parallel agents (contract first and alone, lanes own folders, balance last by one agent) are at the
-top of `design/roadmap.md`.
+top of `design/roadmap.md`. Merge to `main` when tests pass, the tree typechecks and builds, and the result has been
+looked at in a browser.
