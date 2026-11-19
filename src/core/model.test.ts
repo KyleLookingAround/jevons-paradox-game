@@ -1,10 +1,10 @@
 // bun-types are not installed and tsconfig has "types": [], so the test runner's own module has no declarations.
 // @ts-ignore
 import { describe, expect, test } from 'bun:test';
-import { model } from './model';
+import { model } from './index';
 import { fixture, FOUNDED, STEAM_EFFICIENCY, STEAM_REFERENCE } from './fixture';
-import { content as realContent } from './content';
-import type { Content, SectorId, GameState, MetaState } from './types';
+import { content as realContent } from '../content';
+import type { Content, SectorId, GameState, MetaState } from '../types';
 
 const C = fixture;
 const SECTORS = C.sectorOrder;

@@ -1,0 +1,288 @@
+/**
+ * Compute (on screen an Industry): its SectorDef and applications, upgrades, levers and its own headlines.
+ * Content is data (see README.md): every number and word here is read by the core and the UI; no game rules.
+ */
+import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
+import {
+  eta, capCost, margin, reserve, absorb, sat, half, chain, fork, ladder, lever, RECYCLE, DUTY_LABEL, CAP_LABEL,
+  CAP_FIRST, SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, DIVIDEND,
+} from '../helpers';
+import type { SectorContent } from '../helpers';
+
+/* ------------------------------------------------------------------ */
+/* COMPUTE: the Industry                                               */
+/* ------------------------------------------------------------------ */
+
+const sector: SectorDef = {
+  id: 'compute',
+  name: 'Compute',
+  years: '2000–2025',
+  firstYear: 2000,
+  tagline: 'The cost of a calculation halves while you read this sentence.',
+  service: { name: 'Computation', unit: 'PFLOP' },
+  resource: { name: 'Power, water & chips', unit: 'GWh' },
+  pressure: { name: 'Carbon', crisisName: 'The Heat Dome' },
+  accent: 'phosphor',
+
+  basePrice: 1,
+  capCost: 0.02,
+  margin: 0.15,
+  baseEta: 1,
+  autoEtaRate: 0.002,
+
+  resourceKind: 'stock',
+  reserve: 60_000_000,
+  alpha: 0.6,
+
+  pressureSource: 'resource',
+  pressureIntensity: 0.0000025,
+  absorption: 0.005,
+  collapseAt: 100,
+  crisisAt: [0.35, 0.65, 0.85],
+  pressureWellbeingCost: 12,
+  pressureUpkeep: 0,
+
+  wellbeingWeight: 4.5,
+  wellbeingScale: 150_000,
+
+  spill: { to: 'motion', rate: 0.4 },
+  unlock: {
+    minReckonings: 3,
+    when: {
+      all: [
+        { owns: 'motion.injection', label: 'Own Fuel injection' },
+        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 10_000, label: '10,000 veh·mi·years driven' },
+      ],
+    },
+  },
+
+  applications: [
+    {
+      id: 'compute.spreadsheets',
+      name: 'Spreadsheets',
+      blurb: 'The ledger, automated. Now everybody can have forty versions of it.',
+      icon: 'sheet',
+      halfPrice: 0.6,
+      saturation: 40_000,
+      steepness: 1.5,
+      visibleBelow: Infinity,
+      foundCost: 0,
+    },
+    {
+      id: 'compute.web',
+      name: 'The web',
+      blurb: 'Every shop, library and argument, open all hours.',
+      icon: 'globe',
+      halfPrice: 0.25,
+      saturation: 200_000,
+      steepness: 2.2,
+      visibleBelow: 0.45,
+      foundCost: 250_000,
+    },
+    {
+      id: 'compute.cloudStorage',
+      name: 'Cloud storage',
+      blurb: 'Why delete anything? Every photograph, twice, in a warehouse beside a river.',
+      icon: 'cloud',
+      halfPrice: 0.12,
+      saturation: 600_000,
+      steepness: 2.5,
+      visibleBelow: 0.25,
+      foundCost: 900_000,
+    },
+    {
+      id: 'compute.streaming',
+      name: 'Streaming',
+      blurb: 'The same film, sent again, to each of you, separately, forever.',
+      icon: 'play',
+      halfPrice: 0.06,
+      saturation: 1_500_000,
+      steepness: 2.8,
+      visibleBelow: 0.12,
+      foundCost: 2_500_000,
+    },
+    {
+      id: 'compute.training',
+      name: 'Model training',
+      blurb: 'Read everything ever written, then do it again, but bigger.',
+      icon: 'brain',
+      halfPrice: 0.02,
+      saturation: 12_000_000,
+      steepness: 3.2,
+      visibleBelow: 0.045,
+      foundCost: 25_000_000,
+    },
+  ],
+};
+
+/* ------------------------------------------------------------------ */
+/* UPGRADES                                                            */
+/* ------------------------------------------------------------------ */
+
+/* ---- Compute: bought ×21.6 on top of the automatic halving ---- */
+const computeUpgrades: UpgradeDef[] = [
+  ...chain('compute', ladder(80_000, 3, 5), [
+    {
+      id: 'compute.multicore', name: 'Multi-core chips', fold: 1.5,
+      blurb: 'The clock speed hit a wall, so put several processors behind it.',
+    },
+    {
+      id: 'compute.virtualisation', name: 'Virtualisation', fold: 2.4,
+      blurb: 'Ten idle servers become one busy one. Nine new projects fill the gap.',
+    },
+    {
+      id: 'compute.hyperscale', name: 'Hyperscale data centres', fold: 4.32,
+      blurb: 'A warehouse of computers beside a river and a cheap substation.',
+    },
+    {
+      id: 'compute.gpu', name: 'GPU acceleration', fold: 10.8,
+      blurb: 'Chips built for drawing dragons turn out to be good at sums.',
+    },
+    {
+      id: 'compute.accelerators', name: 'Custom AI accelerators', fold: 21.6,
+      blurb: 'Silicon that does one thing, matrix multiplication, unimaginably often.',
+    },
+  ]),
+
+  /* Fork 1: who pays. */
+  ...fork(
+    {
+      id: 'compute.adFunded', sector: 'compute', kind: 'capital',
+      name: 'Advertising model',
+      blurb: 'Free at the point of use. The user is the point of use, and uses it all day.',
+      cost: 3_000_000, requires: ['compute.virtualisation'],
+      effects: [half('compute', 1.4), margin('compute', 0.02)],
+    },
+    {
+      id: 'compute.subscriptions', sector: 'compute', kind: 'capital',
+      name: 'Subscriptions',
+      blurb: 'A fair price, monthly, for ever. Fewer users, steadier profits, and the profits buy servers.',
+      cost: 3_000_000, requires: ['compute.virtualisation'],
+      effects: [margin('compute', 0.05), sat('compute', 0.9)],
+    },
+  ),
+
+  /* Fork 2: what to do with the heat. */
+  ...fork(
+    {
+      id: 'compute.pueCertificate', sector: 'compute', kind: 'efficiency',
+      name: 'Efficient data-centre certificate',
+      blurb: 'Every watt audited, the cooling cut to the bone. The certificate is framed in the lobby of the next campus.',
+      cost: 8_000_000, requires: ['compute.hyperscale'],
+      effects: [eta('compute', 1.25), sat('compute', 1.3, 'compute.training')],
+    },
+    {
+      id: 'compute.wasteHeat', sector: 'compute', kind: 'capital',
+      name: 'Waste heat to the town',
+      blurb: 'Pipe the warm water into the district heating. It pays, so they build another data centre to pay twice.',
+      cost: 8_000_000, requires: ['compute.hyperscale'],
+      effects: [absorb('compute', 0.002), margin('compute', 0.02)],
+    },
+  ),
+
+  {
+    id: 'compute.commodity', sector: 'compute', kind: 'capital',
+    name: 'Commodity servers',
+    blurb: 'Buy cheap boxes by the thousand and expect them to fail.',
+    cost: 800_000, requires: ['compute.multicore'], effects: [capCost('compute', 0.7)],
+  },
+  {
+    id: 'compute.newFab', sector: 'compute', kind: 'prospect',
+    name: 'Build another fab',
+    blurb: 'Twenty billion, a desert, and most of a river’s worth of ultrapure water.',
+    cost: 2_000_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
+    effects: [reserve('compute', 0.25)],
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/* LEVERS                                                              */
+/* ------------------------------------------------------------------ */
+
+const computeLevers: LeverDef[] = [
+  /* ---- Compute ---- */
+  lever({
+    id: 'compute.cap', sector: 'compute', kind: 'cap',
+    name: 'Grid allocation',
+    blurb: 'Data centres get the connection they are given, not the one they ask for, and a little less each decade.',
+    catch: `Too tight and the server farms reappear in a friendlier jurisdiction. ${DIVIDEND}`,
+    values: CAP_VALUES, value2: CAP_LEAK, cost: 400, upkeep: 0.2, label: CAP_LABEL, labels: CAP_FIRST,
+    repeat: { value2Step: 0.5 }, recycle: RECYCLE,
+  }),
+  lever({
+    id: 'compute.sufficiency', sector: 'compute', kind: 'sufficiency',
+    name: 'Digital sobriety',
+    blurb: 'Autoplay off, resolution down, the old phone kept another year.',
+    catch: 'Asks people to want less of something that gets cheaper every minute.',
+    values: SUFF_VALUES, value2: [0.002, 0.003, 0.004], cost: 320, upkeep: 0.08, label: SUFF_LABEL,
+    repeat: { value2Step: 0.0005 },
+  }),
+  lever({
+    id: 'compute.circularity', sector: 'compute', kind: 'circularity',
+    name: 'Chip recovery',
+    blurb: 'Strip the gold, the gallium and the cobalt back out of last year’s servers.',
+    catch: 'Recovered silicon goes straight into next year’s, larger, servers.',
+    values: SHARE_VALUES, cost: 350, upkeep: 0.08, label: 'Recover {pct}% of the hardware',
+  }),
+  lever({
+    id: 'compute.substitution', sector: 'compute', kind: 'substitution',
+    name: 'Solar & storage',
+    blurb: 'Panels on every warehouse roof, batteries in the car park.',
+    catch: 'Capped by how much sun falls on the roof, which does not double every two years.',
+    values: SHARE_VALUES, value2: [100_000, 400_000, 1_500_000], cost: 420, upkeep: 0.2, label: 'Run {pct}% on sunshine',
+    repeat: { value2Step: 500_000 },
+  }),
+  lever({
+    id: 'compute.duty', sector: 'compute', kind: 'duty',
+    name: 'Carbon price',
+    blurb: 'A price per ton on the power behind every calculation.',
+    catch: `The calculations get cheaper faster than any minister dares raise it. ${DIVIDEND}`,
+    values: DUTY_VALUES, cost: 380, upkeep: 0.2, label: DUTY_LABEL, recycle: RECYCLE,
+  }),
+];
+
+/* ------------------------------------------------------------------ */
+/* HEADLINES (Content.sectorHeadlines)                                 */
+/* ------------------------------------------------------------------ */
+
+const computeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
+  efficiency: [
+    'Chips twice as thrifty; data centres twice as many',
+    'New processor halves the power per sum; the sums treble',
+    'Efficiency breakthrough wipes billions off chip makers, briefly',
+    'Cost of a calculation falls again; nobody checks the bill',
+  ],
+  sectorOpened: [
+    'Computing opens for business; the bill arrives later',
+    'A sum that took a clerk a week now takes a millisecond',
+    'The cost of a calculation halves; the calculations multiply',
+  ],
+  appFounded: [
+    '{app} launches; servers ordered by the warehouse',
+    '{app} “free for ever”, say founders; investors nod',
+  ],
+  backfire: [
+    'Power per query down a hundredfold; queries up a thousandfold',
+    'Data centres more efficient than ever, and twice as hungry',
+  ],
+  crisis: [
+    'Heat dome: grid operators beg data centres to throttle',
+    'Record heat; server farms run their chillers flat out',
+    'Data centre water use questioned as reservoirs drop',
+    'Heat alert No. {n}: cooling fans heard from the motorway',
+  ],
+  collapse: [
+    'Heat dome over the server farms; the grid gives way',
+    'The cloud comes down to earth: outages everywhere',
+    'Grid fails in the heat; everything everywhere is offline',
+  ],
+  exhausted: [
+    'No more power, water or chips; the queue for silicon closes',
+    'Last substation allocated; new data centres told to wait',
+    'Chip supply exhausted; old servers stripped for parts',
+  ],
+};
+
+export const compute: SectorContent = {
+  def: sector, upgrades: computeUpgrades, levers: computeLevers, headlines: computeHeadlines,
+};

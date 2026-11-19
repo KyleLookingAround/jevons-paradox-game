@@ -1,11 +1,11 @@
-// Independent review of src/model.ts against src/types.ts and briefs/model.md.
+// Independent review of the core (then src/model.ts, now src/core/) against src/types.ts and briefs/model.md.
 // Each `defect:` test failed before the fix in model.ts; `verify:` tests cover paths the original suite left untested.
 // @ts-ignore — bun-types are not installed (see model.test.ts)
 import { describe, expect, test } from 'bun:test';
-import { model } from './model';
+import { model } from './index';
 import { fixture as C, FOUNDED, STEAM_EFFICIENCY } from './fixture';
-import { STEADY_STATE_YEARS } from './types';
-import type { Content, SectorId, GameState, MetaState } from './types';
+import { STEADY_STATE_YEARS } from '../types';
+import type { Content, SectorId, GameState, MetaState } from '../types';
 
 const SECTORS = C.sectorOrder;
 

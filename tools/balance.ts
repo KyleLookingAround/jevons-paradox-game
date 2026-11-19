@@ -37,9 +37,9 @@
  *        --safe-pressure=0.5, --draw-after=4, --fork-sector=<id>|all.
  * Runs are consecutive (the prestige loop), except in `forks`.
  */
-import { model } from '../src/model';
+import { model } from '../src/core';
 import { content as realContent } from '../src/content';
-import { fixture } from '../src/fixture';
+import { fixture } from '../src/core/fixture';
 import { BUDGET_TOLERANCE, YEARS_PER_SECOND } from '../src/types';
 import type { Content, EffectDef, GameState, HindsightTerms, InstitutionDef, SectorId, UpgradeView } from '../src/types';
 

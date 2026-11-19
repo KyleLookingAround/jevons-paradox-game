@@ -6,6 +6,7 @@ import { h, setText, setAttr, show, cls, reducedMotion, motionOverride } from '.
 import { fmt, money, fmtPrice, pct, num, clamp, lower } from './fmt';
 import { infoBtn } from './gauges';
 import { createScene, sceneViewFrom, type SceneView } from './scene';
+import { timed } from './prof';
 
 /* ------------------------------------------------------------------ */
 /* Broadsheet                                                          */
@@ -146,7 +147,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
     if (def.id !== sector) { sector = def.id; renderer.setSector(def.id); }
     const m = document.documentElement.getAttribute('data-motion') ?? '';
     if (m !== motion) { motion = m; renderer.setReducedMotion(motionOverride()); }
-    renderer.update(sceneViewFrom(ctx.content, ctx.state, ctx.d, def.id));
+    const view = timed('scene.view', () => sceneViewFrom(ctx.content, ctx.state, ctx.d, def.id));
+    timed('scene.update', () => renderer.update(view));
     const e = sd(ctx);
     setText(title, `Uses of ${lower(def.service.name)}`);
     setText(price, e ? `${def.service.name} sells at £${fmtPrice(e.servicePrice)} per ${def.service.unit}` : '');

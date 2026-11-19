@@ -35,8 +35,8 @@ per Industry in the art style of its Age, save safety and settings.
 | Piece | State |
 |---|---|
 | `src/types.ts` | M1 contract (save version 2). Decisions and the old → new name mapping: `design/m1-contract-notes.md`. |
-| `src/model.ts` | All of `ModelApi`. Tests: `src/model.test.ts`, `model.review.test.ts`, `model.m1.test.ts`; fixture `src/fixture.ts`. |
-| `src/content.ts` | Five Industries, three Ages. Lint: `src/content.test.ts`. Pacing targets: `src/balance.test.ts`. |
+| `src/core/` | All of `ModelApi` (`src/core/index.ts`; module map in `src/core/README.md`). Tests: `src/core/model.test.ts`, `model.review.test.ts`, `m1.*.test.ts`; fixture `src/core/fixture.ts`. |
+| `src/content/` | Five Industries, three Ages (`src/content/index.ts`; module map in `src/content/README.md`). Lint: `src/content/content.test.ts`. Pacing targets: `src/balance.test.ts`. |
 | `tools/balance.ts` | Headless balancer: `efficiency`, `budget`, `levers`, `forks`, `peakdraw`, `mixed`, `idle`; `--summary`, `--fixture`. |
 | `src/ui/` | The page. `src/ui/scene/` is the world scene engine (own README; art styles are a layer). |
 | `tools/shot.mjs` | Playwright screenshots and scripted flows. Run its modes one at a time (`scenes`, `flow`, `checks`, `audit`, `realplay`, `looks`); `all` in one go has run the container out of memory. |

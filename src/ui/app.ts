@@ -14,6 +14,7 @@ import {
 import { fmt } from './fmt';
 import { createAfford, type AffordState } from './afford';
 import { reducedMotion } from './dom';
+import { timed } from './prof';
 
 export interface UI {
   update(): void;
@@ -88,7 +89,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, onboard, world.el, news.el, ups.el, budget.el, levs.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, toasts.el, live);
 
-  const comps: Comp[] = [topbar, tabs, gauges, dock, news, world, ups, budget, levs];
+  const comps: [string, Comp][] = [['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs]];
 
   let look = '', accent: string | null | undefined;
   let knownOpen: Set<SectorId> | null = null;
@@ -172,8 +173,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     }
     if (ac !== accent) { accent = ac; setAttr(html, 'data-accent', ac); }
 
-    afford.update();
-    for (const c of comps) c.update();
+    timed('ui.afford', () => afford.update());
+    for (const [n, c] of comps) timed('ui.' + n, () => c.update());
 
     // The chip: how many offers are news (afford.ts holds the no-nag rule), and where the first one is.
     const items = afford.state.items;
@@ -236,7 +237,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     if (won && !wasWon) winSheet(ctx, sheets);
     wasWon = won;
 
-    sheets.update();
+    timed('ui.sheets', () => sheets.update());
   }
 
   return ui;

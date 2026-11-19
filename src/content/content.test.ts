@@ -1,9 +1,9 @@
-// Content lint: structural checks on src/content.ts that no simulation is needed for.
+// Content lint: structural checks on src/content/ that no simulation is needed for.
 // bun-types are not installed and tsconfig has "types": [], so the test runner's own module has no declarations.
 // @ts-ignore
 import { describe, expect, test } from 'bun:test';
-import { content } from './content';
-import type { Cond, EffectDef, HeadlineKey, StatKey } from './types';
+import { content } from './index';
+import type { Cond, EffectDef, HeadlineKey, StatKey } from '../types';
 
 const C = content;
 const sectorIds = Object.keys(C.sectors);

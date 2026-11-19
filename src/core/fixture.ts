@@ -7,7 +7,7 @@
  * institution with levels and two seats, demography, steady (decade effects, firstSteadyEffects), levy, an achievement
  * with `when`, and sector headlines. Never imported by the game.
  */
-import type { AppState, Content, HeadlineKey, LeverDef, SectorDef, SectorId, UpgradeDef } from './types';
+import type { AppState, Content, HeadlineKey, LeverDef, SectorDef, SectorId, UpgradeDef } from '../types';
 
 const sector = (o: Partial<SectorDef> & Pick<SectorDef, 'id' | 'applications'>): SectorDef => ({
   name: o.id[0].toUpperCase() + o.id.slice(1), years: '', tagline: '', service: { name: `${o.id} service`, unit: 'u' },

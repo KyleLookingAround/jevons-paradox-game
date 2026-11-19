@@ -5,7 +5,7 @@
 // that a regression is caught while the gap stays visible (see the balance lane's report).
 // @ts-ignore — bun-types are not installed (see model.test.ts)
 import { describe, expect, test } from 'bun:test';
-import { model } from './model';
+import { model } from './core';
 import { content as C } from './content';
 import { BUDGET_TOLERANCE } from './types';
 import type { GameState, InstitutionDef, SectorId } from './types';

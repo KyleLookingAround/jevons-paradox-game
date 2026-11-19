@@ -13,6 +13,7 @@ import { applyPrefs, getPrefs, setPrefs } from './prefs';
 import { installManifest } from './install';
 import { installKeys } from './keys';
 import type { BackupInfo } from './sheets';
+import { prof, timed } from './prof';
 
 const SAVE_KEY = 'rebound.save.v1';          // kept from v1: deserialize migrates
 const AT_KEY = 'rebound.save.v1.at';
@@ -64,7 +65,7 @@ function boot(o: GameOpts): void {
   /** Run a model call; on exception, stop the loop and show the error panel. */
   function guard<T>(name: string, f: () => T): T | undefined {
     lastCall = name;
-    try { return f(); }
+    try { return timed('model.' + name, f); }
     catch (err) { fail(name, err); return undefined; }
   }
 
@@ -174,7 +175,7 @@ function boot(o: GameOpts): void {
     const nd = guard('derive', () => model.derive(state!, content));
     if (nd) d = nd;
     if (views) refreshViews();
-    if (!halted) ui.update();
+    if (!halted) timed('ui.update', () => ui.update());
   }
   let lastViews = 0;
   function refreshViews(): void {
@@ -274,6 +275,7 @@ function boot(o: GameOpts): void {
 
   refreshViews();
   ui.update();
+  try { performance.mark('rebound-ready'); } catch { /* ignore */ }
   if (unread != null) ui.unreadSave(unread);
   // A save made between runs (the shop was open) stays fresh: no catch-up until the next run begins.
   if (away > 0 && !d.freshRun) catchUp(away, true);
@@ -314,7 +316,7 @@ function boot(o: GameOpts): void {
   window.addEventListener('hashchange', () => location.reload());
 
   // Handy in the console (and for tools/shot.mjs).
-  (window as unknown as { rebound: unknown }).rebound = { ctx, get state() { return state; }, get d() { return d; }, model, content, save };
+  (window as unknown as { rebound: unknown }).rebound = { ctx, get state() { return state; }, get d() { return d; }, model, content, save, prof };
 }
 
 function emptyDerived(): Derived {
