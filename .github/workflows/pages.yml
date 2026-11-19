@@ -33,6 +33,10 @@ jobs:
             mkdir -p dist
             printf '<!DOCTYPE html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rebound</title><body style="font-family:Georgia,serif;margin:3rem 1.5rem;max-width:34rem"><h1>Rebound</h1><p>An incremental game about Jevons paradox. The first build is on its way.</p></body></html>' > dist/index.html
           fi
+      - name: Static pages
+        run: |
+          # Anything under public/ is served as is (e.g. public/audio-demo/ at /audio-demo/).
+          if [ -d public ]; then cp -r public/. dist/; fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
