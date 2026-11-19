@@ -50,7 +50,12 @@ export const cyberpunk: ArtStyle = {
   weather: { hz: [0.5, 0.36, 0.22], noise: 0.5 },
   noise: noise(),
   layers: '<div class="rain r1"></div><div class="rain r2"></div>',
-  plate: () => '',
+  // A lettered tag in the corner, the way the city letters everything: a neon tube title over its halo, a bar.
+  plate: (c) => {
+    const t = (c.caption || c.name).toUpperCase();
+    return `<text x="22" y="26" class="cbpl cbplh">${t}</text><text x="22" y="26" class="cbpl">${t}</text>` +
+      '<path d="M22 32h46" stroke="#ff4fd8" stroke-width="1.6" opacity=".85"/><path d="M72 32h6" stroke="#3ef2ff" stroke-width="1.6" opacity=".85"/>';
+  },
   css: `
 .scn[data-look=cyberpunk]{
   --s-paper:#07060d;--s-ink:#2b2450;--s-b:#15122a;--s-b2:#1c1835;--s-rf:#100d20;--s-w:#0b0a16;--s-lit:#8f8cff;
@@ -129,6 +134,8 @@ export const cyberpunk: ArtStyle = {
 .scn .wlk{fill:none;stroke:#0d0b16;stroke-width:1.2px}.scn .wlb{fill:#0d0b16}
 .scn .umb{fill-opacity:.35}.scn .umb.nm{fill:#ff4fd8}.scn .umb.nc{fill:#3ef2ff}.scn .umb.na{fill:#ffb347}.scn .umb.nv{fill:#9d7dff}
 .scn .pud{fill:#ff6fe0;opacity:.09}.scn .lpool{fill:#3ef2ff;opacity:.13}
+.scn .cbpl{font:700 11px/1 var(--f-mono,ui-monospace,monospace);letter-spacing:.18em;fill:#c8fbff}
+.scn .cbplh{fill:none;stroke:#3ef2ff;stroke-width:3px;stroke-opacity:.28;vector-effect:none}
 .scn .emgm{display:none}.scn .emr{fill:#ff2a3a}.scn .emp{fill:#ff2a3a;opacity:.1}
 .scn[data-look=cyberpunk].stress .emgm,.scn[data-look=cyberpunk].halt .emgm{display:inline}
 /* Under strain the grid sheds load: towers' machine light goes out block by block, in turn; signs fail. */

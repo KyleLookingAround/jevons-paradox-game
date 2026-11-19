@@ -232,8 +232,9 @@ const BASE = `
 .scn.crisis.rm .scn-fog{opacity:.62}
 
 /* --- the card under the picture --- */
-.scn-card{min-height:44px;padding:6px 2px 0;font-size:14px;line-height:1.35}
+.scn-card{min-height:44px;padding:6px 2px 0;font-size:14px;line-height:1.35;border-top:1px solid var(--rule,rgba(0,0,0,.12));margin-top:6px}
 .scn-cap{color:var(--muted,#6f5f4a)}
+.scn:not(.wide) .scn-emb{font-size:9px;padding:1px 5px;right:2.5%;bottom:3%}
 .scn-sel{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:baseline}
 .scn-sel[hidden]{display:none}
 .scn-sel-n{font-family:var(--display,inherit);font-weight:700;font-size:16px;color:var(--ink,inherit)}
