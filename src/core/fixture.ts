@@ -302,7 +302,7 @@ const m3Light: SectorDef = {
 };
 const m3Motion: SectorDef = {
   ...motion,
-  travel: { roads: 50, exponent: 4, hoursScale: 0.001, apps: ['motion.delivery', 'motion.suburbs'] },
+  travel: { roads: 2_000, exponent: 4, hoursScale: 0.001, apps: ['motion.delivery', 'motion.suburbs'] },
   applications: [
     { ...motion.applications[0], lockIn: 0.5, lockInDecay: 0.01 },
     { ...motion.applications[1], lockInDecay: 0.002 },
@@ -330,7 +330,7 @@ const m3Upgrades: UpgradeDef[] = [
   ...upgrades,
   { id: 'steam.proprietor', sector: 'steam', name: "The Proprietor's Day", blurb: '', kind: 'research', cost: 100,
     when: { returned: 'household' }, effects: [{ type: 'metaFlag', flag: 'proprietor' }] },
-  { id: 'steam.strike', sector: 'steam', name: 'Strike', blurb: '', kind: 'research', cost: 100, effects: [
+  { id: 'steam.strike', sector: 'steam', name: 'Strike', blurb: '', kind: 'research', cost: 100, locked: true, effects: [
     { type: 'populationMul', value: 0.5 }, { type: 'pressureAdd', sector: 'steam', value: 0.5 }, { type: 'capitalAdd', value: -1e9 },
     { type: 'mandateAdd', value: -1e9 }] },
 ];

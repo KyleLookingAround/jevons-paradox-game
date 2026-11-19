@@ -123,6 +123,8 @@ const BASE = `
 /* The slot's own origin is its foot (bottom centre), so grow from 0 0 in view-box terms: no fill-box needed (Safari). */
 .scn .gr{transform-box:view-box;transform-origin:0 0}
 .scn.live .sl0.on>.gr{animation:scn-rise .9s cubic-bezier(.2,.9,.3,1.15) both}
+/* M3: things lit by the hour come on and go off without the rise (and without repainting their band each frame). */
+.scn.live .sl0.nr.on>.gr{animation:none}
 .scn .sl0.fd{display:inline;opacity:0;transition:opacity 2.2s cubic-bezier(.6,0,.9,.4)}
 .scn .sl0.fd.on{opacity:1;transition:opacity .8s ease-out}
 .scn.live .sl0.fd.on>.gr{animation:none}

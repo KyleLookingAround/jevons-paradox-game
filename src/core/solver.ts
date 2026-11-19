@@ -145,10 +145,8 @@ export function solveSector(
   /* ---- M3 mechanics: priceSeen (1), travel (2), load (3); see the contract's "M3 MECHANICS" ---- */
   const mech = mechOf(def);
   let SH: number[] | null = null, FLt: number[] | null = null;
-  const seenEff = mods.priceSeenSector[sid];
-  let anySeenEffect = seenEff !== undefined;
-  if (!anySeenEffect) for (const k in mods.priceSeenApp) { anySeenEffect = true; break; }
-  if (mech.seenDef || anySeenEffect) {
+  const seenEff = mods.anyPriceSeen ? mods.priceSeenSector[sid] : undefined;
+  if (mech.seenDef || mods.anyPriceSeen) {
     for (const i of active) {
       const a = apps[i];
       const ea = mods.priceSeenApp[a.id];

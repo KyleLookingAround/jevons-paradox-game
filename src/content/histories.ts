@@ -63,10 +63,11 @@ export const histories: HistoryDef[] = [
   },
   {
     id: 'history.islandNation', name: 'Island nation',
-    blurb: 'No new coalfields, no North Sea, no new fabs, and only the two shallow seams. What is under the island is all there is.',
+    blurb: 'No new coalfields, no North Sea, no new fabs, and nothing deeper than the old workings. What is under the island is all there is.',
     rebound: 'Supply-side, removed',
     effects: [
       forbid('steam.deeperShaft'), forbid('light.kentCoalfield'), forbid('motion.northSea'), forbid('compute.newFab'),
+      forbid('steam.seam.fiveQuarter'), forbid('steam.seam.main'),
       forbid('steam.seam.lowMain'), forbid('steam.seam.hutton'), forbid('steam.seam.busty'), forbid('steam.seam.brockwell'),
     ],
     goal: steadySteam,

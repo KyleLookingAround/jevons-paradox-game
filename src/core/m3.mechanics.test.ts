@@ -399,15 +399,16 @@ describe('M3 new effects', () => {
     expect(D(b, c).sectors.steam!.servicePrice).toBe(D(a, c).sectors.steam!.servicePrice);
   });
   test('one-offs: populationMul, pressureAdd (a crisis fires on the next step), metaFlag; negative capitalAdd and mandateAdd floor at 0', () => {
+    const MS: Content = { ...M, upgrades: M.upgrades.map((u) => (u.id === 'steam.strike' ? { ...u, locked: false } : u)) };
     let s = base();
     const p0 = s.population;
-    s = model.buyUpgrade(s, M, 'steam.strike');
+    s = model.buyUpgrade(s, MS, 'steam.strike');
     expect(s.population).toBeCloseTo(p0 * 0.5, 12);
     expect(s.capital).toBe(0);
     expect(s.mandate).toBe(0);
     expect(s.sectors.steam.pressure).toBeCloseTo(50, 9);
     expect(s.sectors.steam.crisesFired).toBe(0);
-    s = model.tick(s, M, 1);
+    s = model.tick(s, MS, 1);
     expect(s.sectors.steam.crisesFired).toBe(1);
     expect(ev(s, 'crisis').length).toBe(1);
     const cf = withCard(M, 'x.flag', [{ type: 'metaFlag', flag: 'proprietor' }, { type: 'pressureAdd', sector: 'steam', value: -10 }]);

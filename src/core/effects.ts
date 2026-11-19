@@ -60,6 +60,10 @@ export interface Mods {
   /** priceSeen effects: the lowest share (then the lowest flat) per app and per sector. */
   priceSeenApp: Record<string, { share: number; flat: number }>;
   priceSeenSector: Record<string, { share: number; flat: number }>;
+  /** Any priceSeen effect in force (a fast exit for the solver). */
+  anyPriceSeen: boolean;
+  /** Content has measure or side-effect levers (the overlay has something to look at). */
+  runVarying: boolean;
 }
 
 function emptyMods(): Mods {
@@ -69,7 +73,7 @@ function emptyMods(): Mods {
     popGrowthMul: 1, wellbeingAdd: 0, startLevers: {}, unlocked: new Set(),
     offlineCapAdd: 0, orderUnlock: new Set(), commonsYieldMul: 1, startFounded: new Set(), loans: {},
     resourcePriceMul: {}, intensityMul: {}, incomeMul: {}, incomeMulAll: 1, costMulOf: {}, forbids: [], travelSpeed: {},
-    travelRoads: {}, priceSeenApp: {}, priceSeenSector: {},
+    travelRoads: {}, priceSeenApp: {}, priceSeenSector: {}, anyPriceSeen: false, runVarying: false,
   };
 }
 /** A shallow copy deep enough for an overlay (every record and set copied). */
@@ -126,6 +130,7 @@ function applyEffect(m: Mods, ef: EffectDef, times: number): void {
       break;
     case 'priceSeen': {
       const share = Math.max(0, fin(ef.share)), flat = Math.max(0, fin(ef.flat ?? 0));
+      m.anyPriceSeen = true;
       if (ef.app !== undefined) { if (seenBetter(m.priceSeenApp[ef.app], share, flat)) m.priceSeenApp[ef.app] = { share, flat }; }
       else if (seenBetter(m.priceSeenSector[ef.sector], share, flat)) m.priceSeenSector[ef.sector] = { share, flat };
       break;
@@ -229,6 +234,7 @@ export function computeMods(upgrades: Record<string, number>, meta: MetaState, c
     if (lvl > 0) for (const ef of institutionEffects(i, lvl)) if (ef.type !== 'institutionLoan') applyEffect(m, ef, 1);
   }
   m.loans = loans;
+  m.runVarying = ix.measureLevers.length > 0 || ix.sideLevers.length > 0;
   modsCache.set(upgrades, { kh: meta.knowhow, inst: meta.institutions, loadout: meta.loadout, charter, history, key, content, mods: m });
   return m;
 }
@@ -268,10 +274,10 @@ export function modsOf(s: GameState, c: Content): Mods {
 const overlayCache = new WeakMap<object, { base: Mods; mods: object; standing: object; content: Content; out: Mods }>();
 const EMPTY_LIST: never[] = [];
 function overlayMods(s: GameState, c: Content, base: Mods): Mods {
-  const ix = idx(c);
   const modifiers = s.modifiers ?? EMPTY_LIST;
   const standing = s.dispatch?.standing ?? EMPTY_LIST;
-  if (!ix.measureLevers.length && !ix.sideLevers.length && !modifiers.length && !standing.length) return base;
+  if (!base.runVarying && !modifiers.length && !standing.length) return base;
+  const ix = idx(c);
   const hit = overlayCache.get(s.levers);
   if (hit && hit.base === base && hit.mods === modifiers && hit.standing === standing && hit.content === c) return hit.out;
   let m: Mods | null = null;

@@ -475,7 +475,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         if (base) {
           base.def.slots.forEach((sl, i) => {
             const key = `${idx}:${i}`;
-            const it = renderSlot(l, look, sl, key, 'sl0 ov', stageN, `${l.id}:${base.def.key}:${i}:ov:${def.key}`, true, def.overlayProp ?? sl.p);
+            const it = renderSlot(l, look, sl, key, def.byHour ? 'sl0 ov nr' : 'sl0 ov', stageN, `${l.id}:${base.def.key}:${i}:ov:${def.key}`, true, def.overlayProp ?? sl.p);
             it.ord = (baseOrd.get(`${base.idx}:${i}`) ?? uid++) + 0.5;
             items.push(it);
             rt.keys.push(key);
@@ -486,7 +486,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       } else {
         def.slots.forEach((sl, i) => {
           const key = `${idx}:${i}`;
-          const it = renderSlot(l, look, sl, key, def.fade ? 'sl0 fd' : 'sl0', stageN, `${seedBase}:${i}`);
+          const it = renderSlot(l, look, sl, key, (def.fade ? 'sl0 fd' : 'sl0') + (def.byHour ? ' nr' : ''), stageN, `${seedBase}:${i}`);
           it.ord = uid++;
           baseOrd.set(key, it.ord);
           items.push(it);

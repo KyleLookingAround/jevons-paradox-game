@@ -387,7 +387,12 @@ describe('references resolve', () => {
         const d = dispatches.find((x) => x.id === c.answered);
         if (d && c.arm !== undefined) expect(c.arm >= 0 && c.arm < d.arms.length ? '' : ctx).toBe('');
       }
-      if ('returned' in c) expect(c.returned === 'household' ? '' : ctx).toBe('');
+      if ('returned' in c) {
+        expect(c.returned === 'household' ? '' : ctx).toBe('');
+        const FIG = ['activeMinutesBefore', 'activeMinutesAfter', 'sessionsBefore', 'sessionsAfter', 'looksBefore', 'looksAfter',
+          'decisionsBefore', 'decisionsAfter', 'automatedAfter', 'daysBefore', 'daysAfter', 'quietDays'];
+        if (c.figure !== undefined) expect(FIG.includes(c.figure) && c.op !== undefined && c.value !== undefined ? '' : ctx).toBe('');
+      }
       if ('feature' in c) expect((FEATURE_IDS as readonly string[]).includes(c.feature) ? '' : ctx).toBe('');
     }
   });
@@ -1481,7 +1486,18 @@ describe('M3: the Archive, the Proprietor’s Day and the ending (registered)', 
       expect(a.sources.length >= 1 && a.sources.every((x) => x.grade === 'V' || x.grade === 'S') ? '' : a.id).toBe('');
       expect(subjects.has(a.subject) ? '' : `${a.id}: ${a.subject}`).toBe('');
       expect(a.title.length > 0 && a.text.length > 0 ? '' : a.id).toBe('');
+      const words = a.text.trim().split(/\s+/).length;
+      expect(words >= 60 && words <= 160 ? '' : `${a.id}: ${words} words`).toBe('');
     }
+  });
+
+  test('Archive coverage: every efficiency card, lever, use, Commons project and Industry, and The Coal Question', () => {
+    const covered = new Set(archive.map((a) => a.subject));
+    const need = [
+      ...C.upgrades.filter((u) => u.kind === 'efficiency').map((u) => u.id), ...C.levers.map((l) => l.id), ...apps.map((a) => a.id),
+      ...commons.map((c) => c.id), ...sectorIds, 'steam.coalQuestion',
+    ];
+    expect(need.filter((id) => !covered.has(id))).toEqual([]);
   });
 
   test('the Proprietor’s Day covers all three directions, and its headlines never say “you”', () => {
@@ -1514,19 +1530,25 @@ describe('M3: the Archive, the Proprietor’s Day and the ending (registered)', 
 describe('M3: the unfolding in words (a thing that names a system waits for it)', () => {
   /** Words that name a gated system, and the feature that brings it. */
   const NAMES: [RegExp, string][] = [
-    [/budget line|the line|decades? within|carbon budget|coal budget|oil budget|power budget|attention budget/i, 'budget'],
-    [/Commons/, 'commons'],
-    [/charters?/i, 'charters'],
-    [/Steady State/, 'steadyState'],
-    [/Settle(d|ment)/, 'settlement'],
-    [/seams?/i, 'seams'],
-    [/bites? back/i, 'sideEffects'],
-    [/clear skies|sink line/i, 'clearSkies'],
+    [/\bbudget line\b|\bthe line\b|\bdecades? within\b|\bcarbon budget|\bcoal budget|\boil budget|\bpower budget|\battention budget/i, 'budget'],
+    [/\bCommons\b/, 'commons'],
+    [/\bcharters?\b(?! (flights?|fares?|more flights))/i, 'charters'],
+    [/\bSteady State\b/, 'steadyState'],
+    [/\bSettle(d|ment)\b/, 'settlement'],
+    [/\bseams?\b/i, 'seams'],
+    [/\bbites? back\b/i, 'sideEffects'],
+    [/\bclear skies\b|\bsink line\b/i, 'clearSkies'],
   ];
   /** Features a condition guarantees: { feature } leaves reachable through `all` (not through `any` or `not`). */
   const guaranteed = (c: Cond | undefined): Set<string> => {
     const out = new Set<string>();
-    const walk = (x: Cond) => { if ('feature' in x) out.add(x.feature); if ('all' in x) x.all.forEach(walk); };
+    const walk = (x: Cond) => {
+      if ('feature' in x) out.add(x.feature);
+      // a seam sunk implies the seams have arrived (sinkSeam is refused before); the proprietor flag implies the survey
+      if ('stat' in x && x.stat === 'seamsSunk' && (x.op === '>=' || x.op === '>') && x.value >= (x.op === '>' ? 0 : 1)) out.add('seams');
+      if ('flag' in x && x.flag === 'proprietor') out.add('survey');
+      if ('all' in x) x.all.forEach(walk);
+    };
     if (c) walk(c);
     return out;
   };
@@ -1534,6 +1556,8 @@ describe('M3: the unfolding in words (a thing that names a system waits for it)'
   const IMPLIES: Record<string, string[]> = {
     settlement: ['steadyState', 'clearSkies', 'budget'], steadyState: ['clearSkies', 'budget'], clearSkies: ['budget'],
     budgetPace: ['budget'], dividendChoice: ['budget'], leverRepeat: ['budget'],
+    // the survey arrives at hour 6 with the Civil Service; Histories after a Steady State
+    survey: ['budget', 'charters', 'commons'], histories: ['steadyState', 'clearSkies', 'budget', 'charters', 'commons'],
   };
   const close = (fs: Set<string>) => { for (const f of [...fs]) for (const g of IMPLIES[f] ?? []) fs.add(g); return fs; };
   const named = (t: string) => NAMES.filter(([re]) => re.test(t)).map(([, f]) => f);
@@ -1542,7 +1566,8 @@ describe('M3: the unfolding in words (a thing that names a system waits for it)'
     const bad: string[] = [];
     for (const d of dispatches) {
       const text = [d.headline, d.body, ...d.arms.flatMap((a) => [a.label, a.outcome, a.price, a.reply ?? ''])].join(' ');
-      const have = close(guaranteed(d.when));
+      const cw = castDefs.find((c) => c.id === d.cast)?.when;
+      const have = close(new Set([...guaranteed(d.when), ...guaranteed(cw)]));
       // a letter in a seam-, Commons- or budget-specific Industry pool is no exception: the words decide
       for (const f of named(text)) if (!have.has(f) && f !== 'seams') bad.push(`${d.id}: names ${f}`);
       if (named(text).includes('seams') && !have.has('seams')) bad.push(`${d.id}: names the seams`);

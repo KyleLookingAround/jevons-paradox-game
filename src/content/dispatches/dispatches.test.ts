@@ -9,6 +9,7 @@ import { dispatches } from './index';
 import { ambient } from '../news/ambient';
 import { headlines } from '../news/fallback';
 import type { Cond, DispatchDef, EffectDef, StatKey } from '../../types';
+import { FEATURE_IDS } from '../../types';
 
 const C = content;
 const sectorIds = Object.keys(C.sectors);
@@ -47,6 +48,8 @@ function condProblems(where: string, c: Cond | undefined, out: string[]) {
   if ('owns' in c) { if (!ownable.has(c.owns)) out.push(`${where}: owns ${c.owns}`); return; }
   if ('answered' in c) { if (!dispatchIds.has(c.answered)) out.push(`${where}: answered ${c.answered}`); return; }
   if ('flag' in c) return;
+  // M3 (added by the content-mechanics lane): { feature } is true once that feature has arrived
+  if ('feature' in c) { if (!(FEATURE_IDS as readonly string[]).includes(c.feature)) out.push(`${where}: feature ${c.feature}`); return; }
   if ('returned' in c) return;
   if ('stat' in c) {
     if (GLOBAL_STATS.includes(c.stat)) return;
@@ -67,8 +70,16 @@ function minRk(c: Cond | undefined): number {
   if ('owns' in c && sectorIds.includes(c.owns)) return C.sectors[c.owns].unlock?.minReckonings ?? 0;
   if ('owns' in c && c.owns === 'steadyState') return 3;
   if ('flag' in c && c.flag === 'proprietor') return 3;
+  if ('feature' in c) return FEATURE_RK[c.feature] ?? 0;
   return 0;
 }
+/** The least Reckonings before each feature can arrive (src/content/features.ts; conservative). */
+const FEATURE_RK: Record<string, number> = {
+  market: 1, moreLevers: 1, ambient: 1, dispatches: 1, charters: 2, budget: 2, leverRepeat: 2, dividendChoice: 2,
+  budgetPace: 2, clearSkies: 2, commons: 3, steadyState: 3, archive: 3, seams: 3, load: 3, travel: 3, sideEffects: 3,
+  freeAtUse: 3, survey: 3, histories: 3, settlement: 4,
+};
+const hasFeature = (c: Cond, ...ids: string[]) => implies(c, (l) => 'feature' in l && ids.includes(l.feature));
 /** Does the condition contain this leaf (as a conjunct along `all` paths, or in every branch of an `any`)? */
 function implies(c: Cond | undefined, test: (leaf: Cond) => boolean): boolean {
   if (!c) return false;
@@ -120,12 +131,12 @@ function adverse(e: EffectDef): boolean {
 
 const words = (t: string) => t.replace(/\{[a-z]+\}/g, '');
 const SYSTEM_WORDS: { re: RegExp; gate: (c: Cond) => boolean; name: string }[] = [
-  { name: 'budget', re: /\b(budget|the line|decade within|decades within|lean decade|full decade)\b/i, gate: (c) => minRk(c) >= 3 || implies(c, (l) => 'any' in l && JSON.stringify(l).includes('steam.cap')) },
-  { name: 'Commons', re: /\bCommons\b/, gate: (c) => minRk(c) >= 3 },
-  { name: 'Charter', re: /\bcharters?\b/i, gate: (c) => minRk(c) >= 2 },
-  { name: 'Steady State', re: /\bSteady State\b/, gate: (c) => implies(c, (l) => 'owns' in l && l.owns === 'steadyState') },
-  { name: 'Settlement', re: /\bsettle(d|ment)?\b/i, gate: (c) => implies(c, (l) => 'owns' in l && l.owns === 'steadyState') && minRk(c) >= 4 },
-  { name: 'seams', re: /\bseams?\b/i, gate: (c) => implies(c, (l) => 'stat' in l && l.stat === 'seamsSunk') },
+  { name: 'budget', re: /\b(budget|the line|decade within|decades within|lean decade|full decade)\b/i, gate: (c) => hasFeature(c, 'budget', 'leverRepeat', 'dividendChoice', 'budgetPace', 'clearSkies', 'steadyState', 'settlement') },
+  { name: 'Commons', re: /\bCommons\b/, gate: (c) => hasFeature(c, 'commons') },
+  { name: 'Charter', re: /\bcharters?\b(?! (flights?|fares?|more flights))/i, gate: (c) => hasFeature(c, 'charters') },
+  { name: 'Steady State', re: /\bSteady State\b/, gate: (c) => hasFeature(c, 'steadyState', 'settlement') || implies(c, (l) => 'owns' in l && l.owns === 'steadyState') },
+  { name: 'Settlement', re: /\bsettle(d|ment)?\b/i, gate: (c) => hasFeature(c, 'settlement') },
+  { name: 'seams', re: /\bseams?\b/i, gate: (c) => hasFeature(c, 'seams') },
   { name: 'Hindsight', re: /\b(Hindsight|Know-how)\b/, gate: () => false },
 ];
 

@@ -8,6 +8,7 @@ import {
   CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
+import { proprietorCard } from '../proprietor';
 
 /* ------------------------------------------------------------------ */
 /* STEAM: the Industry                                                 */
@@ -98,27 +99,27 @@ const sector: SectorDef = {
   seams: [
     {
       id: 'steam.seam.fiveQuarter', name: 'Five-Quarter seam', depth: '178 fathoms',
-      blurb: 'Named for its thickness, a yard and a quarter. Wet, and close enough to pump.',
+      blurb: 'The first seam below the old workings. Wet, and near enough for the pumps to keep dry.',
       tons: 120_000, cost: 2_000, priceMul: 1.1, reachBelow: 0.6, // the condenser reaches it
     },
     {
       id: 'steam.seam.main', name: 'Main coal', depth: '204 fathoms',
-      blurb: 'The best house coal in the field, under a hundred feet more of water.',
+      blurb: 'Another 26 fathoms of shaft, and every one of them to be kept dry.',
       tons: 180_000, cost: 5_000, priceMul: 1.2, reachBelow: 0.45, // the double-acting engine
     },
     {
       id: 'steam.seam.lowMain', name: 'Low Main seam', depth: '226 fathoms',
-      blurb: 'Hard, clean and very deep. The pumps never stop.',
+      blurb: 'Deep enough that the pumps never stop, day or night.',
       tons: 260_000, cost: 12_000, priceMul: 1.35, reachBelow: 0.3, // high-pressure steam
     },
     {
       id: 'steam.seam.hutton', name: 'Hutton seam', depth: '246 fathoms',
-      blurb: 'The steam coal the navy wants, down where only a Cornish engine keeps the water out.',
+      blurb: 'Down where only the best pumping engine keeps the water out.',
       tons: 380_000, cost: 30_000, priceMul: 1.55, reachBelow: 0.2, // the Cornish engine (or the compound)
     },
     {
       id: 'steam.seam.busty', name: 'Busty seam',
-      blurb: 'Below the Hutton, through rock that breaks the sinkers’ tools. Thick, in places.',
+      blurb: 'Below the Hutton, and below what most owners will pay to reach.',
       tons: 550_000, cost: 70_000, priceMul: 1.8, reachBelow: 0.13, // triple expansion
     },
     {
@@ -373,6 +374,27 @@ const steamUpgrades: UpgradeDef[] = withStages([
     name: 'The Coal Question',
     blurb: 'Mr Jevons, 1865: an inquiry into the probable exhaustion of our coal-mines. Chapter VII asks whether thriftier engines will save them.',
     cost: 1_600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }],
+  },
+  /*
+   * M3: The Proprietor's Day (shift 3, the second reveal). Visible once the household survey has arrived (feature
+   * 'survey', about hour 6) and three sessions are on file on each side of the Market's arrival, until it has been
+   * bought once in the save (the permanent 'proprietor' flag): it publishes the return. Text verbatim from
+   * proprietor.ts (the archive lane). About £40,000 of Steam money at hour 7 (design/paradigm-shifts.md).
+   */
+  {
+    id: 'steam.proprietorsDay', sector: 'steam', kind: 'research',
+    name: proprietorCard.name,
+    blurb: proprietorCard.blurb,
+    cost: 40_000,
+    when: {
+      all: [
+        { feature: 'survey' },
+        { returned: 'household', figure: 'sessionsBefore', op: '>=', value: 3 },
+        { returned: 'household', figure: 'sessionsAfter', op: '>=', value: 3 },
+        { not: { flag: 'proprietor' } },
+      ],
+    },
+    effects: [{ type: 'metaFlag', flag: 'proprietor' }],
   },
 ], { 'steam.condenser': [1, 'Watt engine'], 'steam.highPressure': [2, 'Cornish engine'], 'steam.turbine': [3, 'Turbine hall'] });
 

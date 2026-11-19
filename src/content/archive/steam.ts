@@ -631,4 +631,20 @@ export const steamArchive: ArchiveDef[] = [
       { cite: 'Durham Geodiversity Audit (Durham County Council, 2004), via the Scottish Geology Trust GeoGuide', url: 'https://geoguide.scottishgeologytrust.org/page/4073', grade: 'S' },
     ],
   },
+  /* Added by the content-mechanics lane (the seam ids are its data): the Murton sinking, checked 19 Nov 2026. */
+  {
+    id: 'arc.steam.seam.hutton',
+    subject: 'steam.seam.hutton',
+    title: 'Seam by seam at Murton, 1838–1843',
+    date: '1838–1843',
+    text:
+      'A shaft sunk through the Durham coal measures passes the seams in order, and the sinkers recorded each as it was ' +
+      'won. At Murton, east of Durham, the sinking began on 19 February 1838 and fought quicksand for years before the ' +
+      'colliery opened in April 1843. The shaft won the Five Quarter seam at 178 fathoms, the Main coal at 204 and the Low Main at 226, ' +
+      'and was sunk on to the Hutton seam at 246 fathoms, about 1,476 feet down. Every fathom below the first seam was ' +
+      'another fathom of water for the engines to lift, for as long as the pit was worked.',
+    sources: [
+      { cite: 'Newcastle University, co-curate: Murton Colliery (1843–1991)', url: 'https://co-curate.ncl.ac.uk/murton-colliery', grade: 'S' },
+    ],
+  },
 ];

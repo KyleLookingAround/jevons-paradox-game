@@ -2,7 +2,7 @@
  * Light (on screen an Industry): its SectorDef and applications, upgrades, levers and its own headlines.
  * Content is data (see README.md): every number and word here is read by the core and the UI; no game rules.
  */
-import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
+import type { HeadlineKey, LeverDef, LoadDef, SectorDef, UpgradeDef } from '../../types';
 import {
   eta, capCost, margin, reserve, sat, half, chain, fork, ladder, lever, withStages, decadeSequence, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST,
   SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, GREEN_VALUES, DIVIDEND,
@@ -34,7 +34,7 @@ const FIXED_SHARE = 0.6;
  */
 const LIGHT_CAPCOST = MECHANICS_LIVE ? 0.05 / loadTerm([DUSK], [1], FIXED_SHARE) : 0.05;
 /** The load curve (LoadDef). Exported for the lint, which checks it whether or not it is live. */
-export const LOAD = {
+export const LOAD: LoadDef = {
   profiles: { dusk: DUSK, evening: EVENING, night: NIGHT, day: DAY, flat: FLAT },
   defaultProfile: 'evening',
   fixedShare: FIXED_SHARE,
