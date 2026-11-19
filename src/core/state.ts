@@ -15,6 +15,7 @@ import type { SectorFlow } from './solver';
 import { budgetROf, sinkROf } from './steady';
 import { absorptionOf } from './effects';
 import { fin } from './util';
+import { featureOn } from './features';
 
 /* ------------------------------------------------------------------ */
 /* State construction                                                  */
@@ -35,7 +36,7 @@ export function freshMeta(content: Content): MetaState {
     hindsight: 0, hindsightEarned: 0, reckonings: 0, knowhow: {}, institutions: {}, achievements: {},
     steadySectors: {}, sectorsOpened: {}, totalSeconds: 0,
     slots: content.global?.startingSlots ?? 2, loadout: [], backfiredSectors: {},
-    charter: null, orders: defaultOrders(content), runs: [], eventSeq: 0, knowhowPeak: {}, peakPopulationEver: 1,
+    charter: null, orders: defaultOrders(content), runs: [], eventSeq: 0, knowhowPeak: {}, peakPopulationEver: 1, features: {},
   };
 }
 
@@ -73,6 +74,7 @@ export function historySample(state: GameState, content: Content, flows: Flows):
   const budget: Record<SectorId, number> = {};
   const sink: Record<SectorId, number> = {};
   let anyBudget = false, anySink = false;
+  const skies = featureOn(content, state.meta, 'clearSkies');
   for (const s of idx(content).ids) {
     const f = flows.sectors[s];
     const es = state.sectors[s];
@@ -80,7 +82,7 @@ export function historySample(state: GameState, content: Content, flows: Flows):
     sectors[s] = [fin(f.etaFold, 1), es.baseR > 0 ? fin(f.R / es.baseR, 1) : 1];
     const b = budgetROf(es, content.sectors[s], content, state.time);
     if (b !== null && es.baseR > 0) { budget[s] = fin(b / es.baseR); anyBudget = true; }
-    if (b !== null && es.baseR > 0 && !es.settled) {
+    if (b !== null && es.baseR > 0 && !es.settled && skies) {
       const def = content.sectors[s];
       const sr = sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, absorptionOf(def, modsOf(state, content)));
       if (sr !== null) { sink[s] = fin(sr / es.baseR); anySink = true; }

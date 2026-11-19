@@ -240,7 +240,11 @@ async function flow(base, tag0 = 'flow') {
       // Unseat one, seat another.
       await page.locator('.seat.full .btn').first().click(); await page.waitForTimeout(200);
       const lo1 = (await st()).meta.loadout.length;
-      await page.locator('.shop-item:has-text("Board of Trade") .seat-b').click(); await page.waitForTimeout(200);
+      // Founded at its only level, it has left the list for "Owned"; owned Institutions not seated are one tap away
+      // under the seats.
+      if (await page.locator('.shop-item:has-text("Board of Trade"):visible').count()) throw new Error('a fully founded Institution still in the list');
+      await page.locator('.seat-more > summary').click(); await page.waitForTimeout(150);
+      await page.locator('.seat-pick .own-row:has-text("Board of Trade") .seat-b').click(); await page.waitForTimeout(200);
       const lo2 = (await st()).meta.loadout;
       if (!lo2.includes('in.board') || lo2.length !== lo1 + 1) throw new Error('seat/unseat failed: ' + lo2.join(','));
       await shot('shop');

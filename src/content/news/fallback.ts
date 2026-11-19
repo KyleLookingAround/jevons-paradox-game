@@ -201,4 +201,6 @@ export const headlines: Record<HeadlineKey, string[]> = {
     'New charter sealed: {name}; the old one is framed in the hall',
     'The commission’s choice: {name}. The losing draft goes to the archive',
   ],
+  /* The unfolding: a feature's headline is its own intro line (Content.features); none are drawn from here. */
+  featureUnlocked: [],
 };

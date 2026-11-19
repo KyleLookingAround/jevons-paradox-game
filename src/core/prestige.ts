@@ -3,13 +3,16 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { RUN_HISTORY_MAX } from '../types';
-import type { Content, GameState, InstitutionDef, InstitutionView, KnowhowDef, KnowhowView, MetaState, OpeningRecord, RunSummary } from '../types';
+import type { Content, GameState, InstitutionDef, InstitutionView, KnowhowDef, KnowhowView, MetaState, NewsItem, OpeningRecord, RunSummary } from '../types';
 import { calendarYear } from './calendar';
 import { drawOffer } from './charters';
 import { idx } from './contentIndex';
 import { fireOneOffs, institutionMax, isSeated } from './effects';
 import type { OneOffs } from './effects';
 import { emit } from './events';
+import type { EvDraft } from './events';
+import { featureOn } from './features';
+import { dueFeature, unlockFeature } from './unfold';
 import { computeFlows } from './flows';
 import { headline, withNews } from './headlines';
 import { hindsightTerms } from './hindsight';
@@ -83,11 +86,17 @@ export function reckon(state: GameState, content: Content): GameState {
     charter: null,
   };
   const nextSeed = (Math.imul(state.seed >>> 0, 1103515245) + 12345) >>> 0;
-  const s0 = createState(content, meta, nextSeed);
-  const s = { ...s0, charterOffer: drawOffer(s0, content, charter ?? undefined) };
+  let s0 = createState(content, meta, nextSeed);
+  // the unfolding: a feature that waits on a Reckoning arrives with the new run (before the Charter draw it may open)
+  const fItems: NewsItem[] = [];
+  const fEv: EvDraft[] = [];
+  const due = dueFeature(s0, content);
+  if (due) s0 = { ...s0, meta: unlockFeature(s0.meta, content, due, 0, calendarYear(s0, content), fItems, fEv) };
+  const offer = featureOn(content, s0.meta, 'charters') ? drawOffer(s0, content, charter ?? undefined) : [];
+  const s = { ...s0, charterOffer: offer };
   const year = calendarYear(s, content);
-  const out = { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector)]) };
-  return emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }], 0, year);
+  const out = { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector), ...fItems]) };
+  return emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }, ...fEv], 0, year);
 }
 
 function knowhowGate(meta: MetaState, content: Content, def: KnowhowDef): { req: boolean; excludedBy: string | null } {

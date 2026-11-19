@@ -36,8 +36,8 @@ export interface Prefs {
   /** Folding sections the player has opened (true) or closed (false), by key: the shop's "Owned" parts, locked rows,
    *  the unseated Institutions; elsewhere the owned levers and the earned achievements. Absent = the section's default. */
   open: Record<string, boolean>;
-  /** Unlocked features (Derived.features) the player has already been shown: the "New" mark clears once seen. */
-  seenFeatures: string[];
+  /** Features (Derived.features) that arrived in play and whose "New" mark the player has not looked at yet. */
+  newMarks: string[];
 }
 
 export const PREFS_KEY = 'rebound.ui.prefs';
@@ -45,13 +45,13 @@ export const TEXT_SCALE = [1, 1.15, 1.3] as const;
 
 const DEFAULTS: Prefs = {
   notation: 'suffix', textSize: 0, motion: 'system', detail: 'auto', lastExport: 0, persist: null, iosHintDismissed: false, passed: { run: '', ids: {} },
-  sound: false, volumes: { master: 0.8, world: 0.7, interface: 0.7 }, calm: 'system', survey: true, awaySeen: [], open: {}, seenFeatures: [],
+  sound: false, volumes: { master: 0.8, world: 0.7, interface: 0.7 }, calm: 'system', survey: true, awaySeen: [], open: {}, newMarks: [],
 };
 
 let prefs: Prefs = load();
 
 function load(): Prefs {
-  const p: Prefs = { ...DEFAULTS, passed: { run: '', ids: {} }, volumes: { ...DEFAULTS.volumes }, awaySeen: [], open: {}, seenFeatures: [] };
+  const p: Prefs = { ...DEFAULTS, passed: { run: '', ids: {} }, volumes: { ...DEFAULTS.volumes }, awaySeen: [], open: {}, newMarks: [] };
   try {
     const raw = lsGet(PREFS_KEY);
     const o = raw ? JSON.parse(raw) : null;
@@ -81,7 +81,7 @@ function load(): Prefs {
       if (o.open && typeof o.open === 'object') {
         for (const k of Object.keys(o.open).slice(0, 64)) if (typeof o.open[k] === 'boolean') p.open[k] = o.open[k];
       }
-      if (Array.isArray(o.seenFeatures)) p.seenFeatures = o.seenFeatures.filter((x: unknown) => typeof x === 'string').slice(0, 64);
+      if (Array.isArray(o.newMarks)) p.newMarks = o.newMarks.filter((x: unknown) => typeof x === 'string').slice(0, 16);
     }
   } catch { /* unreadable prefs: defaults */ }
   return p;

@@ -6,6 +6,7 @@
 import type { CommonsDef, Content, GameState, SectorId } from '../types';
 import { DEFAULT_COMMONS_FROM_RECKONING, DEFAULT_COMMONS_FUND_SHARE } from './constants';
 import { fin, clamp } from './util';
+import { featureOn } from './features';
 
 export function commonsCfg(content: Content): { from: number; fundShare: number } {
   const c = content.global?.commons;
@@ -14,7 +15,8 @@ export function commonsCfg(content: Content): { from: number; fundShare: number 
     fundShare: clamp(fin(c?.fundShare ?? DEFAULT_COMMONS_FUND_SHARE, DEFAULT_COMMONS_FUND_SHARE), 0, 1),
   };
 }
-export const commonsOpen = (state: GameState, content: Content): boolean => state.meta.reckonings >= commonsCfg(content).from;
+export const commonsOpen = (state: GameState, content: Content): boolean =>
+  state.meta.reckonings >= commonsCfg(content).from && featureOn(content, state.meta, 'commons');
 export const commonsMax = (def: CommonsDef): number => Math.max(1, Math.floor(fin(def.maxLevel ?? 1, 1)));
 
 /** max × (1 − exp(−L × perLevel / max)) × yieldMul: the first level gives about perLevel, never above max. */

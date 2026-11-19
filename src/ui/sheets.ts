@@ -3,7 +3,7 @@
 // stays open.
 import type { Ctx, FormulaKind } from './ctx';
 import { sectorDef, sd, sectorIds, ageOfSector, ageDef, reckoningOffered } from './ctx';
-import type { HindsightTerms, InstitutionView, KnowhowView, ReckoningCause, SectorId } from '../types';
+import type { FeatureId, HindsightTerms, InstitutionView, KnowhowView, ReckoningCause, SectorId } from '../types';
 import { STEADY_STATE_YEARS } from '../types';
 import { h, svg, setText, setAttr, setStyle, show, cls, syncChildren } from './dom';
 import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money, unitOne } from './fmt';
@@ -205,6 +205,8 @@ function termsLedger(ctx: Ctx, get: () => HindsightTerms | null | undefined): { 
     ['backfire', 'First backfire'], ['sectorsReached', 'Industries reached'], ['steady', 'Steady State'], ['settled', 'Industries settled'],
   ];
   const cells = rows.map(([k, l]) => ({ k, row: h('div', { class: 'tl-row' }), l, v: h('span', { class: 'tl-v num' }), sub: h('span', { class: 'tl-sub num' }) }));
+  // A term the player has not met yet is not shown (the unfolding: Derived.features).
+  const needs: Partial<Record<keyof HindsightTerms, FeatureId>> = { budget: 'budget', steady: 'steadyState', settled: 'settlement' };
   for (const c of cells) c.row.append(h('span', { class: 'tl-l' }, c.l, c.sub), c.v);
   const tot = h('span', { class: 'tl-v num' });
   // Shown only after time away: Hindsight is entered at a reduced rate in the proprietor's absence (HindsightTerms.withheld).
@@ -220,6 +222,8 @@ function termsLedger(ctx: Ctx, get: () => HindsightTerms | null | undefined): { 
       if (!t) return;
       for (const c of cells) {
         const v = num(t[c.k]);
+        const f = needs[c.k];
+        show(c.row, !f || !!ctx.d?.features?.[f] || v > 0);
         setText(c.v, v > 0 ? `+${fmt(Math.round(v * 10) / 10)}` : '—');
         cls(c.row, 'zero', !(v > 0));
       }
@@ -564,6 +568,8 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
       cls(card, 'seated', !!v?.seated);
       cls(card, 'compact', !v?.requirementsMet && level === 0);
       cls(card, 'afford', !!v?.affordable && !!v?.requirementsMet && level < max);
+      // Out of reach for now: the name, the next level's effect and the price; the blurb waits until it is affordable.
+      cls(card, 'later', !!v?.requirementsMet && !v?.affordable && level < max);
     });
   }
   let instKey = '';
@@ -756,7 +762,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
             const res = lower(def?.resource.name ?? 'resource');
             const extra: string[] = [];
             if (r.unburnt != null && Number.isFinite(r.unburnt)) extra.push(`${pct(r.unburnt, false)} left unburnt`);
-            if (r.decades != null) extra.push(`${fmt(r.decades)} decade${r.decades === 1 ? '' : 's'} in budget`);
+            if (r.decades != null && (num(r.decades) > 0 || ctx.d?.features?.budget)) extra.push(`${fmt(r.decades)} decade${r.decades === 1 ? '' : 's'} in budget`);
             return h('div', { class: 'acct-era' },
               h('h3', { text: `${def?.name ?? id}` }),
               h('div', { class: 'acct-row eff' }, h('span', { class: 'acct-l', text: 'Efficiency' }),
@@ -926,19 +932,35 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
       h('div', { class: 'setting survey' }, svTog, svTxt)));
 
     // Achievements
+    // Those still to earn first; the ones earned fold away at the end ("Earned, n"), as owned things do in the shop.
     const achList = h('ul', { class: 'ach' });
+    const achGot = foldSection('menu.achEarned', 'own ach-own');
+    const achGotList = h('ul', { class: 'ach' });
+    achGot.body.append(achGotList);
     const achs = ctx.content.achievements || [];
     const achCount = h('span', { class: 'num muted' });
-    b.append(h('section', { class: 'm-sec' }, h('h3', null, 'Achievements ', achCount), achList));
+    b.append(h('section', { class: 'm-sec' }, h('h3', null, 'Achievements ', achCount), achList, achGot.el));
+    const achLis: HTMLElement[] = [];
+    let achKey = '';
     const achRows = achs.map((a) => {
       const n = h('span', { class: 'ach-n' }), d = h('span', { class: 'ach-d' });
-      const li = h('li', null, n, d); achList.append(li);
+      const li = h('li', null, n, d); achLis.push(li);
       return () => {
         const got = !!ctx.state.meta?.achievements?.[a.id];
         cls(li, 'got', got);
         setText(n, got || !a.hidden ? a.name : '???');
         setText(d, got || !a.hidden ? a.blurb : 'Not yet.');
       };
+    });
+    achRows.push(() => {
+      const got = achs.map((a) => !!ctx.state.meta?.achievements?.[a.id]);
+      const k = got.map((g) => (g ? 1 : 0)).join('');
+      if (k === achKey) return;
+      achKey = k;
+      syncChildren(achList, achLis.filter((_, i) => !got[i]));
+      syncChildren(achGotList, achLis.filter((_, i) => got[i]));
+      setText(achGot.sum, `Earned, ${got.filter(Boolean).length}`);
+      show(achGot.el, got.some(Boolean));
     });
 
     // How it works. The budget and Jevons' sentence wait for the reveal: before it, they would answer the question the
@@ -1049,7 +1071,12 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
     return () => {
       const s = ctx.state, m = s.meta;
       const revealed = !!s.flags?.revealed;
-      show(howBudget, revealed);
+      // The budget is explained once it has arrived (the unfolding), Steady State once that has.
+      const f = ctx.d?.features;
+      show(howBudget, revealed && !!f?.budget);
+      setText(howBudget, f?.steadyState
+        ? 'Draw a budget line for an Industry and hold its use under it, with wellbeing at the target: every ten years of that is a decade in the ledger, and fifty under a clear sky is Steady State.'
+        : 'Draw a budget line for an Industry and hold its use under it: every ten years of that is a decade in the ledger.');
       show(howQuote, revealed);
       show(shopBtn, num(m?.reckonings) >= 1);
       show(rkBtn, reckoningOffered(ctx) && !ctx.d?.pendingReckoning);
@@ -1100,15 +1127,15 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
       ['Year', () => { const a = ageDef(ctx.content, d()?.age); return `${Math.floor(num(d()?.year, 1780))}${a ? ` · ${a.name}` : ''}`; }],
       ['Capital', () => money(s().capital)],
       ['Income', () => `${money(d()?.incomePerSec)}/s`],
-      ['Population', () => `×${fmt(s().population)} (peak ×${fmt(s().peakPopulation)})`],
+      ['Population', () => (ctx.d?.features?.population ? `×${fmt(s().population)} (peak ×${fmt(s().peakPopulation)})` : null)],
       ['Wellbeing', () => `${fmt(Math.floor(num(d()?.wellbeing)))} (peak ${fmt(Math.floor(num(s().run?.peakWellbeing)))})`],
       ['Wellbeing-years', () => fmt(Math.round(num(s().run?.wellbeingYears)))],
       ['Years at the target', () => fmt(Math.floor(num(s().run?.yearsAtTarget)))],
       ['Sold by hand', () => fmt(num(s().run?.clicks))],
       ['Improvements bought', () => fmt(sum(s().upgrades))],
       ['Uses founded', () => fmt(open().reduce((a, id) => a + Object.values(s().sectors[id]?.apps || {}).filter((x) => x?.founded).length, 0))],
-      ['Decades within budget', () => (revealed() ? fmt(num(s().run?.budgetDecades)) : null)],
-      ['Years decoupled', () => (revealed() ? fmt(Math.floor(num(s().run?.decoupledYears))) : null)],
+      ['Decades within budget', () => (revealed() && ctx.d?.features?.budget ? fmt(num(s().run?.budgetDecades)) : null)],
+      ['Years decoupled', () => (revealed() && ctx.d?.features?.budget ? fmt(Math.floor(num(s().run?.decoupledYears))) : null)],
       ['Hindsight on offer', () => (reckoningOffered(ctx) ? fmt(Math.floor(num(d()?.hindsightIfReckonNow))) : null)],
     ]));
 
@@ -1138,7 +1165,7 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
           [def?.resourceKind === 'flow' ? 'Capacity spare' : 'Left in the ground', () => pct(num(e()?.reserveFraction), false)],
           ['Crises', () => fmt(num(st()?.crisesFired))],
           ['Backfired', () => (revealed() ? (st()?.backfired ? `yes, ${res} rose with thrift` : 'not yet') : null)],
-          ['Decades in the ledger', () => (revealed() ? fmt((st()?.decadesWithin || []).length) : null)],
+          ['Decades in the ledger', () => (revealed() && ctx.d?.features?.budget ? fmt((st()?.decadesWithin || []).length) : null)],
           ['Open for', () => dur(num(st()?.openFor))],
         ], undefined, local);
         perHost.append(sec);
@@ -1153,7 +1180,7 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
       ['Hindsight banked', () => (ran() ? fmt(Math.floor(num(m()?.hindsight))) : null)],
       ['Industries reached', () => `${ids().filter((id) => m()?.sectorsOpened?.[id] || s().sectors?.[id]?.open).length} of ${ids().length}`],
       ['Industries that backfired', () => (revealed() || ran() ? fmt(Object.keys(m()?.backfiredSectors || {}).length) : null)],
-      ['Industries at Steady State', () => (ran() || revealed() ? fmt(Object.keys(m()?.steadySectors || {}).length) : null)],
+      ['Industries at Steady State', () => ((ran() || revealed()) && ctx.d?.features?.steadyState ? fmt(Object.keys(m()?.steadySectors || {}).length) : null)],
       ['Know-how learnt', () => (ran() ? `${Object.values(m()?.knowhow || {}).filter((x) => num(x) > 0).length} of ${(ctx.content.knowhow || []).length}` : null)],
       ['Institutions founded', () => (ran() ? `${Object.values(m()?.institutions || {}).filter((x) => num(x) > 0).length} of ${(ctx.content.institutions || []).length}` : null)],
       ['Seats in use', () => (ran() ? `${num(d()?.slots?.used)} of ${num(d()?.slots?.total)}` : null)],
@@ -1188,7 +1215,7 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
         const ch = r.charter ? ctx.content.charters?.find((c) => c.id === r.charter)?.name : undefined;
         const bits = [
           ch ? `under ${ch}` : null,
-          dec ? `${fmt(dec)} decade${dec === 1 ? '' : 's'}${lean ? ` (${fmt(lean)} lean, ${fmt(dec - lean)} full)` : ''}` : 'no decades',
+          dec ? `${fmt(dec)} decade${dec === 1 ? '' : 's'}${lean && ctx.d?.features?.clearSkies ? ` (${fmt(lean)} lean, ${fmt(dec - lean)} full)` : ''}` : ctx.d?.features?.budget ? 'no decades' : null,
           settled ? `${fmt(settled)} settled` : null,
           r.decisions != null ? `${fmt(num(r.decisions))} decisions${num(r.automated) ? `, ${fmt(num(r.automated))} by standing orders` : ''}` : null,
         ].filter(Boolean).join(' · ');

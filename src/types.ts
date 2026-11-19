@@ -240,8 +240,8 @@ export type FeatureId = typeof FEATURE_IDS[number];
 /**
  * One feature's arrival (Content.features[id]). It unlocks on the first unlock check at which `when` holds and at least
  * GlobalParams.featureGapSeconds of play (meta.totalSeconds) have passed since the last feature unlocked; at most one
- * feature unlocks per check, the first due in FEATURE_IDS order. Unlock checks: once a real second in tick() (reading
- * the state at the start of the step, as achievements do; never inside fastForward, so nothing arrives unseen while
+ * feature unlocks per check, the first due in FEATURE_IDS order. Unlock checks: in tick(), on each step that crosses a
+ * multiple of 5 s of run time (reading the state at the start of the step, as achievements do; never inside fastForward, so nothing arrives unseen while
  * away: it arrives seconds after the player returns), and in reckon() on the new run (for features that wait on a
  * Reckoning). Once unlocked a feature stays unlocked for good, across Reckonings (MetaState.features): a lesson learnt
  * stays learnt. Unlocking records meta.features[id] = meta.totalSeconds, adds a news item whose text is `intro` (key

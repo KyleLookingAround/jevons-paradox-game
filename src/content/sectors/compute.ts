@@ -235,6 +235,7 @@ const computeLevers: LeverDef[] = [
   /* ---- Compute ---- */
   lever({
     id: 'compute.cap', sector: 'compute', kind: 'cap',
+    requires: ['budget'],
     name: 'Grid allocation',
     blurb: 'Data centres get the connection they are given, not the one they ask for, and a little less each decade.',
     catch: `Too tight and the server farms reappear in a friendlier jurisdiction. ${DIVIDEND}`,
@@ -252,6 +253,7 @@ const computeLevers: LeverDef[] = [
   }),
   lever({
     id: 'compute.circularity', sector: 'compute', kind: 'circularity',
+    requires: ['moreLevers'],
     name: 'Chip recovery',
     blurb: 'Strip the gold, the gallium and the cobalt back out of last year’s servers.',
     catch: 'Slow and costly. It stretches the supply of chips and does nothing for the power bill.',
@@ -259,6 +261,7 @@ const computeLevers: LeverDef[] = [
   }),
   lever({
     id: 'compute.substitution', sector: 'compute', kind: 'substitution',
+    requires: ['moreLevers'],
     name: 'Solar & storage',
     blurb: 'Panels on every warehouse roof, batteries in the car park.',
     catch: 'Capped by how much sun falls on the roof, which does not double every two years.',

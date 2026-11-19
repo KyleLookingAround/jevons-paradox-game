@@ -1,7 +1,8 @@
 // Rebound: the game loop, persistence and the wiring between the model and the UI.
 // Wall-clock time lives only here; the model only ever sees dt.
 import type { CommonsView, Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorId, UpgradeView } from '../types';
-import { MAX_TICK_SECONDS } from '../types';
+import { MAX_TICK_SECONDS, FEATURE_IDS } from '../types';
+import type { FeatureId } from '../types';
 import type * as Devmock from './devmock';
 import type { Ctx } from './ctx';
 import { sectorIds } from './ctx';
@@ -410,6 +411,7 @@ function emptyDerived(): Derived {
       civilService: { available: false, on: false, levers: {} }, treasury: { available: false, on: false, keepSeconds: 0, projects: [] }, nextTickIn: 0,
     },
     respec: { allowed: false, refund: 0, refundByTree: {} },
+    features: Object.fromEntries(FEATURE_IDS.map((f) => [f, false])) as Record<FeatureId, boolean>,
   };
 }
 

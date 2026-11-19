@@ -313,7 +313,8 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
   const status = h('p', { class: 'bud-status num' });
   const statusSub = h('p', { class: 'bud-sub muted' });
   const line = h('p', { class: 'bud-line num muted' });
-  const draw = h('button', { class: 'btn bud-draw', type: 'button', onclick: () => openPaces() });
+  // Before the choice of pace has arrived, a line is drawn at once at the first (default) pace.
+  const draw = h('button', { class: 'btn bud-draw', type: 'button', onclick: () => (ctx.d?.features?.budgetPace ? openPaces() : drawPlain()) });
   const settleBtn = h('button', { class: 'btn primary bud-settle', type: 'button', hidden: true, onclick: () => hooks.confirmSettle(ctx.sector, () => {
     if (!ctx.act('settle', (m, s, c) => m.settle(s, c, ctx.sector))) nope(settleBtn);
   }) });
@@ -388,6 +389,9 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     setText(paceWarn, redraw ? 'Redrawing resets both streaks; decades are kept.' : 'The line is drawn at today’s use and falls from there.');
     cls(paceWarn, 'warn', redraw);
   }
+  function drawPlain(): void {
+    if (!ctx.act('drawBudget', (m, s, c) => m.drawBudget(s, c, ctx.sector))) nope(draw);
+  }
   function doDraw(): void {
     const pace = paceSel || undefined;
     if (ctx.act('drawBudget', (m, s, c) => m.drawBudget(s, c, ctx.sector, pace))) closePaces(false);
@@ -395,7 +399,9 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
   }
 
   function update(): void {
-    const revealed = !!ctx.state.flags?.revealed;
+    // The unfolding: the panel exists once budgets have arrived (Derived.features); its parts as each arrives.
+    const f = ctx.d?.features;
+    const revealed = !!ctx.state.flags?.revealed && !!f?.budget;
     show(el, revealed);
     if (!revealed) return;
     if (sector !== ctx.sector) { sector = ctx.sector; closePaces(false); show(unsetBox, false); show(unsetAsk, true); }
@@ -468,19 +474,21 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     setText(ssTxt, cy >= STEADY_STATE_YEARS ? `Steady State: ${STEADY_STATE_YEARS} years of clear skies served` : `Clear skies: ${cy} of ${STEADY_STATE_YEARS} years to Steady State`);
     setFill(ssFill, cy / STEADY_STATE_YEARS, 100);
     cls(ss, 'on', !!e?.sinkHeld);
-    show(sky, has || cpf != null);
+    show(ss, !!f?.steadyState);
+    show(sky, (has || cpf != null) && !!f?.clearSkies);
 
     const decs = st?.decadesWithin ?? [];
     const lean = st?.decadesLean ?? [];
-    const lk = ctx.sector + ':' + decs.join(',') + ':' + lean.join(',');
+    const q = !!f?.clearSkies; // lean against full arrives with clear skies
+    const lk = ctx.sector + ':' + decs.join(',') + ':' + lean.join(',') + ':' + q;
     if (lk !== ledgerKey) {
       ledgerKey = lk;
       ledger.replaceChildren(...(decs.length
         ? decs.map((y, i) => h('li', { class: 'num' + (lean[i] ? ' lean' : ' full') }, `${Math.floor(num(y) / 10) * 10}s `,
-          h('span', { class: 'tick', text: '✓', 'aria-label': 'within budget' }), h('span', { class: 'dk', text: lean[i] ? ' lean' : ' full' })))
+          h('span', { class: 'tick', text: '✓', 'aria-label': 'within budget' }), q ? h('span', { class: 'dk', text: lean[i] ? ' lean' : ' full' }) : null))
         : [h('li', { class: 'none', text: 'No decade within budget yet.' })]));
     }
-    show(ledgerNote, has);
+    show(ledgerNote, has && q);
   }
   return { el, update };
 }
@@ -554,7 +562,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
   const el = h('article', { class: 'lever' },
     h('header', { class: 'lev-h' }, h('h3', { class: 'lev-name', text: def.name }), h('span', { class: 'pip-wrap' }, pips, pipMore)),
     h('p', { class: 'lev-blurb', text: def.blurb }),
-    h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), def.catch),
+    h('p', { class: 'lev-catch', title: def.catch }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), def.catch),
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk, seeIt),
     levy, noLineEl, next, rec,
     h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
@@ -588,6 +596,9 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     show(next, !!next.textContent);
     lowerBtn.disabled = lv <= 0;
     cls(el, 'active', lv > 0);
+    // At its last level the card has nothing more to offer but Lower: its blurb and catch fold away (the card's title
+    // keeps them).
+    cls(el, 'maxed', lv > 0 && !v.next);
     show(seeIt, lv > 0);
     // A cap in force with no budget line yet does nothing until the line is drawn (standingDrawYears, or a Tighten).
     const noLine = def.kind === 'cap' && lv > 0 && !ctx.state.sectors?.[def.sector]?.budget;
@@ -641,16 +652,18 @@ export function buildLevers(ctx: Ctx): Comp {
     show(el, anyVisible);
     if (!anyVisible) return;
     const vis = all.filter((v) => v.visible && v.def.sector === ctx.sector);
-    const k = vis.map((v) => v.def.id).join(',');
+    // A card is built for its recycle choices; when they arrive (the unfolding: 'moreLevers') it is built again.
+    const ck = (v: LeverView) => `${v.def.id}:${(v.recycleChoices || []).length}`;
+    const k = vis.map(ck).join(',');
     if (k !== key) {
       key = k;
       syncChildren(list, vis.map((v) => {
-        let c = cards.get(v.def.id);
-        if (!c) { c = makeLevCard(ctx, v); cards.set(v.def.id, c); }
+        let c = cards.get(ck(v));
+        if (!c) { c = makeLevCard(ctx, v); cards.set(ck(v), c); }
         return c.el;
       }));
     }
-    for (const v of vis) cards.get(v.def.id)?.update(v);
+    for (const v of vis) cards.get(ck(v))?.update(v);
     setText(bal, `Mandate ${fmt(Math.floor(num(ctx.state.mandate)))}`);
     show(empty, vis.length === 0);
     setText(empty, `No levers to pull in ${sectorDef(ctx)?.name ?? 'this Industry'} yet.`);

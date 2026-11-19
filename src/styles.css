@@ -1232,11 +1232,28 @@ html[data-look='agentic'] .stamped::after { transform: none; color: var(--good);
 .kh-fork:has(.compact) { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .kh-fork:has(.compact) .fork-or { display: none; }
 .shop-item.compact { padding: 6px 0; }
+.shop-item.later .shop-blurb { display: none; }
+/* Things bought out elsewhere, kept short: a lever at its last level, a Commons project at its last level. */
+.lever.maxed .lev-blurb, .lever.maxed .lev-catch, .lever.maxed .lev-next { display: none; }
+.cm.maxed .up-blurb, .cm.maxed .up-eff { display: none; }
+.ach-own .ach { margin-top: 4px; }
 .shop-item.compact .shop-blurb, .shop-item.compact .shop-eff, .shop-item.compact .m-row { display: none; }
 .kh-node.afford { border-width: 1.5px; border-color: var(--ink); }
 .shop-seats { border-top: 3px double var(--ink); padding-top: 8px; margin-bottom: 14px; }
 .seats-t { font-family: var(--display); font-weight: var(--display-wt); font-stretch: var(--display-stretch); text-transform: var(--display-case); font-size: calc(20px * var(--ts)); }
 .shop-sheet .charters { margin-bottom: 14px; }
+.shop-seats .seat { min-height: 44px; flex-direction: row; align-items: center; gap: 6px; }
+.shop-seats .seat-n { flex: 1 1 auto; min-width: 0; }
+.shop-seats .seat .btn { min-height: 32px; padding: 2px 8px; }
+
+/* The unfolding: a "New" mark on what a feature has just opened (unfold.ts); it clears once looked at. */
+.new-mark { display: inline-block; margin-left: 8px; padding: 1px 6px; font-family: var(--labelf); font-size: calc(10.5px * var(--ts));
+  letter-spacing: .1em; text-transform: uppercase; color: var(--bg-solid); background: var(--accent); border-radius: 2px;
+  vertical-align: middle; cursor: pointer; animation: new-in .6s ease-out; }
+.sky-box > .new-mark, .ss > .new-mark, section.divs > .new-mark { position: relative; float: right; margin: 0 0 4px 8px; }
+@keyframes new-in { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .new-mark { animation: none; } }
+html[data-motion='reduce'] .new-mark { animation: none; }
 
 /* Run history in the statistics. */
 .runs { display: flex; flex-direction: column; gap: 6px; }

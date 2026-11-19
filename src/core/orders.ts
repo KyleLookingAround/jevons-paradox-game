@@ -21,6 +21,7 @@ import { buyUpgradeAs, foundAppAs, upgradeCost, upgradeExcludedBy, upgradeMax, u
 import { recordAutomated } from './record';
 import { defaultOrders, isFreshRun } from './state';
 import { clamp, fin, isObj } from './util';
+import { featureOn } from './features';
 
 /* ------------------------------------------------------------------ */
 /* Ticks and availability                                              */
@@ -41,7 +42,7 @@ export function ordersOf(state: GameState, content: Content): OrdersState {
 }
 export function marketAvailable(state: GameState, content: Content, mods: Mods): boolean {
   const from = content.global?.orders?.marketFromReckoning ?? DEFAULT_MARKET_FROM_RECKONING;
-  return state.meta.reckonings >= from || mods.orderUnlock.has('market');
+  return (state.meta.reckonings >= from || mods.orderUnlock.has('market')) && featureOn(content, state.meta, 'market');
 }
 
 /* ------------------------------------------------------------------ */

@@ -257,6 +257,7 @@ const codeLevers: LeverDef[] = [
   }),
   lever({
     id: 'code.usageCap', sector: 'code', kind: 'cap',
+    requires: ['budget'],
     name: 'Usage caps',
     blurb: 'So many hours of human attention a week for the agents’ output, fewer each decade, and not one more.',
     catch: `Every rival is lifting its limits. Customers notice whose are lower. ${DIVIDEND}`,

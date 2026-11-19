@@ -20,7 +20,7 @@ const FALLBACK: Record<HeadlineKey, string> = {
   ageBegins: '{age} begins', budgetDrawn: 'A budget for {resource}', decade: 'A decade within budget for {sector}',
   budgetBroken: '{sector} breaks its budget',
   clearSkies: 'Clear skies over {sector}', settled: '{sector} settles', unsettled: '{sector} unsettled',
-  commonsBuilt: '{name} opens', charter: 'A charter: {name}',
+  commonsBuilt: '{name} opens', charter: 'A charter: {name}', featureUnlocked: 'Something new',
 };
 
 /** Common-noun placeholders: lower-cased mid-sentence (see Content.headlines). */

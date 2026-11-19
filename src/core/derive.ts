@@ -19,6 +19,7 @@ import { stageOf } from './purchases';
 import { canSettle } from './settlement';
 import { standingDrawYearsOf } from './steady';
 import { nextSectorsOf } from './unlocks';
+import { featuresView } from './features';
 import { fin, clamp } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -32,6 +33,7 @@ export function derive(state: GameState, content: Content): Derived {
   const levs = sectorLevers(state, content);
   const mods = modsOf(state, content);
   const sectors: Record<SectorId, SectorDerived> = {};
+  const features = featuresView(state, content);
   for (const s of ix.ids) {
     const f = fl.sectors[s];
     const es = state.sectors[s];
@@ -72,8 +74,8 @@ export function derive(state: GameState, content: Content): Derived {
       trendR: es.trendR, budgetR, withinBudget,
       decoupling: sv.decoupling,
       steadyYears: es.steadyYears, budgetDecades: es.decadesWithin.length, wellbeingShare: f.wellbeingShare, apps,
-      decadeWellbeing: sv.decadeW, leanDecades: lean, pace: es.budget?.pace ?? null, clearP: sv.clearP, clear: sv.clear,
-      sinkR: sv.sinkR, clearYears: es.clearYears ?? 0, sinkHeld: sv.sinkHeld, settled: !!es.settled,
+      decadeWellbeing: sv.decadeW, leanDecades: lean, pace: es.budget?.pace ?? null, clearP: features.clearSkies ? sv.clearP : null, clear: sv.clear,
+      sinkR: features.clearSkies ? sv.sinkR : null, clearYears: es.clearYears ?? 0, sinkHeld: sv.sinkHeld, settled: !!es.settled,
       canSettle: canSettle(state, content, s), settleExcess: sd?.excess ?? 0, settleDefence: sd?.defence ?? 0,
       stage: stageOf(state, content, s),
       standingDrawIn: Number.isFinite(lev.capFrac) && !es.budget
@@ -106,5 +108,6 @@ export function derive(state: GameState, content: Content): Derived {
     commons: { available: commonsOpen(state, content), fund: state.commons?.fund ?? 0, wellbeing: fl.commonsWellbeing },
     orders: ordersView(state, content),
     respec: { allowed: fresh && respecAny, refund: Object.values(refundByTree).reduce((a, b) => a + b, 0), refundByTree },
+    features,
   };
 }

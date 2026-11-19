@@ -255,6 +255,7 @@ const lightLevers: LeverDef[] = [
   }),
   lever({
     id: 'light.cap', sector: 'light', kind: 'cap',
+    requires: ['budget'],
     name: 'Gas allowance',
     blurb: 'So many therms a year for the whole town, a little fewer each decade, and permits to trade the rest.',
     catch: `Drafted from the gas companies’ own forecasts, it will not bite until it is tightened. ${DIVIDEND}`,
@@ -272,6 +273,7 @@ const lightLevers: LeverDef[] = [
   }),
   lever({
     id: 'light.greenSpending', sector: 'light', kind: 'greenSpending',
+    requires: ['moreLevers'],
     name: 'Public parks',
     blurb: 'Give the money saved on lighting somewhere to go that is not a furnace.',
     catch: 'Only blunts the spill into older trades; it does nothing for the lamps.',
@@ -279,6 +281,7 @@ const lightLevers: LeverDef[] = [
   }),
   lever({
     id: 'light.substitution', sector: 'light', kind: 'substitution',
+    requires: ['moreLevers'],
     name: 'Hydro schemes',
     blurb: 'Dam a Highland glen and send the current south.',
     catch: 'There are only so many glens, and each one costs a fortune.',

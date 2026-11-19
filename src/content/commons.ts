@@ -40,7 +40,8 @@ export const commons: CommonsDef[] = [
     blurb: 'The Act of 1846 lets a borough build them out of the rates. Hot water for the whole street, heated by the ton.',
     cost: 24_000, mandateCost: 60,
     wellbeing: { max: 1.5, perLevel: 3 },
-    intensity: { sector: 'steam', perLevel: 50 },
+    /* Unfolding balance: 55 (not 50), so the Commons add at least 2% to Steam's demand at the run-4 end state. */
+    intensity: { sector: 'steam', perLevel: 55 },
   },
   {
     id: 'commons.park', name: 'People’s park', icon: 'park', sector: 'steam',

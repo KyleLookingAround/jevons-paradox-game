@@ -8,26 +8,38 @@ import { FEATURE_IDS } from '../types';
 import type { Content, FeatureId, GameState, MetaState, NewsItem } from '../types';
 import { evalCond } from './conditions';
 import type { EvDraft } from './events';
-import { anyLocked } from './features';
 import { fin } from './util';
 
-/** The feature due now for `state` (conditions read `state`), or null. */
-export function dueFeature(state: GameState, content: Content): FeatureId | null {
-  const meta = state.meta;
-  if (!anyLocked(content, meta)) return null;
-  const f = content.features!;
+/** Seconds of run time between unlock checks in the step (see FeatureDef). */
+export const FEATURE_CHECK_EVERY = 5;
+
+const lockedCache = new WeakMap<object, { content: Content; locked: FeatureId[]; last: number }>();
+const NONE = {};
+/** The features still locked, in FEATURE_IDS order, and when the last one unlocked; cached per meta.features object. */
+function lockedOf(meta: MetaState, content: Content): { locked: FeatureId[]; last: number } {
+  const key = meta.features ?? NONE;
+  const hit = lockedCache.get(key);
+  if (hit && hit.content === content) return hit;
   const got = meta.features ?? {};
+  const f = content.features ?? {};
+  let last = -Infinity;
+  for (const k in got) { const v = got[k as FeatureId]; if (typeof v === 'number' && v > last) last = v; }
+  const out = { content, locked: FEATURE_IDS.filter((id) => !!f[id] && got[id] === undefined), last };
+  lockedCache.set(key, out);
+  return out;
+}
+
+/** The feature due now for `state` (conditions read `state`), or null. Cheap when nothing is locked or the gap since
+ *  the last arrival has not passed. */
+export function dueFeature(state: GameState, content: Content): FeatureId | null {
+  if (!content.features) return null;
+  const meta = state.meta;
+  const { locked, last } = lockedOf(meta, content);
+  if (!locked.length) return null;
   const gap = fin(content.global?.featureGapSeconds ?? 0);
-  if (gap > 0) {
-    let last = -Infinity;
-    for (const k in got) { const v = got[k as FeatureId]; if (typeof v === 'number' && v > last) last = v; }
-    if (meta.totalSeconds - last < gap) return null;
-  }
-  for (const id of FEATURE_IDS) {
-    const d = f[id];
-    if (!d || got[id] !== undefined) continue;
-    if (evalCond(state, content, d.when)) return id;
-  }
+  if (gap > 0 && meta.totalSeconds - last < gap) return null;
+  const f = content.features;
+  for (const id of locked) if (evalCond(state, content, f[id]!.when)) return id;
   return null;
 }
 

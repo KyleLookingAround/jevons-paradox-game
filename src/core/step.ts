@@ -29,7 +29,7 @@ import { unsettleAs } from './settlement';
 import { freshSector, snapshotBase, historySample, pushHistory } from './state';
 import { steadyCfg, decadeEffectsOf, standingDrawYearsOf, newBudget, paceOf } from './steady';
 import { canOpen } from './unlocks';
-import { dueFeature, unlockFeature } from './unfold';
+import { dueFeature, unlockFeature, FEATURE_CHECK_EVERY } from './unfold';
 import { featureOn } from './features';
 import { fin, clamp } from './util';
 
@@ -381,8 +381,8 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   if (secondTick) {
     for (const a of content.achievements ?? []) if (a.when && !ach[a.id] && evalCond(state, content, a.when)) grant(a.id);
   }
-  // the unfolding: at most one feature a check, never while away (it arrives once the player is back)
-  const feature = secondTick && !away ? dueFeature(state, content) : null;
+  // the unfolding: at most one feature a check (every 5 s of run time), never while away (it arrives once the player is back)
+  const feature = !lite && !away && Math.floor(time / FEATURE_CHECK_EVERY) > Math.floor(state.time / FEATURE_CHECK_EVERY) ? dueFeature(state, content) : null;
   let featMeta: MetaState | null = null;
   if (feature) featMeta = unlockFeature(state.meta, content, feature, time, year, items, ev);
 

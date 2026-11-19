@@ -66,7 +66,7 @@
  *        --safe-pressure=0.5, --draw-after=4, --fork-sector=<id>|all.
  * Runs are consecutive (the prestige loop), except in `forks`.
  */
-import { model } from '../src/core';
+import { model, evalCond } from '../src/core';
 import { content as realContent } from '../src/content';
 import { fixture } from '../src/core/fixture';
 import { BUDGET_TOLERANCE, YEARS_PER_SECOND } from '../src/types';
@@ -224,7 +224,8 @@ function noteBuy(s: GameState, ctx: RunCtx, v: UpgradeView, decade: number | nul
     const prev = ctx.effBuys.filter((b) => b.sector === v.def.sector);
     const cum = (1 + (prev.length ? prev[prev.length - 1].cumPromise : 0)) * (1 + (v.promisedChange ?? 0)) - 1;
     const es = s.sectors[v.def.sector];
-    const frontierLeft = C.sectors[v.def.sector].applications.some((a) => !es.apps[a.id]?.founded);
+    // a frontier left to bring within reach: an application not yet available (one available but unaffordable cannot be)
+    const frontierLeft = C.sectors[v.def.sector].applications.some((a) => !es.apps[a.id]?.available);
     const reachS = reach.map((b) => b.appId).join(', ');
     ctx.effBuys.push({
       sector: v.def.sector, t: s.time, id: v.def.id, promise: v.promisedChange ?? 0, decade, reach: reachS, reachN: reach.length,
@@ -351,6 +352,9 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
       if (strategy !== 'market' && MARKET !== 'on') s = model.setOrders(s, C, { market: { sectors: { [e]: false } } });
     }
   }
+  // the unfolding: before budgets arrive (runs 1–2), restraint is levers only: every lever raised once Mandate allows
+  // with the net rate kept positive (the `levers` player's rule), and nothing founded past the smoke-safe level
+  if (!d0.features.budget) return raiseLevers(s, ctx);
   for (let guard = 0; guard < 6; guard++) {
     const d = model.derive(s, C);
     const views = model.leverViews(s, C);
@@ -709,12 +713,19 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
           ev.push({ t: s.time, text: `DECADE ${e} #${b.decadesWithin.length} within budget (${lean ? 'lean' : 'full'})` });
         }
         if (b.budget?.clearAt !== undefined && a.budget?.clearAt === undefined) { ctx.firsts.firstClear ??= s.time; ev.push({ t: s.time, text: `CLEAR SKIES ${e}` }); }
+        if ((globalThis as any).process?.env?.FEAT_DEBUG && b.budget?.clearAt !== undefined && a.budget?.clearAt === undefined) {
+          const f = C.features?.steadyState;
+          if (f) console.log(`  [debug] clear ${e} at ${min(s.time)}: steadyState due ${evalCond(s, C, f.when)}, parts ${JSON.stringify((f.when as any).all.map((c: any) => evalCond(s, C, c)))}, clear steam ${evalCond(s, C, { stat: 'clear', sector: 'steam', op: '>=', value: 1 })} W ${model.derive(s, C).wellbeing.toFixed(1)}`);
+        }
         if (s.run.steadySectors[e] && !prev.run.steadySectors[e]) { ctx.firsts.firstSteady ??= s.time; ev.push({ t: s.time, text: `STEADY STATE ${e}` }); }
         if (b.settled && !a.settled) ctx.firsts.firstSettle ??= s.time;
         if (!b.settled && a.settled) ev.push({ t: s.time, text: `     ${e} unsettled (defence lapsed)` });
         if (a.steadyYears >= 10 && b.steadyYears === 0) ev.push({ t: s.time, text: `     ${e} breaks its budget after ${n(a.steadyYears)} years` });
       }
       if (b.backfired && !a?.backfired) ev.push({ t: s.time, text: `     ${e} backfires (direct rebound > 100%)` });
+    }
+    for (const k of Object.keys(s.meta.features ?? {})) {
+      if (prev.meta.features?.[k as keyof typeof prev.meta.features] === undefined) { ctx.firsts[`feature:${k}`] ??= s.time; ev.push({ t: s.time, text: `FEATURE ${k}` }); }
     }
     if (revealT === null && s.flags.revealed) {
       revealT = prev.flags.revealed ? prev.time : s.time;
@@ -936,6 +947,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
         ` · Wpk ${R.peakWellbeing.toFixed(1)} yAt ${R.yearsAtTarget.toFixed(0)} · dec ${Object.values(R.sectors).map((x) => x.decades).join('/')} lean ${M.leanDecades} full ${M.fullDecades}` +
         ` · settled ${M.settlements}/${M.settledAtEnd}${SETTLE ? ` (defence ≤ ${(M.defenceShare * 100).toFixed(0)}% of Mandate, forced unsettles ${M.forcedUnsettles})` : ''} commons ${M.commonsLevels} buys player ${R.purchases} market ${M.marketBuys}${f.firstMarket !== undefined ? ` (first ${f.firstMarket.toFixed(1)})` : ''} charter ${M.charter ?? '-'}` +
         ` · terms W ${T.wellbeing.toFixed(0)} B ${T.budget.toFixed(0)} U ${T.unburnt.toFixed(0)} F ${T.backfire.toFixed(0)} S ${T.sectorsReached.toFixed(0)} St ${T.steady.toFixed(0)} Se ${(T.settled ?? 0).toFixed(0)}` +
+        ` · features ${Object.entries(f).filter(([k]) => k.startsWith('feature:')).map(([k, v]) => `${k.slice(8)}@${v.toFixed(1)}`).join(',') || '-'}` +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }
     s = model.reckon(r.s, C);

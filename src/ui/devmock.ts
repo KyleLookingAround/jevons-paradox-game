@@ -10,11 +10,11 @@ import type {
   Content, ModelApi, GameState, SectorId, SectorDef, SectorState, Derived, SectorDerived, UpgradeView, LeverView,
   MetaState, HeadlineKey, NewsItem, Cond, CondCheck, HindsightTerms, KnowhowView, InstitutionView, LeverLevelDef,
   LeverDef, EffectDef, ApplicationDef, AppState, PaceDef, CommonsDef, CommonsView, EventKind, GameEvent, Actor, OrderId, OrdersState,
-  OfflineReport, RunSummary, UpgradeDef, LeverRecycle,
+  OfflineReport, RunSummary, UpgradeDef, LeverRecycle, FeatureId,
 } from '../types';
 import {
   START_YEAR, YEARS_PER_SECOND, STEADY_STATE_YEARS, BUDGET_TOLERANCE, MAX_TICK_SECONDS, CALENDAR_LATE_RATE, EVENTS_MAX, PENDING_DIVIDENDS_MAX,
-  OPENING_MAX, RUN_HISTORY_MAX,
+  OPENING_MAX, RUN_HISTORY_MAX, FEATURE_IDS,
 } from '../types';
 
 const app = (id: string, name: string, icon: string, halfPrice: number, saturation: number, steepness: number, visibleBelow: number, foundCost: number, blurb: string): ApplicationDef =>
@@ -868,6 +868,9 @@ export interface MockOpts {
   fresh?: boolean;
   /** Many affordable things and a late, depleting Industry (rebound well past 1,000%). */
   late?: boolean;
+  /** The unfolding: every feature locked except those named by `feat=a+b` (Derived.features). Default: all unlocked. */
+  locked?: boolean;
+  feat?: string[];
 }
 
 /** `#mock` or `#mock:rich,reveal,all,budget,pending,won,persist,smog=0.8,sector=compute,m2,away=held,fresh,late`. */
@@ -879,6 +882,8 @@ export function parseMockHash(hash: string): MockOpts | null {
     const [k, v] = part.split('=');
     if (k === 'rich' || k === 'reveal' || k === 'pending' || k === 'won' || k === 'light' || k === 'all' || k === 'budget' || k === 'persist' || k === 'm2' || k === 'fresh' || k === 'late') o[k] = true;
     else if (k === 'smog') o.smog = Number(v) || 0;
+    else if (k === 'locked') o.locked = true;
+    else if (k === 'feat') o.feat = (v || '').split('+').filter(Boolean);
     else if (k === 'away') o.away = v === 'plain' ? 'plain' : 'held';
     else if ((k === 'sector' || k === 'era') && mockContent.sectors[v]) o.sector = v;
   }
@@ -1203,6 +1208,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           nextTickIn: (INTERVAL_YEARS / YEARS_PER_SECOND) - (s.time % (INTERVAL_YEARS / YEARS_PER_SECOND)),
         },
         respec: { allowed: fresh && refund > 0, refund, refundByTree },
+        features: Object.fromEntries(FEATURE_IDS.map((f) => [f, !opts.locked || (opts.feat ?? []).includes(f)])) as Record<FeatureId, boolean>,
       };
     },
     click(s0, c) {

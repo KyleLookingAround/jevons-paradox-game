@@ -15,12 +15,13 @@ import { computeFlows, steadyView } from './flows';
 import { headline, withNews } from './headlines';
 import { sectorLevers, NO_LEVERS } from './levers';
 import { clamp, fin } from './util';
+import { featureOn } from './features';
 
 /** ModelApi.settle would succeed now (SectorDerived.canSettle). */
 export function canSettle(state: GameState, content: Content, s: SectorId): boolean {
   const es = state.sectors[s];
   const def = content.sectors[s];
-  if (!es?.open || es.settled || !def?.settle || !state.flags.revealed) return false;
+  if (!es?.open || es.settled || !def?.settle || !state.flags.revealed || !featureOn(content, state.meta, 'settlement')) return false;
   const fl = computeFlows(state, content);
   if (fl.pending || !(es.clearYears >= STEADY_STATE_YEARS - 1e-9)) return false;
   return steadyView(state, content, fl, s).sinkHeld;

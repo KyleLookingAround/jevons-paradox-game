@@ -313,8 +313,10 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     setFill(resFill, rf);
     cls(reserve, 'low', rf < 0.15);
 
-    // Population
+    // Population (the unfolding: shown once people matter: the first crisis, or a town grown by a third)
     const g = ctx.content.global;
+    const feats = ctx.d?.features;
+    show(pop, !!feats?.population);
     const N = num(ctx.state.population, 1), dN = num(ctx.d?.populationGrowthPerSec);
     const perYear = N > 0 ? dN / N / YEARS_PER_SECOND : 0;
     setText(popTxt, `People ×${N >= 10 ? fmt(N) : N.toFixed(2)} · ${Math.abs(perYear) < 0.0005 ? 'steady' : `${pct(perYear)} a year`}`);
@@ -339,7 +341,7 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
       setAttr(budTxt, 'title', null);
       cls(budTxt, 'ok', true); cls(budTxt, 'over', false);
     } else if (bR == null) {
-      setText(budTxt, revealed ? 'No budget drawn' : '');
+      setText(budTxt, revealed && feats?.budget ? 'No budget drawn' : '');
       cls(budTxt, 'ok', false); cls(budTxt, 'over', false);
     } else if (e?.withinBudget) {
       // Compact, to keep the pinned header to one note line; the Budget panel below has the full sentence.

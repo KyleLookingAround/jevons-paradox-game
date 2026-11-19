@@ -22,6 +22,10 @@ import { upgradeMax } from './purchases';
 import { freshMeta, createState, defaultOrders, isFreshRun } from './state';
 import { pacesOf } from './steady';
 import { fin, clamp, isObj } from './util';
+import { grandfathered } from './features';
+import { FEATURE_IDS } from '../types';
+
+const FEATURE_SET: ReadonlySet<string> = new Set(FEATURE_IDS);
 
 /* ------------------------------------------------------------------ */
 /* Persistence                                                         */
@@ -209,6 +213,7 @@ const EVENT_KINDS = new Set([
   'appAvailable', 'appFounded', 'upgradeBought', 'stageReached', 'leverEnacted', 'leverLapsed', 'budgetDrawn',
   'budgetBroken', 'decade', 'dividendChosen', 'clearSkies', 'steadyState', 'settled', 'unsettled', 'crisis', 'collapse',
   'exhausted', 'backfire', 'reveal', 'sectorOpened', 'ageBegins', 'commonsBuilt', 'charterChosen', 'won', 'reckoning',
+  'featureUnlocked',
 ]);
 function validEvents(x: unknown, maxSeq: number): GameEvent[] {
   if (!Array.isArray(x)) return [];
@@ -347,6 +352,10 @@ export function deserialize(text: string, content: Content): GameState | null {
       backfiredSectors: trueMap(merged0.backfiredSectors),
       slots,
       loadout,
+      // the unfolding: known feature ids with finite stamps; a save from before it (no features object) is grandfathered
+      features: isObj(savedMeta.features)
+        ? Object.fromEntries(Object.entries(savedMeta.features).filter(([k, v]) => FEATURE_SET.has(k) && typeof v === 'number' && Number.isFinite(v)))
+        : grandfathered(content, merged0, isObj(raw.flags) && raw.flags.revealed === true),
     };
     const fresh = createState(content, meta, typeof raw.seed === 'number' ? raw.seed : 1);
     const merged = merge(fresh, { ...raw, meta: undefined }) as GameState;

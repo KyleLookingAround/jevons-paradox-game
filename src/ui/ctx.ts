@@ -108,11 +108,12 @@ export function leversVisible(ctx: Ctx): boolean {
 }
 
 /**
- * "Call a Reckoning" is offered once the run has had its reveal, or once the player has been through a Reckoning
- * before (they know what it is). A forced Reckoning (collapse, exhaustion) is shown regardless.
+ * "Call a Reckoning" is offered once the player has been through a Reckoning before (they know what it is), or in the
+ * first run once it has had its reveal and the first thing after it has arrived (the unfolding: the reveal brings only
+ * the meter and the cards' red line). A forced Reckoning (collapse, exhaustion) is shown regardless.
  */
 export function reckoningOffered(ctx: Ctx): boolean {
-  return !!ctx.state.flags?.revealed || (ctx.state.meta?.reckonings ?? 0) >= 1;
+  return (ctx.state.meta?.reckonings ?? 0) >= 1 || (!!ctx.state.flags?.revealed && !!ctx.d?.features?.levers);
 }
 
 export function roman(n: number): string {

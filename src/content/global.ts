@@ -43,14 +43,17 @@ export const global: GlobalParams = {
    * 1.8–2.9× from run 3. First backfire 20 (not 30: a lump both styles earn, which narrowed the run-1 lead); a FULL
    * decade 3 (not 1.5: pays only at the full target, so from run 3); Industries reached 6 (not 10: a lump per run that
    * favoured the fastest collapse).
+   * Unfolding balance (19 Nov 2026): with budgets from run 3, restraint in runs 1–2 is levers only and earns no decade, so
+   * it earns almost what burning does; first backfire 30 (not 20) and Industries reached 10 (not 6), two lumps that
+   * favour the shorter, harder-burning run, put burning 1.24× ahead in run 2 (run 1: 1.09×, see src/balance.test.ts E7).
    */
   hindsight: {
     perWellbeingYear: 0.03,
     intensityExponent: 0,
     perBudgetDecade: 3,
     perUnburnt: 20,
-    perFirstBackfire: 20,
-    perSectorReached: 6,
+    perFirstBackfire: 30,
+    perSectorReached: 10,
     perSteadySector: 60,
     /* M2: a lean decade (judged against the drawn wellbeing) pays its dividend and no Hindsight (decision (a)). */
     perLeanDecade: 0,
@@ -101,8 +104,11 @@ export const global: GlobalParams = {
   startingSlots: 2,
   /* M2: the Market from run 2 (on by default; payback within two minutes), an order tick every model year (20 s). */
   orders: { marketFromReckoning: 1, marketPaybackMax: 120, paybackChoices: [30, 120, 600], intervalYears: 1 },
-  /* M2: the Commons from run 3; all levy money routed to them reaches the fund. */
-  commons: { fromReckoning: 2, fundShare: 1 },
+  /* The Commons from run 4 (the unfolding: moved from run 3 so they do not arrive with the budget; features.ts); all levy
+   * money routed to them reaches the fund. */
+  commons: { fromReckoning: 3, fundShare: 1 },
   /* M2: a free Know-how respec between runs (decision (h)). */
   respecRefund: 1,
+  /* The unfolding: five minutes of play at least between two systems arriving (features.ts). */
+  featureGapSeconds: 300,
 };

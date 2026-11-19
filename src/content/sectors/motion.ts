@@ -247,6 +247,7 @@ const motionLevers: LeverDef[] = [
   }),
   lever({
     id: 'motion.cap', sector: 'motion', kind: 'cap',
+    requires: ['budget'],
     name: 'Oil import quota',
     blurb: 'So many barrels a year, fewer each decade, and not one more. The permits change hands in the City.',
     catch: `Squeeze too hard and the barrels arrive by other routes. ${DIVIDEND}`,
@@ -264,6 +265,7 @@ const motionLevers: LeverDef[] = [
   }),
   lever({
     id: 'motion.substitution', sector: 'motion', kind: 'substitution',
+    requires: ['moreLevers'],
     name: 'Electrified rail & trams',
     blurb: 'Put the wires back up. Some of the old tram lines are still under the tarmac.',
     catch: 'Dearer to build per mile, and it only goes where the rails go.',
@@ -272,6 +274,7 @@ const motionLevers: LeverDef[] = [
   }),
   lever({
     id: 'motion.greenSpending', sector: 'motion', kind: 'greenSpending',
+    requires: ['moreLevers'],
     name: 'Insulation grants',
     blurb: 'Steer the money saved on petrol into loft lagging instead of more lamps.',
     catch: 'Blunts the spill into Light, and only that; the motorways carry on as before.',

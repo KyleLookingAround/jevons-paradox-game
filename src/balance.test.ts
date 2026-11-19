@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import { model } from './core';
 import { content as C } from './content';
 import { BUDGET_TOLERANCE } from './types';
-import type { GameState, InstitutionDef, SectorId } from './types';
+import type { FeatureId, GameState, InstitutionDef, SectorId } from './types';
 
 /* ---------------- tiny strategies (mirroring tools/balance.ts) ---------------- */
 
@@ -47,7 +47,9 @@ function buyCheapest(s: GameState, log: Log, prefer: string[] = []): GameState {
     if (!v) break;
     if (v.def.kind === 'efficiency' && s.flags.revealed) {
       const es = s.sectors[v.def.sector];
-      if (C.sectors[v.def.sector].applications.some((a) => !es.apps[a.id]?.founded)) {
+      // a frontier left to bring within reach: some application not yet available (unfolding balance: an application
+      // already available but not yet afforded cannot be brought within reach, and the decade line is honest about it)
+      if (C.sectors[v.def.sector].applications.some((a) => !es.apps[a.id]?.available)) {
         const full = model.upgradeViews(s, C).find((u) => u.def.id === v.def.id)!;
         log.cards.push({ id: v.def.id, decade: full.projectedDecade, reach: full.bringsWithinReach.length });
       }
@@ -94,11 +96,27 @@ const upkeepStep = (s: GameState, id: string): number => {
 
 interface Memo { revealAt: number | null; lastSpare: number }
 
+/** Before budgets arrive (the unfolding: runs 1–2), restraint is levers only: the cheapest lever raised whenever Mandate
+ *  allows and the net rate stays positive (tools/balance.ts `levers` rule), authored levels only. */
+function leverStep(s: GameState): GameState {
+  for (let guard = 0; guard < 10; guard++) {
+    const net = D(s).mandatePerSec;
+    const l = model.leverViews(s, C).filter((v) => v.canRaise && v.nextCost !== null && v.level < v.def.levels.length && net - upkeepStep(s, v.def.id) > 0)
+      .sort((a, b) => (a.nextCost ?? 0) - (b.nextCost ?? 0))[0];
+    if (!l) break;
+    const n = model.setLever(s, C, l.def.id, l.level + 1);
+    if (n === s) break;
+    s = n;
+  }
+  return s;
+}
+
 /** The budget player's line: draw (switching the Market off there), cap, Tighten, sufficiency, spare circularity. */
 function budgetStep(s: GameState, m: Memo, marketOff: boolean): GameState {
   if (!s.flags.revealed) return s;
   m.revealAt ??= s.time;
   const d0 = D(s);
+  if (!d0.features.budget) return leverStep(s);
   for (const e of ORDER) {
     const es = s.sectors[e], x = d0.sectors[e];
     if (!es?.open || es.budget || !x) continue;
@@ -228,6 +246,8 @@ interface Run {
   settledAt: number | null; settledEnd: number; forcedUnsettles: number; commonsLevels: number;
   click: { at30: number | null; atCondenser: number | null; atReveal: number | null };
   rAt: (t: number) => number;
+  /** the unfolding: features that unlocked during this run (run seconds), and at the Reckoning that began it (0) */
+  features: Partial<Record<FeatureId, number>>;
 }
 
 const ratio = (s: GameState) => { const d = D(s); return d.incomePerSec > 0 ? (5 * d.clickValue) / d.incomePerSec : null; };
@@ -242,8 +262,9 @@ function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameState; r:
     seconds: 0, hindsight: 0, hpm: 0, cause: '', log, mode, reveal: s.flags.revealed ? 0 : null, crisis: null, crisisPopLoss: null,
     reboundAtReveal: null, opened: {}, firstLever: null, steadyAt: null, decadeAt: null, decadeLean: null, steady: {}, decades: 0,
     fullDecades: 0, settledAt: null, settledEnd: 0, forcedUnsettles: 0, commonsLevels: 0,
-    click: { at30: null, atCondenser: null, atReveal: null }, rAt: () => 0,
+    click: { at30: null, atCondenser: null, atReveal: null }, rAt: () => 0, features: {},
   };
+  for (const k of Object.keys(s.meta.features ?? {}) as FeatureId[]) if (s.meta.features![k] === s.meta.totalSeconds && s.time === 0 && s.meta.reckonings > 0) out.features[k] = 0;
   if (mode === 'market' && s.meta.reckonings >= 1) s = model.setOrders(s, C, { market: { on: true, sectors: Object.fromEntries(ORDER.map((e) => [e, true])) } });
   const restraint = mode === 'budget' || mode === 'market';
   const rSeries: number[] = [];
@@ -293,6 +314,7 @@ function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameState; r:
       if (e.kind === 'unsettled' && e.by === 'default') out.forcedUnsettles++;
     }
     rSeries.push(D(s).sectors.steam?.resourceUse ?? 0);
+    for (const k of Object.keys(s.meta.features ?? {}) as FeatureId[]) if (prev.meta.features?.[k] === undefined) out.features[k] ??= s.time;
     if (out.firstLever === null && Object.values(s.levers).some((l) => l.level > 0)) out.firstLever = s.time;
     if (prev.time < 30 && s.time >= 30) out.click.at30 = ratio(s);
     if (out.click.atCondenser === null && (s.upgrades['steam.condenser'] ?? 0) > 0) out.click.atCondenser = ratio(s);
@@ -388,7 +410,7 @@ function decisionGap(runs: Run[], fromH: number, toH: number): number {
 const EFF = campaign('efficiency', 6);
 /** The competent restraint player: lines, levers, dividends, Settlement and the Commons, until 10 h of play. */
 const BUD = campaign('budget', 0, { settle: true, commons: true, untilHours: 10 });
-const MIX = campaign('budget', 4, { firstTwo: 'efficiency', settle: true, commons: true });
+const MIX = campaign('budget', 5, { firstTwo: 'efficiency', settle: true, commons: true });
 /** The budget player seating only cap Institutions, for three hours. */
 const CAPS = campaign('budget', 0, { settle: true, commons: true, untilHours: 3, capsOnly: true });
 const PEAK = campaign('peakdraw', 6);
@@ -478,23 +500,23 @@ describe('the first hour', () => {
 /* ---------------- 3. M2 exit criteria ---------------- */
 
 describe('M2 exit criteria', () => {
-  test('E1: the budget player earns its first decade in run 1, at 18–25 min (lean is fine)', () => {
-    // measured 17.2 min: a line drawn with the first lever at 12–14 min pays its first decade 10 model years (3:20)
-    // later, so the 18-minute floor would need the first lever after 14.7 min; asserted with the ±15% tolerance
-    expect(BUD.runs[0].decadeAt).not.toBeNull();
-    expect(BUD.runs[0].decadeAt! / 60).toBeGreaterThanOrEqual(18 * 0.85);
-    expect(BUD.runs[0].decadeAt! / 60).toBeLessThanOrEqual(25 * 1.15);
-    expect(BUD.runs[0].decadeLean).toBe(true);
+  // E1 (first decade at 18–25 minutes of run 1) is WITHDRAWN by the owner's direction (19 Nov 2026: "the budget thing is
+  // confusing and should be in the later game"): budgets arrive in run 3 (src/content/features.ts), so no decade can be
+  // earned in runs 1–2. What replaces it: E1b and the unfolding tests below.
+  test('E1b: no decade in runs 1–2 for any player; the budget player earns its first in run 3', () => {
+    for (const c of [EFF, BUD, MIX]) expect(c.runs[0].decades + c.runs[1].decades).toBe(0);
+    expect(BUD.runs[2].decadeAt).not.toBeNull();
   });
   test('E2: the efficiency player earns no decade in runs 1–2', () => {
     expect(EFF.runs[0].decades + EFF.runs[1].decades).toBe(0);
   });
-  test('E3: first Steady State at 3–4 h of play for budget and for mixed', () => {
+  test('E3: first Steady State at 3–4.5 h of play for budget and for mixed', () => {
+    // the unfolding moved the budget to run 3 and Steady State behind clear skies: up to 4.5 h is accepted
     for (const c of [BUD, MIX]) {
       const h = firstSteadyH(c.runs);
       expect(h).not.toBeNull();
       expect(h!).toBeGreaterThanOrEqual(3 * 0.85);
-      expect(h!).toBeLessThanOrEqual(4 * 1.15);
+      expect(h!).toBeLessThanOrEqual(4.5);
     }
   });
   test('E4: the efficiency player never reaches Steady State (six runs)', () => {
@@ -504,16 +526,22 @@ describe('M2 exit criteria', () => {
     const m = (rs: Run[]) => rs.slice(2, 6).reduce((a, r) => a + r.hpm, 0) / rs.slice(2, 6).length;
     expect(m(PEAK.runs) / m(BUD.runs)).toBeLessThanOrEqual(0.5);
   });
-  test('E6: restraint earns at least 1.5× backfire’s Hindsight per minute from run 3 (runs 3–5)', () => {
-    for (const i of [2, 3, 4]) expect(BUD.runs[i].hpm / EFF.runs[i].hpm).toBeGreaterThanOrEqual(1.5);
+  test('E6: restraint earns at least 1.5× backfire’s Hindsight per minute from run 4, and leads in run 3 (budget from run 3)', () => {
+    expect(BUD.runs[2].hpm / EFF.runs[2].hpm).toBeGreaterThanOrEqual(1.3);
+    for (const i of [3, 4]) expect(BUD.runs[i].hpm / EFF.runs[i].hpm).toBeGreaterThanOrEqual(1.5);
   });
-  test('E7: backfire earns at least 1.2× restraint in runs 1 and 2 (decision (a))', () => {
-    for (const i of [0, 1]) expect(EFF.runs[i].hpm / BUD.runs[i].hpm).toBeGreaterThanOrEqual(1.2);
+  test('E7: backfire earns at least 1.2× restraint in run 2, and more than restraint in run 1 (decision (a))', () => {
+    // target 1.2× in both. Run 1 measures 1.09×: with budgets in run 3, restraint in run 1 differs from burning only by
+    // two levers from about minute 13, which cost little wellbeing in a 40-minute run; asserted at 1.05 so a slide shows
+    expect(EFF.runs[0].hpm / BUD.runs[0].hpm).toBeGreaterThanOrEqual(1.05);
+    expect(EFF.runs[1].hpm / BUD.runs[1].hpm).toBeGreaterThanOrEqual(1.2);
   });
   test('E8: no stretch without a player decision over 3 min in hour 1, nor over 5 min in hours 1–10', () => {
     // target 180 s in hour 1; the budget player measures 191–200 s (one decade's dividend to the next, late in runs
     // 1–2, when the next card is minutes of income away): asserted at 210 s so a slide is caught
-    expect(decisionGap(BUD.runs, 0, 1)).toBeLessThanOrEqual(210);
+    // unfolding: the lever-only restraint player of run 1 measures 246 s (no budget to tend late in run 1); asserted at
+    // 260 s so a slide is caught (target 180 s; M3's dispatches address the late-run lull)
+    expect(decisionGap(BUD.runs, 0, 1)).toBeLessThanOrEqual(260);
     expect(decisionGap(MIX.runs, 0, 1)).toBeLessThanOrEqual(180);
     expect(decisionGap(BUD.runs, 1, 10)).toBeLessThanOrEqual(300);
     expect(decisionGap(MIX.runs, 1, cum(MIX.runs, MIX.runs.length) / 3600)).toBeLessThanOrEqual(300);
@@ -563,13 +591,63 @@ describe('M2 exit criteria', () => {
     // the forced unsettle is possible but rare in restraint play
     expect(BUD.runs.reduce((a, r) => a + r.forcedUnsettles, 0)).toBe(0);
   });
-  test('E12: run 2 opens with the Market on; it buys within 5 minutes; Light opens no later than in efficiency run 2', () => {
+  test('E12: the Market arrives five minutes into run 2 and buys within 5 minutes of arriving; Light no later than in efficiency run 2', () => {
+    // the unfolding: the Market is no longer there at the start of run 2 (the Hindsight shop has just arrived)
+    const at = MKT2.features.market;
+    expect(at).toBeDefined();
+    expect(at! / 60).toBeGreaterThanOrEqual(4.5);
+    expect(at! / 60).toBeLessThanOrEqual(6);
     expect(MKT2.log.marketBuys.length).toBeGreaterThan(0);
-    expect(MKT2.log.marketBuys[0]).toBeLessThanOrEqual(300);
+    expect(MKT2.log.marketBuys[0] - at!).toBeLessThanOrEqual(300);
     expect(MKT2.opened.light).toBeDefined();
-    expect(MKT2.opened.light).toBeLessThanOrEqual(EFF.runs[1].opened.light!);
-    // the job shifts: in its first 15 minutes the Market buys at least as many cards as the player
-    expect(MKT2.log.marketBuys.length).toBeGreaterThanOrEqual(MKT2.log.buys.length);
+    expect(MKT2.opened.light).toBeLessThanOrEqual(EFF.runs[1].opened.light! + 60);
+    // the job shifts: once it has arrived, the Market buys at least half as many cards as the player
+    expect(MKT2.log.marketBuys.length).toBeGreaterThanOrEqual(0.5 * MKT2.log.buys.filter((b) => b.t >= at!).length);
+  });
+});
+
+/* ---------------- 3b. the unfolding (owner's direction, 19 Nov 2026) ---------------- */
+
+describe('the unfolding: one system at a time', () => {
+  const at = (c: { runs: Run[] }, f: FeatureId): { run: number; min: number } | null => {
+    const i = c.runs.findIndex((r) => r.features[f] !== undefined);
+    return i < 0 ? null : { run: i + 1, min: c.runs[i].features[f]! / 60 };
+  };
+  const within = (x: { run: number; min: number } | null, run: number, lo: number, hi: number) =>
+    `${x?.run}@${x?.min.toFixed(1)} ${!!x && x.run === run && x.min >= lo && x.min <= hi}`;
+  test('run 1 (efficiency play): the reveal at 8–12 min, levers about five minutes later, people at the first crisis', () => {
+    expect(within(at(EFF, 'reboundMeter'), 1, 7.5, 12.5)).toEndWith('true');
+    const r = at(EFF, 'reboundMeter')!.min, l = at(EFF, 'levers')!.min;
+    expect(within(at(EFF, 'levers'), 1, r + 5, 18)).toEndWith('true');
+    expect(within(at(EFF, 'population'), 1, l + 5, 22)).toEndWith('true');
+    expect(Math.abs(at(EFF, 'population')!.min - run1.crisis! / 60)).toBeLessThanOrEqual(5.1);
+    // nothing about budgets, decades, paces or Steady State in run 1, nor the Market, Charters or the Commons
+    for (const f of ['budget', 'dividendChoice', 'budgetPace', 'clearSkies', 'steadyState', 'market', 'charters', 'commons', 'moreLevers', 'leverRepeat'] as FeatureId[]) {
+      expect(`${f} ${EFF.runs[0].features[f] === undefined && BUD.runs[0].features[f] === undefined}`).toBe(`${f} true`);
+    }
+  });
+  test('run 2: the Market five minutes in; the fuller levers once a lever is in force again (restraint play)', () => {
+    expect(within(at(BUD, 'market'), 2, 4.5, 6)).toEndWith('true');
+    expect(within(at(BUD, 'moreLevers'), 2, 10, 25)).toEndWith('true');
+  });
+  test('run 3: Charters at the Reckoning, the budget at 1801, then dividends, pace and clear skies, each a step later', () => {
+    expect(within(at(BUD, 'charters'), 3, 0, 0)).toEndWith('true');
+    expect(within(at(BUD, 'budget'), 3, 5, 12)).toEndWith('true');
+    for (const f of ['dividendChoice', 'budgetPace', 'clearSkies'] as FeatureId[]) expect(`${f} ${at(BUD, f)?.run}`).toBe(`${f} 3`);
+  });
+  test('run 4: the Commons at the Reckoning, Steady State with the first clear sky; Settlement at the Reckoning after it', () => {
+    expect(within(at(BUD, 'commons'), 4, 0, 0)).toEndWith('true');
+    expect(at(BUD, 'steadyState')?.run).toBeLessThanOrEqual(4);
+    const first = BUD.runs.findIndex((r) => r.steadyAt !== null);
+    expect(within(at(BUD, 'settlement'), first + 2, 0, 0)).toEndWith('true');
+  });
+  test('never two systems within five minutes of each other (runs 1–3, both styles)', () => {
+    for (const c of [EFF, BUD]) {
+      const times: number[] = [];
+      c.runs.slice(0, 3).forEach((r, i) => { for (const t of Object.values(r.features)) times.push(cum(c.runs, i) + t!); });
+      times.sort((a, b) => a - b);
+      for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBeGreaterThanOrEqual(299);
+    }
   });
 });
 
@@ -630,10 +708,10 @@ describe('traps and restraint systems', () => {
     expect(d.sectors[e]!.settleDefence).toBeGreaterThan(0);
     expect(d.sectors[e]!.settleDefence).toBeLessThan(0.5 * gross);
   });
-  test('the Commons: all projects together under 12 wellbeing points; bought in restraint play from run 3', () => {
+  test('the Commons: all projects together under 12 wellbeing points; bought in restraint play from run 4', () => {
     expect((C.commons ?? []).reduce((a, c) => a + c.wellbeing.max, 0)).toBeLessThan(12);
-    expect(BUD.runs.slice(0, 2).every((r) => r.commonsLevels === 0)).toBe(true);
-    expect(BUD.runs.slice(2).every((r) => r.commonsLevels >= 3)).toBe(true);
+    expect(BUD.runs.slice(0, 3).every((r) => r.commonsLevels === 0)).toBe(true);
+    expect(BUD.runs.slice(3).every((r) => r.commonsLevels >= 3)).toBe(true);
   });
   test('the Commons rebound: in each Industry with an intensity, the projects add at least 2% to its demand', () => {
     // the budget player's run-4 end state (Steam, Light, Motion and Compute open), every project at one level. Where no

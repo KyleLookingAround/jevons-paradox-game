@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { content } from './index';
 import type { Cond, EffectDef, HeadlineKey, StatKey } from '../types';
+import { FEATURE_IDS } from '../types';
 
 const C = content;
 const sectorIds = Object.keys(C.sectors);
@@ -74,6 +75,7 @@ function allConds(): { where: string; c: Cond }[] {
   for (const a of C.achievements) if (a.when) walk(a.id, a.when);
   for (const c of commons) if (c.requires) walk(c.id, c.requires);
   for (const c of charters) if (c.requires) walk(c.id, c.requires);
+  for (const [id, f] of Object.entries(C.features ?? {})) if (f) walk(`feature.${id}`, f.when);
   return out;
 }
 
@@ -250,7 +252,7 @@ describe('references resolve', () => {
       expect(l.catch.trim().length).toBeGreaterThan(0);
       expect(l.levels.length).toBeGreaterThan(0);
       for (const r of l.requires ?? []) {
-        expect(r === 'revealed' || upgradeIds.has(r) || instIds.has(r)).toBe(true);
+        expect(r === 'revealed' || upgradeIds.has(r) || instIds.has(r) || (FEATURE_IDS as readonly string[]).includes(r)).toBe(true);
       }
       if (l.kind === 'duty' || l.kind === 'cap') expect(l.recycle).toEqual(['treasury', 'dividend', 'commons']);
       else expect(l.recycle).toBeUndefined();
@@ -876,7 +878,7 @@ describe('M2: orders, offline, Institutions, Know-how trees', () => {
 
   test('orders, Commons and respec knobs are set', () => {
     expect(C.global.orders?.paybackChoices).toContain(C.global.orders?.marketPaybackMax);
-    expect(C.global.commons?.fromReckoning).toBe(2);
+    expect(C.global.commons?.fromReckoning).toBe(3); // the unfolding: run 4, not run 3 (features.ts)
     expect(C.global.respecRefund).toBe(1);
     expect(C.global.hindsight.perLeanDecade).toBe(0);
     expect(C.global.hindsight.perSettledSector).toBeGreaterThan(0);
@@ -1002,5 +1004,30 @@ describe('volume floors (roadmap M2)', () => {
     const n = Object.values(C.headlines).flat().length
       + Object.values(C.sectorHeadlines ?? {}).reduce((a, h) => a + Object.values(h).flat().length, 0);
     expect(n).toBeGreaterThanOrEqual(440);
+  });
+});
+
+/* ---------------- the unfolding ---------------- */
+
+describe('the unfolding (Content.features)', () => {
+  test('every feature is defined, with an intro in house style (but the reveal\'s own) and a name', () => {
+    for (const id of FEATURE_IDS) {
+      const f = C.features?.[id];
+      expect(`${id} ${!!f}`).toBe(`${id} true`);
+      expect(f!.name?.length ?? 0).toBeGreaterThan(0);
+      if (id === 'reboundMeter') continue;
+      const t = f!.intro ?? '';
+      expect(`${id} ${t.length > 0 && t.length <= 70}`).toBe(`${id} true`);
+      expect(t).not.toMatch(/[.!?]$/);
+      expect(t).not.toMatch(/\byou\b/i);
+      expect(t.charAt(0)).toBe(t.charAt(0).toUpperCase());
+    }
+  });
+  test('levers gated by a feature name a real one; every cap waits for the budget', () => {
+    for (const l of C.levers) if (l.kind === 'cap') expect(l.requires ?? []).toContain('budget');
+  });
+  test('a gap between arrivals, and the Commons\' floor agrees with its feature', () => {
+    expect(C.global.featureGapSeconds ?? 0).toBeGreaterThanOrEqual(300);
+    expect(C.global.commons?.fromReckoning).toBe(3);
   });
 });

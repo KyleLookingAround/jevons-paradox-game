@@ -1,7 +1,7 @@
 // Assembles the page and keeps the layout in step with the state. Holds no game rules.
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, openSectors, lookFor, accentFor, ageOfSector, sectorIds, reckoningOffered } from './ctx';
-import type { GameEvent, GameState, SectorId } from '../types';
+import type { FeatureId, GameEvent, GameState, SectorId } from '../types';
 import { h, setText, show, cls, setAttr } from './dom';
 import { buildTopbar, buildTabs } from './bar';
 import { buildGauges } from './gauges';
@@ -21,6 +21,7 @@ import { buildCommons } from './commons';
 import { buildOrders } from './orders';
 import { createRecorder } from './timelapse';
 import { sound } from './sound';
+import { createNewMarks } from './unfold';
 
 export interface UI {
   update(): void;
@@ -85,6 +86,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const orders = buildOrders(ctx);
 
   const afford = createAfford(ctx);
+  // The unfolding: a "New" mark on whatever a feature has just opened (unfold.ts).
+  const marks = createNewMarks(ctx);
   // The time-lapse record (timelapse.ts): sampled as the run goes, kept apart from the save, replayed at the Reckoning.
   const lapse = createRecorder(ctx, () => ctx.d?.pendingReckoning?.sector ?? ctx.sector);
   // The affordable chip, by the sell button (thumb's reach, first screen); tapping it jumps to the first offer.
@@ -236,11 +239,32 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
         case 'crisis': sound('crisis', { sector: e.sector }); break;
         case 'reveal': sound('reveal', { sector: e.sector }); break;
         case 'backfire': backfireBeat(e); break;
+        case 'featureUnlocked': {
+          const id = e.id as FeatureId | undefined;
+          if (!id || !ctx.content.features?.[id]) break;
+          marks.add(id);
+          const intro = ctx.content.features[id]?.intro;
+          if (intro) toasts.push(intro, { label: 'Show', run: () => showFeature(id) }, 9000);
+          break;
+        }
         default: break; // unknown kinds are ignored (the union grows)
       }
     }
     // Standing orders acted: one quiet pulse on the affordable signal (or on Capital when it is hidden).
     if (automated) pulse(chip.hidden ? topbar.el.querySelector('.tb-cap') : chip, 'm-auto', 1400);
+  }
+
+  /** Bring a newly arrived feature's place into view (below the pinned header on a phone). */
+  function showFeature(id: FeatureId): void {
+    marks.update();
+    const el = marks.place(id);
+    if (!el) return;
+    const cr = cockpit.getBoundingClientRect(), fr = feed.getBoundingClientRect();
+    const inCockpit = cockpit.contains(el);
+    if (inCockpit) { window.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' }); return; }
+    const beside = cr.right <= fr.left + 1;
+    const top = el.getBoundingClientRect().top + window.scrollY - (beside ? 16 : cr.height + 12);
+    window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
 
   /** The first backfire is the game's signature moment: one beat across the dial, the picture, the paper and the sound. */
@@ -285,6 +309,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     timed('ui.afford', () => afford.update());
     timed('ui.lapse', () => lapse.tick());
     for (const [n, c] of comps) timed('ui.' + n, () => c.update());
+    marks.update();
 
     // The chip: how many offers are news (afford.ts holds the no-nag rule), and where the first one is.
     const items = afford.state.items;

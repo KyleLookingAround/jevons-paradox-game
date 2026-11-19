@@ -17,6 +17,7 @@ import { commons } from './commons';
 import { global } from './global';
 import type { SectorContent } from './helpers';
 import { dividends } from './dividends';
+import { features } from './features';
 import { headlines } from './news/fallback';
 import { institutions, knowhow, knowhowTrees } from './prestige';
 import { code } from './sectors/code';
@@ -52,4 +53,5 @@ export const content: Content = {
   charters,
   knowhowTrees,
   recycleText,
+  features,
 };

@@ -146,7 +146,7 @@ const sector: SectorDef = {
       halfPrice: 0.052,
       saturation: 40_000,
       steepness: 4,
-      visibleBelow: 0.09,
+      visibleBelow: 0.1, // unfolding balance: 0.1 (not 0.09), within a decade of the Cornish engine in a rich run 4
       foundCost: 30_000,
     },
   ],
@@ -339,6 +339,7 @@ const steamLevers: LeverDef[] = [
   }),
   lever({
     id: 'steam.cap', sector: 'steam', kind: 'cap',
+    requires: ['budget'],
     name: 'Smoke abatement',
     blurb: 'A ceiling on coal burned in the borough, falling with the budget line. Permits for whatever is under it.',
     catch: `Set it far below demand and the furnaces move just outside the borough. ${DIVIDEND}`,
@@ -356,6 +357,7 @@ const steamLevers: LeverDef[] = [
   }),
   lever({
     id: 'steam.circularity', sector: 'steam', kind: 'circularity',
+    requires: ['moreLevers'],
     name: 'Slack recovery',
     blurb: 'Burn the dust and the cinders the pit used to tip on the spoil heap.',
     catch: 'It stretches the coal, not the air: every ton recovered is burned in its turn, smoke and all.',
@@ -363,6 +365,7 @@ const steamLevers: LeverDef[] = [
   }),
   lever({
     id: 'steam.substitution', sector: 'steam', kind: 'substitution',
+    requires: ['moreLevers'],
     name: 'Water wheels & wind',
     blurb: 'Keep the old mills turning on the river and the breeze.',
     catch: 'Dearer per horsepower, and the river only flows so fast.',
