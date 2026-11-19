@@ -273,3 +273,49 @@ Still worth doing: Compute's text-mode labels are texture rather than words at 3
 larger HUD caption for the campus would help); Motion's turning circles are legible only on a desktop; the Light
 street ribbons are subtle under heavy smoke; Code's crisis is still the shared fog and banner rather than a blackout
 rolling across the towers; nobody has looked at any of this in Safari or Firefox.
+
+## M3 scene pass: every Industry its own (Nov 2026)
+
+Each Industry's own mechanic is drawn in its Age's idiom and as part of the place; every addition is an optional
+`SceneView` field filled by the adapter only while its feature is on (`Derived.features`), so nothing of a gated
+system shows before it unlocks and an M2 host draws the M2 picture (checked pixel for pixel against the M2 strips).
+
+- **Steam: the seams.** The cut-away becomes a section of the seam ladder under the pit (`props/strata.ts`, a reusable
+  prop Iron can share in M4): each seam a band of coal, deeper ones darker and thinner, the shaft going down to every
+  seam sunk, lamps along the gallery being worked, the worked-out seams hollow with their pit props standing, the
+  next seam's shaft dotted with a red stake while it is within reach. Sinking one plays the shaft sinking, a puff of
+  steam at the pit head and the seam named.
+- **Light: the day's load.** A poster roundel in the dusk sky draws the day's load round a 24-hour dial (a vermilion
+  bar per hour, the night shaded) with a hand that walks the day in a minute; the lit windows of the homes, the shop
+  fascias and the street ribbons follow the load at the hour shown, so the small hours go dark and, as night uses
+  are sold, the hollows of the night fill with light. Reduced motion: the peak hour, still.
+- **Motion: sprawl that stays.** The suburbs are drawn from the lock-in stock, not today's use, so when the traffic
+  thins the estates stay; congestion is a standing queue on the motorway from the junction outwards, and the
+  traffic slows; new roads (the free speed up) lay a new carriageway on the verge, which the queue reaches again.
+  A fuel-economy standard biting back parks a forecourt of four-by-fours by the depot.
+- **Compute: free at the point of use.** Each free hall carries a struck-through `£0.00` plate and a cable that runs
+  across the floor, packets on it, to an advertising hoarding lettered `ADS / BILL ←`: the bill paid elsewhere.
+- **Levers that bite back** show their side effect where it stands once the bite reaches half strength (another pit,
+  another works, another hall, another tower; Motion's heavier cars), rising as the 'biteBack' moment.
+- **The cast** stand in the foreground as an engraver stood people before a view (`props/figures.ts`): the
+  correspondent with his notebook, Mr Whitlow with his book, Mrs Fenwick with her basket, Mr Ashworth with his
+  drawings, Mr Pryce with a brochure, the Minister with the red box; dressed by Age (top hats, trilbies, bare heads,
+  hoods) and drawn in each style (rim-lit silhouettes under gaslight, phosphor under the terminal, neon-rimmed in the
+  rain). Only the writer of a pending letter, gone when answered. The proprietor, after his day, checks his watch
+  more often the more the Market decides for him. At the ending the whole cast stands in the street under a clear
+  sky and a paper boy runs through with the news.
+- **Spots** for the broadsheet (`spots.ts`): twelve small pictures covering every `HeadlineKey`, in every style.
+- **Stills:** `renderStill(view, { frozen: true })` draws the Reckoning as the frozen scene (colour drained, the end
+  lettered across it); `viewFromSummary` rebuilds a run's first morning and its end from `RunSummary` for the
+  before-and-after pictures (demo: `#stills=<id>`).
+
+Cost (SVG nodes per world at the busiest M3 state): Steam 1703 → 1843 (the seam section), Light 1450 → 1475, Motion
+1695 → 1824 (the queue, the carriageway, the forecourt; the queue is drawn as one path per colour), Compute 975 → 1050,
+Code 1620 → 1641. Main-thread paint while animating at 4× CPU with 10 Hz updates fell to zero in Steam, Light, Motion
+and Compute (it was 11–21 ms/s), Light's clock costs about 5 ms/s; Code's is about 100 ms/s under a deliberately harsh
+test (pressure jittering by .04 ten times a second, so its pipework slots keep appearing), against 115 before.
+
+Still worth doing: the seam section is legible on a desktop but only just on a phone (the cut-away is 28 units
+tall); the day clock moves the lights but not the sky; the cast's figures are generic per role (Miss Whitlow and the
+later Ashworths share their elders' figures); Code's load-shedding steps a class on the mid band every four seconds
+(one repaint per step, about 50–100 ms at 4× CPU) where a composited blackout would cost nothing.

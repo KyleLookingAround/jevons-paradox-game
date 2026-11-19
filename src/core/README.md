@@ -17,30 +17,45 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 0 | `calendar.ts` | The calendar year, the current Age, `yearAt` (M2); QA fix: clocks that open ahead catch up over `CALENDAR_CATCHUP_SECONDS` (no jump), and the slowing past an Age levels off within `CALENDAR_LATE_SPAN` years. |
 | 0 | `events.ts` | M2: `emit` / `pushEvents` (seq from `meta.eventSeq`, the `EVENTS_MAX` trim), the headline → event mapping. |
 | 0 | `features.ts` | The unfolding: `featureOn` (a feature absent from content is on), `featuresView` (Derived.features), grandfathering for saves from before it. |
+| 0 | `leverLevels.ts` | M3: lever level resolution and each kind's range (split from levers.ts so effects.ts can read a measure's value). |
+| 0 | `dispatchClock.ts` | M3: GlobalParams.dispatch with defaults, `dispatchFirstAt`, `dispatchGap`. |
+| 0 | `milestones.ts` | M3: `milestone` (first time ever of each thing, written once, MILESTONES_MAX). |
 | 0 | `record.ts` | M2: decisions and automated actions per model decade, `run.opening`, the `asDecision` wrapper. |
 | 1 | `steady.ts` | Budget lines; M2: paces, the line's own day (`decadeWellbeing`), `clearP`, clear skies, `sinkR`, decade choices, `newBudget`. |
 | 1 | `hindsight.ts` | The Hindsight terms a Reckoning would pay (M2: lean decades, settled sectors, less what was withheld for time away). |
 | 1 | `headlines.ts` | Headline choice, case-aware placeholders (M2: `{name}`), the news list. |
-| 2 | `effects.ts` | Standing effects folded into `Mods` (cached per state; M2 sources: Charter, dividends, Commons, settle dividends, institution loans; M2 effects), η and flow capacity, one-off effects. |
+| 2 | `effects.ts` | Standing effects folded into `Mods` (cached per state; M2 sources: Charter, dividends, Commons, settle dividends, institution loans; M2 effects), η and flow capacity, one-off effects. M3: the ten new effects; the History (and `suspend`) in the cached base; a run-varying overlay (measures × value, side effects × bite × level, timed modifiers, dispatch standing effects) that costs nothing when absent; `isForbidden`, `costMulOfId`, `applyM3OneOffs`, `refreshEta`. |
 | 3 | `levers.ts` | Lever levels, visibility (M2: settled sectors, loans), recycle, upkeep, the per-sector aggregate, the levy's Mandate share. |
 | 3 | `population.ts` | Population growth and the demographic transition. |
 | 3 | `commons.ts` | M2: the Commons arithmetic (open, wellbeing, intensity, parameters). |
-| 4 | `solver.ts` | One sector's price/demand fixed point (unchanged in M2: the 'commons' levy share is taken in flows.ts). Hot path. |
+| 4 | `solver.ts` | One sector's price/demand fixed point (unchanged in M2: the 'commons' levy share is taken in flows.ts). Hot path. M3: the four kinds in the contract's order (priceSeen per app, travel's inner fixed point in D, load's c_eff from the mix at each price with the bisection path, seams' and resourcePriceMul's p_r); incomeMul, intensityMul; share-0 apps as squeeze-limit floors. Without the fields the M2 path runs unchanged. |
+| 5 | `load.ts` | M3: SectorDerived.load (live or frozen). |
+| 5 | `travel.ts` | M3: hours per head, sprawl, SectorDerived.travel, lockInDecay. |
 | 5 | `flows.ts` | Every open sector solved in order, cached per state; M2: settled sectors' frozen flows, excess and defence, Commons intensity and wellbeing, `steadyView` (the decade and Steady conditions), `primeFocusedFlows` for projections; the pending Reckoning; the shadow and instruments. |
 | 6 | `conditions.ts` | `Cond`: stat values (M2 stats and `owns` kinds), evaluation, checklist labels. |
 | 6 | `state.ts` | Fresh meta (M2: default orders), run stats and sectors, baselines, history samples (M2: the sink line), `createState`, `isFreshRun`, `withMeta` (the between-runs rebuild). |
 | 6 | `purchases.ts` | Upgrades and foundings by any actor (M2: opening, events, `stageOf`), the click. |
 | 6 | `policy.ts` | `setLever` / `setLeverAs`, `setLeverRecycle`, `drawBudget` (M2: paces), lever views (M2: `recycleChoices`). |
 | 6 | `dividends.ts` | M2: decade offers, the overflow rule, `chooseDecadeDividend`. |
+| 6 | `sideEffects.ts` | M3: the bite ramp, 'biteBack' once per lever per run. |
+| 6 | `seams.ts` | M3: seam cost and reachability, `sinkSeam`, SectorDerived.seams. |
+| 6 | `modifiers.ts` | M3: timed modifiers (stacking, expiry, views). |
+| 6 | `archive.ts` | M3: subject rules, `unlockNotes`, `archiveViews`. |
+| 6 | `ending.ts` | M3: the ending record, `retrospective`. |
+| 6 | `returns.ts` | M3: `fileReturn` validation, publication, `withdrawReturn`, SurveyView. |
+| 6 | `ambient.ts` | M3: ambient ticks, the pick, stat formatting. |
+| 6 | `bank.ts` | M3: Derived.bank (banking and useBank live in offline.ts with the shared catch-up loop). |
 | 6 | `settlement.ts` | M2: `settle`, `unsettle`, `canSettle`, the forced unsettle. |
 | 7 | `commonsActions.ts` | M2: `buyCommons` (fund first), `commonsViews`. |
 | 7 | `unfold.ts` | The unfolding's unlock check (`dueFeature`, every 5 s of run time in the step, never away; and in reckon()), one feature at a time, spaced by `featureGapSeconds`. |
 | 7 | `unlocks.ts` | Which sectors may open next, whether one opens, their checklists. |
 | 8 | `orders.ts` | M2: order ticks, the Market, the Civil Service, Treasury rules, `setOrders`, `OrdersView`. |
+| 8 | `dispatch.ts` | M3: the scheduler (expiry, draw), answers, default resolution, the standing dispatch order, DispatchesView. |
+| 8 | `history.ts` | M3: `chooseHistory`, forbidUntil and the goal in the step, rewards, `historyViews`. |
 | 8 | `charters.ts` | M2: `mix32`, the offer draw, `chooseCharter`. |
 | 9 | `prestige.ts` | The Reckoning (M2: run history, openings, the offer, the 'reckoning' event), Know-how (M2: `knowhowPeak`, the respec), Institutions, the loadout; their views. |
 | 9 | `serialise.ts` | `serialize`, `deserialize`, the v1 → v2 and v2 → v3 migrations, element-by-element validation. |
-| 10 | `step.ts` | `step`, `tick`. Hot path; applies every per-step rule; one call per M2 mechanic (dividends, forced unsettles, events, `runOrders` last). |
+| 10 | `step.ts` | `step`, `tick`. Hot path; applies every per-step rule; one call per M2 mechanic (dividends, forced unsettles, events, `runOrders` last). M3: lockInDecay and bites in the body; `stepM3` (modifier expiry, dispatches, 'biteBack', the History, the Archive, ambient news, the Proprietor's Day) before the orders, in the contract's event order. |
 | 11 | `offline.ts` | M2: `fastForward` with holds, the cap and the `OfflineReport`; the offline fix: Hindsight at `offline.hindsightRate` (`run.hindsightWithheld`) and steps run `away` (no dividend overflow); QA fix: budget lines do not decline while away (`since` moved on per step). |
 | 12 | `derive.ts` | `derive()`: the view the UI reads every frame (M2: every new field). |
 | 12 | `projections.ts` | The cards' "this decade" and "brings within reach" projections (focused clones, structural cache with a 20 s bucket, optional per-sector laziness), and upgrade views. |
@@ -72,5 +87,7 @@ measure µs per tick before and after (benches live in `design/scratch/split-bas
 Next to the code: `model.test.ts`, `model.review.test.ts`, the M1 mechanism tests `m1.instruments.test.ts`,
 `m1.steady.test.ts`, `m1.prestige.test.ts` (shared helpers in `m1.testkit.ts`), and the M2 tests `m2.steady.test.ts`,
 `m2.orders.test.ts`, `m2.prestige.test.ts`, `m2.offline.test.ts`, `m2.events.test.ts`, `m2.save.test.ts`,
-`m2.projections.test.ts`, and the unfolding's `unfold.test.ts`, all against `fixture.ts` (test-only content; never imported by the game) except the
+`m2.projections.test.ts`, the unfolding's `unfold.test.ts`, and the M3 tests `m3.nochange.test.ts` (a golden hour from
+the M2 core, via `m3.golden.ts`), `m3.mechanics.test.ts`, `m3.dispatch.test.ts`, `m3.meta.test.ts`, `m3.save.test.ts`,
+`m3.perf.test.ts` (against `fixtureM3`, `fixtureM3Bank` and `fixtureM3Gated` in `fixture.ts`), all against `fixture.ts` (test-only content; never imported by the game) except the
 projection tolerance test, which also runs the real content. The real-content pacing targets are in `src/balance.test.ts`.

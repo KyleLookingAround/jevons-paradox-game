@@ -256,6 +256,7 @@ describe('M3 fields', () => {
   });
 });
 
+// @ts-ignore node types are not in the project tsconfig (types: [])
 import { readFileSync } from 'node:fs';
 import { SPOT_OF, spot } from './spots';
 import { FIGURE_KEYS } from './props/figures';

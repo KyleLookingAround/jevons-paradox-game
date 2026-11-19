@@ -1,4 +1,4 @@
-// Development stand-in for the real model + content (M2 contract, save version 3). Used with #mock, when the real content is not in
+// Development stand-in for the real model + content (M3 contract, save version 4). Used with #mock, when the real content is not in
 // the M1 shape, and by the mock-only entry (src/ui/mock-main.ts). Crude, but it follows the contract's formulas
 // closely enough that every UI element moves plausibly. It deliberately exercises what the UI must not assume:
 // six industries in three ages, two industries that can open next at once, an unknown theme and an unknown accent,
@@ -11,7 +11,17 @@ import type {
   MetaState, HeadlineKey, NewsItem, Cond, CondCheck, HindsightTerms, KnowhowView, InstitutionView, LeverLevelDef,
   LeverDef, EffectDef, ApplicationDef, AppState, PaceDef, CommonsDef, CommonsView, EventKind, GameEvent, Actor, OrderId, OrdersState,
   OfflineReport, RunSummary, UpgradeDef, LeverRecycle, FeatureId,
+  DispatchDef, HistoryView, ArchiveView, RetroItem, SurveyView, PendingDispatchView, ModifierView, MarketWhy, PlayReturn, FiledReturn,
 } from '../types';
+// M3: the mock borrows the real content's words (the cast, a few letters, the Histories, the Archive, the Proprietor's
+// Day and the ending), so its screenshots read as the game will. Only the mock entry bundles them.
+import { cast as realCast } from '../content/cast';
+import { dispatches as realDispatches } from '../content/dispatches';
+import { histories as realHistories } from '../content/histories';
+import { archive as realArchive } from '../content/archive';
+import { proprietor as realProprietor } from '../content/proprietor';
+import { ending as realEnding } from '../content/ending';
+import { features as realFeatures } from '../content/features';
 import {
   START_YEAR, YEARS_PER_SECOND, STEADY_STATE_YEARS, BUDGET_TOLERANCE, MAX_TICK_SECONDS, CALENDAR_LATE_RATE, EVENTS_MAX, PENDING_DIVIDENDS_MAX,
   OPENING_MAX, RUN_HISTORY_MAX, FEATURE_IDS,
@@ -31,6 +41,14 @@ const steam: SectorDef = {
   tagline: 'Coal, iron, and a great deal of water to be got out of holes.',
   service: { name: 'Motive power', unit: 'hp' }, resource: { name: 'Coal', unit: 'tons', unitSingular: 'ton' }, pressure: { name: 'Smoke', crisisName: 'The Black Fog' },
   settle: { dividend: [{ type: 'mandateAdd', value: 200 }, { type: 'wellbeingAdd', value: 2 }], upkeepPerSpill: 4, blurb: 'The engine houses keep their fires banked; the valley keeps its sky.' },
+  seams: [
+    { id: 'steam.seam.fiveQuarter', name: 'Five-Quarter seam', depth: '178 fathoms', blurb: 'The first seam below the old workings.', tons: 120_000, cost: 2_000, priceMul: 1.1, reachBelow: 9 },
+    { id: 'steam.seam.main', name: 'Main coal', depth: '204 fathoms', blurb: 'Another 26 fathoms of shaft, every one kept dry.', tons: 180_000, cost: 5_000, priceMul: 1.2, reachBelow: 9 },
+    { id: 'steam.seam.lowMain', name: 'Low Main seam', depth: '226 fathoms', blurb: 'Deep enough that the pumps never stop.', tons: 260_000, cost: 12_000, priceMul: 1.35, reachBelow: 0.05 },
+    { id: 'steam.seam.hutton', name: 'Hutton seam', depth: '246 fathoms', blurb: 'Where only the best pumping engine keeps the water out.', tons: 380_000, cost: 30_000, priceMul: 1.55, reachBelow: 0.02 },
+    { id: 'steam.seam.busty', name: 'Busty seam', blurb: 'Below what most owners will pay to reach.', tons: 550_000, cost: 70_000, priceMul: 1.8, reachBelow: 0.01 },
+  ],
+  mechanic: { name: 'The seams', rebound: 'Supply-side', blurb: 'Cheap pumping reaches deeper coal. Each seam sunk postpones the end, and enlarges the burn.' },
   applications: [
     { ...app('steam.pump', 'Mine pumping', 'pump', 1.5, 40, 1.5, Infinity, 0, 'Keep the pit dry; reach the deeper seams.'), reserveGainPerService: 0.05 },
     app('steam.mills', 'Cotton mills', 'mill', 0.6, 300, 2, 0.8, 150, 'Spindles by the thousand.'),
@@ -60,13 +78,22 @@ const light: SectorDef = {
   service: { name: 'Lumens', unit: 'klm' }, resource: { name: 'Town gas', unit: 'therms', unitSingular: 'therm' },
   settle: { dividend: [{ type: 'wellbeingAdd', value: 3 }], upkeepPerSpill: 3, blurb: 'The lamps are lit at dusk and put out at eleven, by long custom.' }, pressure: { name: 'Soot', crisisName: 'The Black Fog' },
   basePrice: 2, capCost: 0.1, reserve: 900000, spill: { to: 'steam', rate: 0.4 },
+  load: {
+    profiles: {
+      evening: [0.2, 0.15, 0.1, 0.1, 0.1, 0.2, 0.5, 0.8, 0.7, 0.5, 0.4, 0.4, 0.4, 0.4, 0.4, 0.5, 0.8, 1.4, 2, 2.2, 2, 1.6, 1, 0.5],
+      night: [1.2, 1.2, 1.2, 1.2, 1.2, 1.1, 0.9, 0.6, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.2],
+      flat: Array.from({ length: 24 }, () => 1),
+    },
+    defaultProfile: 'evening', fixedShare: 0.6,
+  },
+  mechanic: { name: 'The load curve', rebound: 'Utilisation', blurb: 'The works are built for the evening and idle by day. The cheapest unit to sell is the next one.' },
   unlock: { minReckonings: 0, after: ['steam'], when: { all: [
     { owns: 'steam.double', label: 'Own the Double-acting engine' },
     { stat: 'appsFounded', sector: 'steam', op: '>=', value: 3, label: 'Three uses of motive power founded' },
   ] } },
   applications: [
     app('light.street', 'Street lamps', 'lamp', 3, 50, 1.6, Infinity, 0, 'The parish lights the lane.'),
-    app('light.night', 'Night shifts', 'factory-night', 1.2, 400, 2, 1.8, 2000, 'The mill never sleeps now.'),
+    { ...app('light.night', 'Night shifts', 'factory-night', 1.2, 400, 2, 1.8, 2000, 'The mill never sleeps now.'), profile: 'night' },
     app('light.homes', 'Homes', 'house', 0.6, 1500, 2.2, 1, 20000, 'A mantle in every parlour.'),
     app('light.signs', 'Shop signs', 'sign', 0.3, 3000, 2.4, 0.5, 2e5, 'OPEN, spelled in fire.'),
   ],
@@ -76,6 +103,8 @@ const motion: SectorDef = {
   tagline: 'Everywhere is twenty minutes away, give or take the traffic.',
   service: { name: 'Vehicle-miles', unit: 'vmi' }, steady: { paces: [{ id: 'gentle', name: 'Gentle', declinePerDecade: 0.04, dividendMul: 1, blurb: 'The ring road can wait.' }, { id: 'firm', name: 'Firm', declinePerDecade: 0.08, dividendMul: 1.5, blurb: 'One car per household.' }] }, resource: { name: 'Oil', unit: 'bbl' }, pressure: { name: 'Carbon', crisisName: 'The Long Summer' },
   basePrice: 3, capCost: 0.2, reserve: 2e6, spill: { to: 'light', rate: 0.3 },
+  travel: { roads: 900, exponent: 4, hoursScale: 0.004, apps: ['motion.car', 'motion.suburb'] },
+  mechanic: { name: 'The travel-time budget', rebound: 'Induced demand and lock-in', blurb: 'Faster roads buy distance, not time: the hour a day stays, and the miles grow. Sprawl outlasts the traffic.' },
   unlock: { minReckonings: 2, after: ['light'], when: { all: [{ stat: 'serviceDelivered', sector: 'light', op: '>=', value: 20000, label: '20,000 klm·years of light delivered' }] } },
   applications: [
     app('motion.van', 'Delivery', 'van', 4, 60, 1.6, Infinity, 0, 'The shop comes to you.'),
@@ -89,11 +118,12 @@ const compute: SectorDef = {
   tagline: 'Twice as thrifty every eighteen months. Ten times as busy.',
   service: { name: 'Operations', unit: 'Gop' }, resource: { name: 'Electricity', unit: 'MWh' }, pressure: { name: 'Carbon', crisisName: 'The Heat Dome' },
   basePrice: 5, capCost: 0.3, reserve: 5e6, autoEtaRate: 0.01,
+  mechanic: { name: 'Free at the point of use', rebound: 'The frontier at its limit', blurb: 'A price shown as nothing cannot be lowered. The free uses fill to saturation, whatever the chips do.' },
   unlock: { minReckonings: 3, after: ['motion'], when: { all: [{ stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 1e5, label: '100k vmi·years driven' }] } },
   applications: [
     app('compute.sheet', 'Spreadsheets', 'sheet', 6, 80, 1.6, Infinity, 0, 'What if the numbers moved themselves?'),
-    app('compute.web', 'The web', 'globe', 3, 800, 2, 3, 1e5, 'Everything, linked to everything.'),
-    app('compute.play', 'Streaming', 'play', 1, 3000, 2.2, 1.5, 1e6, 'Autoplay in 5, 4, 3…'),
+    { ...app('compute.web', 'The web', 'globe', 3, 800, 2, 3, 1e5, 'Everything, linked to everything.'), priceSeen: { share: 0 } },
+    { ...app('compute.play', 'Streaming', 'play', 1, 3000, 2.2, 1.5, 1e6, 'Autoplay in 5, 4, 3…'), priceSeen: { share: 0, flat: 0.4 } },
     app('compute.brain', 'Model training', 'brain', 0.4, 9000, 2.4, 0.8, 1e7, 'Read everything; once more, with feeling.'),
   ],
 };
@@ -102,6 +132,8 @@ const code: SectorDef = {
   tagline: 'Software is now cheaper to write than to read.',
   service: { name: 'Features', unit: 'features', unitSingular: 'feature' }, resource: { name: 'Human attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
   basePrice: 4, capCost: 0.2, reserve: 3e6, resourceKind: 'flow', pressureSource: 'service', absorption: 0, drawsOn: { sector: 'compute', perService: 2 },
+  pressureUpkeep: 0.0004,
+  mechanic: { name: 'The code stock', rebound: 'Maintenance', blurb: 'Everything shipped must be kept. Upkeep eats the attention that writes the next feature; only deletion shrinks it.' },
   unlock: { minReckonings: 4, after: ['compute'], when: { all: [{ owns: 'compute.node', label: 'Own a Die shrink' }] } },
   applications: [
     app('code.tools', 'Internal tools', 'wrench', 5, 60, 1.6, Infinity, 0, 'A dashboard for the dashboard.'),
@@ -138,6 +170,8 @@ export const mockContent: Content = {
     { id: 'steam.hp', sector: 'steam', name: 'High-pressure steam', blurb: 'Trevithick. Stand well back.', kind: 'efficiency', cost: 20000, stage: 3, requires: ['steam.double'], effects: E('steam', 1.4286) },
     { id: 'steam.turbine', sector: 'steam', name: 'Parsons turbine', blurb: 'Spin, don’t push.', kind: 'efficiency', cost: 60000, locked: true, effects: E('steam', 2) },
     { id: 'steam.coalQuestion', sector: 'steam', name: 'The Coal Question', blurb: 'W. S. Jevons, 1865. An inquiry concerning the progress of the nation.', kind: 'research', cost: 600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }] },
+    { id: 'steam.proprietorsDay', sector: 'steam', name: 'The Proprietor’s Day', blurb: 'Miss Whitlow’s question, put to the Statistics Office: what has become of the proprietor’s working day since the Market.', kind: 'research', cost: 800,
+      when: { all: [{ returned: 'household', figure: 'sessionsBefore', op: '>=', value: 3 }, { not: { flag: 'proprietor' } }] }, effects: [{ type: 'metaFlag', flag: 'proprietor' }] },
     { id: 'steam.foundry', sector: 'steam', name: 'Ironworks', blurb: 'Cheaper engines, cheaper power.', kind: 'capital', cost: 250, effects: [{ type: 'capCostMul', sector: 'steam', value: 0.7 }] },
     { id: 'steam.shaft', sector: 'steam', name: 'Sink a deeper shaft', blurb: 'There is always more, further down.', kind: 'prospect', cost: 200, repeatable: true, costGrowth: 2.2, maxLevel: 6, effects: [{ type: 'reserveAdd', sector: 'steam', value: 0.25 }] },
     { id: 'iron.puddling', sector: 'iron', name: 'Puddling furnace', blurb: 'Cort, 1784. Stir until it behaves.', kind: 'efficiency', cost: 2000, effects: E('iron', 1.5) },
@@ -152,7 +186,8 @@ export const mockContent: Content = {
     { id: 'code.fleet', sector: 'code', name: 'Agent fleets', blurb: 'Forty of them, none of them sleeps.', kind: 'efficiency', cost: 90000, requires: ['code.agent'], effects: E('code', 4) },
   ],
   levers: [
-    { id: 'steam.duty', sector: 'steam', kind: 'duty', name: 'Coal duty', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income.', recycle: ['treasury', 'dividend', 'commons'],
+    { id: 'steam.duty', sector: 'steam', kind: 'duty', name: 'Coal duty', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income. Owners may dig deeper to beat it.', recycle: ['treasury', 'dividend', 'commons'],
+      sideEffects: { effects: [{ type: 'resourcePriceMul', sector: 'steam', value: 0.9 }], rampYears: 8, blurb: 'Owners rush the coal out before the next rise.', unless: { owns: 'kh.wash' }, unlessLabel: 'unless coal washing is learnt' },
       levels: [L(60, 0.1, 0.3, 'Hold price at 30% of the fall'), L(180, 0.2, 0.6, 'Hold price at 60% of the fall'), L(540, 0.4, 0.9, 'Hold price at 90% of the fall')],
       repeat: { valueStep: 0.03, costGrowth: 1.6, upkeepGrowth: 1.3, label: 'Hold price at {pct}% of the fall' } },
     { id: 'steam.cap', sector: 'steam', kind: 'cap', name: 'Smoke abatement cap', blurb: 'So much and no more.', catch: 'Permits are dear, and smoke finds the gaps.', recycle: ['treasury', 'dividend'],
@@ -162,6 +197,9 @@ export const mockContent: Content = {
       levels: [L(80, 0.1, 0.2, 'A fifth from scrap'), L(240, 0.2, 0.4, 'Two fifths from scrap')] },
     { id: 'light.sufficiency', sector: 'light', kind: 'sufficiency', name: 'Lights out by eleven', blurb: 'A civic habit.', catch: 'Fewer lamps lit, fewer shillings in the meter.',
       levels: [L(80, 0.1, 0.8, 'Aim for 80% of today', 0.01), L(240, 0.2, 0.6, 'Aim for 60% of today', 0.01)] },
+    { id: 'motion.standard', sector: 'motion', kind: 'measure', name: 'Fuel-economy standard', blurb: 'So many miles to the gallon, by law.', catch: 'Cheaper miles are driven. Heavier cars may fill the gap.',
+      effects: [{ type: 'etaMul', sector: 'motion', value: 1.2 }], levels: [L(80, 0.1, 1, 'Ten per cent better'), L(240, 0.2, 2, 'Twenty per cent better')],
+      sideEffects: { effects: [{ type: 'satMul', sector: 'motion', app: 'motion.car', value: 1.15 }], rampYears: 6, blurb: 'Heavier cars fill the forecourt.', unless: { owns: 'motion.duty' }, unlessLabel: 'unless a fuel duty is in force' } },
     { id: 'motion.duty', sector: 'motion', kind: 'duty', name: 'Fuel duty escalator', blurb: 'Pence on the litre, rising.', catch: 'Hauliers blockade the refineries.', recycle: ['treasury'],
       levels: [L(60, 0.1, 0.3, 'Hold price at 30% of the fall'), L(180, 0.2, 0.6, 'Hold price at 60% of the fall')] },
     { id: 'compute.cap', sector: 'compute', kind: 'cap', name: 'Grid connection cap', blurb: 'Queue for the substation.', catch: 'The halls move abroad.',
@@ -232,6 +270,15 @@ export const mockContent: Content = {
     { id: 'ch.board', name: 'A Board of Health', blurb: 'An Institution you do not own, on loan for one run.', effects: [{ type: 'institutionLoan', id: 'in.museum', level: 1 }] },
   ],
   knowhowTrees: { steam: { name: 'The engine shop' }, general: { name: 'General' } },
+  /* M3: the real words (see the imports): a few letters with two and three answers, the cast, Histories, the Archive. */
+  cast: realCast,
+  dispatches: ['d.gen.firstLetter', 'd.steam.tallChimney', 'd.gen.whitlowChair', 'd.gen.advertisements'].map((id) => realDispatches.find((d) => d.id === id)).filter((d): d is DispatchDef => !!d),
+  histories: realHistories,
+  archive: realArchive,
+  proprietor: realProprietor,
+  ending: realEnding,
+  features: Object.fromEntries((['archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey', 'histories', 'bank'] as FeatureId[])
+    .map((id) => [id, { when: { all: [] }, intro: realFeatures[id]?.intro, name: realFeatures[id]?.name }])),
   recycleText: {
     treasury: { name: 'To the Treasury', blurb: '10% becomes Mandate; the rest is general taxation.' },
     dividend: { name: 'As a dividend', blurb: 'Paid back per head: wellbeing up, so more people, and more demand.' },

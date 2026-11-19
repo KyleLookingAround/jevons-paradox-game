@@ -22,7 +22,7 @@ const CAST: Record<string, Kit> = {
   pryce: { hat: 'bowler', hold: 'brochure', coat: 'short', accent: true },
   motorist: { hat: 'bowler', hold: 'brochure', coat: 'short', accent: true },
   salesman: { hat: 'bowler', hold: 'brochure', coat: 'short', accent: true },
-  ashworth: { hat: 'top', stout: true, hold: 'cane', coat: 'long' },
+  ashworth: { hat: 'bowler', stout: true, hold: 'book', coat: 'short' }, // the engineer, with his drawings
   millowner: { hat: 'top', stout: true, hold: 'cane', coat: 'long' },
   industrialist: { hat: 'top', stout: true, hold: 'cane', coat: 'long' },
   minister: { hat: 'top', hold: 'box', coat: 'long', accent: true },

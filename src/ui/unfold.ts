@@ -8,7 +8,7 @@ import { h } from './dom';
 import { getPrefs, setPrefs } from './prefs';
 
 /** Where each feature lives on the page (the element that carries its mark). Display only. */
-const TARGET: Record<FeatureId, string> = {
+const TARGET: Partial<Record<FeatureId, string>> = {
   reboundMeter: '.dial-reb .dial-head',
   levers: 'section.levers > .sec-h',
   population: '.popg .res-row',
@@ -23,6 +23,17 @@ const TARGET: Record<FeatureId, string> = {
   steadyState: '.ss',
   commons: 'section.commons > .sec-h',
   settlement: 'section.budget > .sec-h',
+  // M3 ('ambient' has no place of its own: the paper simply has more in it).
+  archive: '.news .arc-link',
+  dispatches: 'section.letters > .sec-h',
+  seams: 'section.mech > .sec-h',
+  load: 'section.mech > .sec-h',
+  travel: 'section.mech > .sec-h',
+  freeAtUse: 'section.mech > .sec-h',
+  sideEffects: '.lev-bite',
+  survey: 'section.survey > .sec-h',
+  histories: '.histories > h3',
+  bank: '.bank-row',
 };
 /** Seconds a mark must have been on screen before it clears. */
 const LOOKED = 1500;
@@ -55,7 +66,9 @@ export function createNewMarks(ctx: Ctx): NewMarks {
     if (left.length !== getPrefs().newMarks.length) setPrefs({ newMarks: left });
   }
   const place = (id: FeatureId): HTMLElement | null => {
-    const el = document.querySelector<HTMLElement>(TARGET[id]);
+    const sel = TARGET[id];
+    if (!sel) return null;
+    const el = document.querySelector<HTMLElement>(sel);
     return el && el.getClientRects().length && !el.closest('[hidden]') ? el : null;
   };
   function attach(id: FeatureId): void {

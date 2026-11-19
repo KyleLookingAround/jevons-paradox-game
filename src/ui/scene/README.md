@@ -145,6 +145,20 @@ its props in `props/<id>.ts`, and set `look: '<id>'` on the layouts drawn in it.
 - Measured in the demo (`node tools/scene-shot.mjs --switch`, 4× CPU, phone): style while animating 40–105 → ~0 ms/s;
   switching back to a kept Industry 1–7 ms of script.
 
+## Performance (M3)
+
+- **Hysteresis on everything pressure drives.** The weather layers, `--pf2`, `--pfc` and every plot's count move only
+  when their input is a whole step past what is shown, so a value hovering at a boundary no longer starts an opacity
+  transition or toggles a slot (and repaints its band) at every update.
+- **Code's load-shedding** is a phase class stepped on the mid band every four seconds while under strain (one
+  restyle and repaint per step), not a CSS animation inside the drawing.
+- **Things lit by the hour** (Light's load) come on without the rise animation; Light's clock hand is a Web Animation
+  on a sprite (composited); the town relights every 2.5 s only when the hour changes.
+- **Measure:** `node tools/scene-shot.mjs [industries] --trace [--m3]` (a devtools timeline trace per Industry at its
+  busiest state, 4× CPU, 10 Hz updates: style, layout, paint and layer ms per second; `JIT=pace|pressure|none` picks
+  the jitter); `--perf --m3` and `--switch --m3` measure the M3 busiest state. `--m3` strips: `#strip=<id>&m3`;
+  spots: `#spots`; stills: `#stills=<id>`.
+
 ## Why SVG (and not canvas)
 
 - **Every place is a real control.** Tap targets are HTML buttons laid over the picture, with labels; the art itself

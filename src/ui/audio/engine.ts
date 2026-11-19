@@ -9,8 +9,10 @@ import type { SceneView } from '../scene/types';
 import type { Soundscape, SoundscapeOptions, SoundEventKind, SoundEventDetail, Volumes, SoundscapeStats, Mix } from './types';
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type SoundscapeDef, type LayerDef, type BedDef, type HitsDef } from './defs';
 import { mixFrom, momentsBetween } from './mix';
-import { render, hasRecipe } from './recipes';
-import { BUF_SR, rngFrom, hash, pink, white, brown, type Rng } from './synth';
+import { hasRecipe } from './recipes';
+import { rngFrom, hash, type Rng } from './synth';
+import { obtain, attach, detach, bankSamples } from './synthq';
+import type { Job } from './jobs';
 import { freq, ratio, semis, type Key } from './music';
 
 const LOOKAHEAD = 0.4;           // s scheduled ahead of the clock
@@ -19,8 +21,7 @@ const MAX_WORLD_VOICES = 18;
 const MAX_UI_VOICES = 6;
 const MAX_SELL_VOICES = 3;
 const XFADE_TC = 0.7;            // crossfade time constant between Industries (≈ 2.1 s to 95%)
-const SYNTH_BUDGET_MS = 6;       // most JS synthesis per tick (later hits wait for the next tick)
-const BANK_CAP = 2_400_000;      // cached samples (24 kHz mono, ≈ 9.6 MB) before least-recently-used recipes are dropped
+const SYNTH_BUDGET_MS = 6;       // offline only: most JS synthesis per tick (later hits wait for the next tick)
 
 type Ctx = BaseAudioContext;
 
@@ -90,10 +91,6 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let revIn: GainNode | null = null, revLp: BiquadFilterNode | null = null;
   let canPan = false;
   let meter: AnalyserNode | null = null, meterBuf: Float32Array<ArrayBuffer> | null = null;
-  const bank = new Map<string, AudioBuffer>();
-  const used = new Map<string, number>();
-  const noiseBufs = new Map<string, AudioBuffer>();
-  let bankSamples = 0;
   let graphs: Graph[] = [];
   let view: SceneView | null = null;
   let wantSector: string | null = null;
@@ -108,7 +105,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let updateMs = 0, tickMs = 0, synthSpent = 0;
   const last = new Map<AudioParam, number>();
   let mq: MediaQueryList | null = null;
-  const warm: [string, Key, number][] = [];   // recipes to synthesise ahead of need, one per idle tick
+  const warm: [string, Key, number][] = [];   // offline only: recipes to synthesise ahead of need, one per tick
+  let attached: BaseAudioContext | null = null;
+  const sync = !!external;                     // offline/tests: synthesise at once; live: in the worker
 
   const now = (): number => (opts.clock ? opts.clock() : ctx ? ctx.currentTime : 0);
   const perf = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -145,6 +144,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         const live = ctx as AudioContext;
         live.onstatechange = () => onState();
       }
+      attach(ctx); attached = ctx;
       buildBuses();
       return true;
     } catch {
@@ -167,28 +167,13 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     revIn = c.createGain(); revIn.gain.value = 1;
     const conv = c.createConvolver();
     conv.normalize = true;
-    conv.buffer = impulse(c, 1.7);
+    // The impulse is synthesised off the main thread; the room is dry for the moment it takes.
+    const ib = obtain({ t: 'impulse', sr: c.sampleRate, dur: 1.7, seed }, { sync, pin: true, ctx: c, cb: (b) => { if (b && ctx === c) { try { conv.buffer = b; } catch { /* ignore */ } } } });
+    if (ib) conv.buffer = ib;
     revLp = c.createBiquadFilter(); revLp.type = 'lowpass'; revLp.frequency.value = 5000;
     const revOut = c.createGain(); revOut.gain.value = 0.5;
     revIn.connect(conv); conv.connect(revLp); revLp.connect(revOut); revOut.connect(worldBus);
     ramp(master.gain, vol.master ** 2, 0.15);
-  }
-
-  function impulse(c: Ctx, dur: number): AudioBuffer {
-    const sr = c.sampleRate, n = Math.round(dur * sr);
-    const b = c.createBuffer(2, n, sr);
-    for (let ch = 0; ch < 2; ch++) {
-      const r = rngFrom(seed ^ (0x1e + ch)), d = b.getChannelData(ch);
-      let lp = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        const a = Math.min(1, t / 0.012) * Math.exp(-t * 3.6);
-        const k = 0.5 * Math.exp(-t * 2.2) + 0.04;            // the tail darkens
-        lp += ((r() * 2 - 1) - lp) * k;
-        d[i] = lp * a;
-      }
-    }
-    return b;
   }
 
   const running = (): boolean => !!ctx && (external ? true : (ctx as AudioContext).state === 'running');
@@ -277,38 +262,23 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   /* ---------------- buffers ---------------- */
 
-  function noise(col: 'pink' | 'white' | 'brown'): AudioBuffer {
-    let b = noiseBufs.get(col);
-    if (!b) {
-      const n = Math.round(6.7 * BUF_SR), r = rngFrom(seed ^ hash(col));
-      const x = col === 'pink' ? pink(n, r) : col === 'white' ? white(n, r) : brown(n, r);
-      // Crossfade the loop seam.
-      const m = Math.round(0.25 * BUF_SR);
-      for (let i = 0; i < m; i++) { const a = i / m; x[i] = x[i] * a + x[n - m + i] * (1 - a); }
-      const y = x.subarray(0, n - m);
-      b = ctx!.createBuffer(1, y.length, BUF_SR);
-      b.getChannelData(0).set(y);
-      noiseBufs.set(col, b);
-      bankSamples += y.length;
-    }
-    return b;
+  /** A looping noise bed's buffer, or null while the worker makes it (cb runs when it is ready). */
+  function noise(col: 'pink' | 'white' | 'brown', cb?: (b: AudioBuffer | null) => void): AudioBuffer | null {
+    return obtain({ t: 'noise', col, seed }, { sync, pin: true, ctx, cb });
   }
 
-  /** A synthesised recipe, cached; null when this tick's synthesis budget is spent (the hit is skipped). */
-  function recipe(name: string, key: Key, v: number, force = false): AudioBuffer | null {
-    const id = `${name}|${key.root.toFixed(2)}${key.mode}|${v}`;
-    let b = bank.get(id);
-    used.set(id, now());
-    if (b) return b;
-    if (!force && synthSpent > SYNTH_BUDGET_MS) return null;
-    const t0 = perf();
-    const x = render(name, { rng: rngFrom(seed ^ hash(id)), key, v });
-    b = ctx!.createBuffer(1, x.length, BUF_SR);
-    b.getChannelData(0).set(x);
-    bank.set(id, b);
-    bankSamples += x.length;
-    synthSpent += perf() - t0;
-    return b;
+  /** A synthesised recipe, cached; null when it is not ready yet (live: queued in the worker; offline: this tick's
+   *  synthesis budget is spent), and the hit is skipped. */
+  function recipe(name: string, key: Key, v: number, force = false, cb?: (b: AudioBuffer | null) => void): AudioBuffer | null {
+    const job: Job = { t: 'recipe', name, key, v, seed };
+    if (sync) {
+      if (!force && synthSpent > SYNTH_BUDGET_MS) { const b = obtain(job, { ctx }); return b; }
+      const t0 = perf();
+      const b = obtain(job, { sync: true, ctx });
+      synthSpent += perf() - t0;
+      return b;
+    }
+    return obtain(job, { ctx, cb });
   }
 
   /* ---------------- graphs ---------------- */

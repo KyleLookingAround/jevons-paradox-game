@@ -397,7 +397,7 @@ async function stillsMode(indId: string): Promise<void> {
   ];
   for (const [cap, v] of shots) {
     const fig = document.createElement('figure');
-    const svg = await renderStill(v, { width: 600, height: 400 }) as string;
+    const svg = await renderStill(v, { width: 600, height: 400, frozen: cap.startsWith('the Reckoning') }) as string;
     fig.innerHTML = `<figcaption>${cap}</figcaption><img alt="" style="width:100%;display:block" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}">`;
     wrap.append(fig);
   }

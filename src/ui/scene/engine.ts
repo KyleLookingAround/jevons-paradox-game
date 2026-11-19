@@ -1568,7 +1568,20 @@ function serialise(root: HTMLElement, el: WorldEls, look: string, o: StillOption
     return s;
   };
   body += band('far') + layerRect(el.mist1) + layerRect(el.hz1) + band('mid') + layerRect(el.mist2) + layerRect(el.hz2) + band('near') + layerRect(el.hz3) + layerRect(el.held);
+  // M3: the Reckoning as the frozen scene: the colour drained (as .halt does live) and the banner lettered across it.
+  const frozen = !!o.frozen && root.classList.contains('halt');
+  if (frozen) {
+    grads.push(`<filter id="frz"><feColorMatrix type="saturate" values=".25"/><feComponentTransfer><feFuncR type="linear" slope=".92" intercept=".03"/><feFuncG type="linear" slope=".92" intercept=".03"/><feFuncB type="linear" slope=".92" intercept=".03"/></feComponentTransfer></filter>`);
+    body = `<g filter="url(#frz)">${body}</g>`;
+  }
   if (o.plate !== false) body += el.plateSvg.innerHTML;
+  const bt = frozen ? (root.querySelector('.scn-banner span')?.textContent ?? '') : '';
+  if (bt) {
+    const w2 = Math.min(560, 60 + bt.length * 13);
+    body += `<g transform="translate(300 152)"><rect x="${-w2 / 2}" y="-22" width="${w2}" height="40" style="fill:rgb(var(--s-fog,var(--s-smk)));fill-opacity:.88"/>` +
+      `<path d="M${-w2 / 2} -22H${w2 / 2}M${-w2 / 2} 18H${w2 / 2}" style="stroke:var(--s-btxt,var(--s-paper))" stroke-width="1"/>` +
+      `<text x="0" y="6" text-anchor="middle" style="fill:var(--s-btxt,var(--s-paper));font:700 22px Georgia,serif">${esc(bt)}</text></g>`;
+  }
   const cls = Array.from(root.classList).filter((c) => !/^(live|paused|halt|crisis|backfire)$/.test(c)).concat('rm', 'still').join(' ');
   const vars = (root.style.cssText + ';' + el.world.style.cssText).replace(/"/g, "'");
   const css = sceneCss().replace(/<\/style/gi, '');

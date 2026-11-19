@@ -169,6 +169,9 @@ export interface StillOptions {
   scale?: number;
   /** Draw the style's plate (frame, title) (default true). */
   plate?: boolean;
+  /** M3: a view with a pending Reckoning is drawn as the frozen scene: colour drained and the end named across it, as
+   *  the live picture shows it (default false: the picture at rest, in colour). */
+  frozen?: boolean;
 }
 
 export interface ReplayOptions {
