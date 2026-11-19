@@ -50,7 +50,7 @@ const sector: SectorDef = {
     minReckonings: 2,
     when: {
       all: [
-        { owns: 'light.mantle', label: 'Own the Incandescent gas mantle' },
+        { owns: 'light.mantle', label: 'Own the Incandescent mantle' },
         /* M1 balance: no new age opens into a choking one (Motion would otherwise die with Steam within minutes). */
         { stat: 'pressureFraction', sector: 'steam', op: '<', value: 0.5, label: 'Steam’s smog under half of collapse' },
         { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 2_000, label: '2,000 klm·h·years of light delivered' },
@@ -72,7 +72,7 @@ const sector: SectorDef = {
     },
     {
       id: 'motion.commuting',
-      name: 'Commuting',
+      name: 'Commuter towns',
       blurb: 'Faster cars mean the same hour in traffic, from twice as far away.',
       icon: 'car',
       halfPrice: 0.4,
@@ -109,7 +109,7 @@ const sector: SectorDef = {
     {
       id: 'motion.flights',
       name: 'Package holidays',
-      blurb: 'A fortnight on the Costa, for less than a week in Skegness.',
+      blurb: 'A fortnight on the Costa for the price of a week in Skegness, says the brochure.',
       icon: 'plane',
       halfPrice: 0.08,
       saturation: 150_000,
@@ -129,7 +129,7 @@ const motionUpgrades: UpgradeDef[] = [
   ...chain('motion', ladder(12_000, 2.4, 5), [
     {
       id: 'motion.radial', name: 'Radial tyres', fold: 1.3,
-      blurb: 'Michelin, 1946. Less rolling resistance, longer life, further trips.',
+      blurb: 'Michelin, 1946. Less rolling resistance, a longer life, and longer trips.',
     },
     {
       id: 'motion.injection', name: 'Fuel injection', fold: 1.95,
@@ -188,7 +188,7 @@ const motionUpgrades: UpgradeDef[] = [
   {
     id: 'motion.motorways', sector: 'motion', kind: 'capital',
     name: 'Motorway programme',
-    blurb: 'The M1, 1959. No junctions, no lights, no reason to stay at home.',
+    blurb: 'The M1, 1959. No crossroads, no traffic lights, no speed limit, and no reason to stay at home.',
     cost: 250_000, requires: ['motion.injection'], effects: [capCost('motion', 0.8)],
   },
   {
@@ -222,14 +222,14 @@ const motionLevers: LeverDef[] = [
   lever({
     id: 'motion.cap', sector: 'motion', kind: 'cap',
     name: 'Oil import quota',
-    blurb: 'So many barrels a year, fewer each decade, and not one more. Trade the permits if you must.',
+    blurb: 'So many barrels a year, fewer each decade, and not one more. The permits change hands in the City.',
     catch: `Squeeze too hard and the barrels arrive by other routes. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 280, upkeep: 0.14, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
   }),
   lever({
     id: 'motion.sufficiency', sector: 'motion', kind: 'sufficiency',
-    name: 'The 15-minute town',
+    name: 'Walking distance',
     blurb: 'School, shop and surgery within a walk. The car stays on the drive.',
     catch: 'The suburbs were built for the car. They will not walk anywhere quickly.',
     values: SUFF_VALUES, value2: [0.0015, 0.0025, 0.0035], cost: 200, upkeep: 0.05, label: SUFF_LABEL,
@@ -247,7 +247,7 @@ const motionLevers: LeverDef[] = [
     id: 'motion.greenSpending', sector: 'motion', kind: 'greenSpending',
     name: 'Insulation grants',
     blurb: 'Steer the money saved on petrol into loft lagging instead of more lamps.',
-    catch: 'Cuts the spill into the lit world; the motorways are untouched.',
+    catch: 'Blunts the spill into Light, and only that; the motorways carry on as before.',
     values: GREEN_VALUES, cost: 220, upkeep: 0.05, label: 'Absorb {pct}% of the savings',
   }),
 ];
@@ -262,25 +262,41 @@ const motionHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Motor show: thriftier saloons, longer commutes',
     'Fuel economy up; garages report a record summer',
     'Miles per gallon at a record; so are the miles',
+    'Road test: forty to the gallon, and nowhere it will not go',
+    'Thriftier engine launched; the brochure suggests a touring holiday',
+    'Economy run won at a record; the winner drives home the long way',
   ],
   sectorOpened: [
     'Distance repealed; the bypass opens in {year}',
     'The motor age arrives; the high street heads for the ring road',
-    'Car ownership “a reasonable expectation”, says minister',
+    'A car for every family “within a generation”, says minister',
+  ],
+  appAvailable: [
+    'Planning application lodged for {app}; the bypass is the draw',
+    'Cheap motoring puts {app} on the map',
+    'Developers circle the ring road with plans for {app}',
+    'Survey finds strong demand for {app}, and stronger for parking',
+    '{app} “the future”, says a man with a scale model of it',
   ],
   appFounded: [
-    '{app} opens; the car park is full by ten',
+    'Opened by a minister in a new saloon: {app}',
     'Planners approve {app}; nobody asks the buses',
+    'Queues on the ring road for {app}; the car park full by ten',
+    'Ribbon cut on {app}; the ring road gains a lane',
+    '{app} a hit; new signs go up on the bypass',
   ],
   backfire: [
     'Cars twice as thrifty; the nation drives three times as far',
     'Petrol per mile down, petrol per family up, figures show',
+    'Most economical cars ever built; the longest jams ever recorded',
+    'Record fuel economy, record petrol sales; forecourts baffled',
   ],
   crisis: [
     'Summer smog: asthma wards full, motorways fuller',
     'Haze over the ring road; health warning for the elderly',
     'Smog alert No. {n}: please leave the car, say the adverts',
     'Traffic fumes trap a heatwave over the city',
+    'Children kept indoors as the smog settles on the bypass',
   ],
   collapse: [
     'Gridlock total: the city parks itself and gives up',
@@ -291,9 +307,43 @@ const motionHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'The pumps run dry; the forecourts close',
     'Oil runs out; the bypass is very quiet',
     'Last barrel sold; motoring correspondents in mourning',
+    'Petrol rationed, then gone; the bicycle shops sell out',
+  ],
+  leverEnacted: [
+    'Transport bill through the Commons; motoring correspondents in black',
+    'Minister of Transport announces measures; the motor show goes on',
+    'Measure passes; hauliers threaten a go-slow',
+    'Budget day: the Chancellor turns to motoring, and the House groans',
+    'New rules from Monday; the motoring lobby “considers its options”',
+  ],
+  leverLapsed: [
+    'Measure dropped after a summer of headlines',
+    'U-turn on the motorist; the minister “has listened”',
+    'Scheme scrapped; the motoring lobby claims a scalp',
   ],
   budgetDrawn: [
     'Oil budget drawn; motorists told the line “will not bite”',
+    'An oil budget, smaller each decade; the motor lobby “studies it”',
+  ],
+  decade: [
+    'Decade {n} inside the oil budget; the bypass a little quieter',
+    'Ten years on the line; the car stays on the drive more often',
+  ],
+  budgetBroken: [
+    'Oil budget breached; a bank-holiday weekend blamed',
+    'Over the line: the new motorway “was always going to be busy”',
+  ],
+  steadySector: [
+    'Fifty years on the oil budget; the high street has its shops back',
+    'Motion holds its line; the traffic reports run short of material',
+  ],
+  ageBegins: [
+    'Petrol rationing ends; {age} begins on the forecourt',
+    'Postwar boom under way; the economists run out of graph paper',
+  ],
+  reckoning: [
+    'Public inquiry into the motorway age opens in a draughty hall',
+    'The Motorist reviews the century: “mixed, but fast”',
   ],
 };
 

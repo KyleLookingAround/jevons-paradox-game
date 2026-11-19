@@ -21,7 +21,7 @@ const sector: SectorDef = {
   tagline: 'The night is abolished by order of the gas company.',
   service: { name: 'Light', unit: 'klm·h' },
   resource: { name: 'Town gas & current', unit: 'therms' },
-  pressure: { name: 'Coal smoke', crisisName: 'The Pea-Souper' },
+  pressure: { name: 'Fog', crisisName: 'The Pea-Souper' },
   accent: 'gas',
   theme: 'gaslight',
 
@@ -94,7 +94,7 @@ const sector: SectorDef = {
     {
       id: 'light.homes',
       name: 'Lit homes',
-      blurb: 'Reading after dark, once a luxury, is now a reasonable expectation.',
+      blurb: 'Reading after dark, once a luxury, is now merely a habit.',
       icon: 'house',
       halfPrice: 0.15,
       saturation: 25_000,
@@ -128,15 +128,15 @@ const lightUpgrades: UpgradeDef[] = [
       blurb: 'A slit in the jet fans the flame out. Brighter for the same gas.',
     },
     {
-      id: 'light.mantle', name: 'Incandescent gas mantle', fold: 3.2,
-      blurb: 'Welsbach’s little sock of rare earths, glowing white in the flame. Gas lives to fight the bulb.',
+      id: 'light.mantle', name: 'Incandescent mantle', fold: 3.2,
+      blurb: 'Welsbach’s little sock of thoria, glowing white in the flame. Gas lives to fight the bulb.',
     },
     {
       id: 'light.carbon', name: 'Carbon filament lamp', fold: 5.76,
       blurb: 'Swan and Edison, c. 1880. A thread of charcoal in a vacuum.',
     },
     {
-      id: 'light.tungsten', name: 'Drawn tungsten filament', fold: 9.8,
+      id: 'light.tungsten', name: 'Tungsten filament', fold: 9.8,
       blurb: 'A metal that would rather not melt, persuaded into wire.',
     },
     {
@@ -153,8 +153,8 @@ const lightUpgrades: UpgradeDef[] = [
   ...fork(
     {
       id: 'light.gasWorks', sector: 'light', kind: 'efficiency',
-      name: 'Modernise the gas works',
-      blurb: 'Bigger retorts, better holders, a mantle on every lamp-post. Gas stays cheap, so the parish lights every street.',
+      name: 'Rebuild the gasworks',
+      blurb: 'Bigger retorts, better holders, a mantle on every lamp-post. The parish lights every street, then the alleys.',
       cost: 30_000, requires: ['light.mantle'],
       effects: [eta('light', 1.25), sat('light', 1.4, 'light.streetLamps')],
     },
@@ -193,13 +193,13 @@ const lightUpgrades: UpgradeDef[] = [
   },
   {
     id: 'light.slotMeter', sector: 'light', kind: 'capital',
-    name: 'Penny-in-the-slot meter',
+    name: 'Penny-slot meter',
     blurb: 'Gas for any household with a penny, and a reliable penny for the company.',
     cost: 15_000, requires: ['light.batswing'], effects: [margin('light', 0.03)],
   },
   {
     id: 'light.phoebus', sector: 'light', kind: 'capital',
-    name: 'Lamp makers’ agreement',
+    name: 'Lamp makers’ cartel',
     blurb: 'Geneva, 1924: the makers agree a lamp should last a thousand hours and no longer. Sales are excellent.',
     cost: 120_000, requires: ['light.tungsten'], effects: [margin('light', 0.04), capCost('light', 1.1)],
   },
@@ -220,30 +220,30 @@ const lightLevers: LeverDef[] = [
   /* ---- Light ---- */
   lever({
     id: 'light.duty', sector: 'light', kind: 'duty',
-    name: 'Gas & lighting rate',
-    blurb: 'A municipal rate on every therm, rising with the lamps’ efficiency.',
+    name: 'Lighting rate',
+    blurb: 'A municipal rate on every therm, raised as the lamps improve.',
     catch: `The streets stay dimmer than they could. The ratepayers notice. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 160, upkeep: 0.08, label: DUTY_LABEL, recycle: RECYCLE,
   }),
   lever({
     id: 'light.cap', sector: 'light', kind: 'cap',
-    name: 'Gas works allowance',
+    name: 'Gas allowance',
     blurb: 'So many therms a year for the whole town, a little fewer each decade, and permits to trade the rest.',
-    catch: `The allowance was drafted from the gas companies’ own forecasts. Tighten it before it bites. ${DIVIDEND}`,
+    catch: `Drafted from the gas companies’ own forecasts, it will not bite until it is tightened. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 170, upkeep: 0.08, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
   }),
   lever({
     id: 'light.sufficiency', sector: 'light', kind: 'sufficiency',
-    name: 'Lights out at midnight',
+    name: 'Lights out',
     blurb: 'Shop signs and empty offices go dark when the pubs do.',
-    catch: 'Midnight comes for the night shift too, eventually.',
+    catch: 'Midnight comes for the night shift too, and for the takings.',
     values: SUFF_VALUES, value2: [0.002, 0.003, 0.004], cost: 130, upkeep: 0.03, label: SUFF_LABEL,
     repeat: { value2Step: 0.0005 },
   }),
   lever({
     id: 'light.greenSpending', sector: 'light', kind: 'greenSpending',
-    name: 'Public libraries & parks',
+    name: 'Public parks',
     blurb: 'Give the money saved on lighting somewhere to go that is not a furnace.',
     catch: 'Only blunts the spill into older trades; it does nothing for the lamps.',
     values: GREEN_VALUES, cost: 140, upkeep: 0.03, label: 'Absorb {pct}% of the savings',
@@ -268,28 +268,43 @@ const lightHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'New lamp gives four times the light; householders light four rooms',
     'Thriftier burner hailed; gas works orders a second holder',
     'Lamp makers promise a cheaper night; the night lengthens',
+    'A brighter bulb for the same current; the meter turns as before',
+    'Gas and current each cheaper by the year; the parish buys both',
   ],
   sectorOpened: [
     'Light by the therm: the new industry opens in {year}',
     'Gas laid on: the evening, it seems, is here to stay',
     'Lamplighters wanted. Apply after dark',
   ],
+  appAvailable: [
+    'Lighting committee considers {app}; the gas company considers it too',
+    'Cheap light makes {app} a practical proposition',
+    'Ratepayers petition for {app}; the gas company drafts the petition',
+    'Engineers survey the borough for {app}',
+    'Plans for {app} on view at the town hall, by gaslight',
+  ],
   appFounded: [
-    '{app} lit for the first time; crowds stay out past midnight',
+    'Switched on tonight: {app}; crowds stay out past midnight',
     '{app} switched on; the night retreats another street',
+    'The mayor throws the switch on {app}, and is photographed doing it',
+    'Gas company dividend up on the strength of {app}',
+    '{app} in service; the lamplighters ask a question',
   ],
   backfire: [
     'Lamps need a quarter of the gas; streets lit all night anyway',
     'Every room lit, every night: gas sales at a record',
+    'Light four times cheaper; the borough buys ten times as much',
+    'Thriftiest lamps in the kingdom, and the largest gas bill',
   ],
   crisis: [
     'Pea-souper: omnibus conductors walk ahead with torches',
     'Gasworks smoke and coal smoke meet in a yellow fog',
-    'Lamps lit at noon, to no visible effect',
+    'Fog at noon; the gas lamps light nothing but themselves',
     'Pea-souper No. {n}: theatres empty, infirmaries full',
+    'Cabman lost in the fog finds himself two parishes away',
   ],
   collapse: [
-    'The lamps burn on in a fog nobody can see them through',
+    'Fog closes the city; the trams stop, the gas meters do not',
     'City dark at midday, lit at midnight, and no one can breathe',
     'Smoke closes the city; the gas company regrets nothing',
   ],
@@ -297,6 +312,39 @@ const lightHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Gas holders empty; the street lamps go out one by one',
     'The works run out of coal to cook; the night returns',
     'Last therm sold. Candles, suddenly, a growth industry',
+  ],
+  leverEnacted: [
+    'Corporation adopts the lighting order; the gas company “consults”',
+    'Lighting rate set after a late sitting of the council',
+    'New rules for the gas companies, drafted with their help',
+    'Board of Trade issues an order; the meter men study it',
+    'Lighting order in force; shopkeepers draw their blinds in protest',
+  ],
+  leverLapsed: [
+    'Lighting order lapses; the shop signs blaze till dawn',
+    'Council drops the rate after a stormy meeting',
+    'Allowance quietly withdrawn; the gas company sends a calendar',
+  ],
+  budgetDrawn: [
+    'Gas allowance fixed for the borough: so many therms, and fewer',
+    'A ceiling on the city’s light; the gas company calls it “interesting”',
+  ],
+  decade: [
+    'Ten years of light within the allowance; nobody read by candle',
+    'Gas budget kept for decade {n}; the streets as bright as ever',
+    'Decade {n} on the line; the gas holders stand half full',
+  ],
+  budgetBroken: [
+    'Borough overshoots its gas allowance; a hard winter blamed',
+    'Over budget on light; the shop signs stay lit regardless',
+  ],
+  steadySector: [
+    'Fifty years of the same gas, and the city brighter for it',
+    'Light holds its line; the Evening Lamp reports little else',
+  ],
+  reckoning: [
+    'An inquiry into the lighting of the city sits through the night',
+    'The gas companies’ books opened to the public, briefly',
   ],
 };
 

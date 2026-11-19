@@ -169,4 +169,4 @@ export const SUFF_VALUES = [0.85, 0.7, 0.55];
 export const SHARE_VALUES = [0.1, 0.2, 0.35];
 export const GREEN_VALUES = [0.3, 0.6, 0.9];
 /** Every duty and cap catch ends by naming the dividend's rebound (economy-wide, through population). */
-export const DIVIDEND = 'Paid back as a dividend, the levy is spent, and the population grows.';
+export const DIVIDEND = 'Paid out as a dividend instead, the levy is spent, and the population grows on it.';

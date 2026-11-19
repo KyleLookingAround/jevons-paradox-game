@@ -28,7 +28,7 @@ const sector: SectorDef = {
   tagline: 'One engine, one flooded pit, and a great deal of coal nobody is counting.',
   service: { name: 'Motive power', unit: 'hp' },
   resource: { name: 'Coal', unit: 'tons' },
-  pressure: { name: 'Smog', crisisName: 'The Black Fog' },
+  pressure: { name: 'Smoke', crisisName: 'The Black Fog' },
   accent: 'iron',
 
   basePrice: 1,
@@ -68,7 +68,7 @@ const sector: SectorDef = {
     {
       id: 'steam.mills',
       name: 'Cotton mills',
-      blurb: 'No longer tied to a riverbank. Now they can be anywhere there is coal.',
+      blurb: 'No longer tied to a riverbank. They can go anywhere there is coal, and do.',
       icon: 'mill',
       halfPrice: 0.5,
       saturation: 220,
@@ -90,7 +90,7 @@ const sector: SectorDef = {
     {
       id: 'steam.railways',
       name: 'Railways',
-      blurb: 'Coal hauling coal to the people who burn coal, at a mile a minute.',
+      blurb: 'Coal, hauling coal, to the people who burn coal.',
       icon: 'train',
       halfPrice: 0.15,
       saturation: 3_000,
@@ -112,7 +112,7 @@ const sector: SectorDef = {
     {
       id: 'steam.ploughing',
       name: 'Steam ploughing',
-      blurb: 'An engine at each headland and a plough hauled between them on a wire rope.',
+      blurb: 'An engine at each headland and a plough hauled between them on a wire rope. The horses look on.',
       icon: 'plough',
       halfPrice: 0.052,
       saturation: 40_000,
@@ -162,7 +162,7 @@ const steamUpgrades: UpgradeDef[] = [
   {
     id: 'steam.engineReporter', sector: 'steam', kind: 'efficiency',
     name: 'Engine duty reports',
-    blurb: 'A monthly league table of every engine’s duty. Efficiency becomes a sport; total coal is not scored.',
+    blurb: 'A monthly league table of every engine’s duty. Thrift becomes a sport; total coal is not scored.',
     cost: 1_700, requires: ['steam.condenser'], effects: [eta('steam', 1.1)],
   },
 
@@ -171,14 +171,14 @@ const steamUpgrades: UpgradeDef[] = [
     {
       id: 'steam.bwLicence', sector: 'steam', kind: 'efficiency',
       name: 'Boulton & Watt licence',
-      blurb: 'The genuine engine, for a third of the value of the coal it saves. A bigger saving, and a bigger appetite.',
+      blurb: 'The genuine article, for a third of the value of the coal it saves. Soho takes its cut of every ton you do not burn.',
       cost: 1_600, requires: ['steam.condenser'],
       effects: [eta('steam', 1.25), margin('steam', -0.04)],
     },
     {
       id: 'steam.pirateEngine', sector: 'steam', kind: 'capital',
       name: 'Pirate engine',
-      blurb: 'Nearly a Watt, from Bull or Hornblower, without the invoice. Cheaper engines, so many more engines.',
+      blurb: 'Nearly a Watt, from Bull or Hornblower, and no royalty to pay. Every pit in the county can afford one now.',
       cost: 1_000, requires: ['steam.condenser'],
       effects: [eta('steam', 1.1), capCost('steam', 0.8)],
     },
@@ -189,7 +189,7 @@ const steamUpgrades: UpgradeDef[] = [
     {
       id: 'steam.parliamentaryTrains', sector: 'steam', kind: 'capital',
       name: 'Parliamentary trains',
-      blurb: 'Railway Regulation Act, 1844: a train each way daily at a penny a mile. Third class fills every carriage.',
+      blurb: 'Railway Regulation Act, 1844: one train each way daily at a penny a mile. Third class fills every carriage.',
       cost: 3_000, requires: ['steam.doubleActing'],
       effects: [sat('steam', 1.5, 'steam.railways'), margin('steam', -0.02)],
     },
@@ -214,7 +214,7 @@ const steamUpgrades: UpgradeDef[] = [
     {
       id: 'steam.corliss', sector: 'steam', kind: 'efficiency',
       name: 'Corliss valve gear',
-      blurb: 'Corliss, 1849: the valve shuts the moment the work is done. Cheaper mill power, and so more mills.',
+      blurb: 'Corliss, 1849: the valve shuts the moment the work is done. Mill owners order the larger size.',
       cost: 6_500, requires: ['steam.highPressure'],
       effects: [eta('steam', 1.25), sat('steam', 1.25, 'steam.mills')],
     },
@@ -225,14 +225,14 @@ const steamUpgrades: UpgradeDef[] = [
     {
       id: 'steam.suez', sector: 'steam', kind: 'capital',
       name: 'Suez Canal shares',
-      blurb: 'Suez, 1869: Bombay four thousand miles nearer, by steam only. A shorter voyage, so many more voyages.',
+      blurb: 'Suez, 1869: Bombay some four thousand miles nearer, and no use to a sailing ship. The sailings multiply.',
       cost: 16_000, requires: ['steam.compound'],
       effects: [sat('steam', 1.3, 'steam.steamships')],
     },
     {
       id: 'steam.auxiliarySail', sector: 'steam', kind: 'efficiency',
       name: 'Auxiliary sail',
-      blurb: 'Keep the masts: steam in the calms, canvas in the trades. Less coal a voyage, so cheaper freight, so more of it.',
+      blurb: 'Keep the masts: steam in the calms, canvas in the trades. Freight rates fall, and freight rises to meet them.',
       cost: 16_000, requires: ['steam.compound'],
       effects: [eta('steam', 1.15), sat('steam', 1.1, 'steam.steamships')],
     },
@@ -242,7 +242,7 @@ const steamUpgrades: UpgradeDef[] = [
     /* The growth card (genre audit rec. 2): cheap, repeatable, and itself a rebound: cheaper engines, more engines. */
     id: 'steam.anotherEngine', sector: 'steam', kind: 'capital',
     name: 'Another engine works',
-    blurb: 'One more engine at one more pit, each a little cheaper to build than the last. There is always room for one more.',
+    blurb: 'Another engine at another pit, each a little cheaper to build than the last. There is always room for one more.',
     cost: 200, repeatable: true, costGrowth: 1.3, maxLevel: 25, effects: [capCost('steam', 0.97)],
   },
   {
@@ -267,7 +267,7 @@ const steamUpgrades: UpgradeDef[] = [
   {
     id: 'steam.coalQuestion', sector: 'steam', kind: 'research',
     name: 'The Coal Question',
-    blurb: 'A pamphlet by a young economist, 1865, asks why each engine that saves coal is followed by a larger coal bill. The clubs find the question tiresome.',
+    blurb: 'Mr Jevons, 1865: an inquiry into the probable exhaustion of our coal-mines. Chapter VII asks whether thriftier engines will save them.',
     cost: 1_600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }],
   },
 ];
@@ -280,14 +280,14 @@ const steamLevers: LeverDef[] = [
   /* ---- Steam ---- */
   lever({
     id: 'steam.duty', sector: 'steam', kind: 'duty',
-    name: 'Fuel duty escalator',
-    blurb: 'Tax coal by the ton, rising as the engines improve, so power stays dear.',
+    name: 'Coal duty',
+    blurb: 'A duty on every ton, raised as the engines improve, so that power stays dear. London has taxed coal for centuries.',
     catch: `Cheaper engines no longer mean cheaper power. Nor more income. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 100, upkeep: 0.05, label: DUTY_LABEL, recycle: RECYCLE,
   }),
   lever({
     id: 'steam.cap', sector: 'steam', kind: 'cap',
-    name: 'Smoke abatement cap',
+    name: 'Smoke abatement',
     blurb: 'A ceiling on coal burned in the borough, falling with the budget line. Permits for whatever is under it.',
     catch: `Set it far below demand and the furnaces move just outside the borough. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 120, upkeep: 0.06, label: CAP_LABEL, labels: CAP_FIRST,
@@ -295,7 +295,7 @@ const steamLevers: LeverDef[] = [
   }),
   lever({
     id: 'steam.sufficiency', sector: 'steam', kind: 'sufficiency',
-    name: 'Temperance of consumption',
+    name: 'Temperance pledge',
     blurb: 'Sermons, societies and pamphlets in favour of wanting a little less.',
     catch: 'Slow to take. Appetite, once lowered, buys less of everything you sell.',
     values: SUFF_VALUES, value2: [0.002, 0.003, 0.004], cost: 80, upkeep: 0.02, label: SUFF_LABEL,
@@ -303,9 +303,9 @@ const steamLevers: LeverDef[] = [
   }),
   lever({
     id: 'steam.circularity', sector: 'steam', kind: 'circularity',
-    name: 'Coke & slack recovery',
+    name: 'Slack recovery',
     blurb: 'Burn the dust and the cinders the pit used to tip on the spoil heap.',
-    catch: 'Every ton saved is a ton the next engine will happily burn.',
+    catch: 'It stretches the coal, not the air: every ton recovered is burned in its turn, smoke and all.',
     values: SHARE_VALUES, cost: 90, upkeep: 0.02, label: 'Recover {pct}% of the burn',
   }),
   lever({
@@ -329,32 +329,51 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Mill owners hail the thrifty engine and order three more',
     'New engine saves a third of the coal; pits sink new shafts',
     'Coal per horsepower at a record low; coal per year at a record high',
+    'A new champion of the duty tables; the runner-up orders two',
+    'Thrifty engine shown at the Exchange; buyers stand three deep',
+    'Coal saved by the new engine “enough to fire another”, says agent',
   ],
   sectorOpened: [
     'Power by the ton: a new trade in motive force',
     'Engine house raised over a flooded pit; the pit is pleased',
     'Fire engine draws crowds; owner sells power by the hour',
   ],
-  appFounded: [
-    '{app} raised beside the pithead; coal owners toast the engine',
-    'Shareholders in {app} promised a dividend “and smoke”',
+  appAvailable: [
+    'Prospectus issued for {app}; the coffee houses fill',
+    'Cheap power brings {app} within reach of the provinces',
+    'Talk on the Exchange is of {app}, and little else',
+    'Subscription opened for {app}; the list closes by noon',
+    'Speculators eye {app}; the engine makers eye the speculators',
+    '{app} “a sound investment”, say the men who sell engines',
   ],
-  /* On buying The Coal Question: Jevons's verified words (design/research/energy.md 1.6), not on the card itself. */
+  appFounded: [
+    'Coal owners raise a glass to {app}',
+    'Shareholders in {app} promised a dividend “and smoke”',
+    'First returns from {app}: excellent, and sooty',
+    '{app} opened with a sermon on progress and a cold collation',
+    'Colliery agents take a second office on the strength of {app}',
+    'Orders for coal double; {app} getting up steam',
+  ],
+  /* On buying The Coal Question: Jevons's verified words (design/research/energy.md 1.6; Econlib text, ch. VII). */
   reveal: [
     '“The very contrary is the truth”: Mr Jevons on thrifty engines',
     'Economy of fuel “a confusion of ideas”, writes Mr Jevons',
     'Jevons: “the whole history of the steam-engine is one of economy”',
+    'Mr Jevons on the economy of fuel; the clubs are not amused',
   ],
   backfire: [
     'Engines use half the coal; the nation burns twice as much',
     'Thrift in the engine house, extravagance at the pithead',
+    'Collieries report a record year, thanks to the thrifty engine',
+    'Coal saved at every engine; more coal sold than ever',
   ],
   crisis: [
     'Fog so thick the cattle choke at market',
     'Black fog: lamps lit at noon, and nobody can see them',
-    'Doctors report a run on the infirmaries; coal smoke blamed',
+    'Infirmaries full; physicians blame the smoke, owners the weather',
     'Black fog No. {n}: the shops shut, the chimneys do not',
     'Smoke so dense the river cannot be found, says waterman',
+    'Washing hung out white, taken in grey; laundresses give up',
   ],
   collapse: [
     'The city stops. The air will not allow it to go on',
@@ -367,10 +386,47 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Pumps stop; the deep workings flood for good',
     'Coal question answered: there is none left',
     'Last ton raised; the pit ponies are led up into daylight',
+    'Notice in the merchants’ window: no coal, at any price',
+  ],
+  leverEnacted: [
+    'Coal bill passes the Commons; the Lords sigh and agree',
+    'New coal measure; owners threaten to take their engines abroad',
+    'Act of Parliament to take effect from Lady Day',
+    'The borough adopts the measure; the mill owners adopt a grievance',
+    'Measure carried; the coal owners’ dinner is cancelled',
+    'Petitions for and against arrive by the same post',
+  ],
+  leverLapsed: [
+    'Coal measure lapses; the owners’ dinner is back on',
+    'Act repealed after a petition of forty thousand names',
+    'Inspectors withdrawn; the chimneys resume their old habits',
+    'The Commons lets the measure die at the end of the session',
+  ],
+  budgetDrawn: [
+    'A coal budget for the valley: so many tons, and fewer each decade',
+    'Treasury draws a line under coal; owners call it “arithmetic”',
+    'Tonnage fixed by the Treasury; smoke inspectors sharpen pencils',
   ],
   decade: [
     'Coal held to budget for decade {n}; mills still turning',
     'Collieries report a dull decade, to the Treasury’s delight',
+    'Decade {n} inside the coal budget; the smoke thins, a little',
+    'Ten years on the line, and nobody in the valley went without',
+  ],
+  budgetBroken: [
+    'Coal budget broken; owners blame a cold winter',
+    'The line is crossed; a decade’s thrift goes up the chimney',
+    'More coal burned than allowed; the Treasury “disappointed”',
+  ],
+  steadySector: [
+    'Fifty years on the line: Steam settles, and the valley breathes',
+    'The engines turn, the coal lasts, and the smoke has thinned',
+    'Half a century of steady coal; the Gazette runs short of news',
+  ],
+  reckoning: [
+    'Commission on the coal trade sits; the minutes run to volumes',
+    'The valley’s accounts read aloud, from the first engine on',
+    'Inquiry into coal finds that everyone was thrifty',
   ],
 };
 

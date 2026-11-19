@@ -529,3 +529,93 @@ describe('volume floors (roadmap M1)', () => {
     for (const s of sectorIds) expect(C.sectors[s].applications.length).toBeGreaterThanOrEqual(5);
   });
 });
+
+/* House style (design/style-guide.md): the mechanical parts of the editor's rules. */
+describe('house style', () => {
+  const text = playerText();
+  const allHeadlines = (): { where: string; h: string }[] => [
+    ...Object.entries(C.headlines).flatMap(([k, v]) => v.map((h) => ({ where: `headlines.${k}`, h }))),
+    ...Object.entries(C.sectorHeadlines ?? {}).flatMap(([s, hs]) =>
+      Object.entries(hs).flatMap(([k, v]) => (v as string[]).map((h) => ({ where: `${s}.${k}`, h })))),
+  ];
+  const SECTOR_KEYS: HeadlineKey[] = [
+    'appFounded', 'appAvailable', 'sectorOpened', 'crisis', 'collapse', 'exhausted', 'backfire', 'leverEnacted',
+    'leverLapsed', 'steadySector', 'efficiency', 'budgetDrawn', 'decade', 'budgetBroken', 'reckoning',
+  ];
+
+  test('no exclamation marks, straight quotes or spaced hyphens in player text', () => {
+    const bad = text.filter((t) => /!|"|'| - /.test(t.text)).map((t) => `${t.path}: ${t.text}`);
+    expect(bad).toEqual([]);
+  });
+
+  test('headlines: no full stop at the end, no rhetorical questions', () => {
+    expect(allHeadlines().filter(({ h }) => /[.?]$/.test(h) || /\?/.test(h)).map((x) => `${x.where}: ${x.h}`)).toEqual([]);
+  });
+
+  test('enough fallback variants that an hour does not repeat one', () => {
+    for (const k of ALL_KEYS) expect(`${k}: ${Math.min(5, C.headlines[k].length)}`).toBe(`${k}: 5`);
+    expect(C.headlines.leverEnacted.length).toBeGreaterThanOrEqual(10);
+    expect(C.headlines.leverLapsed.length).toBeGreaterThanOrEqual(8);
+  });
+
+  test('every Industry has its own lines for every event that belongs to it', () => {
+    const floor: Partial<Record<HeadlineKey, number>> = { efficiency: 6, appFounded: 4, appAvailable: 4, crisis: 5, leverEnacted: 4 };
+    const short: string[] = [];
+    for (const s of sectorIds) {
+      for (const k of SECTOR_KEYS) {
+        const n = C.sectorHeadlines?.[s]?.[k]?.length ?? 0;
+        if (n < (floor[k] ?? 2)) short.push(`${s}.${k}: ${n}`);
+      }
+      if (!(C.sectorHeadlines?.[s]?.crisis ?? []).some((h) => h.includes('{n}'))) short.push(`${s}.crisis: no numbered line`);
+    }
+    expect(short).toEqual([]);
+  });
+
+  test('names fit their slots on a 360 px phone (measured 19 Nov 2026)', () => {
+    const over = (xs: { id: string; name: string }[], max: number) => xs.filter((x) => x.name.length > max).map((x) => `${x.id} (${x.name.length} > ${max}): ${x.name}`);
+    expect([
+      ...over(C.upgrades, 24),
+      ...over(C.levers, 24),
+      ...over(apps, 26),
+      ...over(C.achievements, 28),
+      ...over([...C.knowhow, ...C.institutions], 32),
+      // The sell button: "Sell vehicle-miles" (18) fits on one line at 360 px; "Sell working features" (21) wrapped.
+      ...over(sectorIds.map((s) => ({ id: s, name: `Sell ${C.sectors[s].service.name}` })), 18),
+    ]).toEqual([]);
+  });
+
+  test('blurbs and catches stay short enough to read on a card', () => {
+    const long = (xs: { id: string; t: string }[], max: number) => xs.filter((x) => x.t.length > max).map((x) => `${x.id} (${x.t.length} > ${max})`);
+    expect([
+      ...long(C.upgrades.map((u) => ({ id: u.id, t: u.blurb })), 140),
+      ...long(apps.map((a) => ({ id: a.id, t: a.blurb })), 110),
+      ...long(C.levers.map((l) => ({ id: l.id, t: l.blurb })), 120),
+      ...long(C.levers.map((l) => ({ id: l.id, t: l.catch.replace(/ Paid out as a dividend.*$/, '') })), 100),
+      ...long([...C.knowhow, ...C.institutions].map((k) => ({ id: k.id, t: k.blurb })), 140),
+    ]).toEqual([]);
+  });
+
+  test('card blurbs never say "efficiency" (the promise line does)', () => {
+    expect([...C.upgrades, ...C.knowhow, ...C.institutions].filter((u) => /efficien/i.test(u.blurb)).map((u) => u.id)).toEqual([]);
+  });
+
+  test('the Coal Age never says "smog" (a 1905 word)', () => {
+    const coal = C.ages.find((a) => a.id === 'coal')!.sectors;
+    const strings = coal.flatMap((s) => [
+      JSON.stringify(C.sectors[s]), JSON.stringify(C.sectorHeadlines?.[s] ?? {}),
+      ...C.upgrades.filter((u) => u.sector === s).map((u) => u.name + u.blurb),
+      ...C.levers.filter((l) => l.sector === s).map((l) => l.name + l.blurb + l.catch),
+    ]);
+    expect(strings.filter((t) => /\bsmog\b/i.test(t))).toEqual([]);
+  });
+
+  test('nothing on a Steam card or use explains rebound before the reveal', () => {
+    const pre = [...C.upgrades.filter((u) => u.sector === 'steam'), ...C.sectors.steam.applications];
+    expect(pre.filter((u) => /\b(rebound|backfire|paradox)\b/i.test(u.name + ' ' + u.blurb)).map((u) => u.id)).toEqual([]);
+  });
+
+  test('no real companies or products named in player text', () => {
+    const BRANDS = /\b(Google|Apple|Amazon|Microsoft|Meta|Facebook|OpenAI|Anthropic|Nvidia|Tesla|Uber|Twitter|CrowdStrike|TSMC|Intel|Netflix|Excel|ChatGPT|Claude|Copilot)\b/;
+    expect(text.filter((t) => BRANDS.test(t.text)).map((t) => `${t.path}: ${t.text}`)).toEqual([]);
+  });
+});

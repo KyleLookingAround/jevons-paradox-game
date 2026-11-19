@@ -48,7 +48,7 @@ export const achievements: AchievementDef[] = [
   /* First decade within budget, industry by industry. */
   decadeIn('steam', 'A Decade on the Line', 'Ten years of Steam inside its coal budget, with nobody going without.'),
   decadeIn('light', 'A Decade by Lamplight', 'Ten years of Light inside its budget.'),
-  decadeIn('motion', 'A Decade at Fifty', 'Ten years of Motion inside its oil budget.'),
+  decadeIn('motion', 'A Decade in the Slow Lane', 'Ten years of Motion inside its oil budget.'),
   decadeIn('compute', 'A Decade Without Upgrading', 'Ten years of Compute inside its budget.'),
   decadeIn('code', 'A Decade of Reading', 'Ten years of Code inside its attention budget.'),
 
@@ -104,7 +104,7 @@ export const achievements: AchievementDef[] = [
   },
   {
     id: 'ach.peaSouperSeason', name: 'Black Fog Season', hidden: true,
-    blurb: 'Every smog crisis Steam can have, in a single run.',
+    blurb: 'Every black fog Steam can have, in a single run.',
     when: { stat: 'crises', sector: 'steam', op: '>=', value: 3 },
   },
   {

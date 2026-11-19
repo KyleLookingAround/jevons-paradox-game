@@ -82,7 +82,7 @@ const sector: SectorDef = {
     {
       id: 'compute.cloudStorage',
       name: 'Cloud storage',
-      blurb: 'Why delete anything? Every photograph, twice, in a warehouse beside a river.',
+      blurb: 'Why delete anything? Every photograph, twice, on somebody else’s computer.',
       icon: 'cloud',
       halfPrice: 0.12,
       saturation: 600_000,
@@ -93,7 +93,7 @@ const sector: SectorDef = {
     {
       id: 'compute.streaming',
       name: 'Streaming',
-      blurb: 'The same film, sent again, to each of you, separately, forever.',
+      blurb: 'The same film, sent again, to each of you, separately, for ever.',
       icon: 'play',
       halfPrice: 0.06,
       saturation: 1_500_000,
@@ -124,7 +124,7 @@ const computeUpgrades: UpgradeDef[] = [
   ...chain('compute', ladder(80_000, 3, 5), [
     {
       id: 'compute.multicore', name: 'Multi-core chips', fold: 1.5,
-      blurb: 'The clock speed hit a wall, so put several processors behind it.',
+      blurb: 'The clock speed hit a wall, so put several processors on the chip.',
     },
     {
       id: 'compute.virtualisation', name: 'Virtualisation', fold: 2.4,
@@ -166,7 +166,7 @@ const computeUpgrades: UpgradeDef[] = [
   ...fork(
     {
       id: 'compute.pueCertificate', sector: 'compute', kind: 'efficiency',
-      name: 'Efficient data-centre certificate',
+      name: 'Power-use certificate',
       blurb: 'Every watt audited, the cooling cut to the bone. The certificate is framed in the lobby of the next campus.',
       cost: 8_000_000, requires: ['compute.hyperscale'],
       effects: [eta('compute', 1.25), sat('compute', 1.3, 'compute.training')],
@@ -221,7 +221,7 @@ const computeLevers: LeverDef[] = [
     id: 'compute.circularity', sector: 'compute', kind: 'circularity',
     name: 'Chip recovery',
     blurb: 'Strip the gold, the gallium and the cobalt back out of last year’s servers.',
-    catch: 'Recovered silicon goes straight into next year’s, larger, servers.',
+    catch: 'Slow and costly. It stretches the supply of chips and does nothing for the power bill.',
     values: SHARE_VALUES, cost: 350, upkeep: 0.08, label: 'Recover {pct}% of the hardware',
   }),
   lever({
@@ -246,40 +246,88 @@ const computeLevers: LeverDef[] = [
 /* ------------------------------------------------------------------ */
 
 const computeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
+  /* Compute's broadsheet is a system log (/var/log/news): level, colon, a terse message, the turn after a semicolon. */
   efficiency: [
-    'Chips twice as thrifty; data centres twice as many',
-    'New processor halves the power per sum; the sums treble',
-    'Efficiency breakthrough wipes billions off chip makers, briefly',
-    'Cost of a calculation falls again; nobody checks the bill',
+    'info: chips twice as thrifty; data centres twice as many',
+    'info: power per sum halved; sums trebled',
+    'info: new processor shipped; old racks refilled within the week',
+    'info: cost per calculation down again; total bill not queried',
+    'notice: efficiency breakthrough; chip makers’ shares fall, briefly',
+    'info: watts per query at a record low; queries at a record high',
   ],
   sectorOpened: [
-    'Computing opens for business; the bill arrives later',
-    'A sum that took a clerk a week now takes a millisecond',
-    'The cost of a calculation halves; the calculations multiply',
+    'info: {sector} online; the bill will follow',
+    'info: a clerk’s week of sums now takes a millisecond',
+    'info: cost of a calculation halved; calculations multiplied',
+  ],
+  appAvailable: [
+    'info: {app} now viable at current prices',
+    'notice: {app} affordable for the first time; capacity requested',
+    'info: demand forecast for {app} revised upward, again',
+    'info: pilot of {app} approved; scale-up “not anticipated”',
   ],
   appFounded: [
-    '{app} launches; servers ordered by the warehouse',
-    '{app} “free for ever”, say founders; investors nod',
+    'info: {app} deployed; racks ordered by the warehouse',
+    'info: {app} live; “free for ever”, say the founders',
+    'info: {app} in production; capacity plan doubled',
+    'info: {app} launched; usage past forecast by lunch',
   ],
   backfire: [
-    'Power per query down a hundredfold; queries up a thousandfold',
-    'Data centres more efficient than ever, and twice as hungry',
+    'warn: power per query down a hundredfold; queries up a thousandfold',
+    'warn: data centres more efficient than ever, and twice as hungry',
+    'warn: efficiency target met; consumption target missed',
   ],
   crisis: [
-    'Heat dome: grid operators beg data centres to throttle',
-    'Record heat; server farms run their chillers flat out',
-    'Data centre water use questioned as reservoirs drop',
-    'Heat alert No. {n}: cooling fans heard from the motorway',
+    'warn: heat dome; grid operator asks data centres to throttle',
+    'warn: record heat; chillers at full load for a third day',
+    'warn: reservoirs low; data-centre water use queried',
+    'error: heat alert No. {n}; cooling fans audible from the motorway',
+    'warn: brownout risk; non-essential computing asked to wait',
   ],
   collapse: [
-    'Heat dome over the server farms; the grid gives way',
-    'The cloud comes down to earth: outages everywhere',
-    'Grid fails in the heat; everything everywhere is offline',
+    'fatal: heat dome over the server farms; grid down',
+    'fatal: the cloud comes down to earth; outages everywhere',
+    'fatal: grid fails in the heat; everything everywhere offline',
   ],
   exhausted: [
-    'No more power, water or chips; the queue for silicon closes',
-    'Last substation allocated; new data centres told to wait',
-    'Chip supply exhausted; old servers stripped for parts',
+    'error: no power, water or chips left to allocate; queue closed',
+    'error: last substation allocated; new data centres told to wait',
+    'error: chip supply exhausted; old servers stripped for parts',
+  ],
+  leverEnacted: [
+    'info: new policy applied to all regions',
+    'notice: regulation in force; compliance team hired, then a second',
+    'info: rule change merged; the industry files a comment',
+    'notice: measure enacted; providers announce a new pricing tier',
+  ],
+  leverLapsed: [
+    'warn: policy expired; nobody renewed it',
+    'info: regulation rolled back after “stakeholder feedback”',
+    'warn: measure lapsed; usage resumes its previous trend',
+  ],
+  budgetDrawn: [
+    'notice: power budget set; it declines each decade',
+    'notice: hard limit configured on {resource}',
+  ],
+  decade: [
+    'info: decade {n} within the power budget; uptime unaffected',
+    'info: ten years under the line; the servers did not notice',
+  ],
+  budgetBroken: [
+    'warn: power budget exceeded; streak reset',
+    'error: budget overrun; cause “an unexpectedly popular feature”',
+  ],
+  steadySector: [
+    'info: {sector} steady for fifty years; no incidents to report',
+    'info: power flat for half a century, service up; log otherwise quiet',
+  ],
+  ageBegins: [
+    'info: {age} begins; the scarce resource is now attention',
+    'notice: {age} started in {year}; nobody had time to read this',
+  ],
+  reckoning: [
+    'info: post-incident review opened; scope “everything”',
+    'info: root cause analysis complete; root cause: demand',
   ],
 };
 

@@ -19,7 +19,7 @@ const sector: SectorDef = {
   years: '2025–',
   firstYear: 2025,
   tagline: 'Software is now free to write. Reading it remains a personal matter.',
-  service: { name: 'Working features', unit: 'features' },
+  service: { name: 'Features', unit: 'features' },
   resource: { name: 'Human attention', unit: 'hours' },
   pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
   accent: 'diff',
@@ -186,7 +186,7 @@ const codeUpgrades: UpgradeDef[] = [
   {
     id: 'code.openSource', sector: 'code', kind: 'capital',
     name: 'Open source everything',
-    blurb: 'Every wheel already invented, free, and maintained by one person in Nebraska.',
+    blurb: 'Every wheel already invented, free, and kept turning by one unpaid volunteer.',
     cost: 6_000_000, requires: ['code.autocomplete'], effects: [capCost('code', 0.6)],
   },
 ];
@@ -230,7 +230,7 @@ const codeLevers: LeverDef[] = [
   lever({
     id: 'code.usageCap', sector: 'code', kind: 'cap',
     name: 'Usage caps',
-    blurb: 'So many hours of human attention a week for the agents’ output, and no more. Rate limits for the reviewers.',
+    blurb: 'So many hours of human attention a week for the agents’ output, fewer each decade, and not one more.',
     catch: `Every rival is lifting its limits. Customers notice whose are lower. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 550, upkeep: 0.25, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
@@ -242,40 +242,84 @@ const codeLevers: LeverDef[] = [
 /* ------------------------------------------------------------------ */
 
 const codeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
+  /* Code's broadsheet is a changelog (CHANGELOG.md): Added, Changed, Fixed, Removed, Deprecated, Known issue, Released. */
   efficiency: [
-    'Code written ten times faster; read exactly as slowly',
-    'Productivity “transformed”; the backlog somehow longer',
-    'New tool writes the feature; the old team maintains it',
-    'Developers feel faster, measure slower, ship more anyway',
+    'Changed: code written ten times faster; read exactly as slowly',
+    'Changed: productivity “transformed”; backlog somehow longer',
+    'Added: a tool that writes the feature; the old team maintains it',
+    'Changed: developers feel faster, measure slower, ship more anyway',
+    'Changed: generation ten times faster; review speed unchanged',
+    'Changed: lines written per day up again; nobody asked which lines',
   ],
   sectorOpened: [
-    'Software now free to write; reading it a personal matter',
-    'Code for anyone: the backlog opens to the public',
-    'Every idea now has an app; most of them are still running',
+    'Added: software anyone can write; reading it remains optional',
+    'Added: the backlog, now open to the public',
+    'Added: an app for every idea; most of them still running',
+  ],
+  appAvailable: [
+    'Proposed: {app}; estimate “a weekend”',
+    'Planned: {app}, pending someone to read it',
+    'Proposed: {app}; nobody objected in time',
+    'Unreleased: {app}, behind a feature flag nobody remembers',
   ],
   appFounded: [
-    '{app} ships Friday; the pager rota is drawn up Monday',
-    '{app} goes live; nobody recalls commissioning it',
+    'Added: {app}; the pager rota is drawn up on Monday',
+    'Added: {app}; nobody recalls commissioning it',
+    'Added: {app}, with tests, some of which test something',
+    'Added: {app}; see also: maintenance, indefinitely',
   ],
   backfire: [
-    'Features ten times cheaper; attention spent on them up twelvefold',
-    'Agents save a million hours; reviewers lose two million',
+    'Known issue: features ten times cheaper; attention spent up twelvefold',
+    'Known issue: agents save a million hours; reviewers lose two million',
+    'Known issue: every change smaller, and the changes beyond counting',
   ],
   crisis: [
-    'Outage traced to a library nobody knew they used',
-    'Half the internet down; cause “a small configuration change”',
-    'Maintainers drown in machine-written bug reports',
-    'Outage No. {n}: the status page is also down',
+    'Fixed: outage caused by a dependency nobody knew they had',
+    'Fixed: half the internet down after “a small configuration change”',
+    'Known issue: maintainers buried in machine-written bug reports',
+    'Fixed: outage No. {n}; the status page was also down',
+    'Security: agent granted itself admin rights; access “under review”',
   ],
   collapse: [
-    'The Great Outage: every system down, nobody knows why',
-    'Code stock buckles under its own weight; nothing ships',
-    'Nothing works, and there is far too much of it',
+    'Known issue: every system down; nobody can find the cause',
+    'Known issue: code stock buckles under its own weight; nothing ships',
+    'Known issue: nothing works, and there is far too much of it',
   ],
   exhausted: [
-    'Attention runs out: not one more pull request can be read',
-    'No one left to review anything; merges halt',
-    'The last reviewer resigns; the queue reaches the horizon',
+    'Known issue: attention exhausted; not one more pull request read',
+    'Blocked: no reviewers left; all merges halted',
+    'Known issue: last reviewer resigns; the queue reaches the horizon',
+  ],
+  leverEnacted: [
+    'Changed: new policy merged; enforcement “in a later release”',
+    'Added: a process; velocity down, incidents down, morale contested',
+    'Changed: rule enforced on main; three teams fork the repository',
+    'Added: a policy, a linter for the policy, a meeting about the linter',
+  ],
+  leverLapsed: [
+    'Reverted: the policy, as “slowing us down”',
+    'Deprecated: the review rule; nobody followed it anyway',
+    'Removed: the guardrail, in a hotfix',
+  ],
+  budgetDrawn: [
+    'Added: an attention budget, smaller each decade',
+    'Added: a limit on the {resource} the agents may spend',
+  ],
+  decade: [
+    'Released v{n}.0: within the attention budget; no breaking changes',
+    'Released v{n}.0: ten more years, and the codebase hardly larger',
+  ],
+  budgetBroken: [
+    'Reverted: the attention budget; “we will fix it next quarter”',
+    'Known issue: attention over budget; streak reset',
+  ],
+  steadySector: [
+    'Stable: fifty years inside the line; the pager has not rung',
+    'Released: half a century of {sector}, with a short changelog',
+  ],
+  reckoning: [
+    'Postmortem: blameless, and apparently causeless',
+    'Released: a retrospective; action items carried over',
   ],
 };
 

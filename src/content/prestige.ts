@@ -49,7 +49,7 @@ export const knowhow: KnowhowDef[] = [
   },
   {
     id: 'kh.machineShop', name: 'Machine-shop lore', tree: 'steam', tier: 2,
-    blurb: 'Tricks of the trade, written down at last. Engines cost less to build, and so there are more.',
+    blurb: 'Tricks of the trade, written down at last. Engines cost less to build, and every pit wants two.',
     cost: 20, costGrowth: 1.7, maxLevel: 6,
     effects: [capCost('steam', 0.92), half('steam', 1.03)],
   },
@@ -117,7 +117,7 @@ export const knowhow: KnowhowDef[] = [
   },
   {
     id: 'kh.civilService', name: 'Civil service examinations', tree: 'general', tier: 3, branch: 'general-3',
-    blurb: 'Appointment on merit, not on patronage. One more institution can be seated at the table, for good.',
+    blurb: 'Appointment on merit, not on patronage. One more Institution may take a seat, for good.',
     cost: 400, costGrowth: 1, maxLevel: 1,
     effects: [{ type: 'slotAdd', value: 1 }],
   },
@@ -166,12 +166,12 @@ export const institutions: InstitutionDef[] = [
   leverInstitution({
     id: 'inst.smokeAbatement', name: 'Smoke Abatement Act',
     blurb: 'The ceiling on the borough’s coal is law before the first engine is lit. The line itself is drawn once there is a town to draw it across.',
-    cost: 110, lever: 'steam.cap', leverName: 'Smoke abatement cap', maxLevel: 3,
+    cost: 110, lever: 'steam.cap', leverName: 'Smoke abatement', maxLevel: 3,
   }),
   leverInstitution({
     id: 'inst.gasReferees', name: 'Gas referees',
     blurb: 'Officials who test the gas, and in time ration it. The allowance waits until the town has lamps worth counting.',
-    cost: 160, requires: ['inst.smokeAbatement'], lever: 'light.cap', leverName: 'Gas works allowance', maxLevel: 3,
+    cost: 160, requires: ['inst.smokeAbatement'], lever: 'light.cap', leverName: 'Gas allowance', maxLevel: 3,
   }),
   {
     id: 'inst.alkaliInspectorate', name: 'Alkali Inspectorate',
@@ -183,19 +183,19 @@ export const institutions: InstitutionDef[] = [
     ]),
   },
   leverInstitution({
-    id: 'inst.standingDuty', name: 'Standing fuel duty',
-    blurb: 'The escalator is law before the first engine is built.',
-    cost: 45, requires: ['inst.statisticsOffice'], lever: 'steam.duty', leverName: 'Fuel duty escalator', maxLevel: 3,
+    id: 'inst.standingDuty', name: 'Standing coal duty',
+    blurb: 'Parliament votes the coal duty before anyone has built an engine to tax.',
+    cost: 45, requires: ['inst.statisticsOffice'], lever: 'steam.duty', leverName: 'Coal duty', maxLevel: 3,
   }),
   leverInstitution({
     id: 'inst.royalCommission', name: 'Royal Commission on Coal',
     blurb: 'Sits for five years and reports, at length, that there is plenty. Meanwhile, the slack heaps are burned too.',
-    cost: 45, requires: ['inst.statisticsOffice'], lever: 'steam.circularity', leverName: 'Coke & slack recovery', maxLevel: 3,
+    cost: 45, requires: ['inst.statisticsOffice'], lever: 'steam.circularity', leverName: 'Slack recovery', maxLevel: 3,
   }),
   leverInstitution({
     id: 'inst.temperance', name: 'Temperance societies',
     blurb: 'Tea, hymns and a pledge to want less. Appetite is already modest when the first engine is lit.',
-    cost: 40, lever: 'steam.sufficiency', leverName: 'Temperance of consumption', maxLevel: 3,
+    cost: 40, lever: 'steam.sufficiency', leverName: 'Temperance pledge', maxLevel: 3,
   }),
   {
     id: 'inst.cleanAirAct', name: 'Clean Air Act',
@@ -227,25 +227,25 @@ export const institutions: InstitutionDef[] = [
   leverInstitution({
     id: 'inst.parksTrust', name: 'Municipal improvement trust',
     blurb: 'Libraries, baths and parks are funded before the lamps are lit.',
-    cost: 110, requires: ['inst.broadcaster'], lever: 'light.greenSpending', leverName: 'Public libraries & parks', maxLevel: 3,
+    cost: 110, requires: ['inst.broadcaster'], lever: 'light.greenSpending', leverName: 'Public parks', maxLevel: 3,
   }),
   {
     id: 'inst.revenueDecoupling', name: 'Revenue decoupling',
     blurb: 'Pay the gas company for light delivered, not for therms sold. It stops building load.',
     cost: 130, effects: [startLever('light.sufficiency', 1)],
     nextLevels: levels(130, [
-      { effects: [startLever('light.duty', 1)], label: 'The gas & lighting rate is law from the start' },
+      { effects: [startLever('light.duty', 1)], label: 'The lighting rate is law from the start' },
       { effects: [startLever('light.sufficiency', 2), startLever('light.duty', 2)], label: 'Both start a level higher' },
     ]),
   },
   leverInstitution({
     id: 'inst.greenBelt', name: 'Green belt',
     blurb: 'A ring of fields the suburbs may not cross. Towns stay walkable.',
-    cost: 150, lever: 'motion.sufficiency', leverName: 'The 15-minute town', maxLevel: 3,
+    cost: 150, lever: 'motion.sufficiency', leverName: 'Walking distance', maxLevel: 3,
   }),
   {
     id: 'inst.climateCommittee', name: 'Independent climate committee',
-    blurb: 'Carbon budgets set years ahead, out of reach of the next election. Every fuel duty is law from the start. Takes two seats.',
+    blurb: 'Carbon budgets set years ahead, out of reach of the next election. Every Industry’s duty is law from the start. Takes two seats.',
     cost: 300, requires: ['inst.alkaliInspectorate', 'inst.standingDuty'], slots: 2,
     effects: [
       startLever('steam.duty', 1), startLever('light.duty', 1), startLever('motion.duty', 1), startLever('compute.duty', 1),
@@ -254,11 +254,11 @@ export const institutions: InstitutionDef[] = [
     nextLevels: levels(300, [
       {
         effects: [startLever('steam.duty', 2), startLever('light.duty', 2), startLever('motion.duty', 2), startLever('compute.duty', 2)],
-        label: 'Every fuel duty starts at level 2',
+        label: 'Every duty starts at level 2',
       },
       {
         effects: [startLever('steam.duty', 3), startLever('light.duty', 3), startLever('motion.duty', 3), startLever('compute.duty', 3)],
-        label: 'Every fuel duty starts at level 3',
+        label: 'Every duty starts at level 3',
       },
     ]),
   },
