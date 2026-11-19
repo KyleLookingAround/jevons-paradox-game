@@ -46,7 +46,7 @@ export const proprietor: ProprietorText = {
     },
     {
       direction: 'up',
-      headline: 'Labour-saving machine installed; labour up {workdayChange}%, says Office',
+      headline: 'Labour-saving machine installed; labour up {workdayChange}%',
       body:
         'HOUSEHOLD SURVEY. The proprietor’s working day stood at {workdayBefore} minutes before the Market and stands ' +
         'at {workdayAfter} since, an increase of {workdayChange} per cent. Decisions taken by hand: {decisionsBefore} ' +
@@ -55,7 +55,7 @@ export const proprietor: ProprietorText = {
     },
     {
       direction: 'up',
-      headline: 'Market takes {automatedPerHour} decisions an hour; the proprietor’s day grows',
+      headline: 'The Market decides; the proprietor’s day grows all the same',
       body:
         'HOUSEHOLD SURVEY. The Market now takes {automatedPerHour} decisions an hour that were once taken by hand. ' +
         'Over the same period the proprietor’s working day has grown by {workdayChange} per cent, to {workdayAfter} ' +
@@ -90,7 +90,7 @@ export const proprietor: ProprietorText = {
     },
     {
       direction: 'down',
-      headline: 'A shorter day for the proprietor, by {workdayChange}%, the Office finds',
+      headline: 'A shorter day for the proprietor by {workdayChange}%, Office finds',
       body:
         'HOUSEHOLD SURVEY. The automation sold as saving the proprietor labour appears, unusually, to have done so: ' +
         'the working day is {workdayChange} per cent shorter, at {workdayAfter} minutes. Decisions by hand stand at ' +
@@ -117,7 +117,7 @@ export const proprietor: ProprietorText = {
     },
     {
       direction: 'flat',
-      headline: 'Market takes {automatedPerHour} decisions an hour; proprietor’s day holds',
+      headline: 'The Market decides; the proprietor’s day holds its length',
       body:
         'HOUSEHOLD SURVEY. Visits a day: {sessionsBefore} before the Market, {sessionsAfter} since. Working day: ' +
         '{workdayBefore} minutes, then {workdayAfter}. The Market took {automatedPerHour} decisions an hour, and ' +
@@ -147,7 +147,7 @@ export const proprietor: ProprietorText = {
  */
 export const proprietorCard = {
   name: 'The Proprietor’s Day',
-  blurb: 'Miss Whitlow’s question, put to the Statistics Office: what has become of the proprietor’s working day since the Market?',
+  blurb: 'Miss Whitlow’s question, put to the Statistics Office: what has become of the proprietor’s working day since the Market.',
 };
 
 /**
