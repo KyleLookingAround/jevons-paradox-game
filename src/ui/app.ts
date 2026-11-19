@@ -19,7 +19,7 @@ export interface UI {
   update(): void;
   blocking(): boolean;
   sheets: Sheets;
-  toast(text: string, action?: { label: string; run: () => void }): void;
+  toast(text: string, action?: { label: string; run: () => void }): () => void;
   openFormula: Ctx['openFormula'];
   openMenu(focus?: 'keys'): void;
   openShop(): void;

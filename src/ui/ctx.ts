@@ -29,7 +29,8 @@ export interface Ctx {
   openShop(): void;
   openLocked(id: SectorId): void;
   confirmReckoning(): void;
-  toast(text: string, action?: { label: string; run: () => void }): void;
+  /** Returns a function that dismisses the note early. */
+  toast(text: string, action?: { label: string; run: () => void }): () => void;
   save(): void;
   /** The affordable signal (afford.ts), refreshed before the components update. */
   afford: AffordState;

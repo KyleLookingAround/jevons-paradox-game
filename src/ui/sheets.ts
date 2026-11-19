@@ -91,9 +91,9 @@ export function buildSheets(): Sheets {
 // Toasts sit at the top of the screen, over the top bar, so that they never cover the buttons a thumb is reaching
 // for. Short (4.5 s; 9 s with an action), at most two, and paused while hovered or focused.
 
-export function buildToasts(): { el: HTMLElement; push(text: string, action?: { label: string; run: () => void }, ms?: number): void } {
+export function buildToasts(): { el: HTMLElement; push(text: string, action?: { label: string; run: () => void }, ms?: number): () => void } {
   const el = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
-  function push(text: string, action?: { label: string; run: () => void }, ms?: number): void {
+  function push(text: string, action?: { label: string; run: () => void }, ms?: number): () => void {
     const life = ms ?? (action ? 9000 : 4500);
     const t = h('div', { class: 'toast' }, h('span', { class: 'toast-t', text }));
     let timer = 0;
@@ -110,6 +110,7 @@ export function buildToasts(): { el: HTMLElement; push(text: string, action?: { 
     el.append(t);
     while (el.children.length > 2) el.firstElementChild!.remove();
     arm(life);
+    return () => { if (t.isConnected) kill(); };
   }
   return { el, push };
 }

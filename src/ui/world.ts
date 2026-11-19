@@ -138,6 +138,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
   let motion = '';
   // Applications already known to be available (per sector), to say once when a new use becomes thinkable.
   const known = new Map<SectorId, Set<string>>();
+  const toastOf = new Map<string, () => void>();
 
   function update(): void {
     const def = sectorDef(ctx);
@@ -164,10 +165,12 @@ export function buildWorld(ctx: Ctx): WorldComp {
       const before = known.get(id);
       if (before && !ctx.d?.pendingReckoning) {
         for (const a of sdef.applications) if (now.has(a.id) && !before.has(a.id)) {
-          ctx.toast(`A new use is thinkable: ${a.name}${id !== ctx.sector ? ` (${sdef.name})` : ''}. Founding it costs ${money(num(a.foundCost))}.`,
-            { label: 'Show me', run: () => { if (id !== ctx.sector) ctx.selectSector(id); jump(a.id); } });
+          toastOf.set(`${id}:${a.id}`, ctx.toast(`A new use is thinkable: ${a.name}${id !== ctx.sector ? ` (${sdef.name})` : ''}. Founding it costs ${money(num(a.foundCost))}.`,
+            { label: 'Show me', run: () => { if (id !== ctx.sector) ctx.selectSector(id); jump(a.id); } }));
         }
       }
+      // A note about a use that has since been founded is out of date: take it down.
+      for (const a of sdef.applications) if (apps[a.id]?.founded) { const k = `${id}:${a.id}`; const kill = toastOf.get(k); if (kill) { kill(); toastOf.delete(k); } }
       known.set(id, now);
     }
   }
