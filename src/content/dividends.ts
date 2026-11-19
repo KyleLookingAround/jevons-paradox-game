@@ -55,8 +55,9 @@ const globalDividends: DividendDef[] = [
   },
   {
     id: 'div.commonsEndowment', name: 'Endow the Commons',
-    blurb: 'Money set aside so that every Commons project yields more. Of no use until the town has any.',
+    blurb: 'Money set aside so that every Commons project yields more, for the rest of the run.',
     effects: [{ type: 'commonsYieldMul', value: 1.04 }],
+    requires: 'commons',
   },
   /* 4. The demography pair: a later-marriage dividend against a feast. */
   {
@@ -85,6 +86,7 @@ const globalDividends: DividendDef[] = [
     id: 'div.gardenCity', name: 'A garden suburb',
     blurb: 'Houses round greens, built to last. The Commons yield more, and the commute to them is short.',
     effects: [{ type: 'commonsYieldMul', value: 1.02 }, { type: 'wellbeingAdd', value: 0.3 }],
+    requires: 'commons',
   },
   {
     id: 'div.buildingBoom', name: 'A building boom',

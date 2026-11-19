@@ -47,21 +47,40 @@ export function fastForward(state: GameState, content: Content, seconds: number)
   const total = Math.min(requested, offlineCapOf(content, modsOf(state, content)));
   const broken = new Set<SectorId>();
   const unsettled = new Set<SectorId>();
+  // QA fix (B6): a budget line does not decline while the proprietor is away. Before each step every line still
+  // declining (no heldAt) has its `since` moved on by the step, so the step sees the line where it stood: Parliament
+  // does not tighten in the player's absence, and a line held on leaving is not lost to its own decline. `shifted` is
+  // the total moved per sector (to tell a redraw from the pause in the report).
+  const shifted: Record<SectorId, number> = {};
+  const pause = (x: GameState, by: number): GameState => {
+    let sectors: GameState['sectors'] | null = null;
+    for (const id of ix.ids) {
+      const es = x.sectors[id];
+      const b = es?.budget;
+      if (!es?.open || !b || es.settled || (b.heldAt !== undefined && Number.isFinite(b.heldAt))) continue;
+      sectors ??= { ...x.sectors };
+      sectors[id] = { ...es, budget: { ...b, since: b.since + by } };
+      shifted[id] = (shifted[id] ?? 0) + by;
+    }
+    return sectors ? { ...x, sectors } : x;
+  };
   let s = state;
   let held: { by: OfflineReport['heldBy']; sector?: SectorId } | null = null;
   if (total > 0) {
     const n = Math.ceil(total / FAST_FORWARD_STEP - 1e-9);
     const h = total / n;
     for (let i = 0; i < n; i++) {
-      const t = step(s, content, h, false, true);
-      if (t === s) break;
+      const snap = { ...shifted };
+      const t = step(pause(s, h), content, h, false, true);
+      if (t === s) { for (const k of Object.keys(shifted)) shifted[k] = snap[k] ?? 0; break; }
       // the hold: discard a step that fires what holdBefore names
       if (cfg.holdBefore !== null) {
         const pend = computeFlows(t, content).pending;
-        if (pend) { held = { by: pend.cause === 'chosen' ? 'collapse' : pend.cause, sector: pend.sector }; break; }
+        const undo = () => { for (const k of Object.keys(shifted)) shifted[k] = snap[k] ?? 0; };
+        if (pend) { held = { by: pend.cause === 'chosen' ? 'collapse' : pend.cause, sector: pend.sector }; undo(); break; }
         if (cfg.holdBefore === 'crisis') {
           const cs = ix.ids.find((id) => (t.sectors[id]?.crisesFired ?? 0) > (s.sectors[id]?.crisesFired ?? 0));
-          if (cs !== undefined) { held = { by: 'crisis', sector: cs }; break; }
+          if (cs !== undefined) { held = { by: 'crisis', sector: cs }; undo(); break; }
         }
       }
       // what this step did (its events are the newest in t.events)
@@ -104,7 +123,7 @@ export function fastForward(state: GameState, content: Content, seconds: number)
     const b = s.sectors[id], a = state.sectors[id];
     if (!b?.open || !b.budget) continue;
     if (b.settled && !unsettled.has(id)) report.lines[id] = 'settled';
-    else if (!a?.budget || a.budget.since !== b.budget.since || a.budget.r0 !== b.budget.r0) report.lines[id] = 'drawn';
+    else if (!a?.budget || Math.abs(a.budget.since + (shifted[id] ?? 0) - b.budget.since) > 1e-6 || a.budget.r0 !== b.budget.r0) report.lines[id] = 'drawn';
     else if (broken.has(id)) report.lines[id] = 'broken';
     else report.lines[id] = 'held';
   }

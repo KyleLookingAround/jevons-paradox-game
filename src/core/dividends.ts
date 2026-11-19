@@ -4,7 +4,8 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { PENDING_DIVIDENDS_MAX } from '../types';
-import type { Actor, Content, GameState, PendingDividend, SectorId } from '../types';
+import type { Actor, Content, GameState, MetaState, PendingDividend, SectorId } from '../types';
+import { featureOn } from './features';
 import { calendarYear } from './calendar';
 import { idx } from './contentIndex';
 import { fireOneOffs } from './effects';
@@ -15,10 +16,19 @@ import { sectorSteady } from './steady';
 import { fin } from './util';
 
 /** The offer of a sector's n-th decade this run (1-based), or null when it resolves no choices. */
-export function decadeOffer(content: Content, s: SectorId, n: number, mul: number): PendingDividend | null {
+export function decadeOffer(content: Content, s: SectorId, n: number, mul: number, meta?: MetaState): PendingDividend | null {
   const ch = sectorSteady(content, s).choices;
   if (!ch.length || !(n >= 1)) return null;
-  const p = ch[(n - 1) % ch.length];
+  let p = ch[(n - 1) % ch.length];
+  // QA fix (DividendDef.requires): a pair naming a system not yet met gives way to the next pair whose options are all on.
+  if (meta) {
+    const dv = idx(content).dividends;
+    const ok = (id: string) => { const r = dv.get(id)?.requires; return !r || featureOn(content, meta, r); };
+    for (let k = 0; k < ch.length; k++) {
+      const q = ch[(n - 1 + k) % ch.length];
+      if (ok(q[0]) && ok(q[1])) { p = q; break; }
+    }
+  }
   return { sector: s, decade: n, options: [p[0], p[1]], mul: Math.max(0, fin(mul, 1)) };
 }
 

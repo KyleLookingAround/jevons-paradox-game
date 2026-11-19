@@ -8,7 +8,7 @@ import { buildGauges } from './gauges';
 import { buildNews, buildWorld, buildDock } from './world';
 import { buildUpgrades, buildLevers, buildBudget } from './panels';
 import {
-  buildSheets, buildToasts, formulaSheet, menuSheet, shopSheet, confirmReckonSheet, pendingSheet, summarySheet, winSheet, lockedSheet,
+  buildSheets, formulaSheet, menuSheet, shopSheet, confirmReckonSheet, pendingSheet, summarySheet, winSheet, lockedSheet,
   unreadSaveSheet, forkSheet, settleSheet, type MenuHooks, type Sheets,
 } from './sheets';
 import { fmt, num, lower } from './fmt';
@@ -19,9 +19,11 @@ import { buildAway } from './away';
 import { buildDividends } from './dividends';
 import { buildCommons } from './commons';
 import { buildOrders } from './orders';
-import { createRecorder } from './timelapse';
+import { createRecorder, saveLast, loadLast, markLast } from './timelapse';
 import { sound } from './sound';
 import { createNewMarks } from './unfold';
+import { buildNotes } from './notes';
+import { fitLayout } from './layout';
 
 export interface UI {
   update(): void;
@@ -33,6 +35,8 @@ export interface UI {
   openShop(): void;
   /** Between runs (a restored backup): the shop, with "Begin the next run". */
   openShopBetweenRuns(): void;
+  /** A page reopened between runs: the summary again if it was closed on it, else the shop (QA B36). */
+  openBetweenRuns(): void;
   openLocked(id: SectorId): void;
   confirmReckoning(): void;
   unreadSave(raw: string): void;
@@ -70,7 +74,6 @@ const ANNOUNCE_EVERY = 12000;
 
 export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const sheets = buildSheets();
-  const toasts = buildToasts();
 
   const topbar = buildTopbar(ctx);
   const tabs = buildTabs(ctx);
@@ -89,7 +92,15 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // The unfolding: a "New" mark on whatever a feature has just opened (unfold.ts).
   const marks = createNewMarks(ctx);
   // The time-lapse record (timelapse.ts): sampled as the run goes, kept apart from the save, replayed at the Reckoning.
-  const lapse = createRecorder(ctx, () => ctx.d?.pendingReckoning?.sector ?? ctx.sector);
+  // Its replay follows the run's story, not the tab on screen (QA B27): the Industry that ended it, else the one whose line
+  // earned most decades this run, else the one recorded longest (the first opened).
+  const lapse = createRecorder(ctx, () => {
+    const p = ctx.d?.pendingReckoning?.sector;
+    if (p) return p;
+    let best = '', most = 0;
+    for (const id of openSectors(ctx)) { const n = ctx.state.sectors?.[id]?.decadesWithin?.length ?? 0; if (n > most) { most = n; best = id; } }
+    return best;
+  });
   // The affordable chip, by the sell button (thumb's reach, first screen); tapping it jumps to the first offer.
   const chipN = h('span', { class: 'chip-n num' });
   const chipL = h('span', { class: 'chip-l' });
@@ -110,12 +121,19 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const foot = h('footer', { class: 'run-foot' },
     h('p', { class: 'muted' }, 'Hindsight on offer: ', hb), reckonBtn);
 
-  const cockpit = h('div', { class: 'cockpit' }, topbar.el, tabs.el, gauges.el, dock.el);
+  // The note line under the gauges: the gauges' quiet line when idle, a transient note over it when one is on show
+  // (notes.ts). Its height is kept either way, so a note never moves the page.
+  const noteLine = h('div', { class: 'note-line', 'data-clip': 'ok' }, gauges.note);
+  const notes = buildNotes((on) => cls(noteLine, 'has-note', on));
+  noteLine.append(notes.el);
+  const toasts = notes;
+  const cockpit = h('div', { class: 'cockpit' }, topbar.el, tabs.el, gauges.el, noteLine, dock.el);
   // Improvements sit above the world so that a phone shows the first purchase above the fold.
   // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
   // improvements (the affordable chip by the sell button covers the rest).
   const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, onboard, world.el, news.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, foot);
-  root.replaceChildren(cockpit, feed, sheets.el, toasts.el, live);
+  root.replaceChildren(cockpit, feed, sheets.el, live);
+  fitLayout(cockpit, feed, gauges.el, gauges.more);
 
   // A crisis is one event: the picture's fog (the scene), the headline (the broadsheet) and the gauges arrive together.
   document.addEventListener('rebound:moment', (e) => {
@@ -133,7 +151,20 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   function reckonNow(): void {
     const p = ctx.d?.pendingReckoning;
     const rec = lapse.finish({ cause: p?.cause ?? 'chosen', here: true });
-    if (hooks.reckon()) { summarySheet(ctx, sheets, () => hooks.resume(), hooks.exportText, rec); }
+    if (hooks.reckon()) {
+      // Kept apart from the save, so a page closed on the summary can show it again (QA B36).
+      saveLast(ctx, rec, 'summary');
+      openSummary(rec);
+    }
+  }
+  function openSummary(rec: ReturnType<typeof lapse.finish>): void {
+    markLast(ctx, 'summary');
+    summarySheet(ctx, sheets, () => hooks.resume(), hooks.exportText, rec, () => markLast(ctx, 'shop'));
+  }
+  /** Between runs: the shop (with "Begin the next run"), and the last run's summary one tap away while it is kept. */
+  function shopBetween(): void {
+    const last = loadLast(ctx);
+    shopSheet(ctx, sheets, () => hooks.resume(), last ? () => openSummary(last.lapse) : undefined);
   }
 
   function jumpToAffordable(): void {
@@ -162,7 +193,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     openFormula: (k) => formulaSheet(ctx, sheets, k),
     openMenu: (focus) => menuSheet(ctx, sheets, hooks, focus),
     openShop: () => shopSheet(ctx, sheets),
-    openShopBetweenRuns: () => shopSheet(ctx, sheets, () => hooks.resume()),
+    openShopBetweenRuns: shopBetween,
+    openBetweenRuns: () => { const last = loadLast(ctx); if (last?.at === 'summary') openSummary(last.lapse); else shopBetween(); },
     openLocked: (id) => lockedSheet(ctx, sheets, id),
     confirmReckoning: () => confirmReckonSheet(ctx, sheets, () => { sound('reckoning'); reckonNow(); }),
     unreadSave: (raw) => {
@@ -198,22 +230,22 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       const def = e.sector ? sectorDef(ctx, e.sector) : undefined;
       switch (e.kind) {
         case 'sectorOpened':
-          if (def) toasts.push(`${def.name}, ${def.years}. ${def.tagline}`, { label: 'Go there', run: () => ctx.selectSector(e.sector!) }, 10000);
+          // The tagline is the title card over its picture; the note only says where it is.
+          if (def) toasts.push(`New: ${def.name}, ${def.years}.`, { label: 'Go there', run: () => ctx.selectSector(e.sector!) }, 10000);
           sound('industryOpened', { sector: e.sector });
           break;
         case 'ageBegins': sound('ageBegun', { sector: e.sector }); break;
         case 'steadyState':
-          toasts.push(`Steady State in ${def?.name ?? 'an Industry'}: fifty years of a decent life inside the line, under a clear sky. The line holds level from here.`, goThere(e.sector), 12000);
+          toasts.push(`Steady State in ${def?.name ?? 'an Industry'}: the line holds level from here.`, goThere(e.sector), 12000);
           sound('steady', { sector: e.sector });
           break;
         case 'decade': {
           const waits = (ctx.state.pendingDividends || []).some((p) => p.sector === e.sector);
-          const y = Math.floor(num(e.year) / 10) * 10;
-          toasts.push(`The ${y}s: a decade within the line in ${def?.name ?? 'an Industry'}${e.id === 'lean' ? ', a lean one' : ''}.${waits ? ' A dividend waits.' : ''}`, goThere(e.sector), 7000);
+          toasts.push(`A ${e.id === 'lean' && ctx.d?.features?.clearSkies ? 'lean ' : ''}decade within the line in ${def?.name ?? 'an Industry'}.${waits ? ' A dividend waits.' : ''}`, goThere(e.sector), 7000);
           sound('decade', { sector: e.sector });
           break;
         }
-        case 'clearSkies': toasts.push(`Clear skies over ${def?.name ?? 'an Industry'}: the ${lower(def?.pressure.name ?? 'pressure')} no longer gathers.`, goThere(e.sector), 7000); break;
+        case 'clearSkies': toasts.push(`Clear skies over ${def?.name ?? 'an Industry'}.`, goThere(e.sector), 7000); break;
         case 'unsettled': if (e.by === 'default') toasts.push(`${def?.name ?? 'An Industry'} is unsettled: its defence could not be paid.`, goThere(e.sector), 10000); break;
         case 'leverLapsed': {
           const l = ctx.content.levers?.find((x) => x.id === e.id);
@@ -223,7 +255,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
         case 'dividendChosen':
           if (e.by === 'default') {
             const dv = ctx.content.dividends?.find((x) => x.id === e.id);
-            toasts.push(`More than eight dividends were waiting: ${nameOf(e.sector)}’s oldest was taken as ${dv?.name ?? 'the first option'}.`);
+            toasts.push(`Eight dividends waiting: ${nameOf(e.sector)}’s oldest taken as ${dv?.name ?? 'the first'}.`);
           }
           break;
         case 'upgradeBought':
@@ -243,8 +275,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
           const id = e.id as FeatureId | undefined;
           if (!id || !ctx.content.features?.[id]) break;
           marks.add(id);
-          const intro = ctx.content.features[id]?.intro;
-          if (intro) toasts.push(intro, { label: 'Show', run: () => showFeature(id) }, 9000);
+          // The broadsheet prints the introduction; the mark is on the thing; the note says where it is.
+          const name = ctx.content.features[id]?.name;
+          if (name && ctx.content.features[id]?.intro) toasts.push(`New: ${name}.`, { label: 'Show', run: () => showFeature(id) }, 9000);
           break;
         }
         default: break; // unknown kinds are ignored (the union grows)
@@ -272,7 +305,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     const firstEver = !!ctx.state.run?.firstBackfires?.[e.sector ?? ''];
     sound('backfire', { sector: e.sector, strength: firstEver ? 1 : 0.6 });
     if (e.sector !== ctx.sector) {
-      toasts.push(`${nameOf(e.sector)} backfires: thriftier than ever, burning more than ever.`, goThere(e.sector), 9000);
+      toasts.push(`${nameOf(e.sector)} backfires: thriftier, and burning more.`, goThere(e.sector), 9000);
       return;
     }
     pulse(cockpit, 'm-backfire', 2600);
@@ -325,15 +358,17 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
 
     // Onboarding: one line on a fresh run, gone after the first purchase, and never after a long time away (the
     // catch-up runs after the first update, so the run's clock is checked on every update, not only the first).
-    const fresh = Object.keys(ctx.state.upgrades || {}).length === 0;
+    // A genuinely new run only: nothing bought, and the first Industry the only one open (a forced or imported state
+    // with later Industries open is not Lancashire in 1780).
+    const firstId = sectorIds(ctx.content)[0];
+    const fresh = Object.keys(ctx.state.upgrades || {}).length === 0 && open.length === 1 && open[0] === firstId && ctx.sector === firstId;
     // A long time away (the catch-up's own report says how long was asked for, whatever was simulated or held).
     const longAway = num(ctx.state.lastOffline?.requested) >= 600;
     if (onboardState === 'show' && (ctx.state.time >= 600 || longAway)) { onboardState = 'gone'; show(onboard, false); }
     if (onboardState === '') {
       onboardState = fresh && ctx.state.time < 600 && !longAway ? 'show' : 'gone';
       const again = (ctx.state.meta?.reckonings ?? 0) > 0;
-      const first = sectorIds(ctx.content)[0];
-      const y = ageOfSector(ctx.content, first)?.yearSpan?.[0] ?? 1780;
+      const y = ageOfSector(ctx.content, firstId)?.yearSpan?.[0] ?? 1780;
       setText(onboard, again
         ? `Lancashire, ${y}, again. The pit is flooded, and you have read the minutes.`
         : `Lancashire, ${y}. You have one atmospheric engine and a flooded pit.`);

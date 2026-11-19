@@ -87,7 +87,16 @@ function capActive(ctx: Ctx): boolean {
 /** The rebound dial's readable ceiling: past it the figure is honest but unreadable ("1.37k%"), so the dial says so. */
 const REBOUND_SHOWN_MAX = 10;
 
-export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void } {
+export interface GaugesComp extends Comp {
+  onEvents(ev: GameEvent[]): void;
+  /** The sparkline, reserve and population: pinned with the dials while the header has room, else moved (app.ts) to
+   *  the head of the feed, so that nothing pinned takes more than a third of a short screen. */
+  more: HTMLElement;
+  /** The quiet line (the budget, growth, the binding cap): app.ts places it in the header's note line. */
+  note: HTMLElement;
+}
+
+export function buildGauges(ctx: Ctx): GaugesComp {
   const eff = dial(ctx, 'eff', 'Efficiency', 'eff');
   const cons = dial(ctx, 'cons', 'Consumption', 'cons',
     `<g class="d-was"><line x1="${CX}" y1="${CY - R + 2}" x2="${CX}" y2="${CY - R + 12}"/></g><g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g>`);
@@ -127,7 +136,7 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     <line class="sp-base" x1="0" x2="200" y1="20" y2="20"/>
     <polyline class="sp-sink" points=""/><polyline class="sp-bud" points=""/><polyline class="sp-prom" points=""/><polyline class="sp-eta" points=""/><polyline class="sp-r" points=""/></svg>`);
   const kBud = h('span', { class: 'k-bud', text: 'budget', hidden: true });
-  const kSink = h('span', { class: 'k-sink', text: 'the sink', hidden: true });
+  const kSink = h('span', { class: 'k-sink', text: 'sink', hidden: true });
   const kProm = h('span', { class: 'k-prom', text: 'promised', hidden: true });
   const sparkWrap = h('div', { class: 'spark-wrap' }, spark,
     h('div', { class: 'spark-key', 'aria-hidden': 'true' },
@@ -159,7 +168,7 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
   const capTxt = h('span', { class: 'note-cap' });
   const note = h('div', { class: 'gauge-note' }, budTxt, growTxt, capTxt);
 
-  const el = h('section', { class: 'gauges', 'aria-label': 'Efficiency and consumption gauges' }, dials, foot, note);
+  const el = h('section', { class: 'gauges', 'aria-label': 'Efficiency and consumption gauges' }, dials, foot);
 
   let scaleKey = '';
   let sparkKey = '';
@@ -240,7 +249,10 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     const rv = has ? (rb as number) : 0;
     setAttr(reb.svgEl.querySelector('.d-sweep'), 'd', has ? arc(0, clamp(rv, 0, 2.5) / 2.5) : '');
     rot(needle, clamp(rv, 0, 2.5) / 2.5);
-    cls(reb.box, 'backfire', has && rv > 1);
+    // A cap binds when it charges a permit price (SectorDerived.permitPrice > 0 only while a cap binds).
+    const capped = has && capActive(ctx) && num(e?.permitPrice) > 0;
+    cls(reb.box, 'backfire', has && rv > 1 && !capped);
+    cls(reb.box, 'capped', capped);
     // Needle at or right of the 100% tick: label to its left; otherwise to its right.
     placeRebLbl(has && rv >= 0.9 ? -1 : 1);
     if (!revealed) { setText(reb.val, '?'); setText(reb.sub, 'not yet understood'); }
@@ -251,7 +263,10 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
       // "well past" rather than "1.37k%".
       const past = rv > REBOUND_SHOWN_MAX;
       setText(reb.val, past ? '>1,000%' : pct(rv, false));
-      setText(reb.sub, past ? '▲ well past backfire' : rv > 1 ? '▲ backfire' : rv > 0 ? 'of savings eaten' : 'savings kept');
+      // Under a binding cap the cap sets the resource and direct rebound reads about 100% by construction (DESIGN.md):
+      // the dial says so in the neutral colour rather than scolding the restraint that holds it (QA B5).
+      if (capped) setText(reb.sub, 'the cap holds');
+      else setText(reb.sub, rv > 1 ? '▲ backfire' : rv > 0 ? 'of savings eaten' : 'savings kept');
       setAttr(reb.box, 'title', past ? `Rebound ${pct(rv, false)}: the extra use is many times what efficiency saved` : null);
     }
 
@@ -284,7 +299,7 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
         // The promised line means something only once efficiency has moved off the start.
         const promised = pts.some((p) => p[1] > 1.001);
         setAttr(spark.querySelector('.sp-prom'), 'points', promised ? pts.map((p) => `${x(p[0])},${y(1 / p[1])}`).join(' ') : '');
-        show(kProm, promised);
+        show(kProm, promised && !pts.some((p) => p[3] != null || p[4] != null));
         const bud = pts.filter((p) => p[3] != null);
         setAttr(spark.querySelector('.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
         show(kBud, bud.length >= 2);
@@ -367,5 +382,5 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     setText(capTxt, `The cap sets the ${lower(resName)}; the savings became service.`);
     show(note, !!(budTxt.textContent || growTxt.textContent));
   }
-  return { el, update, onEvents };
+  return { el, update, onEvents, more: foot, note };
 }

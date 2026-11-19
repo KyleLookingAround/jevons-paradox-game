@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import { model, evalCond, statValue, substitute } from './index';
 import { fixture as C, STEAM_EFFICIENCY } from './fixture';
 import { CALENDAR_LATE_RATE, START_YEAR, YEARS_PER_SECOND } from '../types';
+import { CALENDAR_CATCHUP_SECONDS, CALENDAR_LATE_SPAN } from './calendar';
 import type { Cond, Content, MetaState, StatKey } from '../types';
 import { patchSector, steamAt, run, D, steamD, rich, openAll } from './m1.testkit';
 
@@ -295,22 +296,43 @@ describe('conditions (P3)', () => {
 /* ---------------- 13. calendar ---------------- */
 
 describe('calendar (P14)', () => {
-  test('the year follows the age, is monotone across a sector opening, and Light opens at ≥ its firstYear', () => {
+  // QA fix B3: the calendar used to jump to Light's firstYear (1810 → 1870) the moment Light opened. It now catches up
+  // with Light's clock smoothly over CALENDAR_CATCHUP_SECONDS from the year Light opened in: continuous, never backwards.
+  test('the year follows the age, never jumps or runs backwards when a sector opens, and catches up with Light\'s firstYear', () => {
     let s = run(steamAt(2, { capital: 1e6 }), 100);
     expect(D(s).year).toBeCloseTo(1780 + 100 * YEARS_PER_SECOND, 9);
     s = { ...model.buyUpgrade(s, C, 'steam.condenser'), meta: { ...s.meta, reckonings: 1 } };
     s = patchSector(s, 'steam', { serviceDelivered: 1e6 });
     const before = D(s).year;
-    const t = model.tick(s, C, 1);
+    let t = model.tick(s, C, 1);
     expect(t.sectors.light.open).toBe(true);
-    expect(D(t).year).toBeGreaterThanOrEqual(before);
-    expect(D(t).year).toBeGreaterThanOrEqual(1870);
-    expect(Math.floor(D(run(t, 20)).year)).toBe(1871);
     expect(t.news.find((n) => n.key === 'sectorOpened')!.year).toBe(Math.floor(before));
+    // No jump: a second of play moves the calendar by a second's worth, give or take the catch-up's first moment.
+    expect(D(t).year).toBeGreaterThanOrEqual(before);
+    expect(D(t).year - before).toBeLessThan(0.2);
+    // Monotone, and never faster than about a year a second (no step of more than a year between ticks).
+    let prev = D(t).year;
+    for (let i = 0; i < CALENDAR_CATCHUP_SECONDS; i++) {
+      t = model.tick(t, C, 1);
+      const y = D(t).year;
+      expect(y).toBeGreaterThanOrEqual(prev);
+      expect(y - prev).toBeLessThan(1.5);
+      prev = y;
+    }
+    // Caught up: Light's own clock (firstYear + openFor × YEARS_PER_SECOND) from here on.
+    expect(D(t).year).toBeCloseTo(1870 + t.sectors.light.openFor * YEARS_PER_SECOND, 6);
+    expect(model.yearAt(t, C, t.time)).toBeCloseTo(D(t).year, 9);
   });
-  test('past the age\'s last year the calendar runs at 10% speed', () => {
-    const s = patchSector(model.createState(C), 'steam', { openFor: (1914 - 1780 + 20) / YEARS_PER_SECOND });
-    expect(D(s).year).toBeCloseTo(1914 + 20 * CALENDAR_LATE_RATE, 9);
+  // QA fix B3: past the Age's last year the calendar slows to CALENDAR_LATE_RATE (as before) and then levels off, never
+  // more than CALENDAR_LATE_SPAN years past it (the Coal Age once read 2109 after a long absence).
+  test('past the age\'s last year the calendar slows to 10% speed and levels off', () => {
+    const at = (yrs: number) => D(patchSector(model.createState(C), 'steam', { openFor: (1914 - 1780 + yrs) / YEARS_PER_SECOND })).year;
+    expect(at(0)).toBeCloseTo(1914, 6);
+    expect((at(2) - at(0)) / 2).toBeCloseTo(CALENDAR_LATE_RATE, 2);
+    expect(at(20)).toBeGreaterThan(1915.8);
+    expect(at(20)).toBeLessThan(1916);
+    for (const yrs of [200, 2000]) { expect(at(yrs)).toBeLessThan(1914 + CALENDAR_LATE_SPAN); expect(at(yrs)).toBeGreaterThan(at(yrs / 10)); }
+    expect(at(1e6)).toBeLessThanOrEqual(1914 + CALENDAR_LATE_SPAN);
   });
   test('without ages, the v1 clock; headlines carry the calendar year and placeholders', () => {
     const bare: Content = { ...C, ages: [] };

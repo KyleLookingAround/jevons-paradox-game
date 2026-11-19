@@ -96,6 +96,35 @@ describe('M2 offline', () => {
     expect(fr.lines).toEqual({ steam: 'settled' });
     expect(fr.toSeq).toBeGreaterThanOrEqual(fr.fromSeq);
   });
+  // QA fix B6: a line held on leaving came back broken because it kept declining while nobody could tighten or add a
+  // lever (a leaky cap, a locked-in floor, wellbeing under the drawn level). The line does not decline while away.
+  test('a line does not decline while away: one held exactly at its level on leaving is held on return', () => {
+    const s = decoupling(LONG);
+    const R = steamD(s, LONG).resourceUse;
+    // A Firm line drawn 20 model years ago, so R sits just under it now: online it would fall below R in a few years.
+    const firm = { r0: R / 0.81 * 0.999, since: s.time - 400, drawnYear: 1800, w0: 0, p0: 0, pace: 'firm' };
+    const at = patchSector(s, 'steam', { budget: firm, steadyYears: 1 });
+    const lineNow = steamD(at, LONG).budgetR!;
+    expect(R).toBeLessThanOrEqual(lineNow * 1.005);
+    const f = model.fastForward(at, LONG, 600);
+    expect(f.lastOffline!.lines).toEqual({ steam: 'held' });
+    expect(steamD(f, LONG).budgetR!).toBeCloseTo(lineNow, 6);
+    expect(f.sectors.steam.budget!.since).toBeCloseTo(firm.since + 600, 6);
+    expect(f.sectors.steam.budget!.r0).toBe(firm.r0);
+    expect(f.sectors.steam.steadyYears).toBeGreaterThan(at.sectors.steam.steadyYears);
+    // Online, the same ten minutes take the line 27 per cent lower and the streak breaks.
+    let k = at;
+    for (let i = 0; i < 600; i++) k = model.tick(k, LONG, 1);
+    expect(steamD(k, LONG).budgetR!).toBeLessThan(lineNow * 0.8);
+    expect(k.sectors.steam.steadyYears).toBe(0);
+    // The decline picks up where it stood once play resumes.
+    let g = f;
+    for (let i = 0; i < 200; i++) g = model.tick(g, LONG, 1);
+    expect(steamD(g, LONG).budgetR!).toBeCloseTo(lineNow * 0.9, 3);
+    // A held line (Steady State) and a settled one are left alone.
+    const heldAt = patchSector(at, 'steam', { budget: { ...firm, heldAt: s.time - 100 } });
+    expect(model.fastForward(heldAt, LONG, 600).sectors.steam.budget!.since).toBe(firm.since);
+  });
   test('a pending Reckoning: nothing simulated, heldBy pending', () => {
     let s = efficiency();
     s = patchSector(s, 'steam', { pressure: 200 });

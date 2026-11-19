@@ -29,7 +29,8 @@ export function initSound(): void {
 export function setSound(on: boolean): void {
   setPrefs({ sound: on });
   if (on) { if (!sc) make(true); try { sc?.setEnabled(true); } catch { /* ignore */ } }
-  else { try { sc?.setEnabled(false); } catch { /* ignore */ } }
+  // Off tears it down (QA B26): the AudioContext is closed, not merely suspended; turning on again makes a new one.
+  else { try { sc?.setEnabled(false); sc?.destroy(); } catch { /* ignore */ } sc = null; }
 }
 export function soundOn(): boolean { return getPrefs().sound && !!sc; }
 export function setVolumes(v: Partial<{ master: number; world: number; interface: number }>): void {

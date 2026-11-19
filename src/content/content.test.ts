@@ -246,6 +246,25 @@ describe('references resolve', () => {
     }
   });
 
+  // QA (the unfolding): text naming a system the player has not met waits for it (LeverDef.catchAfter,
+  // DividendDef.requires, AchievementDef.feature).
+  test('the unfolding: later clauses, offers and achievements wait for their feature', () => {
+    const isF = (f: string) => (FEATURE_IDS as readonly string[]).includes(f);
+    for (const l of C.levers) {
+      for (const k of Object.keys(l.catchAfter ?? {})) expect(isF(k) ? '' : `${l.id}: ${k}`).toBe('');
+      // the dividend sentence names the recycling choice, which comes with 'moreLevers'
+      expect(/as a dividend/i.test(l.catch) ? l.id : '').toBe('');
+      if (l.kind === 'duty' || l.kind === 'cap') expect(l.catchAfter?.moreLevers).toMatch(/^Paid out as a dividend instead/);
+    }
+    for (const d of C.dividends ?? []) {
+      if (d.requires) expect(isF(d.requires)).toBe(true);
+      // a dividend that names the Commons is offered only once they exist
+      if (/Commons/.test(d.name + d.blurb) || d.effects.some((e) => e.type === 'commonsYieldMul')) expect(`${d.id} ${d.requires}`).toBe(`${d.id} commons`);
+    }
+    for (const a of C.achievements) if (a.feature) expect(isF(a.feature)).toBe(true);
+    for (const a of C.achievements.filter((x) => /Commons|Settled|Steady State|budget|clear sk|sink line|charter/i.test(x.name + x.blurb))) expect(a.feature ? '' : a.id).toBe('');
+  });
+
   test('levers: sector, requires, catch, recycle', () => {
     for (const l of C.levers) {
       expect(sectorIds).toContain(l.sector);
@@ -624,7 +643,7 @@ describe('house style', () => {
       ...long(C.upgrades.map((u) => ({ id: u.id, t: u.blurb })), 140),
       ...long(apps.map((a) => ({ id: a.id, t: a.blurb })), 110),
       ...long(C.levers.map((l) => ({ id: l.id, t: l.blurb })), 120),
-      ...long(C.levers.map((l) => ({ id: l.id, t: l.catch.replace(/ Paid out as a dividend.*$/, '') })), 100),
+      ...long(C.levers.map((l) => ({ id: l.id, t: l.catch })), 100),
       ...long([...C.knowhow, ...C.institutions].map((k) => ({ id: k.id, t: k.blurb })), 140),
     ]).toEqual([]);
   });

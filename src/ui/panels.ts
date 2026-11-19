@@ -3,7 +3,7 @@
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, PaceDef, SectorDef, UpgradeView } from '../types';
-import { STEADY_STATE_YEARS } from '../types';
+import { STEADY_STATE_YEARS, FEATURE_IDS } from '../types';
 import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion, replay } from './dom';
 import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit, dur, unitOne } from './fmt';
 import { sound } from './sound';
@@ -17,7 +17,7 @@ export function effectText(ctx: Ctx, e: EffectDef): string {
   switch (e.type) {
     case 'etaMul': return `${pct(1 / e.value - 1)} ${res} per ${svc}`;
     case 'capCostMul': return `${pct(e.value - 1)} running cost per ${svc}`;
-    case 'marginAdd': return `${e.value >= 0 ? '+' : '−'}${fmt(Math.abs(e.value * 100))} points on your cut`;
+    case 'marginAdd': { const pts = Math.abs(e.value * 100); return `${e.value >= 0 ? '+' : '−'}${fmt(pts)} point${pts === 1 ? '' : 's'} on your cut`; }
     case 'reserveAdd': return def?.resourceKind === 'flow' ? `${pct(e.value)} ${res} capacity` : `${pct(e.value)} ${res} in reserve`;
     case 'absorptionAdd': return `${def?.pressure.name ?? 'Pressure'} clears faster: +${fmt(e.value * 100)}% a second`;
     case 'reveal': return 'Shows what the figures are actually doing';
@@ -30,7 +30,7 @@ export function effectText(ctx: Ctx, e: EffectDef): string {
     case 'costMul': return `${pct(e.value - 1)} on every improvement`;
     case 'satMul': return `${pct(e.value - 1)} appetite for ${appName(e.app) ?? (def ? lower(def.service.name) : 'the service')}`;
     case 'halfPriceMul': return `${appName(e.app) ?? (def ? def.service.name : 'The service')} taken up at ${pct(e.value - 1)} higher prices`;
-    case 'popGrowthMul': return `Population grows ${pct(e.value - 1)} as fast`;
+    case 'popGrowthMul': return `Population grows ${pct(Math.abs(e.value - 1), false)} ${e.value >= 1 ? 'faster' : 'more slowly'}`;
     case 'wellbeingAdd': return `${e.value >= 0 ? '+' : '−'}${fmt(Math.abs(e.value))} wellbeing`;
     case 'unlock': {
       const u = ctx.content.upgrades?.find((x) => x.id === e.id) ?? ctx.content.levers?.find((x) => x.id === e.id);
@@ -373,7 +373,9 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     paceKey = '';
     renderPaces();
     show(draw, false); show(paceBox, true);
-    (paceList.querySelector('[aria-checked="true"]') as HTMLButtonElement | null)?.focus();
+    (paceList.querySelector('[aria-checked="true"]') as HTMLButtonElement | null)?.focus({ preventScroll: true });
+    // The confirm row clears the docked Sell button (QA B13): scroll-margin in styles.css keeps it above the dock.
+    requestAnimationFrame(() => paceBox.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }));
   }
   function closePaces(focus: boolean): void { show(paceBox, false); show(draw, true); if (focus) draw.focus(); }
   function renderPaces(): void {
@@ -496,8 +498,12 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     const lk = ctx.sector + ':' + decs.join(',') + ':' + lean.join(',') + ':' + q;
     if (lk !== ledgerKey) {
       ledgerKey = lk;
+      // Dated while the dates are distinct; once the calendar has slowed past its Age (two decades in one calendar
+      // decade), numbered instead, so no two decades are ever labelled alike (QA B3).
+      const dated = decs.map((y) => `${Math.floor(num(y) / 10) * 10}s`);
+      const labels = new Set(dated).size === dated.length ? dated : decs.map((_, i) => `Decade ${fmt(i + 1)}`);
       ledger.replaceChildren(...(decs.length
-        ? decs.map((y, i) => h('li', { class: 'num' + (lean[i] ? ' lean' : ' full') }, `${Math.floor(num(y) / 10) * 10}s `,
+        ? decs.map((y, i) => h('li', { class: 'num' + (lean[i] ? ' lean' : ' full'), title: `${Math.floor(num(y))}` }, `${labels[i]} `,
           h('span', { class: 'tick', text: '✓', 'aria-label': 'within budget' }), q ? h('span', { class: 'dk', text: lean[i] ? ' lean' : ' full' }) : null))
         : [h('li', { class: 'none', text: 'No decade within budget yet.' })]));
     }
@@ -572,10 +578,23 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
       return b;
     })), recNote);
 
+  // The catch, with any later clause once its feature has arrived (LeverDef.catchAfter: the unfolding).
+  const catchT = h('span', { class: 'lev-catch-t' });
+  let catchKey = '';
+  const catchNow = (): void => {
+    const f = ctx.d?.features;
+    const more = FEATURE_IDS.filter((id) => def.catchAfter?.[id] && f?.[id]).map((id) => def.catchAfter![id]!);
+    const k = more.join('|');
+    if (k === catchKey && catchT.textContent) return;
+    catchKey = k;
+    const t = [def.catch, ...more].join(' ');
+    setText(catchT, t);
+    setAttr(catchT.parentElement, 'title', t);
+  };
   const el = h('article', { class: 'lever' },
     h('header', { class: 'lev-h' }, h('h3', { class: 'lev-name', text: def.name }), h('span', { class: 'pip-wrap' }, pips, pipMore)),
     h('p', { class: 'lev-blurb', text: def.blurb }),
-    h('p', { class: 'lev-catch', title: def.catch }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), def.catch),
+    h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), catchT),
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk, seeIt),
     levy, noLineEl, next, rec,
     h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
@@ -584,6 +603,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
 
   function update(v: LeverView): void {
     cur = v;
+    catchNow();
     const lv = num(v.level);
     const max = Number.isFinite(v.maxLevel) ? num(v.maxLevel, authored) : Infinity;
     // Pips for every reachable step when there are few; past the authored ones, a count.
@@ -658,6 +678,7 @@ export function buildLevers(ctx: Ctx): Comp {
     h('header', { class: 'sec-h' }, h('h2', { class: 'sec-t', text: 'Counter-levers' }), bal), list, empty);
   const cards = new Map<string, LevCard>();
   let key = '';
+  let warned = false;
 
   function update(): void {
     const all = (ctx.levs || []).filter((v) => v && v.def);
@@ -677,7 +698,16 @@ export function buildLevers(ctx: Ctx): Comp {
       }));
     }
     for (const v of vis) cards.get(ck(v))?.update(v);
-    setText(bal, `Mandate ${fmt(Math.floor(num(ctx.state.mandate)))}`);
+    // Warn before levers lapse for want of Mandate (QA B32): the upkeep outruns the income and the purse is nearly dry.
+    const m = num(ctx.state.mandate), rate = num(ctx.d?.mandatePerSec);
+    const inForce = all.some((v) => num(v.level) > 0 && num(v.upkeep) > 0);
+    const dry = inForce && rate < 0 ? m / -rate : Infinity;
+    setText(bal, dry < 180 ? `Mandate ${fmt(Math.floor(m))} · runs dry in ${dur(dry)}` : `Mandate ${fmt(Math.floor(m))}`);
+    cls(bal, 'bad', dry < 180);
+    if (dry < 60 && !warned) {
+      warned = true;
+      ctx.toast(`Mandate runs dry in ${dur(dry)}: levers will lapse.`, { label: 'Levers', run: () => el.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' }) });
+    } else if (dry > 120) warned = false;
     show(empty, vis.length === 0);
     setText(empty, `No levers to pull in ${sectorDef(ctx)?.name ?? 'this Industry'} yet.`);
   }

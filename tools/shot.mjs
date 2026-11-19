@@ -107,7 +107,7 @@ async function flow(base, tag0 = 'flow') {
     };
     const shot = (n) => page.screenshot({ path: `${out}/${T}-${n}.png` });
     const st = () => page.evaluate(() => window.rebound.state);
-    const closeToasts = async () => { for (const x of await page.locator('.toast-x').all()) await x.click().catch(() => {}); };
+    const closeToasts = () => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
     await page.goto(base + '#mock:rich,reveal,light');
     await page.waitForTimeout(800);
     await step('click main button', async () => {
@@ -369,15 +369,39 @@ async function checks() {
     await page.screenshot({ path: `${out}/check-unread.png` });
     await ctx.close();
   });
-  await step('toasts do not cover the bottom controls', async () => {
-    const { ctx, page } = await newPage(sz);
-    await page.goto(mock + '#mock'); await page.waitForTimeout(500);
-    await page.evaluate(() => window.rebound.ctx.toast('A test note that is long enough to wrap onto a second line on a phone.'));
-    await page.waitForTimeout(300);
-    const t = await page.locator('.toast').boundingBox(), sell = await page.locator('.sell').boundingBox();
-    if (!t || !sell || t.y + t.height > sell.y - 300) throw new Error('toast sits low on the screen');
-    await page.screenshot({ path: `${out}/check-toast.png` });
-    await ctx.close();
+  // QA B22: one note at a time, in the header's note line, never over a control or a gauge, and never moving the page.
+  await step('notes: one at a time, never over a control or a gauge, no layout shift', async () => {
+    for (const s2 of [sz, { w: 844, h: 390, tag: 'land', dpr: 1 }, { w: 1280, h: 800, tag: 'desk', dpr: 1 }]) {
+      const { ctx, page } = await newPage(s2);
+      await page.goto(mock + '#mock:rich,reveal'); await page.waitForTimeout(700);
+      await page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
+      await page.waitForTimeout(200);
+      const feedTop0 = await page.evaluate(() => document.querySelector('.feed').getBoundingClientRect().top);
+      await page.evaluate(() => {
+        const c = window.rebound.ctx;
+        c.toast('Light, 1870–1950. The parish lamps are lit by gas.', { label: 'Go there', run: () => {} });
+        c.toast('Save loaded.');
+        c.toast('A third note waits its turn.');
+      });
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const shown = [...document.querySelectorAll('.note-slot')].filter((e) => !e.hidden && e.getClientRects().length);
+        const n = shown[0]?.getBoundingClientRect();
+        const hits = [];
+        if (n) for (const el of document.querySelectorAll('button, .dial, .tab, .sell, .afford-chip')) {
+          if (shown[0].contains(el)) continue;
+          const b = el.getBoundingClientRect();
+          if (!b.width || !b.height || getComputedStyle(el).visibility === 'hidden') continue;
+          if (b.left < n.right - 1 && b.right > n.left + 1 && b.top < n.bottom - 1 && b.bottom > n.top + 1) hits.push(el.className.toString().slice(0, 30));
+        }
+        return { count: shown.length, hits, feedTop: document.querySelector('.feed').getBoundingClientRect().top };
+      });
+      await page.screenshot({ path: `${out}/check-notes-${s2.tag}.png` });
+      await ctx.close();
+      if (r.count !== 1) throw new Error(`${s2.tag}: ${r.count} notes on show`);
+      if (r.hits.length) throw new Error(`${s2.tag}: a note covers ${r.hits.join(', ')}`);
+      if (Math.abs(r.feedTop - feedTop0) > 1) throw new Error(`${s2.tag}: the feed moved ${r.feedTop - feedTop0}px when a note showed`);
+    }
   });
 }
 
@@ -702,7 +726,7 @@ async function realplay() {
       if (await page.evaluate(() => window.rebound.d.pendingReckoning)) {
         await page.waitForTimeout(400); await shot('05-pending'); await page.click('button:has-text("Face the Reckoning")');
       } else {
-        await page.locator('.toast-x').first().click().catch(() => {});
+        await page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
         await page.click('.run-foot .btn'); await page.waitForTimeout(250); await page.click('button:has-text("Close the books")');
       }
       await page.waitForTimeout(500); await shot('06-summary');
@@ -782,7 +806,7 @@ async function looks() {
         if (await f.count()) await f.click({ timeout: 2000 }).catch(() => {});
         await page.waitForTimeout(300);
       }
-      await page.evaluate(() => { document.querySelectorAll('.toast-x').forEach((x) => x.click()); window.scrollTo(0, 0); });
+      await page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); window.scrollTo(0, 0); });
       await page.waitForTimeout(1500);
       const o = await overflow(page);
       if (o.sw > o.cw) fail(`OVERFLOW looks ${id}/${sz.tag}`);
@@ -820,6 +844,160 @@ async function real() {
     await ctx.close();
   }
   await realFlow(url);
+  await majors(url);
+}
+
+/* ---------------------------------------------------------------- the QA majors (real game) */
+// Checks for each major the QA pass fixed (design/qa-report-m2.md), so none can return unnoticed: landscape and short
+// screens (B19), two tabs on one save (B20), the saved picture's figures (B4) and its survival of a reload (B36), the
+// calendar never jumping (B3), a held line left for ten minutes (B6). Notes over controls (B22) are in `checks`.
+async function majors(url) {
+  const T = 'majors';
+  const step = async (name, f) => { try { await f(); console.log(`  ok   ${T} ${name}`); } catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); } };
+  const clearNotes = (page) => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
+  const seedCtx = async (sz, save, agoMs = 0) => {
+    const r = await newPage({ ...sz, dpr: 1 }, { hasTouch: sz.w < 1000 });
+    await r.ctx.addInitScript(([t, ago]) => {
+      if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('rebound.save.v1', t); localStorage.setItem('rebound.save.v1.at', String(Date.now() - ago));
+    }, [save, agoMs]);
+    return r;
+  };
+  const { ctx: c0, page: p0 } = await newPage({ w: 390, h: 844, tag: 'phone', dpr: 1 });
+  await p0.goto(url); await p0.waitForTimeout(800);
+  const late = await makeLate(p0);
+  await c0.close();
+
+  await step('landscape and short screens: playable, nothing pinned over a third', async () => {
+    for (const sz of [{ w: 844, h: 390, tag: 'land' }, { w: 667, h: 375, tag: 'land-small' }, { w: 320, h: 640, tag: 'w320' }, { w: 320, h: 568, tag: 'se' }, { w: 390, h: 844, tag: 'phone' }, { w: 1280, h: 500, tag: 'desk-short' }]) {
+      const { ctx, page, errs } = await seedCtx(sz, late);
+      await page.goto(url); await page.waitForTimeout(1300); await clearNotes(page); await page.waitForTimeout(300);
+      const m = await page.evaluate(() => {
+        const r = (s) => document.querySelector(s)?.getBoundingClientRect();
+        const ck = r('.cockpit'), fd = r('.feed'), sell = r('.sell'), sc = r('.world-mount');
+        const beside = ck.right <= fd.left + 1;
+        return { vh: innerHeight, vw: innerWidth, beside, ck: ck.height, sellTop: sell.top, sellBottom: sell.bottom, sceneTop: sc.top, sceneBottom: sc.bottom,
+          sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth };
+      });
+      await page.screenshot({ path: `${out}/${T}-${sz.tag}.png` });
+      await ctx.close();
+      if (m.sw > m.cw) throw new Error(`${sz.tag}: page scrolls sideways (${m.sw} > ${m.cw})`);
+      if (!(m.sellTop >= 0 && m.sellBottom <= m.vh + 1)) throw new Error(`${sz.tag}: Sell off screen (${Math.round(m.sellTop)}–${Math.round(m.sellBottom)} of ${m.vh})`);
+      if (!m.beside && m.ck > m.vh / 3 + 6) throw new Error(`${sz.tag}: the pinned header is ${Math.round(m.ck)} px of ${m.vh}`);
+      if (sz.w > sz.h && sz.w < 1000 && !m.beside) throw new Error(`${sz.tag}: landscape is not side by side`);
+      if (m.sceneTop > m.vh || m.sceneBottom < 0) throw new Error(`${sz.tag}: the picture is not on the first screen`);
+      if (errs.length) throw new Error(errs.slice(0, 2).join(' | '));
+    }
+  });
+
+  await step('two tabs on one save: one writer, a plain notice, a takeover that loses nothing', async () => {
+    const { ctx, page: a } = await seedCtx({ w: 390, h: 844 }, late);
+    await a.goto(url); await a.waitForTimeout(1200); await clearNotes(a);
+    const b = await ctx.newPage(); await b.goto(url); await b.waitForTimeout(1200);
+    if (!(await b.locator('.elsewhere:not([hidden])').count())) throw new Error('the second tab shows no notice');
+    if (await a.locator('.elsewhere:not([hidden])').count()) throw new Error('the first tab stopped');
+    for (let i = 0; i < 20; i++) await a.click('.sell');
+    await a.waitForTimeout(11000);
+    const clicks = (pg) => pg.evaluate(() => window.rebound.state.run.clicks);
+    const stored = () => a.evaluate(() => window.rebound.model.deserialize(localStorage.getItem('rebound.save.v1'), window.rebound.content).run.clicks);
+    const ca = await clicks(a);
+    if ((await stored()) !== ca) throw new Error(`the save holds ${await stored()} sales, the playing tab ${ca}`);
+    for (let i = 0; i < 5; i++) await a.click('.sell');
+    await b.bringToFront();
+    await Promise.all([b.waitForNavigation({ waitUntil: 'load', timeout: 8000 }), b.click('.elsewhere button')]);
+    await b.waitForTimeout(1500);
+    if ((await clicks(b)) !== ca + 5) throw new Error(`after the takeover the new tab has ${await clicks(b)} sales, not ${ca + 5}`);
+    if (!(await a.locator('.elsewhere:not([hidden])').count())) throw new Error('the old tab did not stop');
+    await b.screenshot({ path: `${out}/${T}-tabs-taken.png` }); await a.screenshot({ path: `${out}/${T}-tabs-stopped.png` });
+    await ctx.close();
+  });
+
+  await step('the calendar never jumps when an Industry opens and never runs absurdly past its Age', async () => {
+    const { ctx, page } = await newPage({ w: 390, h: 844, tag: 'phone', dpr: 1 });
+    await page.goto(url); await page.waitForTimeout(800);
+    const r = await page.evaluate(() => {
+      const w = window.rebound, m = w.model, c = w.content;
+      let s = m.createState(c);
+      for (let i = 0; i < 600; i++) s = m.tick(s, c, 1);
+      // Light opened by hand (screenshot-style), then the year sampled every second for three minutes
+      const def = c.sectors.light; const apps = {};
+      for (const a of def.applications) { const av = a.visibleBelow === Infinity; apps[a.id] = { available: av, founded: av && a.foundCost <= 0, satMul: 1, peakD: 0 }; }
+      s = { ...s, sectors: { ...s.sectors, light: { ...s.sectors.light, open: true, openFor: 0, reserve: def.reserve, reserveMax: def.reserve, apps } } };
+      let prev = m.derive(s, c).year, maxStep = 0;
+      for (let i = 0; i < 180; i++) { s = m.tick(s, c, 1); const y = m.derive(s, c).year; maxStep = Math.max(maxStep, y - prev); if (y < prev - 1e-9) return { back: true }; prev = y; }
+      const far = m.yearAt({ ...s, sectors: { ...s.sectors, steam: { ...s.sectors.steam, openFor: 1e6 }, light: { ...s.sectors.light, openFor: 1e6 } }, time: 1e6 }, c, 1e6);
+      return { maxStep, end: prev, far, back: false };
+    });
+    await ctx.close();
+    if (r.back) throw new Error('the calendar ran backwards');
+    if (r.maxStep > 1.5) throw new Error(`the year jumped ${r.maxStep.toFixed(1)} in a second`);
+    if (r.end < 1870) throw new Error(`the calendar never caught up with Light (${r.end.toFixed(0)})`);
+    if (r.far > 1950) throw new Error(`the Coal Age reads ${Math.floor(r.far)} after a long run`);
+  });
+
+  await step('a held line left for ten minutes is held on return', async () => {
+    const { ctx: cA, page: pA } = await newPage({ w: 390, h: 844, tag: 'phone', dpr: 1 });
+    await pA.goto(url); await pA.waitForTimeout(800);
+    const save = await pA.evaluate(() => {
+      const w = window.rebound, m = w.model, c = w.content;
+      const meta = { ...m.createState(c).meta, reckonings: 3, features: Object.fromEntries(Object.keys(c.features || {}).map((k) => [k, 0])) };
+      let s = { ...m.createState(c, meta), capital: 5e4 };
+      for (let i = 0; i < 300; i++) {
+        const v = m.upgradeViews(s, c, 'steam').filter((x) => x.visible && x.affordable && !x.maxed && !x.excludedBy).sort((a, b) => a.cost - b.cost)[0];
+        if (v) s = m.buyUpgrade(s, c, v.def.id);
+        s = m.tick(s, c, 1);
+      }
+      s = m.drawBudget(s, c, 'steam', 'firm');
+      s = { ...s, mandate: s.mandate + 5000 };
+      s = m.setLever(s, c, 'steam.cap', 1);
+      for (let i = 0; i < 260; i++) s = m.tick(s, c, 1);
+      const d = m.derive(s, c).sectors.steam;
+      return { text: m.serialize(s), decoupling: d.decoupling, years: s.sectors.steam.steadyYears };
+    });
+    await cA.close();
+    if (!save.decoupling) throw new Error('the scripted line is not held before leaving');
+    const { ctx, page } = await seedCtx({ w: 390, h: 844 }, save.text, 600e3);
+    await page.goto(url); await page.waitForTimeout(1500);
+    const r = await page.evaluate(() => ({ lines: window.rebound.state.lastOffline?.lines, lapsed: window.rebound.state.lastOffline?.lapsed?.length ?? 0, ledger: document.querySelector('.away')?.innerText ?? '' }));
+    await page.screenshot({ path: `${out}/${T}-away-held.png` });
+    await ctx.close();
+    if (r.lines?.steam !== 'held') throw new Error(`Steam's line came back ${r.lines?.steam ?? 'missing'}`);
+    if (r.lapsed) throw new Error(`${r.lapsed} levers lapsed`);
+    if (!/the line held/.test(r.ledger)) throw new Error('the ledger does not say the line held');
+  });
+
+  await step('the saved picture tells the run\'s true story, and the summary survives a reload', async () => {
+    const { ctx, page } = await newPage({ w: 390, h: 844, tag: 'phone', dpr: 1 }, { acceptDownloads: true });
+    await page.goto(url); await page.waitForTimeout(900);
+    for (let round = 0; round < 400; round++) {
+      const pend = await page.evaluate((r0) => {
+        const r = window.rebound, m = r.model, c = r.content;
+        let s = { ...r.state, capital: r.state.capital + 2e3 * Math.pow(1.25, Math.min(r0, 60)) };
+        const vs = m.upgradeViews(s, c, 'steam').filter((v) => v.visible && !v.maxed && v.affordable && !v.excludedBy).sort((a, b) => a.cost - b.cost);
+        for (const v of vs.slice(0, 2)) { const n = m.buyUpgrade(s, c, v.def.id); if (n !== s) s = n; }
+        const d = m.derive(s, c);
+        for (const a of c.sectors.steam.applications) if (d.sectors.steam?.apps[a.id]?.canFound) s = m.foundApp(s, c, a.id);
+        r.ctx.state = m.fastForward(s, c, 8);
+        return !!m.derive(r.ctx.state, c).pendingReckoning;
+      }, round);
+      await page.waitForTimeout(40);
+      if (pend) break;
+    }
+    await page.waitForTimeout(1200);
+    await page.click('button:has-text("Face the Reckoning")'); await page.waitForTimeout(1500);
+    const story = await page.evaluate(() => document.querySelector('.lp-story')?.textContent ?? '');
+    const peak = await page.evaluate(() => window.rebound.state.meta.lastRun.sectors.steam.peakRFold);
+    const want = peak < 10 ? `×${peak.toFixed(1)}` : null;
+    if (!/peak coal use/.test(story) || (want && !story.includes(want))) throw new Error(`the story reads "${story}" (peak ×${peak.toFixed(1)})`);
+    const dl = page.waitForEvent('download', { timeout: 20000 });
+    await page.click('button:has-text("Save before and after")');
+    await (await dl).saveAs(`${out}/${T}-card-pair.png`);
+    await page.screenshot({ path: `${out}/${T}-summary.png` });
+    await page.reload(); await page.waitForTimeout(1800);
+    if (!(await page.locator('.sheet-t:has-text("Run summary")').count())) throw new Error('a reload on the summary did not show it again');
+    if (!(await page.locator('button:has-text("Save picture")').count())) throw new Error('the picture buttons are gone after a reload');
+    await ctx.close();
+  });
 }
 
 // A scripted run on the real model: capital is topped up through the console handle so the run reaches the reveal,
@@ -834,7 +1012,7 @@ async function realFlow(url) {
     };
     const st = () => page.evaluate(() => window.rebound.state);
     const rich = (cap, man = 0) => page.evaluate(([c, m]) => { const r = window.rebound; r.ctx.state = { ...r.state, capital: r.state.capital + c, mandate: r.state.mandate + m }; }, [cap, man]);
-    const closeToasts = async () => { for (const x of await page.locator('.toast-x').all()) await x.click().catch(() => {}); };
+    const closeToasts = () => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
     await page.goto(url); await page.waitForTimeout(800);
     await step('sell and buy', async () => {
       for (let i = 0; i < 5; i++) await page.click('.sell');
@@ -998,9 +1176,9 @@ async function first() {
     const ids = await page.evaluate(() => window.rebound.content.sectorOrder);
     for (const id of ids) {
       if (filter && !id.includes(filter)) continue;
-      await page.evaluate((i) => { window.rebound.ctx.selectSector(i); document.querySelectorAll('.toast-x').forEach((x) => x.click()); window.scrollTo(0, 0); }, id);
+      await page.evaluate((i) => { window.rebound.ctx.selectSector(i); for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); window.scrollTo(0, 0); }, id);
       await page.waitForTimeout(1400);
-      await page.evaluate(() => document.querySelectorAll('.toast-x').forEach((x) => x.click()));
+      await page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
       await page.waitForTimeout(300);
       const look = await page.evaluate(() => document.documentElement.dataset.look);
       const o = await overflow(page);
@@ -1049,7 +1227,7 @@ async function m2() {
     };
     const st = () => page.evaluate(() => window.rebound.state);
     const d = () => page.evaluate(() => window.rebound.d);
-    const closeToasts = () => page.evaluate(() => document.querySelectorAll('.toast-x').forEach((x) => x.click()));
+    const closeToasts = () => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
     const go = async (hash) => { await page.goto(mock + hash); await page.waitForTimeout(1300); await closeToasts(); };
     const noOverflow = async (what) => { const o = await overflow(page); if (o.sw > o.cw) throw new Error(`sideways scroll at ${what} (${o.sw} > ${o.cw})`); };
 

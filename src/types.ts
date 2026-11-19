@@ -53,7 +53,8 @@ export const YEARS_PER_SECOND = 0.05;
 export const STEADY_STATE_YEARS = 50;
 /** Calendar year used only when content has no ages (fallback clock: START_YEAR + run time × YEARS_PER_SECOND). */
 export const START_YEAR = 1780;
-/** Past its age's last year, the calendar advances at this fraction of the normal rate (until a later age begins). */
+/** Past its age's last year, the calendar advances at this fraction of the normal rate (until a later age begins), and
+ *  then levels off (see AgeDef.yearSpan). */
 export const CALENDAR_LATE_RATE = 0.1;
 /** A stock reserve counts as exhausted at or below this fraction of reserveMax (0.2%): the run must end. */
 export const EXHAUSTED_BELOW = 0.002;
@@ -335,6 +336,14 @@ export interface AgeDef {
    *   with T = the largest openFor among its open sectors (time since the age began);
    *   if y > yearSpan[1]: y = yearSpan[1] + (y − yearSpan[1]) × CALENDAR_LATE_RATE.
    * Derived.year = max over ages with an open sector (so it never runs backwards when something opens).
+   * QA FIX (B3, src/core/calendar.ts): the calendar never jumps and never runs absurdly far past an Age.
+   *   - Each term above is a clock opened at a run time (an Age's own when its first sector opens; a sector's when it
+   *     opens). A clock that opens AHEAD of the calendar as it then stands (Light's 1870 when Steam has reached 1810)
+   *     catches up with it over CALENDAR_CATCHUP_SECONDS (120 s of run time, smoothstep) from the year it opened in,
+   *     instead of jumping; once caught up the formula above holds exactly.
+   *   - The slowing past yearSpan[1] starts at CALENDAR_LATE_RATE and levels off: yearSpan[1] + L × (1 − e^(−x × rate / L))
+   *     with x = y − yearSpan[1] and L = CALENDAR_LATE_SPAN (36 years), so the Coal Age never reads past 1950.
+   * Model years, decades and every timer are unaffected (the calendar is cosmetic). Headlines and events carry it.
    */
   yearSpan: [number, number];
   /**
@@ -563,6 +572,13 @@ export interface DividendDef {
   name: string;
   blurb: string;
   effects: EffectDef[];
+  /**
+   * QA FIX (the unfolding): offered only once this feature is on (an endowment of the Commons is no offer before the
+   * Commons exist). A decade whose pair (in the sector's decadeChoices order) holds an option whose feature is off is
+   * offered the next pair in that order whose options are all on (wrapping); if none is, the pair as authored.
+   * Absent = always.
+   */
+  requires?: FeatureId;
 }
 
 /**
@@ -626,8 +642,9 @@ export interface SectorDef {
   /** Display only ("1780–1870"). */
   years: string;
   /**
-   * M1: calendar year this sector's own clock starts at when it opens (see AgeDef.yearSpan), so Light never opens in
-   * "1810". Default: its age's yearSpan[0].
+   * M1: calendar year this sector's own clock starts at when it opens (see AgeDef.yearSpan). QA FIX: a sector opening
+   * before its firstYear opens in the current year and the calendar catches up with its clock (no jump). Default: its
+   * age's yearSpan[0].
    */
   firstYear?: number;
   tagline: string;         // one line shown when the sector opens
@@ -938,6 +955,13 @@ export interface LeverDef {
   blurb: string;
   /** What the catch is, in the UI's words. Required (content lint). */
   catch: string;
+  /**
+   * QA FIX (the unfolding): clauses of the catch that name a system the player may not have met yet, keyed by the
+   * feature that brings it (the duty's "Paid out as a dividend instead…" waits for 'moreLevers', which brings the
+   * recycling choice). The UI appends each, after a space and in FEATURE_IDS order, while Derived.features[id] is on.
+   * Absent = none.
+   */
+  catchAfter?: Partial<Record<FeatureId, string>>;
   /** One entry per authored level (level 1 = index 0). Level 0 = off. */
   levels: LeverLevelDef[];
   /**
@@ -1052,6 +1076,9 @@ export interface AchievementDef {
   name: string;
   blurb: string;
   hidden?: boolean;
+  /** QA FIX (the unfolding): until this feature is on, the UI lists the achievement as hidden (it names a system the
+   *  player has not met). Absent = never. Display only. */
+  feature?: FeatureId;
   /**
    * M1 (brought forward from M3): granted the first time this holds, checked at least once per real second of play.
    * Without `when`, only the five built-in ids above are granted, by the core's own rules (see ModelApi.tick);
@@ -2148,6 +2175,11 @@ export interface ModelApi {
    * M2 (offline fix): two rules apply only inside fastForward: Hindsight accrues at GlobalParams.offline.hindsightRate
    * (RunStats.hindsightWithheld), and a full pendingDividends list forgoes new offers instead of overflowing (see
    * GameState.pendingDividends). Both are deterministic and leave tick() untouched.
+   * QA FIX (B6): a third rule inside fastForward only: budget lines do not decline while away. Before each step, every
+   * open, unsettled sector's line without heldAt has BudgetState.since moved on by the step's length, so budgetR stays
+   * where it stood on leaving and resumes its decline in play. (A line held on leaving was lost to its own decline:
+   * the cap leaked, a locked-in floor overtook it, or wellbeing fell under the drawn level, with nobody to answer.)
+   * OfflineReport.lines tells a redraw from the pause. Decades still accrue away on a line that holds, as before.
    * A call with seconds ≤ 0 (after clamping; NaN counts as 0) returns the same reference and writes nothing. If a
    * Reckoning is already pending it simulates nothing (heldBy 'pending').
    */

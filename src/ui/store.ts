@@ -5,6 +5,16 @@ export function lsGet(key: string): string | null {
 export function lsSet(key: string, value: string): boolean {
   try { localStorage.setItem(key, value); return true; } catch { return false; }
 }
+/** Whether this browser keeps anything at all (a write and a read back; false when storage is blocked or full). */
+export function storageWorks(): boolean {
+  try {
+    const k = 'rebound.probe';
+    localStorage.setItem(k, '1');
+    const ok = localStorage.getItem(k) === '1';
+    localStorage.removeItem(k);
+    return ok;
+  } catch { return false; }
+}
 export function lsDel(key: string): void {
   try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
 }

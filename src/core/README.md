@@ -14,7 +14,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 0 | `constants.ts` | Constants chosen by the model (defaults, solver limits, history and news sizes, projection horizon, bucket and step; M2 defaults). |
 | 0 | `util.ts` | `fin`, `clamp`, `isObj`. |
 | 0 | `contentIndex.ts` | `idx(content)`: lookups by id (M2: dividends, Commons, Charters, staged upgrades), solve order, fork graph, names. Cached per Content object. |
-| 0 | `calendar.ts` | The calendar year, the current Age, `yearAt` (M2). |
+| 0 | `calendar.ts` | The calendar year, the current Age, `yearAt` (M2); QA fix: clocks that open ahead catch up over `CALENDAR_CATCHUP_SECONDS` (no jump), and the slowing past an Age levels off within `CALENDAR_LATE_SPAN` years. |
 | 0 | `events.ts` | M2: `emit` / `pushEvents` (seq from `meta.eventSeq`, the `EVENTS_MAX` trim), the headline → event mapping. |
 | 0 | `features.ts` | The unfolding: `featureOn` (a feature absent from content is on), `featuresView` (Derived.features), grandfathering for saves from before it. |
 | 0 | `record.ts` | M2: decisions and automated actions per model decade, `run.opening`, the `asDecision` wrapper. |
@@ -41,7 +41,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 9 | `prestige.ts` | The Reckoning (M2: run history, openings, the offer, the 'reckoning' event), Know-how (M2: `knowhowPeak`, the respec), Institutions, the loadout; their views. |
 | 9 | `serialise.ts` | `serialize`, `deserialize`, the v1 → v2 and v2 → v3 migrations, element-by-element validation. |
 | 10 | `step.ts` | `step`, `tick`. Hot path; applies every per-step rule; one call per M2 mechanic (dividends, forced unsettles, events, `runOrders` last). |
-| 11 | `offline.ts` | M2: `fastForward` with holds, the cap and the `OfflineReport`; the offline fix: Hindsight at `offline.hindsightRate` (`run.hindsightWithheld`) and steps run `away` (no dividend overflow). |
+| 11 | `offline.ts` | M2: `fastForward` with holds, the cap and the `OfflineReport`; the offline fix: Hindsight at `offline.hindsightRate` (`run.hindsightWithheld`) and steps run `away` (no dividend overflow); QA fix: budget lines do not decline while away (`since` moved on per step). |
 | 12 | `derive.ts` | `derive()`: the view the UI reads every frame (M2: every new field). |
 | 12 | `projections.ts` | The cards' "this decade" and "brings within reach" projections (focused clones, structural cache with a 20 s bucket, optional per-sector laziness), and upgrade views. |
 | 13 | `index.ts` | The registry: assembles `model` (every in-run player action wrapped by `asDecision`) and the public exports. |

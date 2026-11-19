@@ -173,7 +173,8 @@ export function buildTabs(ctx: Ctx): Comp {
       const parts: string[] = [];
       if (n.ready) parts.push('opening');
       else {
-        if (list.length) parts.push(`${met} of ${list.length}`);
+        // Every condition met leaves only the Reckonings to say (QA B15: "3 of 3 · 1 more Reckoning" cut short).
+        if (list.length && met < list.length) parts.push(`${met} of ${list.length}`);
         const need = num(n.reckoningsNeeded) - num(n.reckoningsHave);
         if (need > 0) parts.push(`${need} more Reckoning${need === 1 ? '' : 's'}`);
       }

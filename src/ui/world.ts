@@ -200,9 +200,10 @@ export function buildWorld(ctx: Ctx): WorldComp {
     // The picture draws the new machines itself; the page only offers a way back to it if it is scrolled away.
     // Only a rise is news: a new run puts the first engine back, which is not a rebuild.
     onStage: (id, stage) => {
-      const was = lastStage.get(id) ?? 0;
+      // The first sight of an Industry (a tab opened, a page loaded) records its stage: only a rise seen is news.
+      const was = lastStage.get(id);
       lastStage.set(id, stage);
-      if (id === ctx.sector && stage > was) moment('stage', 'The machines are rebuilt', 'See them');
+      if (was != null && id === ctx.sector && stage > was) moment('stage', `New machines in ${sectorDef(ctx, id)?.name ?? 'the picture'}`, 'See them');
     },
   });
   function markHand(): void {
@@ -302,8 +303,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
       const before = known.get(id);
       if (before && !ctx.d?.pendingReckoning) {
         for (const a of sdef.applications) if (now.has(a.id) && !before.has(a.id)) {
-          toastOf.set(`${id}:${a.id}`, ctx.toast(`Within reach: ${a.name}${id !== ctx.sector ? ` (${sdef.name})` : ''}. Founding it costs ${money(num(a.foundCost))}.`,
-            { label: 'Show me', run: () => { if (id !== ctx.sector) ctx.selectSector(id); jump(a.id); } }));
+          toastOf.set(`${id}:${a.id}`, ctx.toast(`Within reach: ${a.name}${id !== ctx.sector ? ` (${sdef.name})` : ''}.`,
+            { label: 'Show', run: () => { if (id !== ctx.sector) ctx.selectSector(id); jump(a.id); } }));
         }
       }
       // A note about a use that has since been founded is out of date: take it down.

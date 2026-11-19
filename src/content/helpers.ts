@@ -148,6 +148,12 @@ export function lever(s: LeverSpec): LeverDef {
     levels,
     repeat: { ...REPEAT[s.kind], label: s.label, ...s.repeat },
   };
+  // The unfolding (QA): the dividend sentence names the recycling choice, which arrives with 'moreLevers'; until then the
+  // catch stops before it (LeverDef.catchAfter).
+  if (s.catch.endsWith(' ' + DIVIDEND)) {
+    def.catch = s.catch.slice(0, -(DIVIDEND.length + 1));
+    def.catchAfter = { moreLevers: DIVIDEND };
+  }
   if (s.recycle) def.recycle = s.recycle;
   if (s.recycleBlurb) def.recycleBlurb = s.recycleBlurb;
   if (s.requires) def.requires = s.requires;

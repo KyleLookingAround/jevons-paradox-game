@@ -2,7 +2,7 @@
  * Achievements: the five the core grants by its own rules, then those with conditions (Cond), in display order.
  * Content is data (see README.md): every number and word here is read by the core and the UI; no game rules.
  */
-import type { AchievementDef, Cond, SectorId } from '../types';
+import type { FeatureId, AchievementDef, Cond, SectorId } from '../types';
 
 /* ------------------------------------------------------------------ */
 /* ACHIEVEMENTS: 5 built in + 20 with conditions (M1) + 18 (M2)       */
@@ -38,7 +38,7 @@ const anyTwoSteady: Cond = {
   any: ALL_SECTORS.flatMap((a, i) => ALL_SECTORS.slice(i + 1).map((b): Cond => ({ all: [steadyNow(a), steadyNow(b)] }))),
 };
 
-export const achievements: AchievementDef[] = [
+const list: AchievementDef[] = [
   /* Built in (granted by the core's own rules). */
   { id: 'firstReckoning', name: 'The First Reckoning', blurb: 'Ended a run and looked back at the ledger.' },
   { id: 'backfire', name: 'Backfire', blurb: 'Watched an industry’s savings be eaten entirely, and then some.' },
@@ -225,3 +225,20 @@ export const achievements: AchievementDef[] = [
     when: { all: [{ owns: 'charter.gardenParish' }, { stat: 'clear', sector: 'steam', op: '>=', value: 1 }] },
   },
 ];
+
+/**
+ * The unfolding (QA): an achievement that names a system the player has not met is listed as hidden until that system
+ * arrives (AchievementDef.feature; display only). Matched by id prefix.
+ */
+const FEATURE_OF: [string, FeatureId][] = [
+  ['steadyState', 'steadyState'], ['ach.twoSteady', 'steadyState'], ['ach.enough', 'steadyState'],
+  ['ach.decade.', 'budget'], ['ach.century.', 'budget'],
+  ['ach.leanDecade', 'clearSkies'], ['ach.fullDecade', 'clearSkies'], ['ach.clear.', 'clearSkies'],
+  ['ach.firstSettled', 'settlement'], ['ach.threeSettled', 'settlement'],
+  ['ach.tenCommons', 'commons'], ['ach.commonsEach', 'commons'],
+  ['ach.marketIdle', 'market'], ['ach.charter.', 'charters'],
+];
+export const achievements: AchievementDef[] = list.map((a) => {
+  const f = FEATURE_OF.find(([k]) => a.id === k || (k.endsWith('.') && a.id.startsWith(k)));
+  return f ? { ...a, feature: f[1] } : a;
+});

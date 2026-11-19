@@ -230,7 +230,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
           const n = es.decadesWithin.length;
           items.push(headline(tmp, content, 'decade', time, { ...hc, n }, s));
           ev.push({ kind: 'decade', sector: s, n, id: lean ? 'lean' : 'full' });
-          const offer = decadeOffer(content, s, n, mul);
+          const offer = decadeOffer(content, s, n, mul, state.meta);
           if (offer && fDiv) offers.push(offer);
           lean = W < target;
           es.windowLean = false;

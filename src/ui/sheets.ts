@@ -1,15 +1,15 @@
 // Overlays: one sheet at a time (menu, formula, confirmations, Hindsight shop, the Reckoning, the win card, the locked
-// industry checklist), plus toasts. Sheet structure is built when it opens; live numbers inside are patched while it
+// industry checklist). Transient notes are notes.ts. Sheet structure is built when it opens; live numbers inside are patched while it
 // stays open.
 import type { Ctx, FormulaKind } from './ctx';
 import { sectorDef, sd, sectorIds, ageOfSector, ageDef, reckoningOffered } from './ctx';
-import type { FeatureId, HindsightTerms, InstitutionView, KnowhowView, ReckoningCause, SectorId } from '../types';
-import { STEADY_STATE_YEARS } from '../types';
+import type { EffectDef, FeatureId, HindsightTerms, InstitutionView, KnowhowView, ReckoningCause, SectorId } from '../types';
+import { STEADY_STATE_YEARS, FEATURE_IDS } from '../types';
 import { h, svg, setText, setAttr, setStyle, show, cls, syncChildren } from './dom';
 import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money, unitOne } from './fmt';
 import { UI_ICONS } from './icons';
 import { effectText } from './panels';
-import { download, copyText, readFileText, isPersisted, iosInBrowser } from './store';
+import { download, copyText, readFileText, isPersisted, iosInBrowser, storageWorks } from './store';
 import { getPrefs, setPrefs, isOpen, setOpen, type TextSize, type Motion, type Detail } from './prefs';
 import { lapseBlock, type Lapse } from './timelapse';
 import { setSound, setVolumes, setCalm } from './sound';
@@ -38,6 +38,23 @@ export function buildSheets(): Sheets {
   const el = h('div', { class: 'layer', hidden: true }, scrim, sheet);
   let current: string | null = null, upd: Updater = undefined, opts: OpenOpts | null = null;
   let returnFocus: Element | null = null;
+  // The browser's back button closes a sheet rather than leaving the game (QA B23): opening a sheet adds one history
+  // entry (same address) unless one is already there. A sheet closed from the page leaves its entry in place for the
+  // next sheet (taking it off with history.back() races the next pushState and can leave the page); a back press with
+  // no sheet open just spends it.
+  let pushed = false;
+  function pushEntry(): void {
+    if (pushed) return;
+    try { history.pushState({ rebound: 'sheet' }, ''); pushed = true; } catch { /* no history: back leaves, as before */ }
+  }
+  window.addEventListener('popstate', () => {
+    if (!pushed) return;
+    pushed = false;
+    if (!current) return;
+    // A sheet that must be answered (the Reckoning, between runs) stays: put the entry back.
+    if (opts && opts.dismissable === false) { pushEntry(); return; }
+    close();
+  });
 
   function tryClose(): void { if (opts && opts.dismissable !== false) close(); }
   function close(): void {
@@ -54,6 +71,7 @@ export function buildSheets(): Sheets {
   function open(kind: string, build: (b: HTMLElement, c: () => void) => Updater, o: OpenOpts): void {
     if (!current) returnFocus = document.activeElement;
     current = kind; opts = o;
+    pushEntry();
     body.replaceChildren();
     setText(title, o.label);
     sheet.className = 'sheet' + (o.full ? ' full' : '') + (o.cls ? ' ' + o.cls : '');
@@ -85,36 +103,6 @@ export function buildSheets(): Sheets {
     kind: () => current,
     blocking: () => !!opts?.blocking,
   };
-}
-
-/* ------------------------------------------------------------------ */
-/* Toasts                                                              */
-/* ------------------------------------------------------------------ */
-// Toasts sit at the top of the screen, over the top bar, so that they never cover the buttons a thumb is reaching
-// for. Short (4.5 s; 9 s with an action), at most two, and paused while hovered or focused.
-
-export function buildToasts(): { el: HTMLElement; push(text: string, action?: { label: string; run: () => void }, ms?: number): () => void } {
-  const el = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
-  function push(text: string, action?: { label: string; run: () => void }, ms?: number): () => void {
-    const life = ms ?? (action ? 9000 : 4500);
-    const t = h('div', { class: 'toast' }, h('span', { class: 'toast-t', text }));
-    let timer = 0;
-    const kill = () => { clearTimeout(timer); t.classList.add('out'); setTimeout(() => t.remove(), 300); };
-    const arm = (n: number) => { clearTimeout(timer); timer = window.setTimeout(kill, n); };
-    if (action) t.append(h('button', { class: 'btn small', type: 'button', onclick: () => { action.run(); kill(); } }, action.label));
-    const x = h('button', { class: 'toast-x', type: 'button', 'aria-label': 'Dismiss', onclick: kill });
-    x.append(svg(UI_ICONS.close));
-    t.append(x);
-    t.addEventListener('pointerenter', () => clearTimeout(timer));
-    t.addEventListener('pointerleave', () => arm(2500));
-    t.addEventListener('focusin', () => clearTimeout(timer));
-    t.addEventListener('focusout', () => arm(2500));
-    el.append(t);
-    while (el.children.length > 2) el.firstElementChild!.remove();
-    arm(life);
-    return () => { if (t.isConnected) kill(); };
-  }
-  return { el, push };
 }
 
 /* ------------------------------------------------------------------ */
@@ -318,6 +306,23 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
   const inView = (id: string): InstitutionView | undefined => (ctx.insts || []).find((v) => v.def.id === id);
   const khName = (id: string | null) => (id ? ctx.content.knowhow.find((k) => k.id === id)?.name ?? id : '');
   const instName = (id: string) => ctx.content.institutions.find((x) => x.id === id)?.name ?? id;
+  // What the player has met (QA B30, the unfolding): Know-how and Institutions for Industries never opened, or for
+  // systems not yet arrived, are not listed. Display only: read from the effects and Derived.features.
+  const seenSector = (id: string) => !!ctx.state.meta?.sectorsOpened?.[id] || !!ctx.state.sectors?.[id]?.open;
+  const leverDef = (id: string) => ctx.content.levers?.find((l) => l.id === id);
+  const effMet = (effects: EffectDef[] | undefined): boolean => (effects || []).every((e) => {
+    const sec = (e as { sector?: string }).sector;
+    if (sec && !seenSector(sec)) return false;
+    const f = ctx.d?.features;
+    if (e.type === 'startLever') {
+      const l = leverDef(e.lever);
+      if (l && !seenSector(l.sector)) return false;
+      if (l?.requires?.some((r) => (FEATURE_IDS as readonly string[]).includes(r) && !f?.[r as FeatureId])) return false;
+    }
+    if (e.type === 'orderUnlock') return e.order === 'treasury' ? !!f?.commons : e.order === 'civilService' ? !!f?.budget : !!f?.market;
+    if (e.type === 'commonsYieldMul') return !!f?.commons;
+    return true;
+  });
 
   /* ---------------- Know-how ---------------- */
   interface Arm { id: string; card: HTMLElement; row: HTMLElement }
@@ -407,9 +412,10 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
     const groupOpen = (g: Group) => g.arms.some((a) => v(a.id)?.requirementsMet);
     const groupAfford = (g: Group) => g.arms.some((a) => { const x = v(a.id); return !!x && x.affordable && x.requirementsMet && !x.excludedBy && !x.maxed; });
     // Layout: per tree, per row, which groups are shown (affordable first), which rows fold, which nodes are owned.
+    const met = (g: Group) => g.arms.some((a) => effMet(defs.find((k) => k.id === a.id)?.effects) || num(v(a.id)?.level) > 0);
     const plan = trees.map((tr) => {
       const tiers = tr.tiers.map((ti) => {
-        const live = ti.groups.filter((g) => !groupDone(g));
+        const live = ti.groups.filter((g) => !groupDone(g) && met(g));
         const open = live.length > 0 && groupOpen(live[0]);
         const sorted = open ? [...live.filter(groupAfford), ...live.filter((g) => !groupAfford(g))] : live;
         return { ti, live: sorted, open };
@@ -585,7 +591,8 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
   }
   let instKey = '';
   items.push(() => {
-    const vs = (ctx.content.institutions || []).map((d) => ({ d, v: inView(d.id) }));
+    const vs = (ctx.content.institutions || []).map((d) => ({ d, v: inView(d.id) }))
+      .filter((x) => num(x.v?.level) > 0 || effMet([...(x.d.effects || []), ...(x.d.nextLevels?.[0]?.effects || [])]));
     const owned = vs.filter((x) => x.v && x.v.level >= x.v.maxLevel);
     const live = vs.filter((x) => !(x.v && x.v.level >= x.v.maxLevel));
     const open = live.filter((x) => x.v?.requirementsMet);
@@ -613,8 +620,10 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
   };
 }
 
-export function shopSheet(ctx: Ctx, sheets: Sheets, after?: () => void): void {
+export function shopSheet(ctx: Ctx, sheets: Sheets, after?: () => void, summary?: () => void): void {
   sheets.open('shop', (b, close) => {
+    // Between runs, the last run's summary (its replay and picture) stays one tap away (QA B36).
+    if (after && summary) b.append(h('p', { class: 'shop-back' }, h('button', { class: 'linkish', type: 'button', onclick: summary }, '← The last run’s summary, its replay and picture')));
     // Between runs the Charter (a choice for the run about to begin) leads, above the seats and the shop.
     const ch = after ? charterChoice(ctx) : null;
     const u = buildShop(ctx, b, ch?.el);
@@ -750,7 +759,7 @@ export function charterChoice(ctx: Ctx): { el: HTMLElement; update(): void } {
   return { el, update };
 }
 
-export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, exportText?: () => string, lapse?: Lapse | null): void {
+export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, exportText?: () => string, lapse?: Lapse | null, toShop?: () => void): void {
   const lr = ctx.state.meta?.lastRun;
   const ch = charterChoice(ctx);
   sheets.open('summary', (b, close) => {
@@ -773,7 +782,12 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
             const res = lower(def?.resource.name ?? 'resource');
             const extra: string[] = [];
             if (r.unburnt != null && Number.isFinite(r.unburnt)) extra.push(`${pct(r.unburnt, false)} left unburnt`);
-            if (r.decades != null && (num(r.decades) > 0 || ctx.d?.features?.budget)) extra.push(`${fmt(r.decades)} decade${r.decades === 1 ? '' : 's'} in budget`);
+            if (r.decades != null && (num(r.decades) > 0 || ctx.d?.features?.budget)) {
+              // Lean decades pay no Hindsight unless content says so (QA B28: "14 decades" beside "Decades in budget —").
+              const lean = num(r.leanDecades), pays = num(ctx.content.global?.hindsight?.perLeanDecade) > 0;
+              const all = lean > 0 && lean === num(r.decades);
+              extra.push(`${fmt(r.decades)} decade${r.decades === 1 ? '' : 's'} in budget${lean > 0 && ctx.d?.features?.clearSkies ? `, ${all ? 'all' : fmt(lean)} lean${pays ? '' : ': lean decades pay no Hindsight'}` : ''}`);
+            }
             return h('div', { class: 'acct-era' },
               h('h3', { text: `${def?.name ?? id}` }),
               h('div', { class: 'acct-row eff' }, h('span', { class: 'acct-l', text: 'Efficiency' }),
@@ -787,7 +801,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
     }
     b.append(ch.el);
     b.append(h('div', { class: 'sheet-foot' },
-      h('button', { class: 'btn primary', type: 'button', onclick: () => { shopSheet(ctx, sheets, onDone); } }, 'Spend Hindsight'),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => { toShop?.(); shopSheet(ctx, sheets, onDone, () => summarySheet(ctx, sheets, onDone, exportText, lapse, toShop)); } }, 'Spend Hindsight'),
       h('button', { class: 'btn', type: 'button', onclick: () => { close(); onDone(); } }, 'Begin the next run')));
     // A one-tap copy of the save at the moment it is worth most. Quiet: a text button, never a prompt.
     const dlNote = h('span', { class: 'muted small', 'aria-live': 'polite' });
@@ -959,8 +973,10 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
       return () => {
         const got = !!ctx.state.meta?.achievements?.[a.id];
         cls(li, 'got', got);
-        setText(n, got || !a.hidden ? a.name : '???');
-        setText(d, got || !a.hidden ? a.blurb : 'Not yet.');
+        // One that names a system not met yet is hidden until it arrives (AchievementDef.feature: the unfolding).
+        const veiled = !got && (a.hidden || (!!a.feature && !ctx.d?.features?.[a.feature]));
+        setText(n, veiled ? '???' : a.name);
+        setText(d, veiled ? 'Not yet.' : a.blurb);
       };
     });
     achRows.push(() => {
@@ -1000,7 +1016,10 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
     const remind = h('p', { class: 'save-note' });
     const storeLine = h('p', { class: 'save-note muted' });
     // The browser's answer on persistence, asked after the first purchase (game.ts) and read again here.
-    void isPersisted().then((p) => {
+    // Storage blocked (a private window, a setting): nothing is kept, and the player must hear it here (QA B21).
+    const blocked = !ctx.mock && !storageWorks();
+    if (blocked) { setText(storeLine, 'Storage is blocked in this browser, so nothing is being kept: closing the page ends the game. Copy or download the save below to carry on later.'); storeLine.className = 'save-note remind'; }
+    else void isPersisted().then((p) => {
       const asked = getPrefs().persist;
       setText(storeLine, p === true ? 'Storage: this browser has agreed to keep the save (persistent storage).'
         : p === false ? (asked === 'denied' ? 'Storage: asked to keep the save for good; the browser has not agreed yet. It may, once the game is used more. Exports are the safeguard meanwhile.'

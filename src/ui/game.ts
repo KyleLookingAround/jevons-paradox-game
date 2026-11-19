@@ -8,7 +8,7 @@ import type { Ctx } from './ctx';
 import { sectorIds } from './ctx';
 import { mountUI, type UI } from './app';
 import { showFatal, hideFatal } from './sheets';
-import { lsGet, lsSet, lsDel, download, requestPersist } from './store';
+import { lsGet, lsSet, lsDel, download, requestPersist, storageWorks } from './store';
 import { dur, money } from './fmt';
 import { applyPrefs, getPrefs, setPrefs } from './prefs';
 import { installManifest } from './install';
@@ -17,7 +17,8 @@ import type { BackupInfo } from './sheets';
 import { prof, timed } from './prof';
 import { createEventFeed } from './events';
 import { startPlayLedger, type PlayLedger } from './playledger';
-import { initSound } from './sound';
+import { initSound, soundQuiet } from './sound';
+import { createTabGuard, BEAT_MS, type TabGuard } from './tabs';
 
 const SAVE_KEY = 'rebound.save.v1';          // kept from v1: deserialize migrates
 const AT_KEY = 'rebound.save.v1.at';
@@ -77,6 +78,10 @@ function boot(o: GameOpts): void {
   // The rolling backup: one slot, rewritten at each Reckoning with the fresh run that follows it.
   const backupKey = saveKey + '.backup';
   applyPrefs();
+  // One writer per save (tabs.ts): a second tab on the same save stops its clock and saves nothing until told to.
+  let pen: (TabGuard & { writer: boolean }) | null = null;
+  if (persist) pen = createTabGuard(saveKey, { saveNow: () => save(), paused: () => soundQuiet(true) });
+  const writing = (): boolean => !pen || pen.check();
 
   let halted = false;
   let lastCall = 'start-up';
@@ -159,7 +164,7 @@ function boot(o: GameOpts): void {
     set cms(v: CommonsView[]) { cms = v; },
     sector: initial,
     act(name, f) {
-      if (halted) return false;
+      if (halted || (pen && !pen.writer)) return false;
       const before = state!;
       const next = guard(name, () => f(model, before, content));
       if (!next || next === before) return false;
@@ -255,7 +260,7 @@ function boot(o: GameOpts): void {
   }
 
   function save(): void {
-    if (!persist || !state) return;
+    if (!persist || !state || !writing()) return;
     const txt = guard('serialize', () => model.serialize(state!));
     if (txt != null) { lsSet(saveKey, txt); lsSet(atKey, String(Date.now())); }
     ui?.saveLocal();
@@ -351,17 +356,20 @@ function boot(o: GameOpts): void {
   ui.update();
   mark('rebound-ready');
   viewsAfterPaint();
+  // Storage blocked: say so once, at the start, in the note line (QA B21); the menu's save panel says it at length.
+  if (persist && !storageWorks()) ui.toast('This browser is keeping nothing: storage is blocked.', { label: 'Save', run: () => ui.openMenu() });
   if (unread != null) ui.unreadSave(unread);
   // A save made between runs (after a Reckoning, before the next run began) reopens between runs: the shop and the
   // Charter choice, with "Begin the next run", and no clock until then.
-  else if (d.freshRun && (state.meta?.reckonings ?? 0) >= 1) ui.openShopBetweenRuns();
+  else if (d.freshRun && (state.meta?.reckonings ?? 0) >= 1) ui.openBetweenRuns();
   // A save made between runs (the shop was open) stays fresh: no catch-up until the next run begins.
-  if (away > 0 && !(d.freshRun && (state.meta?.reckonings ?? 0) >= 1)) catchUp(away, true);
+  // Only the tab that keeps the books counts the time away (a stopped second tab counts nothing).
+  if (away > 0 && !(d.freshRun && (state.meta?.reckonings ?? 0) >= 1) && writing()) catchUp(away, true);
 
   /* ---------- the loop ---------- */
   let last = performance.now();
   let acc = 0;
-  let lastSave = last;
+  let lastSave = last, lastBeat = last;
   function frame(now: number): void {
     requestAnimationFrame(frame);
     let el = (now - last) / 1000;
@@ -370,8 +378,9 @@ function boot(o: GameOpts): void {
     if (!(el >= 0)) el = 0;
     try {
       // Stop while a Reckoning is pending and while the post-Reckoning screens are up (the run must stay fresh).
-      if (d.pendingReckoning || ui.blocking()) { acc = 0; return; }
-      if (el > MAX_CATCHUP) { catchUp(el, el > 60); el = 0; acc = 0; return; }
+      if (d.pendingReckoning || ui.blocking() || (pen && !pen.writer)) { acc = 0; return; }
+      if (el > MAX_CATCHUP) { if (writing()) catchUp(el, el > 60); el = 0; acc = 0; return; }
+      if (pen && now - lastBeat >= BEAT_MS) { lastBeat = now; pen.beat(); if (!pen.writer) return; }
       acc += el;
       let n = 0;
       while (acc >= STEP && !halted) {
@@ -392,8 +401,9 @@ function boot(o: GameOpts): void {
   }
   requestAnimationFrame(frame);
 
-  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
-  window.addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); else pen?.check(); });
+  window.addEventListener('pagehide', () => { save(); pen?.release(); });
+  window.addEventListener('pageshow', (e) => { if ((e as PageTransitionEvent).persisted) pen?.resume(); });
   window.addEventListener('hashchange', () => location.reload());
 
   // Handy in the console (and for tools/shot.mjs).

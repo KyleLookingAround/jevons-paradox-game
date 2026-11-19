@@ -128,9 +128,10 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     setText(mNext, `Next look at the books in ${dur(Math.max(0, num(ov.nextTickIn)))} of play.`);
     if (boughtRun !== runKey()) { boughtRun = runKey(); bought = []; }
     const auto = num(ctx.state.run?.automated);
+    const acts = (n: number) => (n === 1 ? 'One action' : `${fmt(n)} actions`);
     setText(mDid, bought.length
-      ? `Bought lately: ${bought.map((b) => `${b.name} (${b.where}, ${b.year})`).join('; ')}.${auto > bought.length ? ` ${fmt(auto)} actions by standing orders this run.` : ''}`
-      : auto > 0 ? `${fmt(auto)} actions by standing orders this run.`
+      ? `Bought lately: ${bought.map((b) => `${b.name} (${b.where}, ${b.year})`).join('; ')}.${auto > bought.length ? ` ${acts(auto)} by standing orders this run.` : ''}`
+      : auto > 0 ? `${acts(auto)} by standing orders this run.`
         : `Waiting: nothing on offer has paid back within ${span(num(ov.market.paybackMax))} yet this run.`);
     show(mDid, ma && ov.market.on);
     setText(mOff, ma ? '' : `The Market takes standing orders from run ${fmt(num(ctx.content.global?.orders?.marketFromReckoning, 1) + 1)}.`);

@@ -59,7 +59,8 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
     show(held, !!heldTxt);
 
     const rows: [string, string][] = [];
-    const signed = (x: number, f: (n: number) => string) => (x >= 0 ? '+' : '−') + f(Math.abs(x));
+    // No sign on what rounds to nothing (QA B16: "People −0.00").
+    const signed = (x: number, f: (n: number) => string) => { const t = f(Math.abs(x)); return /^[0.]+$/.test(t) || t === '£0' ? t : (x >= 0 ? '+' : '−') + t; };
     rows.push(['Capital', signed(num(r.capital), money)]);
     if (num(r.mandate) !== 0) rows.push(['Mandate', signed(num(r.mandate), (n) => fmt(Math.round(n)))]);
     rows.push(['People', signed(num(r.population), (n) => (n >= 10 ? fmt(n) : n.toFixed(2)))]);

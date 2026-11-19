@@ -31,9 +31,37 @@ interface Frame {
   /** Levers in force: [kind, level]. */
   lv: [string, number][];
 }
-interface Store { v: 1; run: string; every: number; frames: Record<string, Frame[]> }
+/** `peaks`: per Industry, the frame with the highest use seen this run (kept through every thinning, so the picture
+ *  "at the peak" and the curve's highest point survive however long the run). */
+interface Store { v: 1; run: string; every: number; frames: Record<string, Frame[]>; peaks?: Record<string, Frame> }
 
-export interface Lapse { sector: string; frames: Frame[]; endCause: string | null; startYear: number; endYear: number }
+/** `peakIdx`: the frame of the highest use in `frames` (the recorded peak frame is merged in). */
+export interface Lapse { sector: string; frames: Frame[]; endCause: string | null; startYear: number; endYear: number; peakIdx?: number }
+
+/** The finished record of the last run, kept so that a page reopened between runs can offer the summary again (QA B36). */
+const LAST_KEY = 'rebound.ui.lapse.last';
+interface Last { v: 1; run: string; lapse: Lapse | null; at: 'summary' | 'shop' }
+/** The run a between-runs record belongs to: the fresh state's seed and Reckoning count. */
+export const lastRunKey = (ctx: Ctx) => `${ctx.state.seed ?? 0}:${ctx.state.meta?.reckonings ?? 0}`;
+export function saveLast(ctx: Ctx, lapse: Lapse | null, at: 'summary' | 'shop'): void {
+  try { lsSet(LAST_KEY, JSON.stringify({ v: 1, run: lastRunKey(ctx), lapse, at } satisfies Last)); } catch { /* a nicety */ }
+}
+export function markLast(ctx: Ctx, at: 'summary' | 'shop'): void {
+  const l = loadLast(ctx);
+  if (l && l.at !== at) saveLast(ctx, l.lapse, at);
+}
+/** The last run's record if it belongs to the run about to begin (the page is between runs), else null. */
+export function loadLast(ctx: Ctx): Last | null {
+  try {
+    const o = JSON.parse(lsGet(LAST_KEY) || 'null');
+    if (o && o.v === 1 && o.run === lastRunKey(ctx) && (o.at === 'summary' || o.at === 'shop')) {
+      const l = o.lapse;
+      const ok = l == null || (typeof l.sector === 'string' && Array.isArray(l.frames) && l.frames.every((f: Frame) => f && Array.isArray(f.a) && Array.isArray(f.ad) && Array.isArray(f.lv)));
+      return ok ? o as Last : { ...o, lapse: null };
+    }
+  } catch { /* unreadable */ }
+  return null;
+}
 
 const r3 = (x: number) => Math.round(num(x) * 1000) / 1000;
 const runKey = (ctx: Ctx) => `${ctx.state.seed ?? 0}:${ctx.state.meta?.reckonings ?? 0}`;
@@ -93,12 +121,15 @@ export function createRecorder(ctx: Ctx, preferred: () => string): Recorder {
     const t = num(ctx.state.time);
     if (!force && t - lastT < st.every) return;
     lastT = t;
+    const peaks = st.peaks ?? (st.peaks = {});
     for (const id of openSectors(ctx)) {
       let v: SceneView;
       try { v = sceneViewFrom(ctx.content, ctx.state, ctx.d, id); } catch { continue; }
       const list = st.frames[id] ?? (st.frames[id] = []);
-      if (list.length && list[list.length - 1].t === Math.round(t)) list[list.length - 1] = compact(v, t);
-      else list.push(compact(v, t));
+      const f = compact(v, t);
+      if (list.length && list[list.length - 1].t === Math.round(t)) list[list.length - 1] = f;
+      else list.push(f);
+      if (!peaks[id] || f.rf > peaks[id].rf) peaks[id] = f;
     }
     // Thin: when any ring is full, keep every other frame (the first and last always) and sample half as often.
     if (Object.values(st.frames).some((fs) => fs.length > FRAMES_MAX)) {
@@ -125,7 +156,15 @@ export function createRecorder(ctx: Ctx, preferred: () => string): Recorder {
         const id = ids.includes(pref) ? pref : ids.sort((a, b) => st.frames[b].length - st.frames[a].length)[0];
         if (!id) return null;
         const frames = st.frames[id].slice();
-        return { sector: id, frames, endCause: cause?.cause ?? null, startYear: frames[0].y, endYear: frames[frames.length - 1].y };
+        // The peak frame goes back in at its time if thinning dropped it.
+        const pk = st.peaks?.[id];
+        if (pk && !frames.some((f) => f.t === pk.t)) {
+          const at = frames.findIndex((f) => f.t > pk.t);
+          if (at > 0) frames.splice(at, 0, pk);
+        }
+        let peakIdx = 0;
+        frames.forEach((f, i) => { if (f.rf > frames[peakIdx].rf) peakIdx = i; });
+        return { sector: id, frames, endCause: cause?.cause ?? null, startYear: frames[0].y, endYear: frames[frames.length - 1].y, peakIdx };
       } catch { return null; }
     },
     reset() { st = load(); lastT = -Infinity; ensureRun(); },
@@ -168,6 +207,27 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
   const views = fr.map((f, i) => expand(tpl, f, i === fr.length - 1 && lapse.endCause ? { cause: lapse.endCause, here: true } : null));
   const reduced = reducedMotion();
 
+  const resName = lower(def?.resource.name ?? 'resource');
+  // The run's true story (QA B4): efficiency gained against the PEAK use, and the use at the end where it differs. The
+  // figures are the run summary's (meta.lastRun: per-Industry etaFold and peakRFold); the frames give the years.
+  const sumRow = ctx.state.meta?.lastRun?.sectors?.[lapse.sector];
+  let pk = num(lapse.peakIdx, -1);
+  if (!(pk >= 0 && pk < fr.length)) { pk = 0; fr.forEach((f, i) => { if (f.rf > fr[pk].rf) pk = i; }); }
+  const last = fr.length - 1;
+  const effEnd = Math.max(num(sumRow?.etaFold), fr[last].ef);
+  const peakFold = Math.max(num(sumRow?.peakRFold), fr[pk].rf);
+  const endFold = fr[last].rf;
+  const endDiffers = peakFold > 0 && Math.abs(endFold / peakFold - 1) > 0.1;
+  // "After": the valley at its busiest, unless use came well down by the end of a run that was not ended by the ground
+  // giving out (a line held: the end is the story). Labelled either way.
+  const forced = lapse.endCause === 'exhausted' || lapse.endCause === 'collapse';
+  const ai = !forced && endFold < peakFold * 0.5 ? last : pk;
+  const afterLbl = ai === last ? (forced ? 'at the end' : 'at the close') : 'at the peak';
+  const resCap = def?.resource.name ?? 'Use';
+  const capOf = (i: number, when: string) => `${fr[i].y}, ${when}: efficiency ${fold(i === last ? effEnd : fr[i].ef)}, ${resName} ${fold(i === pk ? peakFold : fr[i].rf)}`;
+  const storyParts = [`Efficiency ${fold(effEnd)}`, `peak ${resName} use ${fold(peakFold)} (${fr[pk].y})`];
+  if (endDiffers) storyParts.push(`${fold(endFold)} at the end`);
+
   const yearEl = h('span', { class: 'lp-year num' });
   const effV = h('b', { class: 'num' }), useV = h('b', { class: 'num' });
   const W = 300, HG = 60;
@@ -182,7 +242,6 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
   const baseY = HG - 2 - ((Math.log(1) - Math.log(lo)) / Math.max(1e-6, Math.log(hi) - Math.log(lo))) * (HG - 4);
   chart.querySelector('.lp-base')!.setAttribute('y1', baseY.toFixed(1));
   chart.querySelector('.lp-base')!.setAttribute('y2', baseY.toFixed(1));
-  const resName = lower(def?.resource.name ?? 'resource');
   const figs = h('div', { class: 'lp-figs' },
     h('span', { class: 'lp-k lp-k-eff' }, 'Efficiency ', effV), h('span', { class: 'lp-k lp-k-use' }, `${def?.resource.name ?? 'Use'} `, useV), yearEl);
 
@@ -194,7 +253,8 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
   const savePairBtn = h('button', { class: 'btn small', type: 'button', onclick: () => void savePicture(true) }, 'Save before and after');
   const shareBtn = h('button', { class: 'btn small', type: 'button', hidden: true, onclick: () => void share() }, 'Share');
   const status = h('span', { class: 'muted small lp-status', 'aria-live': 'polite' });
-  el.append(h('h3', { class: 'paper-sub', text: `${def?.name ?? 'The valley'}, ${lapse.startYear} to ${lapse.endYear}` }), stageHost, pair, figs, chart,
+  const story = h('p', { class: 'lp-story num', text: storyParts.join(' · ') });
+  el.append(h('h3', { class: 'paper-sub', text: `${def?.name ?? 'The valley'}, ${lapse.startYear} to ${lapse.endYear}` }), stageHost, pair, figs, chart, story,
     h('div', { class: 'm-row lp-btns' }, replayBtn, pairBtn, saveBtn, savePairBtn, shareBtn, status));
   try { if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function') show(shareBtn, true); } catch { /* none */ }
 
@@ -252,13 +312,13 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
     if (on && !pairScenes.length) {
       const a = h('figure', { class: 'lp-fig' }), b = h('figure', { class: 'lp-fig' });
       const ah = h('div', { class: 'lp-mini' }), bh = h('div', { class: 'lp-mini' });
-      a.append(ah, h('figcaption', { class: 'num', text: `${fr[0].y}: efficiency ${fold(fr[0].ef)}, ${resName} ${fold(fr[0].rf)}` }));
-      b.append(bh, h('figcaption', { class: 'num', text: `${fr[fr.length - 1].y}: efficiency ${fold(fr[fr.length - 1].ef)}, ${resName} ${fold(fr[fr.length - 1].rf)}` }));
+      a.append(ah, h('figcaption', { class: 'num', text: capOf(0, 'the start') }));
+      b.append(bh, h('figcaption', { class: 'num', text: capOf(ai, afterLbl) }));
       pair.append(a, b);
       try {
         const s0 = createScene(ah, sceneOpts), s1 = createScene(bh, sceneOpts);
         s0.setSector(lapse!.sector); s1.setSector(lapse!.sector);
-        s0.update(views[0]); s1.update(views[views.length - 1]);
+        s0.update(views[0]); s1.update(views[ai]);
         pairScenes = [s0, s1];
         const watch = () => { if (!el.isConnected) { for (const s of pairScenes) { try { s.destroy(); } catch { /* ignore */ } } pairScenes = []; } else setTimeout(watch, 1000); };
         setTimeout(watch, 1000);
@@ -267,71 +327,109 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
     if (on) stop();
   }
 
-  /* --- Save picture: a 1080 × 1350 card, drawn on a canvas, downloaded or shared. Nothing is uploaded. --- */
+  /* --- Save picture: a 1080 × 1350 card, drawn on a canvas, downloaded or shared. Nothing is uploaded. ---
+   * Laid out top to bottom: the masthead and the headline; the picture (the valley at its busiest, or at the close of a
+   * held run) or the pair (the start beside it), captioned; the run's three figures in large type (efficiency, peak use,
+   * use at the end where it differs); the two curves over the whole run with the peak marked; the run line. The space
+   * left over is shared out between the blocks, so the card never ends in an empty band. */
   async function cardCanvas(pairMode: boolean): Promise<HTMLCanvasElement> {
+    const W = 1080, H = 1350, L = 60, R = 1020, CW = R - L;
     const cv = document.createElement('canvas');
-    cv.width = 1080; cv.height = 1350;
+    cv.width = W; cv.height = H;
     const g = cv.getContext('2d')!;
     const css = getComputedStyle(document.documentElement);
     const tok = (k: string, f: string) => css.getPropertyValue(k).trim() || f;
     const bg = tok('--bg-solid', '#efe6d0'), ink = tok('--ink', '#2a1f15'), muted = tok('--muted', '#6b5a48'), bad = tok('--bad', '#a3231a'), acc = tok('--accent', '#24473a');
     const display = tok('--display', 'Georgia, serif'), body = tok('--body', 'Georgia, serif');
-    g.fillStyle = bg; g.fillRect(0, 0, 1080, 1350);
-    g.fillStyle = ink;
-    g.font = `700 30px ${body}`; g.textBaseline = 'top';
-    g.fillText('REBOUND', 60, 50);
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.textBaseline = 'top';
+    g.fillStyle = ink; g.font = `700 30px ${body}`;
+    g.fillText('REBOUND', L, 50);
     g.font = `400 28px ${body}`; g.fillStyle = muted;
     const sub = `${def?.name ?? ''}, ${lapse!.startYear}–${lapse!.endYear}`;
-    g.fillText(sub, 1020 - g.measureText(sub).width, 52);
-    g.fillStyle = ink; g.fillRect(60, 96, 960, 2);
+    g.fillText(sub, R - g.measureText(sub).width, 52);
+    g.fillStyle = ink; g.fillRect(L, 96, CW, 2);
     g.font = `700 54px ${display}`;
-    wrap(g, title, 60, 120, 960, 62, 2);
-    // The picture(s): the scene's renderStill (PNG; the SVG drawn as an image if the PNG is refused).
-    const top = 220;
-    const draw = async (v: SceneView, x: number, w: number): Promise<number> => {
-      let img: CanvasImageSource | null = null;
-      img = await stillImage(v, w, Math.round(w * 2 / 3));
-      const hgt = Math.round(w * 2 / 3);
-      if (img) g.drawImage(img, x, top, w, hgt);
-      else { g.strokeStyle = muted; g.lineWidth = 2; g.strokeRect(x, top, w, hgt); }
-      return hgt;
-    };
+    wrap(g, title, L, 118, CW, 62, 1);
+    const top = 200, bottom = 1236;
+
+    // Block heights first, then the spare height shared between them.
+    const picW = pairMode ? 465 : 840, picH = Math.round(picW * 2 / 3);
+    const capH = pairMode ? 74 : 40;
+    const figH = 132;
+    const chartMin = pairMode ? 300 : 240, chartMax = pairMode ? 420 : 300;
+    const fixed = picH + capH + figH;
+    const chartH = Math.max(chartMin, Math.min(chartMax, bottom - top - fixed - 3 * 24));
+    const gap = Math.max(18, (bottom - top - fixed - chartH) / 3);
     let y = top;
-    const first = fr[0], last = fr[fr.length - 1];
-    g.textBaseline = 'top';
+
+    // The picture(s): the scene's renderStill (PNG; the SVG drawn as an image if the PNG is refused).
+    const draw = async (v: SceneView, x: number): Promise<void> => {
+      const img = await stillImage(v, picW, picH);
+      if (img) g.drawImage(img, x, y, picW, picH);
+      else { g.strokeStyle = muted; g.lineWidth = 2; g.strokeRect(x, y, picW, picH); }
+    };
+    g.font = `400 25px ${body}`; g.fillStyle = muted;
     if (pairMode) {
-      const hgt = await draw(views[0], 60, 470); await draw(views[views.length - 1], 550, 470);
-      y += hgt + 14;
-      g.font = `400 26px ${body}`; g.fillStyle = muted;
-      g.fillText(`${first.y}: efficiency ${fold(first.ef)}, ${resName} ${fold(first.rf)}`, 60, y);
-      g.fillText(`${last.y}: efficiency ${fold(last.ef)}, ${resName} ${fold(last.rf)}`, 550, y);
-      y += 64;
+      await draw(views[0], L); await draw(views[ai], R - picW);
+      // Two lines each: when, then the figures.
+      const cap2 = (i: number, when: string, x: number) => {
+        const [a, ...rest] = capOf(i, when).split(': ');
+        g.fillText(fitText(g, a, picW), x, y + picH + 10);
+        g.fillText(fitText(g, rest.join(': '), picW), x, y + picH + 42);
+      };
+      cap2(0, 'the start', L); cap2(ai, afterLbl, R - picW);
     } else {
-      y += await draw(views[views.length - 1], 60, 960) + 30;
+      const px0 = L + (CW - picW) / 2;
+      await draw(views[ai], px0);
+      g.fillText(fitText(g, capOf(ai, afterLbl), picW), px0, y + picH + 10);
     }
-    // The two figures, and the two lines under them.
-    g.font = `400 32px ${body}`; g.fillStyle = acc;
-    g.fillText(`Efficiency ${fold(first.ef)} → ${fold(last.ef)}`, 60, y);
-    g.fillStyle = bad;
-    g.fillText(`${def?.resource.name ?? 'Use'} ${fold(first.rf)} → ${fold(last.rf)}`, 560, y);
-    const cy = y + 60, chh = Math.max(180, 1240 - cy);
+    y += picH + capH + gap;
+
+    // The three figures: label above, the figure in large type.
+    const cols: [string, string, string][] = [['EFFICIENCY', fold(effEnd), acc], [`PEAK ${resCap.toUpperCase()} USE`, fold(peakFold), bad]];
+    if (endDiffers) cols.push([`${resCap.toUpperCase()} AT THE END`, fold(endFold), muted]);
+    const colW = CW / cols.length;
+    cols.forEach(([lbl, val, col], i) => {
+      const x = L + i * colW;
+      g.fillStyle = muted; g.font = `600 22px ${body}`;
+      g.fillText(fitText(g, lbl, colW - 16), x, y);
+      g.fillStyle = col; g.font = `800 ${cols.length > 2 ? 76 : 88}px ${display}`;
+      g.fillText(val, x, y + 30);
+    });
+    g.fillStyle = muted; g.font = `400 22px ${body}`;
+    g.fillText(fitText(g, `Peak in ${fr[pk].y}${endDiffers ? `; at the end, ${fr[last].y}` : ''}.`, CW), L, y + 30 + 92);
+    y += figH + gap;
+
+    // The two curves over the whole run (log scale, ×1 marked), the peak ringed and labelled.
     const span = Math.max(1e-6, Math.log(hi) - Math.log(lo));
+    const X = (i: number) => L + (i / Math.max(1, fr.length - 1)) * CW;
+    const head = 44; // room above the highest point for the peak's label
+    const Y = (v: number) => y + chartH - ((Math.log(Math.max(v, 1e-9)) - Math.log(lo)) / span) * (chartH - head);
+    g.strokeStyle = muted; g.lineWidth = 1.5; g.setLineDash([4, 8]);
+    const by = Y(1);
+    g.beginPath(); g.moveTo(L, by); g.lineTo(R, by); g.stroke(); g.setLineDash([]);
+    g.fillStyle = muted; g.font = `400 22px ${body}`; g.fillText('×1, the start', L + 6, by + 6);
     const line = (vals: number[], col: string, wid: number) => {
       g.strokeStyle = col; g.lineWidth = wid; g.lineJoin = 'round'; g.beginPath();
-      vals.forEach((v, i) => {
-        const x = 60 + (i / (vals.length - 1)) * 960;
-        const yy = cy + chh - ((Math.log(Math.max(v, 1e-9)) - Math.log(lo)) / span) * chh;
-        if (i) g.lineTo(x, yy); else g.moveTo(x, yy);
-      });
+      vals.forEach((v, i) => { if (i) g.lineTo(X(i), Y(v)); else g.moveTo(X(i), Y(v)); });
       g.stroke();
     };
-    g.strokeStyle = muted; g.lineWidth = 1.5; g.setLineDash([4, 8]);
-    const by = cy + chh - ((0 - Math.log(lo)) / span) * chh;
-    g.beginPath(); g.moveTo(60, by); g.lineTo(1020, by); g.stroke(); g.setLineDash([]);
-    g.fillStyle = muted; g.font = `400 22px ${body}`; g.fillText('×1, the start', 66, by + 6);
     line(effs, acc, 4); line(uses, bad, 6);
+    const px = X(pk), py = Y(uses[pk]);
+    g.strokeStyle = bad; g.lineWidth = 3; g.beginPath(); g.arc(px, py, 11, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = bad; g.font = `700 26px ${body}`;
+    const pl = `peak ${fold(peakFold)}`;
+    const plw = g.measureText(pl).width;
+    g.textBaseline = 'bottom';
+    g.fillText(pl, Math.min(R - plw, Math.max(L, px - plw / 2)), py - 16);
+    g.fillStyle = acc; g.font = `600 24px ${body}`;
+    const el2 = `efficiency ${fold(effEnd)}`;
+    g.fillText(el2, R - g.measureText(el2).width, Math.min(y + chartH, Y(effs[last]) - 10));
+    g.textBaseline = 'top';
+
     g.fillStyle = muted; g.font = `400 24px ${body}`;
-    g.fillText(`Run ${fmt(num(ctx.state.meta?.reckonings))} · ${lapse!.startYear} to ${lapse!.endYear} · ${fmt(lapse!.endYear - lapse!.startYear)} years`, 60, 1290);
+    g.fillText(`Run ${fmt(num(ctx.state.meta?.reckonings))} · ${lapse!.startYear} to ${lapse!.endYear} · ${fmt(lapse!.endYear - lapse!.startYear)} years`, L, 1290);
     return cv;
   }
   async function blobOf(pairMode: boolean): Promise<Blob | null> {
@@ -354,7 +452,7 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
   /** Where a PNG cannot be made (Safari may refuse to rasterise), the final picture as an SVG file instead. */
   async function saveSvg(): Promise<void> {
     try {
-      const svg = await renderStill(views[views.length - 1], { width: 1200, height: 800, format: 'svg' });
+      const svg = await renderStill(views[ai], { width: 1200, height: 800, format: 'svg' });
       const blob = typeof svg === 'string' ? new Blob([svg], { type: 'image/svg+xml' }) : svg;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -380,6 +478,13 @@ export function lapseBlock(ctx: Ctx, lapse: Lapse | null, title: string): HTMLEl
   return el;
 }
 
+/** The text, shortened with an ellipsis to fit `w` (canvas captions never run off the card). */
+function fitText(g: CanvasRenderingContext2D, t: string, w: number): string {
+  if (g.measureText(t).width <= w) return t;
+  let s = t;
+  while (s.length > 4 && g.measureText(s + '…').width > w) s = s.slice(0, -1);
+  return s.trimEnd() + '…';
+}
 function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number, max: number): void {
   const words = text.split(/\s+/);
   let line = '', n = 0;
