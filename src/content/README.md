@@ -16,6 +16,7 @@ a value or an order (M2).
 | `charters.ts` | M2: the Charters, in content order (the order the deterministic draw indexes: append, never reorder). |
 | `commons.ts` | M2: the Commons projects, in display order. |
 | `dividends.ts` | M2: every decade dividend, flat. The global pair sequence is `DECADE_PAIRS` in `helpers.ts`; each Industry's own sequence is its `steady.decadeChoices`, built with `decadeSequence`. |
+| `features.ts` | The unfolding: when each system arrives (a `Cond` per feature) and the headline that introduces it (`design/unlock-schedule.md`). |
 | `words.ts` | M2: words that belong to no other module (the recycle options' wording, `recycleText`). |
 | `achievements.ts` | Achievements, in display order (the five built in first). |
 | `news/fallback.ts` | The fallback headlines (`Content.headlines`), fit for any Industry. |

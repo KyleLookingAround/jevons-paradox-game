@@ -20,6 +20,11 @@ for (let j = 0; j < 17; j++) for (let t = 0; t < AG.length; t++) {
   if (t === 1 && j > 13) continue;
   AGENT_FLOORS.push({ p: 'cfloor', x: AG[t], y: 318 - j * 12, s: 1.05, v: t * 0.6, band: 'mid' });
 }
+/** Cable bundles across the street, facade to facade, from the old block outwards (x0, y0 → x1, y1). */
+const SPANS: [number, number, number, number][] = [
+  [172, 250, 262, 280], [58, 246, 112, 262], [232, 284, 300, 304], [264, 290, 376, 300], [376, 300, 466, 290], [-6, 226, 58, 240],
+  [466, 290, 524, 296], [112, 218, 172, 246], [524, 270, 606, 282], [300, 304, 376, 312],
+];
 const GLASS: Slot[] = Array.from({ length: 11 }, (_, j): Slot => ({ p: 'glassFloor', x: 466, y: 318 - j * 12, s: 1, band: 'mid' }));
 
 // The old human city along the street: five buildings, always there, whose upper rooms hold the warm vignettes.
@@ -103,7 +108,7 @@ function viaduct(): string {
 /** The old block: brick-dark buildings with fire escapes, tanks and signs; dark window frames for the vignettes. */
 function oldBlock(): string {
   const r = rng(hash('cb-old'));
-  let body = '', shade = '', ledge = '', dark = '', cold = '', esc = '', tank = '', frames = '';
+  let body = '', shade = '', ledge = '', dark = '', cold = '', esc = '', tank = '', frames = '', screens = '';
   const vig = new Set(VIG.map((v) => `${v.x},${v.y}`));
   for (const b of OLD) {
     body += `M${b.x0} ${STREET}V${b.top}H${b.x1}V${STREET}Z`;
@@ -114,6 +119,8 @@ function oldBlock(): string {
       if (y - VH < b.top + 4) return;
       if (vig.has(`${cx},${y}`)) {
         frames += `M${cx - VW / 2} ${y - VH}h${VW}v${VH}h${-VW}Z`;
+        // When the warm room goes dark, what is left is a cold screen left on in an empty room.
+        screens += `M${cx - 6} ${y - 11}h11v7h-11ZM${cx - 1.4} ${y - 4}h2v3h-2Z`;
         return;
       }
       const ww = b.x1 - b.x0 < 40 ? 10 : 13;
@@ -140,7 +147,7 @@ function oldBlock(): string {
   const emg = `<g class="emg">${R(6, 210, 4, 2.4, 'emr') + R(118, 210, 4, 2.4, 'emr') + R(180, 242, 4, 2.4, 'emr') + R(380, 324, 4, 2.4, 'emr') +
     R(520, 324, 4, 2.4, 'emr') + `<ellipse cx="120" cy="352" rx="70" ry="10" class="emp"/><ellipse cx="470" cy="350" rx="80" ry="9" class="emp"/>`}</g>`;
   return P(body, 'oldb') + P(shade, 'oldb2') + P(ledge, 'oldl') + P(dark, 'oldw') + P(cold, 'cold', 'opacity=".55"') +
-    P(frames, 'oldw') + P(frames.replace(/h40v24h-40Z/g, 'h40'), 'k') + P(tank, 'mt') + P(esc, 'k') + signs + refl + emg;
+    P(frames, 'oldw') + P(frames.replace(/h40v24h-40Z/g, 'h40'), 'k') + P(screens, 'coldscr') + P(screens, 'cold', 'opacity=".28"') + P(tank, 'mt') + P(esc, 'k') + signs + refl + emg;
 }
 
 function street(): string {
@@ -198,7 +205,7 @@ export const code: Layout = {
       far: u(sk.far),
       mid: u(sk.mid + street() + viaduct()),
       near: u(oldBlock() + kerb()),
-      cut: R(0, 372, 600, 28, 'wet') + P('M0 380H600M0 388H600M0 394H600', 'pipe', 'opacity=".55"') + P('M0 384H600', 'nt nc', 'opacity=".25"'),
+      cut: R(0, 372, 600, 28, 'wet'),
       fx: [...sk.fx,
         { kind: 'steam', x: 250, y: 352, size: 1.7, band: 'near' }, { kind: 'steam', x: 418, y: 360, size: 1.9, band: 'near' }, { kind: 'steam', x: 560, y: 350, size: 1.5, band: 'near' }],
     };
@@ -268,10 +275,21 @@ export const code: Layout = {
       site: [506, 312, 50, 8],
     },
     {
+      // The service network: the tray under the elevated line (always there), and risers down the pillars to the
+      // street cabinets as the features multiply; under the street, the ducts with their traffic.
+      key: 'ducts', driver: 'light', curve: 0.7,
+      anchor: { p: 'tray', x: -4, y: 270, s: 1, w: 612, band: 'mid' },
+      slots: ([[300, 0.2], [376, 0.6], [584, 0.4], [262, 0.8], [490, 0.1]] as [number, number][])
+        .map(([x, v]): Slot => ({ p: 'riser', x, y: STREET - 0.5, s: 1, h: STREET - 0.5 - 272, v, band: 'mid' })),
+    },
+    { key: 'underground', driver: 'always', anchor: { p: 'ducts', x: 0, y: 386, s: 1, w: 600, band: 'near' }, slots: [] },
+    {
+      // Maintenance debt: bundles slung facade to facade across the street (a network, drawn), lean-tos, dead neon
+      // and pipework growing up from the pavement.
       key: 'debt', driver: 'pressure', curve: 0.85,
       slots: weave(
         scatter('clutterC', [0, STREET - 1, 600, 6], 22, 'cb-clutter', { gap: [18, 3], band: 'near', k: 1.1 }),
-        scatter('cables', [10, 230, 580, 70], 9, 'cb-cables', { gap: [50, 10], w: [40, 90], band: 'near' }),
+        SPANS.map(([x0, y0, x1, y1], i): Slot => ({ p: 'span', x: x0, y: y0, w: x1 - x0, h: y1 - y0, s: 1, v: ((i * 0.41) % 1), band: 'near' })),
         scatter('clutterC', [0, 304, 600, 18], 12, 'cb-clutter2', { gap: [24, 6], band: 'near' }),
       ),
     },

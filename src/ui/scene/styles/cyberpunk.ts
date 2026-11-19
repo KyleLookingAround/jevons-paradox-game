@@ -90,6 +90,11 @@ export const cyberpunk: ArtStyle = {
 .scn .pipe{fill:none;stroke:#3b3553;stroke-width:calc(1.6px*var(--sw))}.scn .rust{fill:#a0562a}
 .scn .pipeb{fill:none;stroke:#09080f;stroke-width:calc(3.6px*var(--sw))}.scn .pipeh{fill:none;stroke:#6a5f8e;stroke-width:.6px}.scn .rustf{fill:#7a3f22}
 .scn .cab{fill:none;stroke:#0f0d1c;stroke-width:calc(1px*var(--sw))}
+.scn[data-look=cyberpunk] .cab{stroke:#3b3260}
+.scn .jbox{fill:#231d3a;stroke:#4a3f72;stroke-width:.6px}.scn .jled{fill:#4dff9a}.scn .trayb{fill:#1a1530;stroke:#3a3160;stroke-width:.6px}
+.scn .flow path.dfl{stroke:#7ff6ff;stroke-dasharray:2 10;stroke-width:calc(1.3px*var(--sw))}
+.scn[data-look=cyberpunk].stress .flow path.dfl{stroke:#ff3b5c}
+.scn .coldscr{fill:#3ef2ff;opacity:.16}
 .scn .clearc{fill:#0f2a20}.scn .clearl{fill:none;stroke:#4dff9a;stroke-width:1px}
 .scn .gdc{fill:#0f2a20}.scn .treec{fill:#164c32;stroke:#4dff9a;stroke-width:.6px}.scn .pool2{fill:rgba(77,255,154,.07)}
 .scn .solc{fill:#16244a;stroke:#3ef2ff;stroke-width:.5px}

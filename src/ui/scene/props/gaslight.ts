@@ -109,9 +109,30 @@ export const gasholder: Prop = (a) => {
     P(cols + `M${f(-w / 2)} ${-h - 4}H${f(w / 2)}M${f(-w / 2)} ${-h / 2}H${f(w / 2)}`, 'k post');
 };
 
+
+/** A stretch of lit street climbing the hill, w,h = offset to its far end: the setts catch the lamplight as a printed
+ *  halftone ribbon, narrowing with distance. */
+export const streetGlow: Prop = (a) => {
+  // w,h: the whole street from its foot (the origin); v: which third of it this stretch lights (0, 1/3, 2/3).
+  const DX = a.w || 0.1, DY = a.h || -40, len = Math.hypot(DX, DY) || 1;
+  const nx = -DY / len, ny = DX / len, t0 = Math.min(0.67, a.v), t1 = t0 + 0.34;
+  const x0 = DX * t0, y0 = DY * t0, x1 = DX * t1, y1 = DY * t1, w0 = 9 - 5 * t0, w1 = 9 - 5 * t1;
+  const q = `M${f(x0 + nx * w0)} ${f(y0 + ny * w0)}L${f(x1 + nx * w1)} ${f(y1 + ny * w1)}L${f(x1 - nx * w1)} ${f(y1 - ny * w1)}L${f(x0 - nx * w0)} ${f(y0 - ny * w0)}Z`;
+  return P(q, 'gl', `fill="${a.u('ht3')}"`) + P(q, 'gl', `fill="${a.u('ht2')}" opacity=".6"`);
+};
+
+/** The gas main under the street: a jointed pipe from the gasworks, w = length (leftwards), gas running along it. */
+export const gasMain: Prop = (a, o) => {
+  const w = a.w || 500;
+  let joints = '';
+  for (let x = 0; x < w; x += 24) joints += `M${f(-x)} -2.6v5.2`;
+  o.fx('flow', 0, 0, 1, `<path class="gasf" d="M0 0H${f(-w)}"/>`);
+  return P(`M0 -2H${f(-w)}M0 2H${f(-w)}`, 'pipe') + P(joints, 'pipe');
+};
+
 /** Cream panel and crimson livery (style tokens; gaslight defines them, others fall back). */
 const FASCIA = ['TEAS', 'HATS', 'ALES', 'DRAPER', 'CHEMIST', 'OYSTERS', 'TOBACCO', 'BOOKS', 'LAMPS', 'BAKER', 'GLOVES'];
 
 export const moon: Prop = () => P('M0 -10A10 10 0 1 0 7 7A8 8 0 1 1 0 -10Z', 'moon');
 
-export const GASLIGHT: Record<string, Prop> = { nightFactory, lampPosts, lampGlow, farLamp, tramLine, tram, sign, gasholder, moon };
+export const GASLIGHT: Record<string, Prop> = { nightFactory, lampPosts, lampGlow, farLamp, tramLine, tram, sign, gasholder, moon, streetGlow, gasMain };

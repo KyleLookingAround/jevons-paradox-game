@@ -47,6 +47,13 @@ export const chrome: ArtStyle = {
 .scn .cyc{fill:#0e7c77;opacity:.6}
 .scn .trail{fill:none;stroke:rgba(255,255,255,.85);stroke-width:2.2;vector-effect:none!important}
 .scn .cloud{fill:#fbf8f0;stroke:none;opacity:.92}
+.scn .lawn2{fill:#a4cc94;stroke:none}.scn .hdg{fill:none;stroke:#5f8f68;stroke-width:calc(1.1px*var(--sw))}
+.scn .r4{fill:#5b8fb9;stroke:rgba(26,42,45,.55);stroke-width:calc(.6px*var(--sw))}
+.scn .door2{fill:#e07a5f;stroke:none}
+.scn .fascia{fill:#0e5f5b;stroke:none}.scn .fasc{font:700 2.4px/1 var(--f-grot,Helvetica,Arial,sans-serif);fill:#fbf8f0;letter-spacing:.02em}
+.scn .fasc.fb{fill:#1a2a2d;font-size:2.6px}
+.scn .aw1{fill:#e07a5f}.scn .aw2{fill:#e9b949}.scn .aw3{fill:#0e7c77}
+.scn .msn{fill:#2c5fa8;stroke:#fbf8f0;stroke-width:.7px}.scn .msnt{font:700 4.4px/1 var(--f-grot,Helvetica,Arial,sans-serif);fill:#fbf8f0;letter-spacing:.03em}
 
 .scn[data-look=chrome] .scn-stage{border-radius:14px;border-color:rgba(26,42,45,.25)}`,
   defs: (p) => [0, 1, 2, 3].map((i) => flatFill(p, `h${i}`, 'rgba(20,40,45,.13)') + flatFill(p, `x${i}`, 'rgba(20,40,45,.22)')).join('') + glowDefs(p) +
@@ -60,5 +67,7 @@ export const chrome: ArtStyle = {
       '<text x="26" y="70" class="ad-s">By motor, to everywhere</text>';
   },
   props: CHROME,
+  // The near band stays crisp under the haze so the motorway and the parade read; the far curdles first.
+  weather: { hz: [0.8, 0.5, 0.2] },
   wash: (t) => [mix('#8fb58f', '#a7a27f', t), mix('#86bccb', '#9a9a86', t)],
 };

@@ -26,20 +26,16 @@ function fields(): string {
 }
 
 /** The road network the place grows along: the spine from the old town down to the arterial and on to the motorway
- *  junction, avenues out into the fields for the suburbs, the airport road, the mall's slip road. [x0, y0, x1, y1]. */
+ *  junction, estate roads east from the spine into the fields, the airport road, the mall's slip road. [x0, y0, x1, y1]. */
 const SPINE: [number, number, number, number][] = [[284, 186, 300, 258], [300, 266, 330, 330]];
-const AVENUES: [number, number, number, number][] = [[340, 258, 304, 212], [392, 258, 452, 212], [512, 258, 586, 222], [304, 212, 420, 204]];
-const AIRPORT_RD: [number, number, number, number] = [470, 258, 470, 200];
+const ESTATE: [number, number, number, number][] = [[298, 235, 604, 235], [294, 215, 604, 215]];
 const MALL_RD: [number, number, number, number] = [334, 326, 452, 316];
 const seg = ([x0, y0, x1, y1]: [number, number, number, number], band: 'far' | 'mid' | 'near'): Slot => ({ p: 'road', x: x0, y: y0, w: x1 - x0, h: y1 - y0, s: 1, band });
-/** Closes of houses both sides of an avenue, from the arterial outwards. */
-const closes = (n: number) => AVENUES.flatMap(([x0, y0, x1, y1], i) => [-1, 1].map((sd) => {
-  const ox = sd * (i === 3 ? 0 : 30), oy = i === 3 ? sd * 9 : 0;
-  return Array.from({ length: n }, (_, k): Slot => {
-    const t = (k + 0.6) / n;
-    return { p: 'suburb', x: x0 + (x1 - x0) * t + ox, y: y0 + (y1 - y0) * t + oy - 2, k: 1.1, v: ((i * 7 + k * 3 + (sd > 0 ? 1 : 0)) % 10) / 10 };
-  });
-}));
+const sAt = (y: number) => 0.66 + 0.59 * (y - 120) / 252;
+/** Cul-de-sacs on the fields, row by row (front edge y), each parcel turned from crop to lawn. */
+const ROW = (y: number, xs: number[], seed: number): Slot[] => xs.map((x, i) => ({ p: 'close', x, y, s: sAt(y) * 1.02, w: 60, v: ((seed + i * 0.37) % 1) }));
+const R1 = ROW(255, [398, 462, 526, 590], 0.1), R2 = ROW(233, [330, 392, 454, 516, 578], 0.5), R3 = ROW(213, [326, 386, 446, 506, 566], 0.8);
+const R4 = ROW(294, [250, 380, 444], 0.3);
 
 const LANE_FWD = (y: number, n: number, from: number, dur: number) => ({ p: 'car', x0: -40, y0: y, x1: 640, y1: y, dur, n, s: 1, from, band: 'near' as const });
 const LANE_BACK = (y: number, n: number, from: number, dur: number) => ({ p: 'car', x0: 640, y0: y, x1: -40, y1: y, dur, n, s: 1, from, band: 'near' as const });
@@ -96,19 +92,21 @@ export const motion: Layout = {
       key: 'spine', driver: 'always', slots: [seg(SPINE[0], 'mid')],
     },
     {
-      // Suburbs: the avenues are laid first, then closes of houses fill both sides from the arterial outwards, then
-      // the crescent along the top, then the sprawl beyond. Commuters drive down the avenues to the arterial.
+      // Suburbs, the story of this Industry: estate roads east from the spine, then cul-de-sacs field by field (each
+      // parcel turns from crop to lawn behind a hedge), the shopping parade and a filling station on the arterial, a
+      // school with its playing field, and the sprawl south of the road. Once built it stays.
       key: 'suburbs', match: ['suburb'],
-      anchor: { p: 'suburb', x: 318, y: 240, k: 1.1 },
-      slots: [...AVENUES.map((a) => seg(a, 'mid')), ...weave(...closes(3)),
-        ...scatter('suburb', [236, 270, 364, 24], 6, 'motion-suburbs', { from: [400, 280], gap: [66, 10], k: 1.15 })],
+      anchor: R1[0],
+      slots: [seg(ESTATE[0], 'mid'), { p: 'parade', x: 346, y: 256, s: sAt(256) * 1.05, v: 0.2 }, ...weave(R1.slice(1), R2.slice(0, 2)),
+        { p: 'station', x: 262, y: 257, s: sAt(257) * 1.1 }, seg(ESTATE[1], 'mid'), ...weave(R2.slice(2), R3.slice(0, 3)),
+        { p: 'school', x: 552, y: 294, s: sAt(294) * 1.1 }, ...weave(R3.slice(3), R4)],
       movers: [
-        { p: 'car', x0: 452, y0: 212, x1: 392, y1: 258, dur: 9, n: 2, s: 0.85, band: 'mid', z: 258 },
-        { p: 'car', x0: 304, y0: 212, x1: 340, y1: 258, dur: 8, n: 2, s: 0.85, band: 'mid', z: 258 },
-        { p: 'car', x0: 586, y0: 222, x1: 512, y1: 258, dur: 10, n: 1, s: 0.85, band: 'mid', z: 258 },
+        { p: 'car', x0: 300, y0: 236, x1: 640, y1: 236, dur: 16, n: 2, s: 0.8, band: 'mid', z: 236 },
+        { p: 'car', x0: 640, y0: 216.5, x1: 296, y1: 216.5, dur: 18, n: 1, s: 0.75, from: 0.5, band: 'mid', z: 216 },
+        { p: 'car', x0: 286, y0: 192, x1: 300, y1: 258, dur: 8, n: 2, s: 0.85, band: 'mid', z: 258 },
       ],
-      hit: [220, 200, 200, 76],
-      site: [280, 220, 50, 8],
+      hit: [300, 194, 300, 66],
+      site: [370, 246, 60, 8],
     },
     {
       key: 'mall', match: ['mall'],
@@ -122,7 +120,7 @@ export const motion: Layout = {
     {
       key: 'commute', match: ['car'],
       anchor: { p: 'motorway', x: -10, y: 352, s: 1, w: 620, band: 'near' },
-      slots: [{ p: 'lanes', x: -10, y: 337, s: 1, w: 620, band: 'near' }, { p: 'lanes', x: -10, y: 367, s: 1, w: 620, band: 'near' }],
+      slots: [{ p: 'msign', x: 96, y: 327, s: 1, band: 'near' }, { p: 'lanes', x: -10, y: 337, s: 1, w: 620, band: 'near' }, { p: 'lanes', x: -10, y: 367, s: 1, w: 620, band: 'near' }],
       movers: [
         LANE_FWD(351, 3, 0, 9), LANE_BACK(358, 3, 0.1, 10),
         LANE_FWD(336, 3, 0.4, 8.5), LANE_BACK(343, 3, 0.45, 9.5),
@@ -133,17 +131,16 @@ export const motion: Layout = {
     },
     {
       key: 'flights', match: ['plane'],
-      anchor: { p: 'airport', x: 370, y: 196, s: 1, w: 230, band: 'far' },
+      anchor: { p: 'airport', x: 362, y: 191, s: 1.25, w: 190, band: 'mid' },
       // Contrails accumulate over the optimistic sky as flying spreads.
       slots: weave(
-        [seg(AIRPORT_RD, 'mid'), { p: 'slab', x: 458, y: 194, s: 0.6, v: 0.1, band: 'far' }, { p: 'airport', x: 400, y: 182, s: 0.6, w: 280, band: 'far' }],
+        [{ p: 'jet', x: 520, y: 189.5, s: 1.1, band: 'mid' }, { p: 'jet', x: 556, y: 190, s: 1.1, band: 'mid' }, { p: 'jet', x: 588, y: 190.5, s: 1.1, band: 'mid' }],
         ([[300, 120, 160], [180, 96, 220], [420, 70, 200], [60, 132, 180], [240, 58, 240], [520, 110, 120], [120, 84, 200], [360, 40, 230]] as [number, number, number][])
           .map(([x, y, w]): Slot => ({ p: 'contrail', x, y, w, s: 1, band: 'far' })),
       ),
-      movers: [{ p: 'plane', x0: 470, y0: 186, x1: 720, y1: 90, dur: 13, n: 3, s: 1, band: 'far' },
-        { p: 'car', x0: 470, y0: 258, x1: 470, y1: 202, dur: 7, n: 2, s: 0.75, band: 'mid', z: 230 }],
-      hit: [420, 120, 180, 74],
-      site: [440, 186, 80, 6],
+      movers: [{ p: 'plane', x0: 400, y0: 186, x1: 700, y1: 74, dur: 13, n: 3, s: 1.15, band: 'mid', z: 188 }],
+      hit: [380, 112, 220, 84],
+      site: [420, 182, 90, 6],
     },
   ],
 

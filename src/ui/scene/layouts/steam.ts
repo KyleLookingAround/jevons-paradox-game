@@ -6,10 +6,29 @@ import { scatter, row, weave } from '../layout';
 import { P, R, L, f, ridge } from '../svg';
 import { bprop, ribbon, waterLines, tufts, engravedSun, birds } from './util';
 import { tree, poplar, church, cottage, hedge } from '../props/common';
-import { field } from '../props/ledger';
+import { field, ford as LEDGER_FORD } from '../props/ledger';
 import { hills, hills2 } from '../geography';
 
 const SHAFT_X = 70;
+
+/** A hedgerow along a field boundary: a bumpy engraved band, its bumps scaled with depth (s). */
+function hedgerow(pts: [number, number][], s: number): string {
+  let top = '', bot = '';
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0) / (4.5 * s)));
+    for (let k = 0; k < n; k++) {
+      const t = (k + 1) / n, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
+      const px = x0 + (x1 - x0) * (k / n), py = y0 + (y1 - y0) * (k / n);
+      top += `Q${f((px + x) / 2)} ${f((py + y) / 2 - 3.6 * s - ((k * 7) % 3) * 0.5 * s)} ${f(x)} ${f(y - 0.8 * s)}`;
+    }
+  }
+  for (let i = pts.length - 1; i >= 0; i--) bot += `L${f(pts[i][0])} ${f(pts[i][1] + 0.8 * s)}`;
+  return P(`M${f(pts[0][0])} ${f(pts[0][1] - 0.8 * s)}${top}${bot}Z`, 'tr hdgr');
+}
+/** The old lane from the near fields down to the ford and up into the town (near and mid parts). */
+const LANE_NEAR: [number, number][] = [[188, 374], [206, 350], [238, 326], [276, 300], [300, 280], [310, 266]];
+const LANE_MID: [number, number][] = [[310, 266], [320, 254], [326, 246], [330, 238], [318, 226], [300, 214]];
 const FIELDS: Slot[] = [
   { p: 'furrows', x: 48, y: 332, w: 66 }, { p: 'furrows', x: 205, y: 330, w: 60 }, { p: 'furrows', x: 302, y: 340, w: 58 },
   { p: 'furrows', x: 150, y: 360, w: 72 }, { p: 'furrows', x: 384, y: 356, w: 52 },
@@ -50,10 +69,17 @@ export const steam: Layout = {
       ribbon([[168, 171], [215, 188], [262, 214], [310, 240], [362, 264], [410, 286], [454, 306]], 2, 18, 'wa') +
       waterLines(270, 222, 170, 70, 14, 'river', 'k k2') +
       bprop(hedge, 120, 210, 0.6, 0.5, c, { w: 70 }) + bprop(hedge, 236, 250, 0.75, 0.5, c, { w: 56 }) +
-      bprop(tree, 28, 246, 0.72, 0.3, c) + bprop(tree, 226, 232, 0.68, 0.6, c) + bprop(tree, 444, 262, 0.8, 0.1, c);
+      bprop(tree, 28, 246, 0.72, 0.3, c) + bprop(tree, 226, 232, 0.68, 0.6, c) + bprop(tree, 444, 262, 0.8, 0.1, c) +
+      // The old country: hedgerows on the slope, the lane down to the ford.
+      hedgerow([[20, 230], [90, 236], [160, 242], [206, 240]], 0.62) + hedgerow([[340, 222], [384, 230], [430, 240]], 0.6) +
+      hedgerow([[60, 252], [140, 256]], 0.72) + ribbon(LANE_MID, 5, 7, 'lane') + bprop(LEDGER_FORD, 326, 247, 0.8, 0.5, c);
     const near =
       P(fore, 'gd') + P(fore, 'tr', 'fill-opacity=".55"') + P(fore.replace(/L[\d.]+ 372Z$/, ''), 'k k2') +
+      ribbon(LANE_NEAR, 9, 6, 'lane') +
       FIELDS.map((s) => bprop(field, s.x, s.y, 1, 0.5, c, { w: s.w })).join('') +
+      hedgerow([[0, 318], [90, 320], [170, 322], [196, 324]], 0.95) + hedgerow([[252, 328], [330, 334], [420, 338]], 1) +
+      hedgerow([[118, 324], [112, 346], [104, 372]], 1.05) + hedgerow([[262, 334], [258, 372]], 1.05) +
+      bprop(tree, 92, 322, 1.05, 0.6, c) + bprop(tree, 330, 336, 1.1, 0.35, c) +
       P('M436 322Q470 314 600 317V372H426Z', 'wa') + P('M436 322Q470 314 600 317', 'k') + waterLines(442, 325, 158, 44, 30, 'basin') +
       tufts(0, 310, 436, 60, 60, 'grass') +
       bprop(tree, 12, 372, 1.6, 0.75, c) + bprop(tree, 418, 372, 1.2, 0.2, c);
@@ -87,6 +113,19 @@ export const steam: Layout = {
         row('cottage', 130, 190, 200, 186, 3, 'steam-sp1', 1, { k: 0.9 }),                  // sprawl up the far slope
         row('terrace', 350, 190, 430, 196, 2, 'steam-mt4', 0, { k: 0.85 }),
       ),
+    },
+    {
+      // The valley before the pits, and what the industry displaces: sheep on the slopes and the near fields, ricks,
+      // a cart in the ford, the corn mill's waterwheel, a windmill on the far hill. They fade as the coal goes (the
+      // ones nearest the pits and mills first), so what is lost is seen going.
+      key: 'country', driver: 'reserve', fade: true, curve: 2.2,
+      slots: [
+        { p: 'windmill', x: 262, y: 147, s: 0.5, band: 'far' },
+        { p: 'sheep', x: 64, y: 238, k: 0.85, v: 0.8 }, { p: 'haystack', x: 404, y: 334, k: 0.9 },
+        { p: 'sheep', x: 156, y: 228, k: 0.85, v: 0.3 }, { p: 'sheep', x: 352, y: 326, v: 0.6 },
+        { p: 'cart', x: 330, y: 250, s: 0.72, band: 'mid' }, { p: 'waterwheel', x: 244, y: 205, s: 0.6, band: 'far' },
+        { p: 'haystack', x: 94, y: 308, k: 0.9 }, { p: 'sheep', x: 222, y: 352, v: 0.95 }, { p: 'sheep', x: 40, y: 312, v: 0.1 },
+      ],
     },
     {
       key: 'pump', match: ['pump'],

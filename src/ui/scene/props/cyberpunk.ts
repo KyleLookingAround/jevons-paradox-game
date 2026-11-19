@@ -196,6 +196,50 @@ export const cables: Prop = (a) => {
   return P(d, 'cab');
 };
 
+
+/* --- The service network: cable bundles across the street, the tray under the viaduct, risers, ducts below. --- */
+
+/** A cable bundle slung from one facade to another, w,h = offset to the far end: 2–5 sagging wires, a junction box
+ *  at each end, a loop or two hanging off it. */
+export const span: Prop = (a) => {
+  const dx = a.w || 80, dy = a.h || 0, n = 2 + Math.floor(a.v * 4);
+  let d = '';
+  for (let i = 0; i < n; i++) { const sag = 8 + i * 2.6 + a.v * 6; d += `M0 ${f(i * 1.2)}Q${f(dx / 2)} ${f(dy / 2 + sag + Math.abs(dx) * 0.05)} ${f(dx)} ${f(dy + i * 1.1)}`; }
+  const lx = dx * (0.3 + a.v * 0.3), ly = dy * (0.3 + a.v * 0.3) + 8 + Math.abs(dx) * 0.04;
+  d += `M${f(lx)} ${f(ly)}q-2 9 2 11q3 -3 -1 -11`;
+  // One fibre in the bundle carries a faint light (the network, legible at night).
+  const fib = `M0 0.6Q${f(dx / 2)} ${f(dy / 2 + 9 + Math.abs(dx) * 0.05)} ${f(dx)} ${f(dy + 0.6)}`;
+  return P(d, 'cab') + P(fib, a.v > 0.5 ? 'nt nm' : 'nt nc', 'opacity=".45"') + R(-3, -3, 6, 6, 'jbox') + R(dx - 3, dy - 3, 6, 6, 'jbox') + R(-1.5, -1.5, 1.6, 1.6, 'jled') + R(dx + 0.5, dy - 1.5, 1.6, 1.6, 'jled');
+};
+
+/** The cable tray under the elevated line, w = length: a lit conduit with traffic along it, and hangers. */
+export const tray: Prop = (a, o) => {
+  const w = a.w || 600;
+  let hang = '';
+  for (let x = 6; x < w; x += 38) hang += `M${f(x)} -4V0`;
+  o.fx('flow', 0, 1.2, 1, `<path class="dfl" d="M0 0H${f(w)}"/>`);
+  return P(hang, 'k') + R(0, 0, w, 2.6, 'trayb') + P(`M0 1.3H${f(w)}`, 'nt nc', 'opacity=".35"');
+};
+
+/** A riser from the tray down a pillar to a street cabinet, h = drop (positive, downwards from the tray). Origin: the
+ *  cabinet at street level. */
+export const riser: Prop = (a, o) => {
+  const h = a.h || 60;
+  o.fx('flow', 0, -h, 1, `<path class="dfl" d="M0 0V${f(h - 9)}"/>`);
+  return P(`M-1.4 ${f(-h)}V-9M1.4 ${f(-h)}V-9`, 'pipe') + R(-5, -9, 10, 9, 'jbox') + R(-3, -7, 2, 1.4, 'jled') + R(1, -7, 2, 1.4, 'cyl') +
+    P(`M-5 -4.5h10`, 'k');
+};
+
+/** Service ducts under the street (in the cut): conduits, a manhole shaft up to the street, traffic in the lit one.
+ *  w = length; origin left at the duct. */
+export const ducts: Prop = (a, o) => {
+  const w = a.w || 600;
+  let shafts = '';
+  for (let x = 90; x < w; x += 200) shafts += `M${f(x - 4)} -14V4M${f(x + 4)} -14V4M${f(x - 6)} -14h12`;
+  o.fx('flow', 0, 0, 1, `<path class="dfl" d="M0 0H${f(w)}"/>`);
+  return P(`M0 -3H${f(w)}M0 3H${f(w)}M0 8H${f(w)}`, 'pipe') + P(`M0 0H${f(w)}`, 'nt nc', 'opacity=".3"') + P(shafts, 'pipe');
+};
+
 /* ------------------------------------------------------------------ */
 /* Signs of restraint                                                  */
 /* ------------------------------------------------------------------ */
@@ -290,7 +334,7 @@ export const elTrain: Prop = (a) => {
 export const CYBERPUNK: Record<string, Prop> = {
   vignette, walker, elTrain,
   ctower, ctowerCold, ctowerWarm, workshop, kiosk, blade, oldTower, scaffoldC, glassFloor, cfloor, towerCraneC, drone, hoarding,
-  skycar, clutterC, cables, demolition, gateC, libraryC, gardenC, tollC, permitC, solarC,
+  skycar, clutterC, cables, span, tray, riser, ducts, demolition, gateC, libraryC, gardenC, tollC, permitC, solarC,
   // aliases so icon lookups land here
   floor: cfloor, bubbleHouse: hoarding, shed: workshop,
 };

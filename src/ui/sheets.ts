@@ -150,7 +150,6 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       lines.cons = lines.cons.slice(0, 2);
       notes.cons = 'Demand is a sum of uses, each a logistic curve in the service price.';
     }
-    b.append(h('div', { class: 'formula' }, ...lines[kind].map((l) => h('div', { class: 'f-line', text: l }))));
     type Row = [string, (e: NonNullable<ReturnType<typeof sd>>) => string];
     const R: Record<string, Row> = {
       eta: ['η', (e) => `${fmtPrice(e.eta)} ${unitS}/${unitR}`],
@@ -181,6 +180,18 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       price: ['pr', 'permit', 'eta', 'c', 'sigma', 'pre', 'permitPart', 'dutyPart', 'ps', 'm', 'D', 'inc', 'levy'],
     };
     if (!revealed) pick.cons = pick.cons.filter((k) => k !== 'grow' && k !== 'shadow');
+    // The unfolding: levies and permits are named once the player has met them (levers; the budget's caps).
+    const f = ctx.d?.features;
+    if (kind === 'price' && !f?.levers) {
+      lines.price = [lines.price[0].replace('p before levies', 'pₛ'), 'income = m × pₛ × D'];
+      pick.price = ['pr', 'eta', 'c', 'ps', 'm', 'D', 'inc'];
+      notes.price = 'A thriftier engine makes the service cheaper. Cheaper service sells more of it.';
+    } else if (kind === 'price' && !f?.budget) {
+      lines.price[1] = 'pₛ = p before levies + duty part';
+      pick.price = pick.price.filter((k) => k !== 'permit' && k !== 'permitPart');
+    }
+    if (!f?.moreLevers && kind === 'cons') pick.cons = pick.cons.filter((k) => k !== 'sigma');
+    b.append(h('div', { class: 'formula' }, ...lines[kind].map((l) => h('div', { class: 'f-line', text: l }))));
     const rows = pick[kind].map((k) => { const v = h('dd', { class: 'num' }); return { v, row: R[k] }; });
     const dl = h('dl', { class: 'f-vals' });
     for (const r of rows) dl.append(h('div', null, h('dt', { text: r.row[0] }), r.v));

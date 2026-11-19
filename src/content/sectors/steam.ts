@@ -158,8 +158,9 @@ const sector: SectorDef = {
 
 /* ---- Steam: chain to ×13; forks add up to ×2 more (max ≈ ×27, min ≈ ×19) ---- */
 /* M2 stages (the scene's machines): Watt's condenser 1, high-pressure steam 2, the turbine hall 3. */
+/* QA balance: the condenser £800 (not £1,000): a person reached it at 7:50 against a 4–6 minute target. */
 const steamUpgrades: UpgradeDef[] = withStages([
-  ...chain('steam', [180, 1_000, 2_200, 4_400, 14_000, 28_000, 56_000], [
+  ...chain('steam', [180, 800, 2_200, 4_400, 14_000, 28_000, 56_000], [
     {
       id: 'steam.boilers', name: 'Better boilers', fold: 1.5,
       blurb: 'After Smeaton: lag the pipes, mend the leaks, stop heating the engine house.',

@@ -12,7 +12,7 @@ import { COUNTRY, hills, sea, viaductArches, millShells, built } from '../geogra
 /** The streets that climb from the tram street up the hill: the gas mains run under them and the town builds along
  *  them, from the bottom up (bottom x, y → top x, y). */
 const STREETS: [number, number, number, number][] = [[128, 292, 66, 214], [300, 292, 326, 210], [474, 292, 540, 214]];
-const along = (p: string | string[], side: number, n: number, seed: string, k = 1.15) =>
+const along = (p: string | string[], side: number, n: number, seed: string, k = 1.05) =>
   STREETS.map(([x0, y0, x1, y1], i) => row(p, x0 + side, y0 - 10, x1 + side * 0.7, y1 + 4, n, `${seed}${i}`, 0, { k }));
 const SHOPS = Array.from({ length: 9 }, (_, i) => 26 + i * 38);
 const POSTS = Array.from({ length: 13 }, (_, i) => i * 50);
@@ -67,9 +67,10 @@ export const light: Layout = {
       bprop(church, 410, 190, 0.8, 0.5, c) + bprop(poplar, 380, 192, 0.6, 0.3, c) +
       bprop(gasholder, 500, 204, 0.9, 0.3, c) + bprop(gasholder, 548, 205, 0.8, 0.8, c) + bprop(gasholder, 586, 206, 0.6, 0.5, c);
     const mid = P(ridge([[0, 204], [150, 198], [300, 206], [450, 200], [600, 206]], 400), 'b sil1') + P('M0 292H600V300H0Z', 'gd') +
-      // The streets up the hill, and the gas mains under them: the lit skeleton the town grows along.
-      P(STREETS.map(([x0, y0, x1, y1]) => `M${x0 - 5} ${y0}L${x1 - 2} ${y1}M${x0 + 5} ${y0}L${x1 + 2} ${y1}`).join(''), 'k k2', 'opacity=".5"') +
-      P(STREETS.map(([x0, y0, x1, y1]) => `M${x0} ${y0}L${x1} ${y1}`).join('') + 'M0 289H600', 'main');
+      // The streets up the hill: paved bands the town grows along (the lamps and their light come with the plots).
+      P(STREETS.map(([x0, y0, x1, y1]) => `M${x0 - 7} ${y0}L${x1 - 3} ${y1}H${x1 + 3}L${x0 + 7} ${y0}Z`).join(''), 'sett') +
+      P(STREETS.map(([x0, y0, x1, y1]) => `M${x0 - 7} ${y0}L${x1 - 3} ${y1}M${x0 + 7} ${y0}L${x1 + 3} ${y1}`).join(''), 'k k2', 'opacity=".6"') +
+      P('M0 289H600', 'main');
     let shops = '';
     for (const x of SHOPS) {
       const h = 34 + ((x * 7) % 13);
@@ -83,7 +84,10 @@ export const light: Layout = {
       P('M0 330H360V372H0Z', 'gd gd2') + shops +
       P('M352 318H600V372H352Z', 'wa') + L(352, 318, 600, 318, 'k') + waterLines(360, 324, 240, 44, 26, 'canal', 'k k2') +
       `<g class="refl">${POSTS.filter((x) => x > 360).map((x) => R(x - 1.5, 330, 3, 30, 'lit', 'opacity=".35"')).join('')}</g>`;
-    const cut = R(0, 372, 600, 28, 'b pave') + L(0, 372.5, 600, 372.5, 'k') + P('M0 380H600M0 390H600', 'k k2');
+    // Under the street: the gas main from the gasworks, a riser up to the foot of each street and one to the lamps.
+    const cut = R(0, 372, 600, 28, 'b pave') + L(0, 372.5, 600, 372.5, 'k') + P('M0 377H600M0 396H600', 'k k2') +
+      P(STREETS.map(([x]) => `M${x - 1.6} 384V372M${x + 1.6} 384V372`).join('') + 'M588.4 384V372M591.6 384V372M228.4 384V372M231.6 384V372', 'pipe') +
+      P(STREETS.map(([x]) => `M${x - 3} 374h6`).join('') + 'M587 374h6M227 374h6', 'pipe');
     return { sky, far, mid, near, cut };
   },
 
@@ -91,9 +95,17 @@ export const light: Layout = {
     {
       // Terraces line the three streets from the tram street up (infill), then spread across the hill (sprawl).
       key: 'town', driver: 'population', curve: 0.7,
-      slots: [...weave(...along('terrace', -24, 4, 'lt-l'), ...along('terrace', 24, 4, 'lt-r')),
+      slots: [...weave(...along('terrace', -34, 4, 'lt-l'), ...along('terrace', 34, 4, 'lt-r')),
         ...scatter('terrace', [6, 206, 588, 30], 8, 'light-town', { from: [300, 220], gap: [46, 9], k: 1.05 })],
     },
+    {
+      // The lit skeleton: as the place lights up, the streets catch the lamplight from the tram street upwards.
+      key: 'streets', driver: 'light', curve: 0.75,
+      // Every stretch is placed at its street's foot (so it draws over the terraces either side) and lights its third.
+      slots: [0, 1, 2].flatMap((k) => STREETS.map(([x0, y0, x1, y1]): Slot =>
+        ({ p: 'streetGlow', x: x0, y: y0 + 0.2, w: x1 - x0, h: y1 - y0, v: k / 3, s: 1, band: 'mid' }))),
+    },
+    { key: 'mains', driver: 'always', anchor: { p: 'gasMain', x: 592, y: 384, s: 1, w: 600, band: 'near' }, slots: [] },
     { key: 'homes', match: ['house'], overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 196, 210, 76], site: [440, 252, 70, 8] },
     {
       key: 'night', match: ['factory-night'],
@@ -127,7 +139,7 @@ export const light: Layout = {
         POSTS.map((x): Slot => ({ p: 'lampGlow', x, y: 360, s: 1, band: 'near' })).sort((p, q) => Math.abs(p.x - 300) - Math.abs(q.x - 300)),
         Array.from({ length: 15 }, (_, i): Slot => ({ p: 'farLamp', x: 20 + i * 40, y: 292, s: 0.8, band: 'mid' })).sort((p, q) => Math.abs(p.x - 300) - Math.abs(q.x - 300)),
         // The gas mains climbing the streets: lamps light from the tram street upwards.
-        ...along('farLamp', 0, 5, 'light-mains', 0.8),
+        ...along('farLamp', 0, 5, 'light-mains', 1.35),
       ),
       hit: [360, 298, 240, 74],
       site: [450, 352, 70, 8],

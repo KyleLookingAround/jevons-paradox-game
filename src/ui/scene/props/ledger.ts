@@ -231,6 +231,38 @@ export const ploughField: Prop = (a, o) => {
 export const furrows: Prop = (a) => fieldBase(a, true);
 export const field: Prop = (a) => fieldBase(a, false);
 
+
+/* --- The valley before the pits: what the industry displaces (Steam's 'country' plot, fading as the coal goes). --- */
+
+/** A few sheep grazing, engraved: woolly bodies, dark faces, all heads down one way. v varies the flock. */
+export const sheep: Prop = (a) => {
+  const n = 3 + Math.floor(a.v * 3);
+  let body = '', face = '';
+  for (let i = 0; i < n; i++) {
+    const x = -10 + i * 6 + (a.r() - 0.5) * 3, y = (a.r() - 0.5) * 3, fl = a.r() < 0.35 ? -1 : 1;
+    body += `M${f(x - 2.6)} ${f(y - 1.2)}q0 -2.4 2.6 -2.4q2.6 0 2.6 2.4q0 1.4 -2.6 1.4q-2.6 0 -2.6 -1.4z`;
+    face += `M${f(x + 2.4 * fl)} ${f(y - 2.4)}l${f(1.4 * fl)} 1.2l${f(-0.6 * fl)} 0.8z` + `M${f(x - 1.4)} ${f(y)}v1.2M${f(x + 1.4)} ${f(y)}v1.2`;
+  }
+  return P(body, 'b') + P(face, 'k');
+};
+
+/** Haystacks on a field: two ricks, thatched, hatched on the shadow side. */
+export const haystack: Prop = (a) =>
+  P('M-11 0V-5Q-11 -11 -5.5 -12Q0 -11 0 -5V0Z', 'b2') + P('M-12 -6Q-5.5 -14 1 -6', 'k') + P('M-5.5 -12V-14', 'k') +
+  R(-3, -11, 3, 11, 'hz', `fill="${a.hatch()}"`) +
+  P('M3 0V-3.5Q3 -7.6 7 -8.2Q11 -7.6 11 -3.5V0Z', 'b2') + P('M2.2 -4Q7 -10 11.8 -4', 'k');
+
+/** A horse and cart (in the ford, splashing through). */
+export const cart: Prop = () =>
+  P('M-2 -7H10L9 -3H-1Z', 'b2') + C(4, -2.6, 2.6, 'k') + P('M4 -5.2V0M1.4 -2.6H6.6', 'k k2') + P('M-2 -5L-8 -4.5', 'k') +
+  P('M-8 -7.5Q-12 -9 -16 -7.5L-17.5 -10L-19 -9.6L-18 -6.5Q-17 -3.6 -16 -3.4V0M-9 -6.2V0M-16 -3.4L-15 0M-9 -3.4L-10 0', 'k') +
+  P('M-16 -7.5Q-12 -9 -8 -7.5Q-7.5 -4.2 -9 -3.4H-16Z', 'b') + C(4.5, -9.5, 1.2, 'b') + P('M4.5 -8.3V-6.5', 'k') +
+  P('M-21 1q3 -1.4 6 0t6 0M7 1q3 -1.4 6 0', 'k k2');
+
+/** The ford: a lane running down into the river and out the other side, stepping stones for walkers. */
+export const ford: Prop = () =>
+  P('M-6 -1h2.4M-1 -0.5h2.6M4 -1h2.4M8.6 -0.4h2', 'k K') + P('M-14 2q4 -1.6 8 0t8 0t8 0', 'k k2');
+
 /** Rails with sleepers; origin left, w = length. */
 export const rails: Prop = (a) => {
   const w = a.w || 200;
@@ -251,7 +283,7 @@ export const smogPlume: Prop = (a) => {
   }
   const end = -(w * 0.22) - 4;
   const d = top + `L${f(w)} ${f(end + 6)}` + bot.replace(/^Q/, 'Q') + 'Z';
-  return P(d, 'smb') + P(d, 'hz smh', `fill="${a.hatch(1)}" opacity=".55"`);
+  return P(d, 'smb') + P(d, 'hz smh', `fill="${a.hatch(1)}" opacity=".4"`);
 };
 
 /** The colliery wagonway: rails from the slot to (w, h), with sleepers. */
@@ -274,5 +306,5 @@ export const tubs: Prop = (a) => {
 export const LEDGER: Record<string, Prop> = {
   smogPlume, wagonway, tubs,
   rails, engine, headframe, spoil, mill, viaduct, train, station, signal, goodsShed, quay, warehouse, crane, ship,
-  ploughField, furrows, field,
+  ploughField, furrows, field, sheep, haystack, cart, ford,
 };

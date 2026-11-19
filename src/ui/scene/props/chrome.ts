@@ -165,7 +165,85 @@ export const cloudPuff: Prop = (a) => {
   return R(-w / 2, -8, w, 8, 'cloud', 'rx="4"') + R(-w / 4, -13, w / 2.2, 9, 'cloud', 'rx="4.5"');
 };
 
+
+/** Path data by class, so a whole estate is a dozen elements rather than hundreds. */
+type Acc = Record<string, string>;
+const add = (acc: Acc, cls: string, d: string) => { acc[cls] = (acc[cls] ?? '') + d; };
+const rect = (x: number, y: number, w: number, h: number) => `M${f(x)} ${f(y)}h${f(w)}v${f(h)}h${f(-w)}z`;
+
+/** One house of the estate: semi or bungalow with a front garden, a garage with a car on the drive. v picks it. */
+function house(acc: Acc, x: number, y: number, v: number, k: number, roofI: number): void {
+  const roofs = ['rf', 'r2', 'r3', 'r4'];
+  const w = 8 * k, h = (v > 0.5 ? 6.5 : 5) * k, rh = (v > 0.5 ? 4.2 : 3.2) * k;
+  add(acc, 'lawn', rect(x - w / 2 - 2 * k, y - 0.6 * k, w + 6.5 * k, 2.4 * k));
+  add(acc, 'hdg', `M${f(x - w / 2 - 2 * k)} ${f(y + 1.8 * k)}h${f(w + 6.5 * k)}`);
+  add(acc, 'b', rect(x - w / 2, y - h, w, h));
+  add(acc, roofs[roofI % 4], `M${f(x - w / 2 - 0.8 * k)} ${f(y - h)}L${f(x)} ${f(y - h - rh)}L${f(x + w / 2 + 0.8 * k)} ${f(y - h)}Z`);
+  add(acc, 'w', rect(x - w / 2 + 1.2 * k, y - h + 1.4 * k, 1.8 * k, 1.6 * k) + rect(x + 1 * k, y - h + 1.4 * k, 1.8 * k, 1.6 * k));
+  add(acc, 'door2', rect(x - 0.6 * k, y - 2.6 * k, 1.4 * k, 2.6 * k));
+  // Garage to the right, a car on the drive in front of it.
+  add(acc, 'b2', rect(x + w / 2, y - 3.6 * k, 4.2 * k, 3.6 * k));
+  add(acc, 'door', rect(x + w / 2 + 0.6 * k, y - 2.8 * k, 3 * k, 2.8 * k));
+  if (v * 7 % 1 > 0.3) add(acc, 'c' + Math.floor(v * 37 % 5), rect(x + w / 2 + 0.4 * k, y + 0.2 * k, 3.4 * k, 1.5 * k));
+}
+const flush = (acc: Acc, order: string[]) => order.filter((c) => acc[c]).map((c) => P(acc[c], c)).join('');
+const HOUSE_ORDER = ['lawn', 'hdg', 'b', 'b2', 'rf', 'r2', 'r3', 'r4', 'w', 'door2', 'door', 'c0', 'c1', 'c2', 'c3', 'c4'];
+
+/** A cul-de-sac on what was a field: the parcel turned to lawn behind a hedge, a stub road and a turning circle,
+ *  houses round it. w = parcel width (local). */
+export const close: Prop = (a) => {
+  const w = a.w || 64, d = 20, hw = w / 2;
+  let s = P(`M${f(-hw)} 0L${f(-hw + 3)} ${-d}H${f(hw - 3)}L${f(hw)} 0Z`, 'lawn2') + P(`M${f(-hw)} 0L${f(-hw + 3)} ${-d}H${f(hw - 3)}L${f(hw)} 0`, 'hdg');
+  s += P(`M-1.6 0L-1.2 ${-d * 0.55}H1.2L1.6 0Z`, 'road') + E(0, -d * 0.62, 5.4, 2.2, 'road');
+  const n = Math.max(4, Math.round(w / 13));
+  const back: Acc = {}, front: Acc = {};
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n, x = -hw + 6 + t * (w - 12), v = (a.v * 13 + i * 0.37) % 1;
+    if (Math.abs(x) < 6) continue;
+    house(back, x * 0.92, -d + 6, v, 0.85, i + Math.floor(a.v * 4));
+    if (i % 2 === 0 || n < 5) house(front, x, -3, (v + 0.5) % 1, 1, i + 2);
+  }
+  // A tree or two in the gardens.
+  return s + flush(back, HOUSE_ORDER) + C(-hw + 5, -d + 4, 2.6, 'tr') + flush(front, HOUSE_ORDER) + C(hw - 4, -5, 2.8, 'tr');
+};
+
+/** A shopping parade: flats over shops with awnings and lettered fascias, a pillar box. */
+export const parade: Prop = (a) => {
+  const names = ['GROCER', 'CHEMIST', 'WIMPY', 'TV & RADIO', 'BAKER'];
+  const n = 4, sw = 17, w = n * sw;
+  let s = R(-w / 2, -22, w, 22, 'b') + R(-w / 2, -22, w, 2.5, 'rf') + grid(-w / 2 + 2.5, -19, n * 2, 1, sw / 2, 0, 4, 3.5);
+  const aw = ['aw1', 'aw2', 'aw3', 'aw1'];
+  for (let i = 0; i < n; i++) {
+    const x = -w / 2 + i * sw;
+    s += R(x + 0.8, -11.5, sw - 1.6, 3.2, 'fascia') + `<text x="${f(x + sw / 2)}" y="-9" text-anchor="middle" class="fasc">${names[(i + Math.floor(a.v * 5)) % 5]}</text>` +
+      P(`M${f(x + 0.6)} -8.3H${f(x + sw - 0.6)}L${f(x + sw + 0.6)} -5.6H${f(x - 0.6)}Z`, aw[i]) + R(x + 2, -5.6, sw - 4, 5.6, 'glass');
+  }
+  return s + R(w / 2 + 2, -4.5, 1.6, 4.5, 'c0', 'rx=".6"');
+};
+
+/** A new school: flat-roofed classrooms with long windows, a clock, a playing field with goalposts. */
+export const school: Prop = () =>
+  R(-34, -1, 32, 4, 'lawn') + P('M-32 1.5V-3M-32 -3h4M-6 1.5V-3M-6 -3h-4', 'k k2') +
+  R(0, -12, 34, 12, 'b') + R(0, -12, 34, 2, 'rf') + grid(2, -8.4, 6, 1, 5.3, 0, 4.4, 3.6, 'glass') + R(12, -18, 9, 6, 'b') +
+  C(16.5, -15, 1.8, 'b2') + L(16.5, -15, 16.5, -16.3, 'k') + R(15, -4.6, 4, 4.6, 'door2');
+
+/** A filling station on the arterial: a canopy on stalks, pumps, a lit brand sign on a pole. */
+export const station: Prop = () =>
+  R(-18, -13, 30, 2.6, 'ac') + R(-18, -10.4, 30, 1, 'r3') + L(-14, -10, -14, 0, 'k K') + L(8, -10, 8, 0, 'k K') +
+  R(-8, -6, 2.4, 6, 'c1') + R(0, -6, 2.4, 6, 'c1') + R(14, -9, 12, 9, 'b') + R(14, -9, 12, 1.6, 'rf') + R(16, -6.5, 8, 3, 'glass') +
+  L(30, 0, 30, -22, 'k K') + C(30, -26, 5, 'c2') + `<text x="30" y="-24.6" text-anchor="middle" class="fasc fb">PETROL</text>`;
+
+/** A blue motorway direction sign on two legs at the verge. */
+export const msign: Prop = () =>
+  P('M-14 0V-20M14 0V-20', 'k K') + R(-20, -34, 40, 15, 'msn') + `<text x="0" y="-28.2" text-anchor="middle" class="msnt">THE SOUTH</text>` +
+  `<text x="0" y="-22" text-anchor="middle" class="msnt">AIRPORT &#9992;</text>`;
+
+/** A jet parked on the apron. */
+export const jet: Prop = () =>
+  P('M-16 -2Q-16 -4 -13 -4H11Q15 -4 16 -2Q15 -0.6 11 -0.6H-13Q-16 -0.6 -16 -2Z', 'b') + P('M-3 -2.4L-8 3H-5L4 -2.4Z', 'b2') +
+  P('M-15 -3.4L-17 -9H-14L-11 -3.6Z', 'rf') + R(-10, -3.2, 18, 0.8, 'vs');
+
 export const CHROME: Record<string, Prop> = {
   contrail, road, car, van, lorry, depot, lanes, motorway, suburb, slab, mall, carpark, airport, plane, derrick, tanks, petrol, gantry, cycle,
-  scrapyard, tree, turbines, cloudPuff,
+  scrapyard, tree, turbines, cloudPuff, close, parade, school, station, msign, jet,
 };

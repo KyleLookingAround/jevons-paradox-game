@@ -30,7 +30,7 @@ export const gaslight: ArtStyle = {
 .scn[data-look=gaslight] .sil0{fill:#7a4252}
 .scn[data-look=gaslight] .sil00{fill:#a8584e}
 .scn[data-look=gaslight] .seaD{fill:#c56a3c}.scn[data-look=gaslight] .seaG{fill:none;stroke:#f3d59a;stroke-width:1px;opacity:.7}
-.scn[data-look=gaslight] .heri{fill:#4a2a40}.scn[data-look=gaslight] .heriw{fill:var(--s-lamp,#f6c65b);opacity:.55}
+.scn[data-look=gaslight] .heri{fill:#4a2a40;stroke:#c0705e;stroke-width:calc(.6px*var(--sw));stroke-opacity:.7}.scn[data-look=gaslight] .heriw{fill:var(--s-lamp,#f6c65b);opacity:.55}
 .scn[data-look=gaslight] .band-mid .b,.scn[data-look=gaslight] .band-mid .rf{fill:#3a2438;stroke:#1a0f18}
 .scn[data-look=gaslight] .sil1{fill:#30203a!important;stroke:none!important}
 .scn[data-look=gaslight] .band-near .b,.scn[data-look=gaslight] .band-near .rf{fill:#22152a;stroke:#0e070c}
@@ -41,6 +41,9 @@ export const gaslight: ArtStyle = {
 .scn[data-look=gaslight] .main{fill:none;stroke:rgba(var(--s-lamprgb,246,198,91),.38);stroke-width:calc(1.1px*var(--sw));stroke-dasharray:1 3}
 .scn[data-look=gaslight] .k{stroke:#6a4a5a}
 .scn .star{fill:#f4e7c5}
+.scn[data-look=gaslight] .sett{fill:#3c2840;stroke:none}
+.scn .pipe{fill:none;stroke:#b07a3a;stroke-width:calc(1px*var(--sw))}
+.scn .flow path.gasf{stroke:#f2b544;stroke-dasharray:3 9;stroke-width:calc(1.6px*var(--sw))}
 .scn .moon{fill:#f4e7c5;stroke:none;opacity:.9}
 .scn .refl{opacity:var(--light,0)}
 .scn .neon{fill:#2a1420;stroke:#e8664a;stroke-width:calc(1px*var(--sw))}

@@ -17,9 +17,9 @@ const skiesDue: Cond = { all: [steamDecades(1), { any: [{ stat: 'wellbeing', op:
 export const features: Partial<Record<FeatureId, FeatureDef>> = {
   /* Run 1. The reveal brings only the meter and the cards' red line (its own card and headline introduce it). */
   reboundMeter: { when: revealed, name: 'The rebound' },
-  /* Run 1, about five minutes after the reveal: the smoke is a fifth of the way to collapse, and climbing. */
+  /* Run 1, about five minutes after the reveal: the smoke is near a fifth of the way to collapse, and climbing. */
   levers: {
-    when: { all: [revealed, { any: [{ stat: 'pressureFraction', sector: 'steam', op: '>=', value: 0.22 }, { stat: 'crises', sector: 'steam', op: '>=', value: 1 }] }] },
+    when: { all: [revealed, { any: [{ stat: 'pressureFraction', sector: 'steam', op: '>=', value: 0.18 }, { stat: 'crises', sector: 'steam', op: '>=', value: 1 }] }] },
     intro: 'Smoke noticed in Parliament; a coal duty is proposed',
     name: 'Counter-levers',
   },

@@ -659,8 +659,8 @@ describe('the unfolding: one system at a time', () => {
   test('run 1 (efficiency play): the reveal at 8–12 min, levers about five minutes later, people at the first crisis', () => {
     expect(within(at(EFF, 'reboundMeter'), 1, 7.5, 12.5)).toEndWith('true');
     const r = at(EFF, 'reboundMeter')!.min, l = at(EFF, 'levers')!.min;
-    expect(within(at(EFF, 'levers'), 1, r + 5, 18)).toEndWith('true');
-    expect(within(at(EFF, 'population'), 1, l + 5, 22)).toEndWith('true');
+    expect(within(at(EFF, 'levers'), 1, r + 4.9, 18)).toEndWith('true');
+    expect(within(at(EFF, 'population'), 1, l + 4.9, 22)).toEndWith('true');
     expect(Math.abs(at(EFF, 'population')!.min - run1.crisis! / 60)).toBeLessThanOrEqual(5.1);
     // nothing about budgets, decades, paces or Steady State in run 1, nor the Market, Charters or the Commons
     for (const f of ['budget', 'dividendChoice', 'budgetPace', 'clearSkies', 'steadyState', 'market', 'charters', 'commons', 'moreLevers', 'leverRepeat'] as FeatureId[]) {

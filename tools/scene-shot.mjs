@@ -126,6 +126,7 @@ if (sw) {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     const counts = await p.evaluate(() => ({
       nodes: document.querySelectorAll('.scn svg *').length,
+      world: document.querySelectorAll('.scn-world.act svg *').length,
       visible: Array.from(document.querySelectorAll('.scn .on')).length,
       movers: document.querySelectorAll('.scn .mv.on').length,
       liveSmoke: document.querySelectorAll('.scn .smk.live').length,

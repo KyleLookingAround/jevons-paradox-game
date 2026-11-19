@@ -873,7 +873,8 @@ async function realFlow(url) {
         await page.waitForTimeout(120);
       }
       if (!(await page.evaluate(() => window.rebound.d.features.levers))) throw new Error('levers never arrived');
-      await page.waitForTimeout(600);
+      // the levers panel shows with the next view refresh (1–4 s); its header then wears the mark
+      await page.waitForSelector('section.levers .new-mark', { timeout: 6000 }).catch(() => {});
       if (!(await page.locator('.new-mark').count())) throw new Error('no New mark');
       if (await page.locator('section.budget:not([hidden])').count()) throw new Error('budget panel arrived with the levers');
       await rich(0, 1e4); await page.waitForTimeout(1100);

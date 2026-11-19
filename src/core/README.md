@@ -16,6 +16,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 0 | `contentIndex.ts` | `idx(content)`: lookups by id (M2: dividends, Commons, Charters, staged upgrades), solve order, fork graph, names. Cached per Content object. |
 | 0 | `calendar.ts` | The calendar year, the current Age, `yearAt` (M2). |
 | 0 | `events.ts` | M2: `emit` / `pushEvents` (seq from `meta.eventSeq`, the `EVENTS_MAX` trim), the headline → event mapping. |
+| 0 | `features.ts` | The unfolding: `featureOn` (a feature absent from content is on), `featuresView` (Derived.features), grandfathering for saves from before it. |
 | 0 | `record.ts` | M2: decisions and automated actions per model decade, `run.opening`, the `asDecision` wrapper. |
 | 1 | `steady.ts` | Budget lines; M2: paces, the line's own day (`decadeWellbeing`), `clearP`, clear skies, `sinkR`, decade choices, `newBudget`. |
 | 1 | `hindsight.ts` | The Hindsight terms a Reckoning would pay (M2: lean decades, settled sectors, less what was withheld for time away). |
@@ -33,6 +34,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 6 | `dividends.ts` | M2: decade offers, the overflow rule, `chooseDecadeDividend`. |
 | 6 | `settlement.ts` | M2: `settle`, `unsettle`, `canSettle`, the forced unsettle. |
 | 7 | `commonsActions.ts` | M2: `buyCommons` (fund first), `commonsViews`. |
+| 7 | `unfold.ts` | The unfolding's unlock check (`dueFeature`, every 5 s of run time in the step, never away; and in reckon()), one feature at a time, spaced by `featureGapSeconds`. |
 | 7 | `unlocks.ts` | Which sectors may open next, whether one opens, their checklists. |
 | 8 | `orders.ts` | M2: order ticks, the Market, the Civil Service, Treasury rules, `setOrders`, `OrdersView`. |
 | 8 | `charters.ts` | M2: `mix32`, the offer draw, `chooseCharter`. |
@@ -70,5 +72,5 @@ measure µs per tick before and after (benches live in `design/scratch/split-bas
 Next to the code: `model.test.ts`, `model.review.test.ts`, the M1 mechanism tests `m1.instruments.test.ts`,
 `m1.steady.test.ts`, `m1.prestige.test.ts` (shared helpers in `m1.testkit.ts`), and the M2 tests `m2.steady.test.ts`,
 `m2.orders.test.ts`, `m2.prestige.test.ts`, `m2.offline.test.ts`, `m2.events.test.ts`, `m2.save.test.ts`,
-`m2.projections.test.ts`, all against `fixture.ts` (test-only content; never imported by the game) except the
+`m2.projections.test.ts`, and the unfolding's `unfold.test.ts`, all against `fixture.ts` (test-only content; never imported by the game) except the
 projection tolerance test, which also runs the real content. The real-content pacing targets are in `src/balance.test.ts`.

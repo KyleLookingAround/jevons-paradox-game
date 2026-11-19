@@ -98,8 +98,73 @@ export const solar: Prop = () => {
   return P(d, 'b') + P('M-20 -4.5h40', 'k k2');
 };
 
+
+/** A pylon that carries its conductors to the next one: w,h = offset (local units) from this top to the next top. */
+export const pylonW: Prop = (a) => {
+  const dx = a.w, dy = a.h;
+  const sag = Math.max(4, Math.abs(dx) * 0.08);
+  const wire = dx || dy ? P(`M-10 -23Q${f(dx / 2 - 10)} ${f(dy / 2 - 23 + sag)} ${f(dx - 10)} ${f(dy - 23)}M10 -23Q${f(dx / 2 + 10)} ${f(dy / 2 - 23 + sag)} ${f(dx + 10)} ${f(dy - 23)}M-8 -15Q${f(dx / 2 - 8)} ${f(dy / 2 - 15 + sag)} ${f(dx - 8)} ${f(dy - 15)}M8 -15Q${f(dx / 2 + 8)} ${f(dy / 2 - 15 + sag)} ${f(dx + 8)} ${f(dy - 15)}`, 'k wire') : '';
+  return wire + pylon(a, { fx: () => {} });
+};
+
+/** Vapour off the cooling towers, drawn as the display drew it: outlined billows rising and leaning downwind.
+ *  w = height of the plume (local units). Static (the towers' own steam puffs move). */
+export const plume: Prop = (a) => {
+  const h = a.w || 90;
+  let d = '';
+  const n = 6;
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1), r = 6 + t * 13 + a.r() * 3;
+    const x = t * t * h * 0.55 + (a.r() - 0.5) * 4, y = -t * h;
+    d += `M${f(x - r)} ${f(y)}a${f(r)} ${f(r * 0.8)} 0 1 1 ${f(r * 2)} 0a${f(r)} ${f(r * 0.8)} 0 1 1 ${f(-r * 2)} 0`;
+  }
+  return P(d, 'k vap');
+};
+
+/** A fibre route on the floor: a luminous trace (a polyline, `pts` in local units via w/h as the end offset, bent at
+ *  a right angle like a cable trench), with traffic running along it. */
+export const fibre: Prop = (a, o) => {
+  const dx = a.w || 60, dy = a.h || 0;
+  const d = a.v > 0.5 ? `M0 0H${f(dx * 0.55)}L${f(dx)} ${f(dy)}` : `M0 0L${f(dx * 0.45)} ${f(dy)}H${f(dx)}`;
+  o.fx('flow', 0, 0, 1, `<path class="fib" d="${d}"/>`);
+  return P(d, 'fbg') + P(d, 'fbl');
+};
+
+/** A big hyperbolic cooling tower (the training campus), banded like a contour drawing. */
+export const tower: Prop = (a, o) => {
+  o.fx('steam', 2, -50, 2.2);
+  let bands = '';
+  for (let k = 1; k < 6; k++) {
+    const y = -k * 8, t = k / 6, hw = 16 - Math.sin(t * Math.PI * 0.85) * 5.5 - t * 1.5;
+    bands += `M${f(-hw)} ${f(y)}H${f(hw)}`;
+  }
+  return P('M-16 0C-10 -16 -10 -32 -12 -48H12C10 -32 10 -16 16 0Z', 'b') + P(bands, 'k k2') + P('M-12 -48H12', 'k K') +
+    P('M-4 0V-6H4V0', 'k k2');
+};
+
+/** A data hall seen end-on down the avenue: a long shed with its gable to us and the side receding (flip for the
+ *  other side). LEDs along the side. */
+export const aisle: Prop = (a, o) => {
+  const w = 30 + a.v * 10, h = 14, dep = 15 + a.v * 6, rise = dep * Math.abs(a.h || 0.42), q = 0.72;
+  const bx = w / 2 + dep, by = -rise;
+  let leds = '', ribs = '';
+  for (let k = 1; k < 8; k++) {
+    const t = k / 8, x = w / 2 + dep * t, y0 = by * t, hh = h * (1 - (1 - q) * t);
+    if (k < 7) leds += R(x + 1, y0 - hh * 0.62, 1.1, 1.1, a.stage >= 3 ? 'cy' : 'lit');
+    ribs += `M${f(x)} ${f(y0)}V${f(y0 - hh)}`;
+  }
+  o.fx('blink', 0, 0, 1, leds);
+  const ridge = `M0 ${-h - 5}L${f(bx - (w * q) / 2)} ${f(by - (h + 5) * q)}L${f(bx)} ${f(by - h * q)}`;
+  // h < 0: the side recedes to the left (a hall right of the vanishing point); mirrored inside, so a label is not.
+  const m = a.h < 0 ? '<g transform="scale(-1 1)">' : '<g>';
+  return m + P(`M${f(w / 2)} 0L${f(bx)} ${f(by)}V${f(by - h * q)}L${f(w / 2)} ${-h}Z`, 'b') + P(ribs, 'k k2 dim') + P(ridge, 'b') +
+    R(-w / 2, -h, w, h, 'b') + P(`M${f(-w / 2)} ${-h}L0 ${-h - 5}L${f(w / 2)} ${-h}Z`, 'b') +
+    R(-5, -9, 10, 9, 'k k2') + P(`M${f(-w / 2 + 3)} ${-h + 4}h6M${f(w / 2 - 9)} ${-h + 4}h6`, 'k k2') + '</g>';
+};
+
 export const TERMINAL: Record<string, Prop> = {
-  office, exchange, link, cable, hall, homeScreen, storage, campus, cooling, substation, pylon, solar,
+  office, exchange, link, cable, hall, homeScreen, storage, campus, cooling, substation, pylon, solar, pylonW, plume, fibre, tower, aisle,
+  aisleL: tagged(aisle, 'COLD STORE', -30),
   officeL: tagged(office, 'SHEETS.01', -78), exchangeL: tagged(exchange, 'EXCH-A', -40), storageL: tagged(storage, 'COLD STORE', -26),
-  hallL: tagged(hall, 'STREAM-HALL', -26), campusL: tagged(campus, 'TRAIN/CLUSTER', -30),
+  hallL: tagged(hall, 'STREAM-HALL', -26), campusL: tagged(campus, 'TRAIN/CLUSTER', -27),
 };
