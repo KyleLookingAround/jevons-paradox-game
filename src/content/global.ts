@@ -38,18 +38,23 @@ export const global: GlobalParams = {
   mandateFloor: 12,
   crisisMandate: 150,
   crisisPopLoss: 0.08,
-  /* Placeholder weights: the balance lane tunes these to owner decision D1. */
+  /*
+   * M2 balance (owner decision D1 and decision (a)): backfire leads 1.3× in run 1 and 1.8× in run 2; restraint leads
+   * 1.8–2.9× from run 3. First backfire 20 (not 30: a lump both styles earn, which narrowed the run-1 lead); a FULL
+   * decade 3 (not 1.5: pays only at the full target, so from run 3); Industries reached 6 (not 10: a lump per run that
+   * favoured the fastest collapse).
+   */
   hindsight: {
     perWellbeingYear: 0.03,
     intensityExponent: 0,
-    perBudgetDecade: 1.5,
+    perBudgetDecade: 3,
     perUnburnt: 20,
     perFirstBackfire: 20,
-    perSectorReached: 10,
+    perSectorReached: 6,
     perSteadySector: 60,
     /* M2: a lean decade (judged against the drawn wellbeing) pays its dividend and no Hindsight (decision (a)). */
     perLeanDecade: 0,
-    /* M2 placeholder, about half of perSteadySector: settled at the Reckoning. The balance lane tunes it. */
+    /* M2: about half of perSteadySector, per Industry settled at the Reckoning (kept: first Settlement at about 5 h). */
     perSettledSector: 30,
   },
   /* M2: a night from the start (8 h), never crossing a crisis unseen; Institutions add offline steps (prestige.ts). */
@@ -64,16 +69,20 @@ export const global: GlobalParams = {
     decadeEffects: [
       { type: 'mandateAdd', value: 60 },
       { type: 'capitalAdd', value: 30 },
-      /* Standing, once per decade earned this run: restraint's own reward loop against population growth. */
-      { type: 'wellbeingAdd', value: 0.3 },
+      /*
+       * Standing, once per decade earned this run: restraint's own reward loop against population growth. M2 balance:
+       * 0.1, not 0.3: five Industries earn 100–130 decades in a long run, and at 0.3 that alone was +30–40 wellbeing.
+       */
+      { type: 'wellbeingAdd', value: 0.1 },
     ],
     firstSteadyEffects: [{ type: 'slotAdd', value: 1 }],
     /* M2: a decade is judged against the line's own day: nobody worse off than when it was drawn (less 5%). */
     decadeWellbeing: 'drawn',
     drawnSlack: 0.05,
     /*
-     * M2: clear skies at half the pressure the line was drawn under, between 3% and 25% of collapse (the ceiling sits
-     * below every first crisis, 0.3–0.4). Halving the pressure means roughly halving R at fixed absorption: a held cap
+     * M2: clear skies at half the pressure the line was drawn under, between 1% and 25% of collapse (the ceiling sits
+     * below every first crisis, 0.3–0.4; M2 balance: floor 1%, not 3%, which a line drawn as an Industry opens met at
+     * once). Halving the pressure means roughly halving R at fixed absorption: a held cap
      * alone does not get there (Industries override; balance tunes).
      */
     clearBelow: 0.5,

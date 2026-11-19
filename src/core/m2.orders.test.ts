@@ -6,6 +6,8 @@ import { model } from './index';
 import { fixture as C } from './fixture';
 import { D, patchSector, run, steamAt, steamD, openAll, decoupling, CALM } from './m1.testkit';
 import { freshMeta } from './state';
+import { computeFlows } from './flows';
+import { marketGain } from './orders';
 
 const ev = (s: GameState, kind: string) => s.events.filter((e) => e.kind === kind);
 const metaWith = (patch: Partial<MetaState>): MetaState => ({ ...freshMeta(C), ...patch });
@@ -78,8 +80,7 @@ describe('M2 the Commons', () => {
 /* ---------------- 7. the Market ---------------- */
 
 describe('M2 the Market', () => {
-  /** In the fixture, Steam's early demand is price-inelastic, so efficiency lowers income and a payback rule never buys
-   *  it. Here every Steam efficiency card also raises the margin, so the Market has paybacks to rank. */
+  /** Here every Steam efficiency card also raises the margin, so the Market's gains mix saved running cost and income. */
   const MKT: Content = {
     ...C, upgrades: C.upgrades.map((u) => (u.sector === 'steam' && u.kind === 'efficiency' && !u.excludes
       ? { ...u, effects: [...u.effects, { type: 'marginAdd' as const, sector: 'steam', value: 0.05 }] } : u)),
@@ -102,18 +103,25 @@ describe('M2 the Market', () => {
     const t1 = run(s, 19, MKT);
     expect(t1.time).toBeCloseTo(19.5, 9);
     expect(t1.run.automated).toBe(0);
-    // the expected first buy: shortest payback among affordable eligible candidates
-    const income0 = D(t1, MKT).incomePerSec;
+    // the expected first buy: shortest payback among affordable eligible candidates, the gain being the running cost
+    // saved at today's output plus any rise in income (see OrdersState)
+    const f0 = computeFlows(t1, MKT);
+    const gainOf = (n: GameState) => {
+      const f1 = computeFlows(n, MKT);
+      let saved = 0;
+      for (const id of Object.keys(f0.sectors)) saved += f0.sectors[id].D * Math.max(0, f0.sectors[id].pPre - f1.sectors[id].pPre);
+      return saved + Math.max(0, f1.income - f0.income);
+    };
     let best = { id: '', pb: Infinity };
     for (const a of MKT.sectors.steam.applications) {
       const n = model.foundApp(t1, MKT, a.id);
       if (n === t1) continue;
-      const g = D(n, MKT).incomePerSec - income0;
+      const g = gainOf(n);
       if (g > 0 && a.foundCost / g < best.pb) best = { id: a.id, pb: a.foundCost / g };
     }
     for (const u of model.upgradeViews({ ...t1, flags: { ...t1.flags, revealed: false } }, MKT)) {
       if (!u.affordable || (u.def.kind !== 'efficiency' && u.def.kind !== 'capital') || u.def.excludes?.length) continue;
-      const g = D(model.buyUpgrade(t1, MKT, u.def.id), MKT).incomePerSec - income0;
+      const g = gainOf(model.buyUpgrade(t1, MKT, u.def.id));
       if (g > 0 && u.cost / g < best.pb) best = { id: u.def.id, pb: u.cost / g };
     }
     s = model.tick(t1, MKT, 1);
@@ -123,6 +131,27 @@ describe('M2 the Market', () => {
     expect(s.events.some((e) => (e.kind === 'upgradeBought' || e.kind === 'appFounded') && e.id === best.id && e.by === 'market')).toBe(true);
     expect(s.run.automatedByDecade).toEqual([1]);
     expect(best.id).not.toBe('');
+  });
+  test('buys what pays: an efficiency card that saves running cost, even while it lowers income (inelastic demand)', () => {
+    // plain fixture, run 2: Steam's early demand is price-inelastic, so Better boilers LOWER whole-state income; the
+    // coal they save at today's output is what the Market weighs
+    const s0 = model.createState(C, metaWith({ reckonings: 1 }), 3);
+    const s = model.setOrders(run(s0, 1), C, { market: { paybackMax: 86400 } });
+    const rich = { ...s, capital: 1e4 };
+    const f0 = computeFlows(rich, C);
+    const after = model.buyUpgrade(rich, C, 'steam.boilers');
+    const f1 = computeFlows(after, C);
+    expect(f1.income).toBeLessThan(f0.income);
+    const saved = f0.sectors.steam.D * (f0.sectors.steam.pPre - f1.sectors.steam.pPre);
+    expect(saved).toBeGreaterThan(0);
+    expect(marketGain(f0, f1)).toBeCloseTo(saved, 9);
+    // no loss is ever counted: undoing the card (dearer running cost, more income) counts only the income
+    expect(marketGain(f1, f0)).toBeCloseTo(f0.income - f1.income, 9);
+    const t = run(rich, 25, C);
+    expect(t.run.opening.some((a) => a.by === 'market' && a.id === 'steam.boilers')).toBe(true);
+    // with the Market off nothing is bought, and the step pays nothing for it
+    const off = run(model.setOrders(rich, C, { market: { on: false } }), 25, C);
+    expect(off.run.automated).toBe(0);
   });
   test('never a fork arm, research or prospect; never a settled or switched-off sector', () => {
     let s = wide(run2(1e7));

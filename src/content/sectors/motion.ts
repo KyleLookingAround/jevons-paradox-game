@@ -46,11 +46,11 @@ const sector: SectorDef = {
   wellbeingScale: 1000,
 
   /*
-   * M2: clear skies at the global half of the drawn pressure. Motion's lock-in holds demand at a share of its peak, so
+   * M2: clear skies at 0.4 of the drawn pressure (M2 balance, as Steam and Light). Motion's lock-in holds demand at a share of its peak, so
    * a line drawn after the suburbs are built is hard to halve: rail and walking distance, before the motorway, reach it.
    */
   steady: {
-    clearBelow: 0.5,
+    clearBelow: 0.4,
     decadeChoices: decadeSequence([
       ['div.motion.carFreeSundays', 'div.motion.roadFund'],
       ['div.motion.treePlanting', 'div.motion.motorShow'],

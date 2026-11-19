@@ -1450,8 +1450,14 @@ export type OrderId = 'market' | 'civilService' | 'treasury';
  *   candidates: (a) every available, unfounded application with foundCost ≤ capital; (b) every upgrade of the sector
  *     with kind 'efficiency' or 'capital' that is visible, not maxed, not excluded, has NO `excludes` (forks are the
  *     player's), and costs ≤ capital. Never 'research' or 'prospect' cards; never levers, budgets or Commons.
- *   payback(a) = cost(a) / (Derived.incomePerSec after a − Derived.incomePerSec now), whole-state income, each
- *     computed by solving the state with that one action applied (no time passes); infinite if the gain is ≤ 0.
+ *   payback(a) = cost(a) / gain(a), infinite if the gain is ≤ 0, where (M2 BALANCE) the gain is what the action pays
+ *     per second as a mill owner reckons it: the running cost it saves at today's output plus any rise in income,
+ *       gain(a) = Σ over open unsettled sectors of D_now × max(0, pPre_now − pPre_after) + max(0, income_after − income_now)
+ *     (pPre = resource price / η + capital cost per unit of service, before levies; income = Derived.incomePerSec),
+ *     each "after" computed by solving the state with that one action applied (no time passes). An engine is sold on
+ *     the coal it saves (Boulton & Watt's royalty was a third of it); an application on the income it brings. So the
+ *     Market buys efficiency even while demand is price-inelastic and the card lowers income: the saving is passed on
+ *     in the price, and the use grows to meet it.
  *   it acts if the shortest payback ≤ paybackMax; ties: applications before upgrades, then content order.
  *   The action is the same state change as foundApp / buyUpgrade (capital charged, one-offs, headlines), recorded with
  *   by 'market': in run.opening (if room), events ('appFounded' / 'upgradeBought', and 'stageReached'), run.automated

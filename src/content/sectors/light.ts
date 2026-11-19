@@ -47,7 +47,8 @@ const sector: SectorDef = {
   wellbeingScale: 500,
 
   /*
-   * M2: clear skies at the global half of the drawn pressure. Light's fog is Steam's smoke by another route (the gas is
+   * M2: clear skies at 0.3 of the drawn pressure, floor 0.5% of collapse (M2 balance: a line drawn as Light opens has
+   * almost no fog under it, and at 0.5 and the 3% floor it cleared in half an hour). Light's fog is Steam's smoke by another route (the gas is
    * cooked from coal), so the sink comes from hydro, lights out and the gasworks' rebuild, not the allowance alone.
    */
   steady: {

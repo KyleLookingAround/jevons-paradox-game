@@ -35,7 +35,10 @@ export function greedy(s: GameState, c: Content): GameState {
   return s;
 }
 export function openAll(c: Content = C, maxSeconds = 60): GameState {
-  const meta: MetaState = { ...model.createState(c).meta, reckonings: 9 };
+  // the Market off: with this much capital it would buy every card at every order tick (M2 balance: it buys what
+  // saves running cost), which is noise for the mechanisms these states test
+  const m0 = model.createState(c).meta;
+  const meta: MetaState = { ...m0, reckonings: 9, orders: { ...m0.orders, market: { ...m0.orders.market, on: false } } };
   let s = { ...model.createState(c, meta), capital: 1e15 };
   for (let i = 0; i < maxSeconds && !c.sectorOrder.every((e) => s.sectors[e].open); i++) s = greedy(model.tick(greedy(s, c), c, 1), c);
   return s;

@@ -20,7 +20,9 @@ import { absorb, capCost, half, margin, reserve, sat } from './helpers';
 /*
  * Magnitudes against M1's decade base (mandateAdd 60, capitalAdd 30 s of income, wellbeingAdd 0.3, on every decade):
  * a one-off option is worth one to three decades' base; a standing option is worth less at once and more by the end of
- * a long run. mandateRateMul compounds across picks (five picks of 1.04 ≈ 1.22).
+ * a long run. mandateRateMul and commonsYieldMul compound across picks (M2 balance: halved from the first guess; five
+ * Industries offer each pair about 15 times in a long run, and 1.04¹⁵ × 1.03¹⁵ × 1.02¹⁵ made Mandate four times easier;
+ * 1.05¹⁵ doubled the Commons).
  */
 const globalDividends: DividendDef[] = [
   /* 1. The teaching pair: two shapes of the same money, both now. */
@@ -38,7 +40,7 @@ const globalDividends: DividendDef[] = [
   {
     id: 'div.standingOrders', name: 'New standing orders',
     blurb: 'A rule of the House that makes the next measure a little easier to carry, for the rest of the run.',
-    effects: [{ type: 'mandateRateMul', value: 1.04 }],
+    effects: [{ type: 'mandateRateMul', value: 1.02 }],
   },
   {
     id: 'div.windfall', name: 'A windfall to spend',
@@ -54,7 +56,7 @@ const globalDividends: DividendDef[] = [
   {
     id: 'div.commonsEndowment', name: 'Endow the Commons',
     blurb: 'Money set aside so that every Commons project yields more. Of no use until the town has any.',
-    effects: [{ type: 'commonsYieldMul', value: 1.06 }],
+    effects: [{ type: 'commonsYieldMul', value: 1.04 }],
   },
   /* 4. The demography pair: a later-marriage dividend against a feast. */
   {
@@ -71,7 +73,7 @@ const globalDividends: DividendDef[] = [
   {
     id: 'div.sinkingFund', name: 'A sinking fund',
     blurb: 'Put the decade’s surplus aside and live on the interest. The Mandate comes a little easier for good.',
-    effects: [{ type: 'mandateRateMul', value: 1.03 }, { type: 'mandateAdd', value: 40 }],
+    effects: [{ type: 'mandateRateMul', value: 1.015 }, { type: 'mandateAdd', value: 40 }],
   },
   {
     id: 'div.patentOffice', name: 'Reform the Patent Office',
@@ -82,7 +84,7 @@ const globalDividends: DividendDef[] = [
   {
     id: 'div.gardenCity', name: 'A garden suburb',
     blurb: 'Houses round greens, built to last. The Commons yield more, and the commute to them is short.',
-    effects: [{ type: 'commonsYieldMul', value: 1.05 }, { type: 'wellbeingAdd', value: 0.3 }],
+    effects: [{ type: 'commonsYieldMul', value: 1.02 }, { type: 'wellbeingAdd', value: 0.3 }],
   },
   {
     id: 'div.buildingBoom', name: 'A building boom',
@@ -93,12 +95,12 @@ const globalDividends: DividendDef[] = [
   {
     id: 'div.civicPurse', name: 'Fill the civic purse',
     blurb: 'The surplus kept by the corporation. Enough credit for a measure now, and the habit of saving.',
-    effects: [{ type: 'mandateAdd', value: 90 }, { type: 'mandateRateMul', value: 1.02 }],
+    effects: [{ type: 'mandateAdd', value: 90 }, { type: 'mandateRateMul', value: 1.01 }],
   },
   {
     id: 'div.remitRates', name: 'Remit the rates',
     blurb: 'Give the money back to the ratepayers. They spend it, on more of everything, and feel much better.',
-    effects: [{ type: 'wellbeingAdd', value: 1.2 }, { type: 'popGrowthMul', value: 1.04 }],
+    effects: [{ type: 'wellbeingAdd', value: 0.8 }, { type: 'popGrowthMul', value: 1.04 }],
   },
   /* 8. The sharpest: quiet years against a jubilee. */
   {
@@ -109,7 +111,7 @@ const globalDividends: DividendDef[] = [
   {
     id: 'div.jubilee', name: 'A jubilee',
     blurb: 'Bunting, medals, a new clock tower and a half-holiday. Everyone remembers the decade fondly.',
-    effects: [{ type: 'wellbeingAdd', value: 1.5 }, { type: 'capitalAdd', value: 80 }, { type: 'popGrowthMul', value: 1.06 }],
+    effects: [{ type: 'wellbeingAdd', value: 1 }, { type: 'capitalAdd', value: 80 }, { type: 'popGrowthMul', value: 1.06 }],
   },
 ];
 

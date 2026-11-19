@@ -24,10 +24,13 @@ import { capCost, sat } from './helpers';
  * gives most of the max (1 − e⁻² ≈ 0.86); repeatable ones set it lower so the levels matter. All ten maxima together:
  * 11.4 points against a target of 34 (the rule: under 12). A project is worth 0.4–1.5 points.
  * Intensity: L × perLevel × N service units per second of demand no price removes, in the named Industry (only while
- * it is open). Aimed at one to three per cent of that Industry's demand at full levels, mid-run; the balance pass
- * measures it (it should make Commons-buying play burn at least 2% more).
- * Costs: Coal Age projects at £5k–£60k (run 3 sits among Steam's later cards and Light's early ones); later projects at
- * the price of their Industry's middle cards. Mandate where the project is a political act, not just a building.
+ * it is open). Aimed at one to three per cent of that Industry's demand at full levels, mid-run; measured (M2 balance):
+ * the first guesses for Light, Motion and Compute were ten to thirty times too large or small (the library alone more
+ * than doubled a young Light), and are now 2–4% of a restraint run's demand there, Steam's 3–6%.
+ * Costs: Coal Age projects at £15k–£75k (M2 balance: three times the first guess; a restraint player in run 3 earns
+ * £300–400 a second and kept £50k–£90k idle, so a project now comes every few minutes rather than all at once); later
+ * projects at the price of their Industry's middle cards. Mandate where the project is a political act, not just a
+ * building.
  */
 
 export const commons: CommonsDef[] = [
@@ -35,14 +38,14 @@ export const commons: CommonsDef[] = [
   {
     id: 'commons.baths', name: 'Baths and wash-houses', icon: 'baths', sector: 'steam',
     blurb: 'The Act of 1846 lets a borough build them out of the rates. Hot water for the whole street, heated by the ton.',
-    cost: 8_000, mandateCost: 60,
+    cost: 24_000, mandateCost: 60,
     wellbeing: { max: 1.5, perLevel: 3 },
-    intensity: { sector: 'steam', perLevel: 25 },
+    intensity: { sector: 'steam', perLevel: 50 },
   },
   {
     id: 'commons.park', name: 'People’s park', icon: 'park', sector: 'steam',
     blurb: 'Birkenhead, 1847: Paxton’s park, paid for by the villas sold round its edge. The villas fetch more every year, and fill.',
-    cost: 15_000, mandateCost: 80,
+    cost: 45_000, mandateCost: 80,
     wellbeing: { max: 1.2, perLevel: 2.4 },
     /* The rents round it: a slightly larger town (the economy-wide rebound, made visible). */
     effects: [{ type: 'popGrowthMul', value: 1.02 }],
@@ -50,10 +53,10 @@ export const commons: CommonsDef[] = [
   {
     id: 'commons.institute', name: 'Mechanics’ institute', icon: 'institute', sector: 'steam',
     blurb: 'Dr Birkbeck’s London institution, 1823: evening lectures for working men. The lectures are on the steam engine, and the students improve one.',
-    cost: 12_000,
+    cost: 36_000,
     wellbeing: { max: 1, perLevel: 2 },
     /* Lit by gas once Light is open; and what is taught is engines. */
-    intensity: { sector: 'light', perLevel: 60 },
+    intensity: { sector: 'light', perLevel: 6 },
     effects: [{ type: 'etaMul', sector: 'steam', value: 1.03 }],
     requires: { owns: 'steam.condenser', label: 'Own the Separate condenser' },
   },
@@ -62,16 +65,16 @@ export const commons: CommonsDef[] = [
   {
     id: 'commons.library', name: 'Free library', icon: 'library', sector: 'light',
     blurb: 'Mr Ewart’s Act, 1850: the rate may build the room but not buy the books. Readers stay until the gas is turned down, later every year.',
-    cost: 20_000, mandateCost: 100,
+    cost: 60_000, mandateCost: 100,
     wellbeing: { max: 1.5, perLevel: 3 },
-    intensity: { sector: 'light', perLevel: 150 },
+    intensity: { sector: 'light', perLevel: 15 },
   },
   {
     id: 'commons.clock', name: 'Town clock', icon: 'clock', sector: 'light',
     blurb: 'Four faces, gas-lit from behind, on the corporation’s new tower. Everyone knows the hour now, the foreman included.',
-    cost: 9_000,
+    cost: 27_000,
     wellbeing: { max: 0.8, perLevel: 1.6 },
-    intensity: { sector: 'light', perLevel: 80 },
+    intensity: { sector: 'light', perLevel: 8 },
     /* Time discipline: the night shift starts on the stroke. */
     effects: [sat('light', 1.03, 'light.nightShifts')],
   },
@@ -79,7 +82,7 @@ export const commons: CommonsDef[] = [
     /* Repeatable: one more field a level. Listed under Light (the Act is 1908); the sheds' stoves burn Steam's coal. */
     id: 'commons.allotments', name: 'Allotments', icon: 'allotments', sector: 'light',
     blurb: 'Plots for anyone who asks: the Act of 1908 obliges the council to find the land. Every shed has a stove by the second winter.',
-    cost: 5_000, costGrowth: 1.6, maxLevel: 5, mandateCost: 20,
+    cost: 15_000, costGrowth: 1.6, maxLevel: 5, mandateCost: 20,
     wellbeing: { max: 1.2, perLevel: 0.4 },
     intensity: { sector: 'steam', perLevel: 4 },
     requires: { stat: 'population', op: '>=', value: 1.5, label: 'A town half as large again as at the start' },
@@ -91,7 +94,7 @@ export const commons: CommonsDef[] = [
     blurb: 'Corporation buses on every route, fares held down by the rates. They run on oil, rather less of it per head, and the commute grows longer.',
     cost: 400_000, mandateCost: 150,
     wellbeing: { max: 1.2, perLevel: 2.4 },
-    intensity: { sector: 'motion', perLevel: 600 },
+    intensity: { sector: 'motion', perLevel: 80 },
     effects: [sat('motion', 1.02, 'motion.commuting')],
   },
   {
@@ -107,7 +110,7 @@ export const commons: CommonsDef[] = [
     blurb: 'Amsterdam, 2009: volunteers, soldering irons and a table of broken things. A mended laptop is a cheap laptop, and the town buys another.',
     cost: 3_000_000,
     wellbeing: { max: 0.5, perLevel: 1 },
-    intensity: { sector: 'compute', perLevel: 4_000 },
+    intensity: { sector: 'compute', perLevel: 50_000 },
     effects: [capCost('compute', 0.98)],
   },
 
@@ -115,7 +118,7 @@ export const commons: CommonsDef[] = [
   {
     id: 'commons.bankHolidays', name: 'Bank holidays', icon: 'holiday',
     blurb: 'Sir John Lubbock’s Act, 1871: four days on which the banks shut, and so does everyone else. The excursion trains are full by eight.',
-    cost: 25_000, mandateCost: 120,
+    cost: 75_000, mandateCost: 120,
     wellbeing: { max: 1, perLevel: 2 },
     effects: [sat('steam', 1.04, 'steam.railways')],
     requires: { owns: 'steam.railways', label: 'Railways founded' },

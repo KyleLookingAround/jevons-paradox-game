@@ -46,6 +46,8 @@ const sector: SectorDef = {
   absorption: 0.008,
   collapseAt: 100,
   crisisAt: [0.4, 0.7, 0.88],
+  /* M2 balance: 22, not 40. The boom's smoke costs wellbeing, but not so much that burning pays no better than
+   * restraint in run 1 (backfire's lead was 1.04×; owner decision D1 wants at least 1.2×). */
   pressureWellbeingCost: 22,
   pressureUpkeep: 0,
 
@@ -53,9 +55,10 @@ const sector: SectorDef = {
   wellbeingScale: 70,
 
   /*
-   * M2: clear skies at the global half of the drawn pressure (0.5 × p0, between 3% and 25% of collapse). With
-   * absorption 0.008 a held line alone takes about thirteen Gentle decades to halve R; slack recovery stretches the coal
-   * but not the air, so it is water wheels, temperance and the absorption Institutions that reach the sink.
+   * M2: clear skies at 0.3 of the drawn pressure (between 1% and 25% of collapse; M2 balance: 0.3, not the global 0.5,
+   * which gave the first Steady State at 2.6 h against 3–4). A Gentle line drawn at 12 minutes takes about 75 minutes to
+   * get there; slack recovery stretches the coal but not the air, so it is water wheels, temperance and the absorption
+   * Institutions that reach the sink sooner.
    */
   steady: {
     clearBelow: 0.3,

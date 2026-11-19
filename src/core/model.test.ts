@@ -50,7 +50,9 @@ function greedy(s: GameState, c: Content): GameState {
 }
 /** Every sector open, every app founded, every efficiency upgrade bought. */
 function openAll(c: Content = C, maxSeconds = 40): GameState {
-  const meta: MetaState = { ...model.createState(c).meta, reckonings: 9 };
+  // the Market off (M2 balance: with this much capital it buys a card at every order tick, noise for these tests)
+  const m0 = model.createState(c).meta;
+  const meta: MetaState = { ...m0, reckonings: 9, orders: { ...m0.orders, market: { ...m0.orders.market, on: false } } };
   let s = { ...model.createState(c, meta), capital: 1e15 };
   for (let i = 0; i < maxSeconds && !orderOf(c).every((e) => s.sectors[e].open); i++) s = greedy(model.tick(greedy(s, c), c, 1), c);
   return s;
