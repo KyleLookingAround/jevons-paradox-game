@@ -85,9 +85,9 @@ const sector: SectorDef = {
    */
   steady: {
     clearBelow: 0.3,
-    /* M3 balance (the first ending): floor 1%, not 0.5%. A line drawn as Light opens has its fog still rising to
+    /* M3 balance (the first ending): floor 0.8%, not 0.5% (1% let a seated cap alone clear it in run 3). A line drawn as Light opens has its fog still rising to
      * the level the line holds (0.9–1.1% in long runs), so half the drawn fog was below where it settles. */
-    clearFloor: 0.01,
+    clearFloor: 0.008,
     decadeChoices: decadeSequence([
       ['div.light.earlyClosing', 'div.light.lateOpening'],
       ['div.light.fogWardens', 'div.light.meterRebate'],

@@ -17,10 +17,12 @@ import { gzipSync } from 'node:zlib';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const url = 'file://' + resolve(root, 'dist/index.html');
-if (!existsSync(resolve(root, 'dist/index.html'))) { console.log('Build first: bun run build.ts'); process.exit(1); }
-
 const args = process.argv.slice(2);
+// --dist=DIR measures another build (an A/B against a baseline built elsewhere).
+const DIST = resolve(root, (args.find((a) => a.startsWith('--dist=')) ?? '--dist=dist').slice(7));
+const url = 'file://' + resolve(DIST, 'index.html');
+if (!existsSync(resolve(DIST, 'index.html'))) { console.log('Build first: bun run build.ts'); process.exit(1); }
+
 const pos = args.filter((a) => !a.startsWith('--'));
 const flag = (k) => args.find((a) => a === `--${k}` || a.startsWith(`--${k}=`));
 const STATES = (pos[0] || 'fresh,mid,late').split(',');
@@ -36,7 +38,8 @@ const results = { when: new Date().toISOString(), sizes: sizes(), states: {} };
 function sizes() {
   const r = {};
   for (const f of ['app.js', 'styles.css', 'index.html']) {
-    const b = readFileSync(resolve(root, 'dist', f));
+    if (!existsSync(resolve(DIST, f))) continue;
+    const b = readFileSync(resolve(DIST, f));
     r[f] = { raw: b.length, gz: gzipSync(b, { level: 9 }).length };
   }
   return r;
@@ -191,7 +194,7 @@ const toBucket = {}; for (const [b, names] of Object.entries(BUCKET)) for (const
 async function trace(cdp, page, ms) {
   const chunks = [];
   const done = new Promise((ok) => cdp.once('Tracing.tracingComplete', ok));
-  await cdp.send('Tracing.start', { transferMode: 'ReturnAsStream', traceConfig: { includedCategories: ['devtools.timeline', 'v8', 'disabled-by-default-devtools.timeline.frame'], excludedCategories: ['*'] } });
+  await cdp.send('Tracing.start', { transferMode: 'ReturnAsStream', traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'disabled-by-default-devtools.timeline.frame'], excludedCategories: ['*'] } });
   await page.waitForTimeout(ms);
   await cdp.send('Tracing.end');
   const { stream } = await done;
@@ -222,6 +225,24 @@ async function trace(cdp, page, ms) {
   const secs = ms / 1000;
   const o = {};
   for (const k of Object.keys(tot)) o[k] = tot[k] / 1000 / secs; // ms per second of wall time
+  // Main-thread frames and long tasks, without a rAF probe (a callback every vsync would itself force a main-thread
+  // frame every vsync and restyle every animated element: it measures a page that does that, not this one).
+  // A frame here is a top-level task that runs the rendering lifecycle (style, layout, paint); its duration is the
+  // main thread's share of producing that frame, input to paint. Compositor-only frames (CSS/WA transform and opacity
+  // animations) cost the main thread nothing and are not counted.
+  const top = []; let end = -1;
+  for (const e of xs) if ((e.name === 'RunTask' || e.name === 'ThreadControllerImpl::RunTask') && e.ts >= end) { top.push(e); end = e.ts + e.dur; }
+  const life = new Set(['UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint', 'Layerize']);
+  let j = 0; const fr = [];
+  for (const t of top) {
+    const te = t.ts + t.dur; let has = false;
+    while (j < xs.length && xs[j].ts < t.ts) j++;
+    for (let k = j; k < xs.length && xs[k].ts < te; k++) if (life.has(xs[k].name)) { has = true; break; }
+    if (has) fr.push(t.dur / 1000);
+  }
+  o.frames = { n: fr.length, perS: fr.length / secs, p50: q(fr, 0.5), p95: q(fr, 0.95), max: Math.max(0, ...fr) };
+  o.lt = top.filter((t) => t.dur > 50000).map((t) => t.dur / 1000);
+  o.busy = top.reduce((a, t) => a + t.dur, 0) / 1000 / secs;
   return o;
 }
 
@@ -282,19 +303,23 @@ async function measureState(name, save, rate) {
   await page.evaluate(() => { const p = window.rebound.prof; p.reset(); p.on = true; });
   let t = await now(page);
   const m0 = await metrics(cdp);
-  r.frames = frameStats(await frames(page, 10000));
+  await page.waitForTimeout(10000);
   const m1 = await metrics(cdp);
   r.lt = await longTasks(page, t);
   r.cdp = { scriptMsPerS: (m1.ScriptDuration - m0.ScriptDuration) * 100, styleMsPerS: (m1.RecalcStyleDuration - m0.RecalcStyleDuration) * 100, layoutMsPerS: (m1.LayoutDuration - m0.LayoutDuration) * 100, taskMsPerS: (m1.TaskDuration - m0.TaskDuration) * 100 };
   r.prof = await page.evaluate(() => { const p = window.rebound.prof; p.on = false; return p.acc; });
 
-  // Trace (separately: tracing itself costs time).
-  if (TRACE) r.trace = await trace(cdp, page, 6000);
+  // Trace (separately: tracing itself costs time): the main-thread frames, buckets and long tasks.
+  r.trace = await trace(cdp, page, 6000);
+  r.frames = r.trace.frames;
+  // The old rAF probe, kept for comparison: it forces a main-thread frame every vsync (the worst case: a page with a
+  // per-frame callback, which the game had until perf pass 2).
+  if (TRACE) r.framesForced = frameStats(await frames(page, 4000));
 
   // Scrolled down to the improvements: is off-screen work skipped?
   await page.evaluate(() => window.scrollTo(0, document.querySelector('.upgrades')?.getBoundingClientRect().top + window.scrollY - 200));
   await page.waitForTimeout(400);
-  r.framesScrolled = frameStats(await frames(page, 4000));
+  r.framesScrolled = (await trace(cdp, page, 4000)).frames;
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
 
@@ -302,9 +327,9 @@ async function measureState(name, save, rate) {
   t = await now(page);
   r.sellTap = await tapLatency(page, cdp, '.sell', 6, 400);
   const tb = await now(page);
-  const fp = frames(page, 5600);
+  const fp = trace(cdp, page, 5600).then((x) => x.frames);
   r.sellBurst = await tapLatency(page, cdp, '.sell', 40, 125);
-  r.sellBurstFrames = frameStats(await fp);
+  r.sellBurstFrames = await fp;
   r.sellBurstLt = await longTasks(page, tb);
 
   // Buy: give capital, tap the first affordable Buy (fork arms excluded), then hold a repeatable one.
@@ -326,13 +351,13 @@ async function measureState(name, save, rate) {
     const box = await page.locator(buySel.rep).boundingBox();
     if (box) {
       const th = await now(page);
-      const fp2 = frames(page, 3500);
+      const fp2 = trace(cdp, page, 3500).then((x) => x.frames);
       const x = box.x + box.width / 2, y = box.y + box.height / 2;
       const lv0 = await page.evaluate(() => Object.values(window.rebound.state.upgrades).reduce((a, b) => a + b, 0));
       await page.mouse.move(x, y); await page.mouse.down();
       await page.waitForTimeout(3000);
       await page.mouse.up();
-      r.holdFrames = frameStats(await fp2);
+      r.holdFrames = await fp2;
       r.holdLt = await longTasks(page, th);
       r.holdBought = (await page.evaluate(() => Object.values(window.rebound.state.upgrades).reduce((a, b) => a + b, 0))) - lv0;
     }
@@ -368,7 +393,8 @@ async function perTab(save) {
     await page.waitForTimeout(1200);
     await page.evaluate(() => { const p = window.rebound.prof; p.reset(); p.on = true; });
     const t = await now(page);
-    o[id] = { frames: frameStats(await frames(page, 5000)), lt: await longTasks(page, t), prof: await page.evaluate(() => { const p = window.rebound.prof; p.on = false; return p.acc; }) };
+    const tr = await trace(cdp, page, 5000);
+    o[id] = { frames: tr.frames, trace: tr, lt: await longTasks(page, t), prof: await page.evaluate(() => { const p = window.rebound.prof; p.on = false; return p.acc; }) };
   }
   await ctx.close();
   return o;
@@ -414,10 +440,11 @@ for (const st of STATES) {
     console.log(`\n== ${st} @${rate}× (${r.info.sector}${r.info.pending ? ', PENDING RECKONING' : ''})`);
     console.log(`  load: FCP ${f0(r.load.fcp)} ms, ready ${f0(r.load.ready)} ms, interactive ${f0(r.load.interactive)} ms, long tasks [${r.load.lt.map(f0).join(' ')}]; slow fonts: FCP ${f0(r.loadSlowFonts.fcp)} ms, interactive ${f0(r.loadSlowFonts.interactive)} ms`);
     { const k = r.load.marks; console.log(`  boot: script start ${f0(k.boot)} → state ${f0(k.state - k.boot)} → mount ${f0(k.mounted - k.state)} → first update ${f0(k.ready - k.mounted)} ms`); }
-    console.log(`  frames (10 s): p50 ${f1(r.frames.p50)} p95 ${f1(r.frames.p95)} max ${f0(r.frames.max)} ms; >33 ${r.frames.over33}, >50 ${r.frames.over50}; long tasks ${r.lt.length} (max ${f0(Math.max(0, ...r.lt))} ms)`);
+    console.log(`  main-thread frames (6 s trace): ${f1(r.frames.perS)}/s, p50 ${f1(r.frames.p50)} p95 ${f1(r.frames.p95)} max ${f0(r.frames.max)} ms; long tasks (10 s) ${r.lt.length} (max ${f0(Math.max(0, ...r.lt))} ms), in trace ${r.trace.lt.length}`);
+    if (r.framesForced) console.log(`  rAF probe (forces a frame per vsync): p50 ${f1(r.framesForced.p50)} p95 ${f1(r.framesForced.p95)} max ${f0(r.framesForced.max)} ms; >33 ${r.framesForced.over33}, >50 ${r.framesForced.over50}`);
     console.log(`  scrolled to improvements: p50 ${f1(r.framesScrolled.p50)} p95 ${f1(r.framesScrolled.p95)} max ${f0(r.framesScrolled.max)}`);
     console.log(`  main thread ms/s (cdp): script ${f1(r.cdp.scriptMsPerS)} style ${f1(r.cdp.styleMsPerS)} layout ${f1(r.cdp.layoutMsPerS)} task ${f1(r.cdp.taskMsPerS)}`);
-    if (r.trace) console.log(`  trace ms/s: scripting ${f1(r.trace.scripting)} style ${f1(r.trace.style)} layout ${f1(r.trace.layout)} paint ${f1(r.trace.paint)} busy ${f1(r.trace.busy)}`);
+    console.log(`  trace ms/s: scripting ${f1(r.trace.scripting)} style ${f1(r.trace.style)} layout ${f1(r.trace.layout)} paint ${f1(r.trace.paint)} busy ${f1(r.trace.busy)}`);
     console.log(`  loop pieces, mean/max ms: tick ${per('model.tick')} (${P['model.tick']?.n ?? 0}×) derive ${per('model.derive')} upgradeViews ${per('model.upgradeViews')} leverViews ${per('model.leverViews')} knowhow ${per('model.knowhowViews')} inst ${per('model.institutionViews')} serialize ${per('model.serialize')}`);
     console.log(`  ui, mean/max ms: update ${per('ui.update')} afford ${per('ui.afford')} topbar ${per('ui.topbar')} tabs ${per('ui.tabs')} gauges ${per('ui.gauges')} dock ${per('ui.dock')} news ${per('ui.news')} world ${per('ui.world')} [view ${per('scene.view')} scene ${per('scene.update')}] ups ${per('ui.ups')} budget ${per('ui.budget')} levs ${per('ui.levs')} | M3: mech ${per('ui.mech')} letters ${per('ui.letters')} survey ${per('ui.survey')} orders ${per('ui.orders')}`);
     const L = (x) => (x ? `p50 ${f0(x.p50)} p95 ${f0(x.p95)} max ${f0(x.max)} ms (handler p50 ${f1(x.procP50)}, max ${f1(x.procMax)}; n ${x.n})` : '—');
@@ -433,7 +460,7 @@ for (const st of STATES) {
 if (flag('tabs') && saves.late?.text) {
   results.tabs = await perTab(saves.late);
   console.log('\n== late, each Industry @4× (frames p50/p95/max, long tasks, scene.update mean/max)');
-  for (const [id, x] of Object.entries(results.tabs)) console.log(`  ${id.padEnd(8)} ${f1(x.frames.p50)} / ${f1(x.frames.p95)} / ${f0(x.frames.max)} ms, LT ${x.lt.length}, scene ${x.prof['scene.update'] ? f1(x.prof['scene.update'].t / x.prof['scene.update'].n) + '/' + f1(x.prof['scene.update'].max) : '—'}, ui.update ${x.prof['ui.update'] ? f1(x.prof['ui.update'].t / x.prof['ui.update'].n) : '—'}`);
+  for (const [id, x] of Object.entries(results.tabs)) console.log(`  ${id.padEnd(8)} ${f1(x.frames.p50)} / ${f1(x.frames.p95)} / ${f0(x.frames.max)} ms (${f1(x.frames.perS)}/s), busy ${f0(x.trace.busy)} style ${f0(x.trace.style)} paint ${f0(x.trace.paint)} ms/s, LT ${x.lt.length}, scene ${x.prof['scene.update'] ? f1(x.prof['scene.update'].t / x.prof['scene.update'].n) + '/' + f1(x.prof['scene.update'].max) : '—'}, ui.update ${x.prof['ui.update'] ? f1(x.prof['ui.update'].t / x.prof['ui.update'].n) : '—'}`);
 }
 if (SOAK && saves.late?.text) {
   console.log(`\n== soak, late state, ${SOAK} min at 1×`);

@@ -100,10 +100,11 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    * correspondent's first letter. Not later: a burning run 2 ends by collapse at about 21 minutes, and an arrival in its
    * last five minutes would push the Charters out of run 3 (their offer is drawn only at the Reckoning). */
   dispatches: { when: { all: [rk(1), revealed, { stat: 'time', op: '>=', value: 900 }] }, name: 'Letters' },
-  /* Mid-run, the run after the first Steady State has arrived (run 4 for the budget player), once pumping is cheap
-   * enough to reach the first seam (the condenser's price): the next seam down. */
+  /* Mid-run, once a first Steady State has been held (the achievement, 50 model years after the feature arrives, so
+   * almost always an earlier run: run 4 for the budget player), once pumping is cheap enough to reach the first seam
+   * (the condenser's price): the next seam down. */
   seams: {
-    when: { all: [rk(3), { feature: 'steadyState' }, ...MID, { stat: 'servicePrice', sector: 'steam', op: '<=', value: 0.6 }] },
+    when: { all: [rk(3), { owns: 'steadyState' }, ...MID, { stat: 'servicePrice', sector: 'steam', op: '<=', value: 0.6 }] },
     intro: 'Colliery agents report good coal below the old workings',
     name: 'The seams',
   },

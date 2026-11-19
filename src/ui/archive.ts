@@ -4,7 +4,8 @@
 // folded at the end of their Industry. Read marks are the page's own (prefs.archiveRead), never in the save.
 import type { Ctx } from './ctx';
 import { sectorIds } from './ctx';
-import type { ArchiveView, SectorId } from '../types';
+import type { ArchiveDef, ArchiveView, Content, SectorId } from '../types';
+import { chunkKnown, loadChunk } from './chunks';
 import { h, setText, show, cls } from './dom';
 import { fmt } from './fmt';
 import { getPrefs, setPrefs, isOpen, setOpen } from './prefs';
@@ -49,13 +50,40 @@ function markRead(id: string): void {
   setPrefs({ archiveRead: [...r, id].slice(-600) });
 }
 
+/**
+ * The notes' text and sources are a lazy part in the production build (build.ts splits them from the notes' ids and
+ * subjects, which the core's rules read, into the 'archiveText' chunk). Fill them in before the sheet first opens; the
+ * source build (tests, the mock) already has them. Resolves false if they could not be fetched (offline on a first visit).
+ */
+let textIn = false;
+export function ensureArchiveText(content: Content): Promise<boolean> {
+  const notes = content.archive ?? [];
+  if (textIn || !notes.some((n) => !n.text)) { textIn = true; return Promise.resolve(true); }
+  if (!chunkKnown('archiveText')) return Promise.resolve(false);
+  return loadChunk<Record<string, [string, ArchiveDef['sources']]>>('archiveText').then((map) => {
+    for (const n of notes) { const t = map[n.id]; if (t && !n.text) Object.assign(n, { text: t[0], sources: t[1] }); }
+    textIn = true;
+    return true;
+  }, () => false);
+}
+
 export function archiveSheet(ctx: Ctx, sheets: Sheets, onChange?: () => void): void {
+  if (!textIn) {
+    void ensureArchiveText(ctx.content).then((ok) => { textIn = textIn || ok; textTried = true; archiveSheetNow(ctx, sheets, onChange); });
+    return;
+  }
+  archiveSheetNow(ctx, sheets, onChange);
+}
+let textTried = false;
+
+function archiveSheetNow(ctx: Ctx, sheets: Sheets, onChange?: () => void): void {
   let views: ArchiveView[] = [];
   try { views = ctx.model.archiveViews(ctx.state, ctx.content); } catch { views = []; }
   sheets.open('archive', (b) => {
     const read = new Set(getPrefs().archiveRead);
     const found = views.filter((v) => v.unlocked);
     b.append(h('p', { class: 'arc-lead', text: 'The real history behind the things in this game, filed by the Gazette as each is first met. Every note gives its sources.' }));
+    if (!textIn && textTried) b.append(h('p', { class: 'muted small', text: 'The notes themselves could not be fetched: the titles are here, the text will follow when the page is next online.' }));
     const q = h('input', { class: 'arc-q', type: 'search', placeholder: 'Search the archive', 'aria-label': 'Search the archive', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
     const count = h('p', { class: 'arc-count num muted' });
     // Filters: unread, everything, or one Industry (only those with something found).

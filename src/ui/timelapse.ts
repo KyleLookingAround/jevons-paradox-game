@@ -13,7 +13,8 @@
 import type { Ctx } from './ctx';
 import { sectorDef, openSectors } from './ctx';
 import type { SceneView } from './scene';
-import { createScene, sceneViewFrom, renderStill, viewFromSummary } from './scene';
+import { sceneViewFrom, viewFromSummary } from './scene/adapter';
+import { createScene, renderStill } from './sceneRt';
 import { lsGet, lsSet, download } from './store';
 import { h, setText, show, reducedMotion } from './dom';
 import { fold, num, clamp, lower, fmt } from './fmt';

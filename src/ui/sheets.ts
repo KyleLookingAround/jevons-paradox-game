@@ -12,7 +12,7 @@ import { effectText } from './panels';
 import { download, copyText, readFileText, isPersisted, iosInBrowser, storageWorks } from './store';
 import { getPrefs, setPrefs, isOpen, setOpen, type TextSize, type Motion, type Detail } from './prefs';
 import { lapseBlock, type Lapse } from './timelapse';
-import { setSound, setVolumes, setCalm } from './sound';
+import { setSound, setVolumes, setCalm, prefetchSound } from './sound';
 import type { Notation } from './fmt';
 import { historyPicker } from './history';
 import { archiveSheet, archiveUnread } from './archive';
@@ -924,6 +924,7 @@ function segmented<T extends string | number>(label: string, opts: [T, string, s
 }
 
 export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'keys'): void {
+  prefetchSound();
   sheets.open('menu', (b, close) => {
     const statsBtn = h('button', { class: 'btn', type: 'button', onclick: () => statsSheet(ctx, sheets) }, 'Statistics');
     const shopBtn = h('button', { class: 'btn', type: 'button', onclick: () => shopSheet(ctx, sheets) }, 'Hindsight shop');

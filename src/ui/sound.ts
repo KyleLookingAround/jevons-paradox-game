@@ -2,9 +2,16 @@
 // so no AudioContext and no listener, until the player turns sound on from a tap in the settings. With sound saved as on,
 // the soundscape is made at start-up with `enabled`, which arms a one-time unlock on the next tap (no context before it).
 // Everything is a no-op while off. Fed the same SceneView as the picture (world.ts), so sound and picture agree.
-import { createSoundscape, type Soundscape, type SoundEventKind, type SoundEventDetail } from './audio';
+//
+// The engine is a lazy part (chunks.ts, lazy/audio.ts): it is fetched at start-up only if sound is saved as on, and
+// when the settings sheet opens (prefetchSound), so that the toggle's tap normally finds it here and the AudioContext is
+// made and unlocked inside that gesture (iOS). If the tap comes first, the engine is made as soon as it arrives with
+// `enabled`, which arms its one-time unlock on the next tap.
+import type { Soundscape, SoundEventKind, SoundEventDetail } from './audio';
 import type { SceneView } from './scene';
 import { getPrefs, setPrefs } from './prefs';
+import { chunkNow, loadChunk, prefetchChunk } from './chunks';
+import type { AudioRt } from './lazy/audio';
 
 let sc: Soundscape | null = null;
 let sector: string | null = null;
@@ -12,9 +19,14 @@ let sector: string | null = null;
 const calmArg = (): boolean | null => { const c = getPrefs().calm; return c === 'on' ? true : c === 'off' ? false : null; };
 
 function make(enabled: boolean): Soundscape | null {
+  const rt = chunkNow<AudioRt>('audio');
+  if (!rt) {
+    loadChunk<AudioRt>('audio').then(() => { if (getPrefs().sound && !sc) make(true); }, () => { /* stays silent */ });
+    return null;
+  }
   try {
     const p = getPrefs();
-    sc = createSoundscape({ enabled, volumes: p.volumes, calm: calmArg() });
+    sc = rt.createSoundscape({ enabled, volumes: p.volumes, calm: calmArg() });
     if (sector) sc.setSector(sector);
   } catch { sc = null; }
   return sc;
@@ -24,6 +36,9 @@ function make(enabled: boolean): Soundscape | null {
 export function initSound(): void {
   if (getPrefs().sound) make(true);
 }
+
+/** The settings sheet is opening: fetch the engine now, so that turning sound on works inside the tap. */
+export function prefetchSound(): void { prefetchChunk('audio', 500); }
 
 /** From the settings toggle's click handler (a user gesture): creates and unlocks the context inside the tap. */
 export function setSound(on: boolean): void {
@@ -43,10 +58,7 @@ export function setCalm(c: 'system' | 'on' | 'off'): void {
 }
 export function soundUpdate(view: SceneView): void { if (sc && getPrefs().sound) { try { sc.update(view); } catch { /* ignore */ } } }
 export function soundSector(id: string): void { sector = id; try { sc?.setSector(id); } catch { /* ignore */ } }
-/** M3 moments the audio lane adds to SoundEventKind (briefs/m3-audio.md); until its union carries them the soundscape
- *  ignores an unknown kind (inside the try). */
-export type M3SoundKind = 'seam' | 'letter' | 'answer' | 'bite' | 'survey' | 'ending';
-export function sound(kind: SoundEventKind | M3SoundKind, detail?: SoundEventDetail): void {
+export function sound(kind: SoundEventKind, detail?: SoundEventDetail): void {
   if (!sc || !getPrefs().sound) return;
   try { sc.event(kind as SoundEventKind, detail); } catch { /* ignore */ }
 }

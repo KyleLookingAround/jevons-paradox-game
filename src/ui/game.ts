@@ -392,11 +392,23 @@ function boot(o: GameOpts): void {
   if (away > 0 && !(d.freshRun && (state.meta?.reckonings ?? 0) >= 1) && writing()) catchUp(away, true);
 
   /* ---------- the loop ---------- */
+  // The loop runs on a timer at the simulation's own 10 Hz, not on requestAnimationFrame: a callback every vsync asks
+  // the browser for a main-thread frame every vsync, and each such frame restyles every element under a running
+  // (even compositor-driven) animation, which on the scene was most of the page's cost (perf pass 2). The page then
+  // makes a frame only when a tick has changed something. While the page is hidden nothing runs (as rAF did): the
+  // first callback after it shows sees the whole gap and catches up through fastForward.
   let last = performance.now();
   let acc = 0;
   let lastSave = last, lastBeat = last;
+  let loopT = 0;
+  function loop(): void {
+    loopT = 0;
+    if (document.hidden) return; // visibilitychange restarts it
+    frame(performance.now());
+    loopT = window.setTimeout(loop, Math.max(4, (STEP - acc) * 1000));
+  }
+  function startLoop(): void { if (!loopT && !document.hidden) loopT = window.setTimeout(loop, 0); }
   function frame(now: number): void {
-    requestAnimationFrame(frame);
     let el = (now - last) / 1000;
     last = now;
     if (halted) return;
@@ -429,9 +441,9 @@ function boot(o: GameOpts): void {
       fail(lastCall, err);
     }
   }
-  requestAnimationFrame(frame);
+  startLoop();
 
-  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); else pen?.check(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); else { pen?.check(); startLoop(); } });
   window.addEventListener('pagehide', () => { save(); pen?.release(); });
   window.addEventListener('pageshow', (e) => { if ((e as PageTransitionEvent).persisted) pen?.resume(); });
   window.addEventListener('hashchange', () => location.reload());

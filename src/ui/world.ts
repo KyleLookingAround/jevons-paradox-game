@@ -5,7 +5,9 @@ import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
 import { fmt, money, fmtPrice, pct, num, clamp, lower, unitOne } from './fmt';
 import { infoBtn } from './gauges';
-import { createScene, sceneViewFrom, spot, type SceneView, type SceneTarget } from './scene';
+import type { SceneView, SceneTarget } from './scene';
+import { sceneViewFrom } from './scene/adapter';
+import { createScene, spot, sceneNow, loadScene } from './sceneRt';
 import { archiveUnread } from './archive';
 import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
@@ -72,7 +74,8 @@ export function buildNews(ctx: Ctx): Comp & { backfire(): void } {
     const k = top ? `${top.time}|${top.text}` : '';
     // The spot follows the lead item's kind in the look on screen (rebuilt only when either changes).
     const sk = top?.key ? `${top.key}|${theme}` : '';
-    if (sk !== spotKey) {
+    // The spots are the scene's drawings (a lazy part): until it has arrived the lead goes without, and is tried again.
+    if (sk !== spotKey && (!sk || sceneNow())) {
       spotKey = sk;
       let mk = sk ? spots.get(sk) : '';
       if (sk && mk == null) {
@@ -219,7 +222,10 @@ export function buildWorld(ctx: Ctx): WorldComp {
   let selected: string | null = null;
   /** M3: the machine's display name from the latest 'stageReached' (GameEvent.label), per Industry. */
   const stageLabel = new Map<string, string>();
-  const renderer = createWorldRenderer(mount, {
+  // The renderer exists once the scene engine has arrived (a lazy part: chunks.ts); until then, and if it cannot be
+  // loaded, the frame shows a plain list of the uses with their Found buttons (plainList below).
+  let renderer: WorldRenderer | null = null;
+  const makeRenderer = (): WorldRenderer => createWorldRenderer(mount, {
     onFound: (appId) => ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, appId)),
     onSelect: (appId) => { selected = appId; markHand(); },
     // The picture draws the new machines itself; the page only offers a way back to it if it is scrolled away.
@@ -231,6 +237,24 @@ export function buildWorld(ctx: Ctx): WorldComp {
       if (was != null && id === ctx.sector && stage > was) moment('stage', `New machines in ${sectorDef(ctx, id)?.name ?? 'the picture'}${stageLabel.get(id) ? `: ${stageLabel.get(id)}` : ''}`, 'See them');
     },
   });
+  /** The plain rendering while the picture cannot be drawn: each use, its state, and Found where it is staked out. */
+  let plainEl: HTMLElement | null = null;
+  let plainKey = '';
+  function plain(id: SectorId): void {
+    const sdef = sectorDef(ctx, id);
+    const apps = ctx.d?.sectors?.[id]?.apps;
+    if (!sdef || !apps) return;
+    if (!plainEl) { plainEl = h('ul', { class: 'world-plain' }); mount.append(plainEl); plainKey = ''; }
+    const key = id + '|' + sdef.applications.map((a) => { const x = apps[a.id]; return `${x?.founded ? 2 : x?.available ? 1 : 0}${x?.canFound ? 'c' : ''}${Math.round((x?.adoption ?? 0) * 20)}`; }).join(',');
+    if (key === plainKey) return;
+    plainKey = key;
+    plainEl.replaceChildren(...sdef.applications.filter((a) => apps[a.id]?.available || apps[a.id]?.founded).map((a) => {
+      const x = apps[a.id]!;
+      const li = h('li', null, h('b', { text: a.name }), ' ', h('span', { class: 'muted', text: x.founded ? `${pct(x.adoption, false)} adopted` : `staked out, ${money(x.foundCost)}` }));
+      if (!x.founded) li.append(' ', h('button', { class: 'btn small', type: 'button', 'aria-disabled': x.canFound ? null : 'true', onclick: () => { if (x.canFound) ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, a.id)); } }, 'Found'));
+      return li;
+    }));
+  }
   function markHand(): void {
     const ids = selected ? cardsFor(ctx, selected) : [];
     document.querySelectorAll('.up.concerns').forEach((c) => { if (!ids.includes(c.getAttribute('data-up') ?? '')) c.classList.remove('concerns'); });
@@ -268,17 +292,18 @@ export function buildWorld(ctx: Ctx): WorldComp {
     if (sector === '') for (const id of openSectors(ctx)) visited.add(id);
     if (def.id !== sector) {
       const first = sector !== '' && !visited.has(def.id);
-      sector = def.id; renderer.setSector(def.id); soundSector(def.id); selected = null; markHand();
+      sector = def.id; renderer?.setSector(def.id); soundSector(def.id); selected = null; markHand();
       prebuilt.add(def.id);
       visited.add(def.id);
       // A first visit to an Industry opened this session is an event: its name over the picture.
       if (first) titleCard(frame, ageOfSector(ctx.content, def.id)?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
     }
     const m = document.documentElement.getAttribute('data-motion') ?? '';
-    if (m !== motion) { motion = m; renderer.setReducedMotion(motionOverride()); }
+    if (m !== motion) { motion = m; renderer?.setReducedMotion(motionOverride()); }
     const dt = getPrefs().detail;
-    if (dt !== detail) { detail = dt; renderer.setDetail(dt); }
-    if (armed) {
+    if (dt !== detail) { detail = dt; renderer?.setDetail(dt); }
+    if (armed && renderer) {
+      const r = renderer;
       const evs = sceneEvents;
       sceneEvents = [];
       const view = timed('scene.view', () => viewFrom(ctx.content, ctx.state, ctx.d, def.id, evs));
@@ -291,14 +316,32 @@ export function buildWorld(ctx: Ctx): WorldComp {
         if (!deferTimer) deferTimer = requestAnimationFrame(() => setTimeout(() => {
           deferTimer = 0;
           const v = deferred; deferred = null;
-          if (v) timed('scene.update', () => renderer.update(v));
+          if (v) timed('scene.update', () => r.update(v));
         }, 0));
-      } else timed('scene.update', () => renderer.update(view));
+      } else timed('scene.update', () => r.update(view));
       soundUpdate(view);
     } else if (!arming) {
+      // The picture's first build waits for the engine (a lazy part) and then one frame, so the page paints first.
       arming = true;
-      requestAnimationFrame(() => setTimeout(() => { armed = true; update(); }, 0));
+      loadScene().then(() => {
+        requestAnimationFrame(() => setTimeout(() => {
+          arming = false;
+          if (!renderer) {
+            try { renderer = makeRenderer(); } catch { renderer = null; }
+            if (!renderer) { plain(def.id); return; }
+            plainEl?.remove(); plainEl = null;
+            renderer.setSector(sector);
+          }
+          armed = true; update();
+        }, 0));
+      }, () => {
+        // Not loaded (offline on a first visit, a failed fetch): the plain list stands, and the next update tries again
+        // after a pause (chunks.ts has already retried with a back-off).
+        plain(def.id);
+        setTimeout(() => { arming = false; }, 15000);
+      });
     }
+    if (plainEl) plain(def.id);
     // A new Age begun (its headline is news) is an event over the picture, as a first visit is.
     const news = Array.isArray(ctx.state.news) ? ctx.state.news : [];
     const ab = news.slice(0, 6).find((n) => n && n.key === 'ageBegins');
@@ -364,12 +407,12 @@ export function buildWorld(ctx: Ctx): WorldComp {
     window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
   function focusApp(appId: string): HTMLElement {
-    renderer.select(appId);
+    renderer?.select(appId);
     return el;
   }
   function showPlace(t: PlaceTarget): void {
-    if (typeof t === 'string') { renderer.select(t); renderer.highlight({ app: t }); }
-    else if (t) renderer.highlight(t);
+    if (typeof t === 'string') { renderer?.select(t); renderer?.highlight({ app: t }); }
+    else if (t) renderer?.highlight(t);
     scrollToEl(el, 8);
     frame.classList.remove('flash'); void frame.offsetWidth; frame.classList.add('flash');
     setTimeout(() => frame.classList.remove('flash'), 1800);
@@ -404,13 +447,13 @@ export function buildWorld(ctx: Ctx): WorldComp {
       idleQueued = false;
       if (document.hidden || ctx.d?.pendingReckoning || !ctx.state.sectors?.[next]?.open) return;
       prebuilt.add(next);
-      try { timed('scene.prebuild', () => renderer.prebuild(sceneViewFrom(ctx.content, ctx.state, ctx.d, next))); } catch { /* optional */ }
+      try { timed('scene.prebuild', () => renderer?.prebuild(sceneViewFrom(ctx.content, ctx.state, ctx.d, next))); } catch { /* optional */ }
     };
     if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(run, { timeout: 4000 });
     else setTimeout(run, 1500);
   }
   return {
-    el, update: () => { update(); if (armed) queuePrebuild(); }, focusApp, showPlace, queueEvents,
+    el, update: () => { update(); if (armed && renderer) queuePrebuild(); }, focusApp, showPlace, queueEvents,
     backfire: () => moment('backfire'),
     reset() { known.clear(); sceneEvents = []; prebuilt.clear(); },
     lastView: () => lastView,

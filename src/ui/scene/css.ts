@@ -135,8 +135,6 @@ const BASE = `
 .scn .ghost.avail{opacity:.42}
 .scn .svy{display:none}
 .scn .svy.on{display:inline}
-.scn.live .svy.on .svfl{animation:scn-flag 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:0 50%}
-@keyframes scn-flag{50%{transform:scaleX(.7)}}
 .scn .scaf{display:none}
 .scn .scaf.on{display:inline;animation:scn-scaf 2.6s ease forwards}
 @keyframes scn-scaf{0%{opacity:0}15%{opacity:1}70%{opacity:1}100%{opacity:0}}
