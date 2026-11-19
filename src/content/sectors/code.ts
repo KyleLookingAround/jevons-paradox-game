@@ -81,7 +81,7 @@ const sector: SectorDef = {
    * about ten minutes of Compute opening, so four Reckonings are the real gate: about hour 4 of competent play.
    */
   unlock: {
-    minReckonings: 4,
+    minReckonings: 3,
     when: {
       all: [
         { owns: 'compute.virtualisation', label: 'Own Virtualisation' },

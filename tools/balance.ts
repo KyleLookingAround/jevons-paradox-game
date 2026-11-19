@@ -101,6 +101,7 @@ const PROGRESS_AT = parseFloat(flag('progress-at', '40')) * 60;
 const MAX_OPEN = parseFloat(flag('max-open', '120')) * 60;
 const MIN_DRAW = parseFloat(flag('min-draw', '12')) * 60;
 const FORK_SECTOR = flag('fork-sector', '');
+const HOLD_FOR = parseFloat(flag('hold-for', '30')) * 60;
 const PACE = flag('pace', '') || undefined;
 const DIVIDEND = flag('dividend', '0');
 const SETTLE = flag('settle', 'false') === 'true';
@@ -426,7 +427,7 @@ function buyCommonsBest(s: GameState, ctx: RunCtx): GameState {
   return s;
 }
 /** The `market` player: found what the Market has left for 25 s; buy research cards (the Market never does). */
-function marketPlayer(s: GameState, ctx: RunCtx, seen: Map<string, number>): GameState {
+function marketPlayer(s: GameState, ctx: RunCtx, seen: Map<string, number>, ok?: (next: GameState, e: SectorId) => string | null): GameState {
   for (const e of ORDER) {
     if (!s.sectors[e]?.open) continue;
     for (const a of C.sectors[e].applications) {
@@ -436,13 +437,18 @@ function marketPlayer(s: GameState, ctx: RunCtx, seen: Map<string, number>): Gam
       seen.set(a.id, since);
       if (s.time - since < 25) continue;
       const next = model.foundApp(s, C, a.id);
-      if (next !== s) { s = next; ctx.firsts[`app:${a.id}`] ??= s.time; ctx.buyTimes.push(s.time); ctx.ev.push({ t: s.time, text: `app  ${a.id} (player)` }); }
+      if (next !== s && (!ok || ok(next, e) === null)) { s = next; ctx.firsts[`app:${a.id}`] ??= s.time; ctx.buyTimes.push(s.time); ctx.ev.push({ t: s.time, text: `app  ${a.id} (player)` }); }
     }
   }
-  for (const v of cheapViews(s)) {
-    if (v.def.kind !== 'research' || !v.affordable) continue;
+  // the cards the Market never buys: research (the reveal first), prospects and fork arms (cheapest first)
+  for (let guard = 0; guard < 10; guard++) {
+    const v = cheapViews(s).filter((x) => x.visible && x.affordable && !x.maxed && !x.excludedBy && !ctx.skip.has(x.def.id)
+      && (x.def.kind === 'research' || x.def.kind === 'prospect' || (x.def.excludes?.length ?? 0) > 0))
+      .sort((a, b) => (a.def.kind === 'research' ? -1 : 0) - (b.def.kind === 'research' ? -1 : 0) || a.cost - b.cost)[0];
+    if (!v) break;
     const next = buyOne(s, ctx, v);
-    if (next !== s) s = next;
+    if (next === s) break;
+    s = next;
   }
   return s;
 }
@@ -512,6 +518,8 @@ interface RunReport {
   }>;
   steadyYearsAll: number; won: boolean; slots: number; loadout: string[]; peakWellbeing: number; yearsAtTarget: number;
   sectorsOpen: SectorId[];
+  /** player purchases and foundings in the run */
+  purchases: number;
   /** M2 */
   m2: {
     firstDecadeMin: number | null; firstDecadeLean: boolean | null; firstClearMin: number | null; steadyMin: number | null;
@@ -569,6 +577,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
   let crisisPopLoss: number | null = null;
   const click: RunReport['click'] = { at30s: null, atCondenser: null, atReveal: null };
   const hist: [number, number][] = [];
+  const pHist: [number, Record<SectorId, number>][] = [];
   const kh = Object.entries(s.meta.knowhow).filter(([, v]) => v).map(([k, v]) => `${k}×${v}`).join(' ');
   const inst = Object.entries(s.meta.institutions).map(([k, v]) => `${k}${v > 1 ? ` L${v}` : ''}${s.meta.loadout.includes(k) ? '*' : ''}`).join(' ');
   log(`\n=== Run ${idx} · ${mode}${arms ? ` [${arms.join(', ')}]` : ''} · ${useFixture ? 'FIXTURE' : 'content'} · reckonings ${s.meta.reckonings} · hindsight left ${n(s.meta.hindsight)} · seats ${s.meta.slots}`);
@@ -608,14 +617,11 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
         s = foundApps(s, ctx, budgetFoundOk(s));
         if (tick5) s = holdTheLine(s, ctx, memo);
       } else if (mode === 'market') {
-        s = marketPlayer(s, ctx, seenApps);
-        if (s.flags.revealed) {
-          for (const e of ORDER) {
-            if (!s.sectors[e]?.open || s.sectors[e].budget || s.sectors[e].settled) continue;
-            const next = model.drawBudget(s, C, e, PACE);
-            if (next !== s) { s = next; ctx.firsts[`budget:${e}`] ??= s.time; ev.push({ t: s.time, text: `BUDGET ${e} drawn at the reveal (${s.sectors[e].budget!.pace})` }); }
-          }
-        }
+        // the budget player with the Market on everywhere: it leaves routine efficiency and capital cards to the
+        // Market and does what the Market never does (forks, research, prospects, foundings the Market passed over,
+        // lines, levers, dividends)
+        s = marketPlayer(s, ctx, seenApps, budgetFoundOk(s));
+        if (tick5) s = holdTheLine(s, ctx, memo);
       } else {
         s = buyUpgrades(s, ctx);
         s = foundApps(s, ctx);
@@ -646,7 +652,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     prev = s;
     s = model.tick(s, C, DT);
     lastDecisions = s.run.decisions; // standing orders never count as decisions; nothing else moves it inside tick
-    for (const e of s.events) if (e.seq > prev.meta.eventSeq && e.by === 'market' && (e.kind === 'upgradeBought' || e.kind === 'appFounded')) marketBuys++;
+    for (const e of s.events) if (e.seq > prev.meta.eventSeq && e.by === 'market' && (e.kind === 'upgradeBought' || e.kind === 'appFounded')) { marketBuys++; ctx.firsts.firstMarket ??= s.time; }
     if (prev.time < 30 && s.time >= 30) click.at30s = clickRatio(s);
     for (const e of ORDER) {
       const a = prev.sectors[e], b = s.sectors[e];
@@ -718,7 +724,22 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       hist[hist.length - 1][1] = steady;
       const avg = steady / (s.time / 60);
       const marginal = old && s.time - old[0] >= 590 ? (steady - old[1]) / ((s.time - old[0]) / 60) : Infinity;
-      const streaking = ORDER.some((e) => d.sectors[e]?.decoupling && !s.run.steadySectors[e]);
+      // a streak holds a competent player only while a Steady State is on its way (the clear streak running: a lump
+      // of Hindsight within 50 model years). Decades are not worth waiting for: a full one pays a little Hindsight
+      // (already in the marginal rate), a lean one only in-run dividends (M2).
+      // It also waits for clear skies it can see coming: wellbeing at the target and pressure falling towards the clear
+      // level fast enough to reach it within --hold-for minutes (default 30).
+      pHist.push([s.time, Object.fromEntries(ORDER.map((e) => [e, s.sectors[e]?.pressure ?? 0]))]);
+      while (pHist.length && pHist[0][0] < s.time - 120) pHist.shift();
+      const streaking = ORDER.some((e) => {
+        const es = s.sectors[e], x = d.sectors[e];
+        if (!es?.open || !x || s.run.steadySectors[e] || es.settled || x.clearP === null) return false;
+        if (es.clearYears > 0) return true;
+        if (d.wellbeing < C.global.wellbeingTarget) return false;
+        const old = pHist[0];
+        const rate = old && s.time - old[0] >= 60 ? (old[1][e] - es.pressure) / (s.time - old[0]) : 0;
+        return es.pressure <= x.clearP || (rate > 0 && (es.pressure - x.clearP) / rate <= HOLD_FOR);
+      });
       // a competent player does not Reckon while an industry it is entitled to is still opening this run
       const opening = s.time < MAX_OPEN && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
       if (s.time >= MIN_RUN && marginal < 0.9 * avg && !streaking && !opening) { stopReason = `marginal rate ${n(marginal)} below average ${n(avg)}`; break; }
@@ -799,7 +820,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     felt: { boilersR60: effAt('steam.boilers', 'rAfter60'), condenserR120: effAt('steam.condenser', 'rAfter120') },
     click, crisisPopLoss, exitCards: { checked, failing },
     sectors, steadyYearsAll: s.steadyYearsAll, won: s.flags.won, slots: s.meta.slots, loadout: s.meta.loadout,
-    peakWellbeing: s.run.peakWellbeing, yearsAtTarget: s.run.yearsAtTarget, sectorsOpen: open(),
+    peakWellbeing: s.run.peakWellbeing, yearsAtTarget: s.run.yearsAtTarget, sectorsOpen: open(), purchases: bt.length,
     m2: {
       firstDecadeMin: ctx.firsts.firstDecade !== undefined ? ctx.firsts.firstDecade / 60 : null, firstDecadeLean,
       firstClearMin: ctx.firsts.firstClear !== undefined ? ctx.firsts.firstClear / 60 : null,
@@ -846,7 +867,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
         ` · reveal ${t('buy:steam.coalQuestion')} cond ${t('buy:steam.condenser')} crisis ${R.firstCrisisMin?.toFixed(1) ?? '-'} lever ${t('firstLever')}` +
         ` · dec ${M.firstDecadeMin?.toFixed(1) ?? '-'}${M.firstDecadeLean === null ? '' : M.firstDecadeLean ? ' lean' : ' full'} clear ${M.firstClearMin?.toFixed(1) ?? '-'} steady ${M.steadyMin?.toFixed(1) ?? '-'}` +
         ` · Wpk ${R.peakWellbeing.toFixed(1)} yAt ${R.yearsAtTarget.toFixed(0)} · dec ${Object.values(R.sectors).map((x) => x.decades).join('/')} lean ${M.leanDecades} full ${M.fullDecades}` +
-        ` · settled ${M.settlements}/${M.settledAtEnd} commons ${M.commonsLevels} market ${M.marketBuys} charter ${M.charter ?? '-'}` +
+        ` · settled ${M.settlements}/${M.settledAtEnd} commons ${M.commonsLevels} buys player ${R.purchases} market ${M.marketBuys}${f.firstMarket !== undefined ? ` (first ${f.firstMarket.toFixed(1)})` : ''} charter ${M.charter ?? '-'}` +
         ` · terms W ${T.wellbeing.toFixed(0)} B ${T.budget.toFixed(0)} U ${T.unburnt.toFixed(0)} F ${T.backfire.toFixed(0)} S ${T.sectorsReached.toFixed(0)} St ${T.steady.toFixed(0)} Se ${(T.settled ?? 0).toFixed(0)}` +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }

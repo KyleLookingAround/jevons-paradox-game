@@ -51,7 +51,8 @@ const sector: SectorDef = {
    * cooked from coal), so the sink comes from hydro, lights out and the gasworks' rebuild, not the allowance alone.
    */
   steady: {
-    clearBelow: 0.5,
+    clearBelow: 0.35,
+    clearFloor: 0.006,
     decadeChoices: decadeSequence([
       ['div.light.earlyClosing', 'div.light.lateOpening'],
       ['div.light.fogWardens', 'div.light.meterRebate'],

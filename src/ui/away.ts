@@ -49,6 +49,7 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
       const e = r.heldSector ? ctx.d?.sectors?.[r.heldSector] : undefined;
       if (r.heldBy === 'exhausted') heldTxt = `The board waited for you: ${lower(def?.resource.name ?? 'the reserve')} at ${pct(num(e?.reserveFraction), false)} left.`;
       else heldTxt = `The board waited for you: ${lower(def?.pressure.name ?? 'pressure')} at ${pct(num(e?.pressureFraction), false)}${def ? ` in ${def.name}` : ''}.`;
+      if (req - sim >= 60) heldTxt += ` The other ${dur(req - sim)} were not played.`;
     } else if (r.heldBy === 'cap' && req - sim >= 60) heldTxt = `Time past ${dur(num(ctx.d?.offlineCapSeconds, sim))} is not counted.`;
     else if (r.heldBy === 'pending') heldTxt = 'A Reckoning was already waiting; nothing moved.';
     setText(held, heldTxt);

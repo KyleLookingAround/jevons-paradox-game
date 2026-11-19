@@ -189,6 +189,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   function onEvents(ev: GameEvent[]): void {
     world.queueEvents(ev);
     gauges.onEvents?.(ev);
+    orders.onEvents(ev);
     let automated = 0;
     for (const e of ev) {
       const def = e.sector ? sectorDef(ctx, e.sector) : undefined;

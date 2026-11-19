@@ -174,7 +174,7 @@ function boot(o: GameOpts): void {
     replace,
     selectSector(id) {
       if (!state!.sectors?.[id]?.open) return;
-      const apply = () => { ctx.sector = id; lsSet(TAB_KEY, id); timed('ui.update', () => ui.update()); };
+      const apply = () => { const changed = ctx.sector !== id; ctx.sector = id; lsSet(TAB_KEY, id); timed('ui.update', () => ui.update()); if (changed) viewsAfterPaint(); };
       // Another Industry is another look, picture and set of panels: one composed transition, not a flash of restyle.
       if (id !== ctx.sector) ui.composeSwitch(ctx.sector, id, apply);
       else apply();
@@ -225,7 +225,8 @@ function boot(o: GameOpts): void {
   function refreshViews(): void {
     const t0 = performance.now();
     lastViews = t0;
-    const u = guard('upgradeViews', () => model.upgradeViews(state!, content));
+    // Only the Industry on screen is projected (the others' cards still come back, with no projection lines).
+    const u = guard('upgradeViews', () => model.upgradeViews(state!, content, ctx.sector));
     if (u) ups = u;
     const l = guard('leverViews', () => model.leverViews(state!, content));
     if (l) levs = l;
@@ -333,6 +334,8 @@ function boot(o: GameOpts): void {
     state = s;
     // The catch-up's events are summarised by the ledger (lastOffline), not played one by one.
     feed.skip(s);
+    // Stamp the save at once: a tab closed straight after a catch-up must not count the same time away twice.
+    save();
     refresh(false);
     viewsAfterPaint();
     if (s.lastOffline) { ui.awayCheck(); return; }
@@ -352,7 +355,7 @@ function boot(o: GameOpts): void {
   // Charter choice, with "Begin the next run", and no clock until then.
   else if (d.freshRun && (state.meta?.reckonings ?? 0) >= 1) ui.openShopBetweenRuns();
   // A save made between runs (the shop was open) stays fresh: no catch-up until the next run begins.
-  if (away > 0 && !d.freshRun) catchUp(away, true);
+  if (away > 0 && !(d.freshRun && (state.meta?.reckonings ?? 0) >= 1)) catchUp(away, true);
 
   /* ---------- the loop ---------- */
   let last = performance.now();

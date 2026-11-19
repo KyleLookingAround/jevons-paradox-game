@@ -46,7 +46,7 @@ const sector: SectorDef = {
   absorption: 0.008,
   collapseAt: 100,
   crisisAt: [0.4, 0.7, 0.88],
-  pressureWellbeingCost: 40,
+  pressureWellbeingCost: 22,
   pressureUpkeep: 0,
 
   wellbeingWeight: 12,
@@ -58,7 +58,7 @@ const sector: SectorDef = {
    * but not the air, so it is water wheels, temperance and the absorption Institutions that reach the sink.
    */
   steady: {
-    clearBelow: 0.5,
+    clearBelow: 0.3,
     decadeChoices: decadeSequence([
       ['div.steam.pitheadBaths', 'div.steam.dividendInCoal'],
       ['div.steam.smokeFund', 'div.steam.engineBounty'],

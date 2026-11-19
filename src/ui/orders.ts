@@ -4,7 +4,7 @@
 // setOrders patch; the model decides when they act (nextTickIn).
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, openSectors } from './ctx';
-import type { OrderId, OrdersPatch } from '../types';
+import type { GameEvent, OrderId, OrdersPatch } from '../types';
 import { h, setText, setAttr, show, cls, syncChildren } from './dom';
 import { fmt, num, dur } from './fmt';
 
@@ -22,7 +22,7 @@ function toggle(label: string, onTap: () => void): { el: HTMLButtonElement; set(
   return { el, set(on, disabled) { setAttr(el, 'aria-checked', String(on)); cls(el, 'on', on); setAttr(el, 'aria-disabled', disabled ? 'true' : null); } };
 }
 
-export function buildOrders(ctx: Ctx): Comp {
+export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void } {
   const patch = (p: OrdersPatch) => ctx.act('setOrders', (m, s, c) => m.setOrders(s, c, p));
   const o = () => ctx.d?.orders;
 
@@ -38,8 +38,22 @@ export function buildOrders(ctx: Ctx): Comp {
   const mPayTxt = h('p', { class: 'od-txt' });
   const mSecs = h('div', { class: 'od-chips', role: 'group', 'aria-label': 'Industries the Market buys for' });
   const mNext = h('p', { class: 'od-next muted num' });
+  // What the Market has done this run (from the events it caused), or that it is waiting.
+  const mDid = h('p', { class: 'od-did' });
+  let bought: { name: string; where: string; year: number }[] = [];
+  let boughtRun = '';
+  const runKey = () => `${ctx.state.seed ?? 0}:${ctx.state.meta?.reckonings ?? 0}`;
+  function onEvents(ev: GameEvent[]): void {
+    if (boughtRun !== runKey()) { boughtRun = runKey(); bought = []; }
+    for (const e of ev) {
+      if (e.by !== 'market' || (e.kind !== 'upgradeBought' && e.kind !== 'appFounded')) continue;
+      const name = e.kind === 'upgradeBought' ? ctx.content.upgrades?.find((u) => u.id === e.id)?.name
+        : sectorDef(ctx, e.sector ?? '')?.applications.find((a) => a.id === e.id)?.name;
+      bought = [{ name: name ?? 'something', where: sectorDef(ctx, e.sector ?? '')?.name ?? '', year: Math.floor(num(e.year)) }, ...bought].slice(0, 3);
+    }
+  }
   const mOff = h('p', { class: 'od-off muted' });
-  const market = h('div', { class: 'od od-market' }, h('div', { class: 'od-h' }, mOn.el), mPayTxt, mPay, mSecs, mNext, mOff);
+  const market = h('div', { class: 'od od-market' }, h('div', { class: 'od-h' }, mOn.el), mPayTxt, mPay, mSecs, mDid, mNext, mOff);
   let payKey = '', secKey = '';
   const secBtns = new Map<string, HTMLButtonElement>();
 
@@ -112,6 +126,13 @@ export function buildOrders(ctx: Ctx): Comp {
       setAttr(b, 'title', settled ? 'Settled: the Market leaves it alone' : null);
     }
     setText(mNext, `Next look at the books in ${dur(Math.max(0, num(ov.nextTickIn)))} of play.`);
+    if (boughtRun !== runKey()) { boughtRun = runKey(); bought = []; }
+    const auto = num(ctx.state.run?.automated);
+    setText(mDid, bought.length
+      ? `Bought lately: ${bought.map((b) => `${b.name} (${b.where}, ${b.year})`).join('; ')}.${auto > bought.length ? ` ${fmt(auto)} actions by standing orders this run.` : ''}`
+      : auto > 0 ? `${fmt(auto)} actions by standing orders this run.`
+        : `Waiting: nothing on offer has paid back within ${span(num(ov.market.paybackMax))} yet this run.`);
+    show(mDid, ma && ov.market.on);
     setText(mOff, ma ? '' : `The Market takes standing orders from run ${fmt(num(ctx.content.global?.orders?.marketFromReckoning, 1) + 1)}.`);
     show(mOff, !ma);
 
@@ -173,5 +194,5 @@ export function buildOrders(ctx: Ctx): Comp {
     setText(tOff, ta ? '' : `Opens with ${tBy ?? 'an Institution'}, seated.`);
     show(tOff, !ta);
   }
-  return { el, update };
+  return { el, update, onEvents };
 }

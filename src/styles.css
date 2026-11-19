@@ -1227,3 +1227,5 @@ html[data-look='agentic'] .stamped::after { transform: none; color: var(--good);
 .vol-row { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 10px; font-size: calc(13.5px * var(--ts)); }
 .vol { width: 100%; accent-color: var(--ink); min-height: 32px; }
 .setting.survey p { max-width: 36em; }
+
+.od-did { font-size: calc(13px * var(--ts)); }

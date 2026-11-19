@@ -14,6 +14,7 @@ import { idx } from './contentIndex';
 import { modsOf, etaAt } from './effects';
 import type { Mods } from './effects';
 import { computeFlows, steadyView } from './flows';
+import type { Flows } from './flows';
 import { leverLevelDef, leverMaxLevel, leverNetUpkeep, leverVisible } from './levers';
 import { setLeverAs } from './policy';
 import { buyUpgradeAs, foundAppAs, upgradeCost, upgradeExcludedBy, upgradeMax, upgradeVisible } from './purchases';
@@ -47,8 +48,11 @@ export function marketAvailable(state: GameState, content: Content, mods: Mods):
 /* The orders                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Whole-state income with the sector's upgrade raised one level (η recomputed), or the application founded. */
-function incomeWithUpgrade(state: GameState, content: Content, id: string): number {
+/**
+ * The Market's view of one candidate: whole-state flows with the upgrade raised one level (η recomputed for every open
+ * sector) or the application founded. No time passes.
+ */
+function flowsWithUpgrade(state: GameState, content: Content, id: string): Flows {
   const draft0: GameState = { ...state, upgrades: { ...state.upgrades, [id]: (state.upgrades[id] ?? 0) + 1 } };
   const mods = modsOf(draft0, content);
   const sectors = { ...state.sectors };
@@ -56,30 +60,46 @@ function incomeWithUpgrade(state: GameState, content: Content, id: string): numb
     const es = sectors[s];
     if (es?.open && !es.settled) sectors[s] = { ...es, eta: etaAt(content.sectors[s], mods, es.openFor) };
   }
-  return computeFlows({ ...draft0, sectors }, content).income;
+  return computeFlows({ ...draft0, sectors }, content);
 }
-function incomeWithApp(state: GameState, content: Content, s: SectorId, appId: string): number {
+function flowsWithApp(state: GameState, content: Content, s: SectorId, appId: string): Flows {
   const es = state.sectors[s];
   const draft: GameState = { ...state, sectors: { ...state.sectors, [s]: { ...es, apps: { ...es.apps, [appId]: { ...es.apps[appId], founded: true } } } } };
-  return computeFlows(draft, content).income;
+  return computeFlows(draft, content);
+}
+
+/**
+ * What a candidate pays per second, as the Market sees it (see OrdersState): the running cost it saves at today's
+ * output, Σ over solved sectors of D_now × max(0, p_pre now − p_pre after) (coal no longer bought, cheaper engines),
+ * plus any rise in whole-state income, max(0, income after − income now). The first term is how an engine was sold
+ * ("a third of the coal it saves"); the second is how an application is. Neither ever counts a loss.
+ */
+export function marketGain(f0: Flows, f1: Flows): number {
+  let saved = 0;
+  for (const s in f0.sectors) {
+    const a = f0.sectors[s], b = f1.sectors[s];
+    if (!a || !b || f0.settled[s] !== undefined) continue;
+    saved += Math.max(0, a.D) * Math.max(0, a.pPre - b.pPre);
+  }
+  return fin(saved) + Math.max(0, fin(f1.income - f0.income));
 }
 
 /** The Market's one action in sector s, or the same state. */
 function marketIn(state: GameState, content: Content, s: SectorId, paybackMax: number): GameState {
   const def = content.sectors[s];
   const es = state.sectors[s];
-  const income0 = computeFlows(state, content).income;
+  const f0 = computeFlows(state, content);
   const mods = modsOf(state, content);
   let best: { kind: 'found' | 'upgrade'; id: string; payback: number } | null = null;
-  const consider = (kind: 'found' | 'upgrade', id: string, cost: number, income1: number) => {
-    const gain = income1 - income0;
+  const consider = (kind: 'found' | 'upgrade', id: string, cost: number, f1: Flows) => {
+    const gain = marketGain(f0, f1);
     const payback = gain > 0 ? cost / gain : Infinity;
     if (payback <= paybackMax && (best === null || payback < best.payback)) best = { kind, id, payback };
   };
   for (const a of def.applications) {
     const st = es.apps[a.id];
     if (!st?.available || st.founded || !(a.foundCost <= state.capital)) continue;
-    consider('found', a.id, a.foundCost, incomeWithApp(state, content, s, a.id));
+    consider('found', a.id, a.foundCost, flowsWithApp(state, content, s, a.id));
   }
   for (const u of content.upgrades ?? []) {
     if (u.sector !== s || (u.kind !== 'efficiency' && u.kind !== 'capital') || (u.excludes && u.excludes.length)) continue;
@@ -87,7 +107,7 @@ function marketIn(state: GameState, content: Content, s: SectorId, paybackMax: n
     if (lvl >= upgradeMax(u) || !upgradeVisible(state, u, mods) || upgradeExcludedBy(state, content, u.id)) continue;
     const cost = upgradeCost(u, lvl, mods);
     if (!(cost <= state.capital)) continue;
-    consider('upgrade', u.id, cost, incomeWithUpgrade(state, content, u.id));
+    consider('upgrade', u.id, cost, flowsWithUpgrade(state, content, u.id));
   }
   if (best === null) return state;
   const b = best as { kind: 'found' | 'upgrade'; id: string };

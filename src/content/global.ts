@@ -44,7 +44,7 @@ export const global: GlobalParams = {
     intensityExponent: 0,
     perBudgetDecade: 1.5,
     perUnburnt: 20,
-    perFirstBackfire: 30,
+    perFirstBackfire: 20,
     perSectorReached: 10,
     perSteadySector: 60,
     /* M2: a lean decade (judged against the drawn wellbeing) pays its dividend and no Hindsight (decision (a)). */
@@ -77,7 +77,7 @@ export const global: GlobalParams = {
      * alone does not get there (Industries override; balance tunes).
      */
     clearBelow: 0.5,
-    clearFloor: 0.03,
+    clearFloor: 0.01,
     clearCeiling: 0.25,
     paces: PACES,
     /* The global sequence; every Industry interleaves its own pairs with it (helpers.ts decadeSequence). */
