@@ -90,7 +90,7 @@ export const upkeepStep = (s: GameState, id: string): number => {
   return (v.next?.mandateUpkeep ?? 0) - (v.current?.mandateUpkeep ?? 0);
 };
 
-export interface Memo { revealAt: number | null; lastSpare: number; lastStock?: number; stockP?: Record<string, number>; lastPush?: Record<string, number> }
+export interface Memo { revealAt: number | null; lastSpare: number; lastStock?: number; stockP?: Record<string, number>; lastPush?: Record<string, number>; lastSky?: Record<string, number>; skyP?: Record<string, number> }
 
 /** Before budgets arrive (the unfolding: runs 1–2), restraint is levers only: the cheapest lever raised whenever Mandate
  *  allows and the net rate stays positive (tools/balance.ts `levers` rule), authored levels only. */
@@ -152,6 +152,7 @@ export function budgetStep(s: GameState, m: Memo, marketOff: boolean): GameState
   }
   s = tendStock(s, m);
   s = pushToSink(s, m, 120, 0);
+  s = towardsSky(s, m, 60, 0);
   const d = D(s);
   if (d.mandatePerSec < 0 && s.mandate < -60 * d.mandatePerSec) {
     const worst = model.leverViews(s, C).filter((l) => l.level > 0 && l.def.kind !== 'cap').sort((a, b) => b.upkeep - a.upkeep)[0];
@@ -234,7 +235,45 @@ export function humanStep(s: GameState, m: Memo & { budgetAt?: number; over?: Re
   }
   if (ORDER.some((e) => C.sectors[e].pressureSource === 'service' && (s.sectors[e]?.crisesFired ?? 0) > 0)) s = tendStock(s, m);
   s = pushToSink(s, m, 300, 600);
+  s = towardsSky(s, m, 300, 600);
   return s;
+}
+
+/** M3 finish (tools/balance.ts towardsSky, --ending): once Settlement has arrived, under a held line whose sky has not
+ *  cleared, the cap tightened one level every `every` s per Industry while the smoke is not already falling, wellbeing
+ *  is at the target and Mandate allows; with no cap left, the levers under the line; Code's stock by deletion. */
+export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number): GameState {
+  const d = D(s);
+  if (!d.features.settlement || d.wellbeing < TARGET) return s;
+  m.lastSky ??= {};
+  m.skyP ??= {};
+  for (const e of ORDER) {
+    const x = d.sectors[e], es = s.sectors[e];
+    if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null || es.clearYears > 0) continue;
+    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (s.time - (m.lastSky[e] ?? -Infinity) < every) continue;
+    const p0 = m.skyP[e];
+    m.skyP[e] = es.pressure;
+    m.lastSky[e] = s.time;
+    if (p0 === undefined || es.pressure < p0 * 0.97) continue;
+    const order = C.sectors[e].pressureSource === 'service' ? ['deletion', 'sharedLibs', 'reviewGate'] : ['cap', 'substitution', 'sufficiency', 'greenSpending'];
+    const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null
+      && s.mandate >= (v.nextCost ?? 0) + 50 && d.mandatePerSec - upkeepStep(s, v.def.id) > 0.02)
+      .sort((a, b) => order.indexOf(a.def.kind) - order.indexOf(b.def.kind) || a.level - b.level)[0];
+    if (!l) continue;
+    const n = model.setLever(s, C, l.def.id, l.level + 1);
+    if (n !== s) s = n;
+  }
+  return s;
+}
+
+/** M3 finish (tools/balance.ts pursuing): worth staying in the run for the first ending: not yet won this run, and four
+ *  or more Industries settled, or three with a clear streak running in another. */
+export function pursuing(s: GameState): boolean {
+  if (s.flags.won || (C.features?.settlement && s.meta.features?.settlement === undefined)) return false;
+  const settled = ORDER.filter((e) => s.sectors[e]?.settled).length;
+  const streak = ORDER.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
+  return settled >= 4 || (settled >= 3 && streak);
 }
 
 /** Dividends (option 0, the modest one), Settlement and the Commons, as tools/balance.ts --settle --commons. */
@@ -313,7 +352,9 @@ export function spend(s: GameState, restraint: boolean, capsOnly = false): GameS
 }
 
 export type Mode = 'efficiency' | 'budget' | 'peakdraw' | 'idle' | 'market' | 'human';
-export interface Opts { settle?: boolean; commons?: boolean; capS?: number; stopAt?: number }
+/** ending (default true): the restraint players settle as soon as they can and stay in the run past capS (to 8 h)
+ *  while pursuing() holds (tools/balance.ts --ending). */
+export interface Opts { settle?: boolean; commons?: boolean; capS?: number; stopAt?: number; ending?: boolean }
 export interface Run {
   seconds: number; hindsight: number; hpm: number; cause: string; log: Log; mode: Mode;
   reveal: number | null; crisis: number | null; crisisPopLoss: number | null; reboundAtReveal: number | null;
@@ -354,7 +395,9 @@ export function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameSt
     const x = D(n).sectors[e]!;
     return x.budgetR !== null ? x.resourceUse <= x.budgetR * (1 + BUDGET_TOLERANCE) : x.resourceUse <= safeR(pre, e);
   };
-  while (!D(s).pendingReckoning && s.time < capS && (opts.stopAt === undefined || s.time < opts.stopAt)) {
+  const ending = opts.ending !== false;
+  const settleOn = !!opts.settle || ending;
+  while (!D(s).pendingReckoning && (s.time < capS || (ending && restraint && s.time < 8 * 3600 && pursuing(s))) && (opts.stopAt === undefined || s.time < opts.stopAt)) {
     if (mode !== 'idle') {
       const tick5 = Math.floor(s.time) % 5 === 0;
       if (mode === 'budget') {
@@ -384,7 +427,7 @@ export function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameSt
       if (restraint && s.dispatch?.pending?.length) { const n = model.answerDispatch(s, C, C.dispatches?.find((x) => x.id === s.dispatch!.pending[0].id)?.defaultArm ?? 0, s.dispatch.pending[0].id); if (n !== s) s = n; }
       if (restraint && tick5) {
         const b4 = s;
-        s = restraintExtras(s, !!opts.settle, !!opts.commons);
+        s = restraintExtras(s, settleOn, !!opts.commons);
         for (const e of ORDER) if (s.sectors[e]?.settled && !b4.sectors[e]?.settled) out.settledAt ??= s.time;
       }
       if (s.run.decisions > lastDecisions) log.decisions.push(s.time);
@@ -413,7 +456,7 @@ export function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameSt
     }
     if (out.steadyAt === null && Object.keys(s.run.steadySectors).length > Object.keys(prev.run.steadySectors).length) out.steadyAt = s.time;
     // the restraint player's Reckoning (tools/balance.ts: marginal rate, a gated next Industry, waiting for Steady State)
-    if (restraint && opts.stopAt === undefined && Math.floor(s.time) % 10 === 0) {
+    if (restraint && opts.stopAt === undefined && Math.floor(s.time) % 10 === 0 && !(ending && pursuing(s))) {
       const d = D(s), T = d.hindsightTerms;
       const earned = T.wellbeing + T.budget + T.unburnt;
       hist.push([s.time, earned]);

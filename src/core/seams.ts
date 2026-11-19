@@ -12,7 +12,7 @@ import type { Mods } from './effects';
 import { emit } from './events';
 import { featureOn } from './features';
 import { computeFlows } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { milestone } from './milestones';
 import { fin } from './util';
 
@@ -61,7 +61,7 @@ export function sinkSeam(state: GameState, content: Content, sector: SectorId): 
   let out: GameState = {
     ...state, capital: Math.max(0, state.capital - cost),
     sectors: { ...state.sectors, [sector]: { ...es, seamsSunk: n, reserve: es.reserve + tons, reserveMax: es.reserveMax + tons } },
-    news: withNews(state.news, [headline(state, content, 'seamSunk', state.time, { year, name: seam.name }, sector)]),
+    ...newsWith(state, content, [headline(state, content, 'seamSunk', state.time, { year, name: seam.name }, sector)]),
   };
   out = { ...out, meta: milestone(out.meta, `seam:${sector}`, state, year) };
   return emit(out, [{ kind: 'seamSunk', sector, id: seam.id, n, label: seam.name, by: 'player' }], state.time, year);

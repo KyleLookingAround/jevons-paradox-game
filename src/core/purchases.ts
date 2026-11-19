@@ -10,7 +10,7 @@ import { evalCond } from './conditions';
 import { milestone } from './milestones';
 import type { Mods, OneOffs } from './effects';
 import { computeFlows } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { emit } from './events';
 import type { EvDraft } from './events';
 import { recordOpening } from './record';
@@ -95,7 +95,7 @@ export function applyUpgrade(state: GameState, content: Content, def: UpgradeDef
   fireOneOffs(def.effects, 1, computeFlows(state, content).income, one);
   if (def.kind === 'efficiency') items.push(headline(state, content, 'efficiency', time, { year }, def.sector));
   let out: GameState = {
-    ...state, upgrades, sectors, flags, news: withNews(state.news, items),
+    ...state, upgrades, sectors, flags, ...newsWith(state, content, items),
     capital: one.capital < 0 ? Math.max(0, state.capital + one.capital) : state.capital + one.capital,
     mandate: one.mandate < 0 ? Math.max(0, state.mandate + one.mandate) : state.mandate + one.mandate,
     meta: one.slots ? { ...state.meta, slots: state.meta.slots + one.slots } : state.meta,
@@ -155,7 +155,7 @@ export function foundAppAs(state: GameState, content: Content, appId: string, by
   const year = calendarYear(state, content);
   const out: GameState = {
     ...state, capital: state.capital - cost, sectors,
-    news: withNews(state.news, [headline(state, content, 'appFounded', state.time, { year, app: def.name }, loc.sector)]),
+    ...newsWith(state, content, [headline(state, content, 'appFounded', state.time, { year, app: def.name }, loc.sector)]),
     run: recordOpening(state.run, state.time, 'found', appId, by),
   };
   return emit(out, [{ kind: 'appFounded', sector: loc.sector, id: appId, by }], state.time, year);

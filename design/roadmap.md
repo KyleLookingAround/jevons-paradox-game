@@ -174,7 +174,10 @@ spot illustrations per headline key (visual-direction item 6); the Reckoning as 
 as before and after (item 3); the proprietor figure and his watch.
 
 **Balance** (≈ 3 days): fork and dispatch audit (random arms within ±10% Hindsight per minute); each History clearable;
-each mechanic matters (a strategy that ignores it is ≥ 25% worse); `crisisFarm` never beats `budget` for Mandate or
+each mechanic is a temptation (M3 finish, the coordinator's decision, replacing "a strategy that ignores it is ≥ 25%
+worse"): the burning player (`efficiency`) who engages with it earns at least 15% more income in that Industry than one
+who ignores it, and the trade is shown at the point of decision (the card, the staked-out use, the next seam, and the
+mechanic's instrument say under a drawn line what it does to the line); `crisisFarm` never beats `budget` for Mandate or
 Hindsight per minute after run 2 (audit rec. 9a).
 
 **The first ending.** Credits on Steady State with every open Industry at the sink line (v1's `flags.won`, now

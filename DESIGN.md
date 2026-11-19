@@ -130,6 +130,14 @@ system stays for good.
 | The Transition (IV), 2030–2100 | Transition | risograph zine | the unbuilder |
 
 Bold: built. Each Industry has one mechanic of its own and one thing it teaches that no other does (`long-game.md`).
+
+**Each mechanic is a temptation.** Steam's deeper seams, Light's night uses, Motion's roads and suburbs and Compute's
+"free" business models pay the player who burns: engaging with each earns the `efficiency` player 30% to four times the
+income in that Industry, and a longer run. The same moves test the player who restrains: each adds use that a budget
+line must then hold back, so under a held line the restraint player who ignores Light's load curve or Motion's sprawl
+does better than one who takes them (measured 57% and 34% better). The game does not lecture on this; under a drawn
+line the card, the staked-out use and the next seam say plainly what they add to the line, and the instrument says what
+the mechanic is doing to it now.
 Industries open on milestone conditions (`unlock.when`, a data-only `Cond`, plus prerequisites and Reckonings), never
 on a service price, so restraint never locks content away. Motion, Compute and Code move behind the later layers in
 M4 (owner decision D3).
@@ -151,8 +159,9 @@ M4 (owner decision D3).
 
 ## Endings
 
-Three credits, and the game continues after each: the **Act I ending** (every Coal Age Industry at Steady State in one
-run, 15–17 h), the **Act II ending** (the consumption ledger within budget for 50 years, about 50 h), the **true ending**
+Three credits, and the game continues after each: the **Act I ending** (built in M3 as the first ending: every
+Industry open and **settled** at once, in one run, and held so for fifty model years, `GlobalParams.endingYears`;
+15–20 h), the **Act II ending** (the consumption ledger within budget for 50 years, about 50 h), the **true ending**
 (everything retired or settled at its sink line, wellbeing held for 50 years, the first pit flooded into a lake, about
 100 h). Also: **Backfire** (the default Reckoning), **Degrowth by accident** (hidden: population crashes until use
 falls), **Business as usual**, and the achievement **Jevons Was Right**. Endings report as ledgers, never as verdicts.

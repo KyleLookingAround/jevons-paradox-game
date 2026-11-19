@@ -1114,6 +1114,9 @@ html[data-look='agentic'] .stamped::after { transform: none; color: var(--good);
 .ledger li.full { border-color: var(--good); }
 .ledger li.full .dk { color: var(--good); font-weight: 700; }
 .ledger-note { font-size: calc(12.5px * var(--ts)); margin-top: 6px; }
+.bud-end { font-size: calc(12.5px * var(--ts)); margin-top: 8px; border-top: 1px solid var(--rule); padding-top: 6px; }
+.up-trade { font-size: calc(12.5px * var(--ts)); margin: 4px 0 0; color: var(--muted); font-style: italic; }
+.mech-line { font-size: calc(13px * var(--ts)); margin: 6px 0 0; font-style: italic; }
 .bud-settle { margin-left: auto; }
 .budget.is-settled { opacity: .92; }
 .settled-row { display: flex; flex-direction: column; gap: 4px; font-size: calc(14px * var(--ts)); }

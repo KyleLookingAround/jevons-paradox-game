@@ -14,7 +14,7 @@ import { milestone } from './milestones';
 import type { OneOffs } from './effects';
 import { emit } from './events';
 import { computeFlows, steadyView } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { sectorLevers, NO_LEVERS } from './levers';
 import { clamp, fin } from './util';
 import { featureOn } from './features';
@@ -74,7 +74,7 @@ export function settle(state: GameState, content: Content, s: SectorId): GameSta
   const items: NewsItem[] = [headline(state, content, 'settled', state.time, { year }, s)];
   let out: GameState = {
     ...state, levers, sectors: { ...state.sectors, [s]: ns }, capital: Math.max(0, fin(state.capital + one.capital)),
-    mandate: Math.max(0, fin(state.mandate + one.mandate)), news: withNews(state.news, items),
+    mandate: Math.max(0, fin(state.mandate + one.mandate)), ...newsWith(state, content, items),
   };
   out = applyM3OneOffs(out, content, one);
   out = { ...out, meta: milestone(out.meta, `settled:${s}`, null, year) };
@@ -100,7 +100,7 @@ export function unsettleAs(state: GameState, content: Content, s: SectorId, by: 
   const year = calendarYear(state, content);
   const out: GameState = {
     ...state, sectors: { ...state.sectors, [s]: unsettledSector(state, content, s) },
-    news: withNews(state.news, [headline(state, content, 'unsettled', time, { year }, s)]),
+    ...newsWith(state, content, [headline(state, content, 'unsettled', time, { year }, s)]),
   };
   return emit(out, [{ kind: 'unsettled', sector: s, by }], time, year);
 }

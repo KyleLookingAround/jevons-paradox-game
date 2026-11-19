@@ -21,6 +21,7 @@ import { computeFlows, primeFocusedFlows } from './flows';
 import { applyUpgrade, upgradeCost, upgradeMax, upgradeVisible, upgradeExcludedBy } from './purchases';
 import { step } from './step';
 import { fin } from './util';
+import { cardWanted } from './temptation';
 
 /* ------------------------------------------------------------------ */
 /* Projections                                                         */
@@ -203,6 +204,7 @@ export function upgradeViews(state: GameState, content: Content, sector?: Sector
     out.push({
       def, level, cost, visible, affordable: visible && !maxed && !excludedBy && !forbidden && state.capital >= cost, maxed, excludedBy,
       promisedChange, projectedDecade: proj.projectedDecade, bringsWithinReach: proj.bringsWithinReach, forbidden,
+      wantedChange: visible && !maxed ? cardWanted(state, content, def) : null,
     });
   }
   return out;

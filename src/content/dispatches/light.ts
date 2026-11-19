@@ -5,7 +5,8 @@
  */
 import type { DispatchDef } from '../../types';
 import {
-  AFTER_FIRST, BUDGET, all, cash, half, income, intensity, mandate, mrate, not, owns, sat, smoke, timed, wellbeing, eta,
+  AFTER_FIRST, BUDGET, absorb, all, cash, eta, half, income, intensity, mandate, mrate, not, owns, sat, smoke, timed,
+  wellbeing,
 } from './kit';
 
 const L = 'light';
@@ -58,7 +59,7 @@ export const lightDispatches: DispatchDef[] = [
         outcome: 'The arcade goes dark at ten, and the mercers write to the Board.',
         price: 'The late custom',
         effects: [mandate(20)],
-        modifier: timed(10, income(0.94, L)),
+        modifier: timed(15, income(0.94, L), wellbeing(0.5)),
       },
     ],
     rebound: 'Light for its own sake: the cheaper the lamp, the more of the night is lit',
@@ -82,7 +83,7 @@ export const lightDispatches: DispatchDef[] = [
         outcome: 'The reading room is full every evening, and the evening is a new thing to fill.',
         price: '£, and gas for the new evenings',
         cost: { capitalSeconds: 20 },
-        modifier: timed(12, wellbeing(0.9), sat(L, 1.02)),
+        modifier: timed(15, wellbeing(0.9), sat(L, 1.02)),
         reply: 'Reading room lit till ten; members read, and so do the gas meters',
       },
     ],
@@ -101,7 +102,7 @@ export const lightDispatches: DispatchDef[] = [
         outcome: 'The back streets are lit, a penny at a time, and the pennies add up.',
         price: 'Thousands of new burners',
         effects: [cash(15)],
-        modifier: timed(12, sat(L, 1.06, 'light.homes'), wellbeing(0.45)),
+        modifier: timed(15, sat(L, 1.06, 'light.homes'), wellbeing(0.45)),
         reply: 'Penny gas reaches the back streets; the company counts its coppers',
       },
       {
@@ -161,6 +162,7 @@ export const lightDispatches: DispatchDef[] = [
         label: 'Sell afternoons to trams',
         outcome: 'The trams run all afternoon on the station’s idle hours, and the station never cools.',
         price: 'A station that never idles, and never cools',
+        effects: [wellbeing(1), absorb(L, 0.002)],
         modifier: timed(15, sat(L, 1.06, 'light.trams'), income(1.04, L)),
         reply: 'Tramways to run on the power station’s idle afternoons',
       },
@@ -193,7 +195,7 @@ export const lightDispatches: DispatchDef[] = [
         outcome: 'The better lamp goes on sale, lamp sales halve, and people light another room.',
         price: '£ to retool, half the lamp sales, and another room lit',
         cost: { capitalSeconds: 30 },
-        effects: [eta(L, 1.04), sat(L, 1.015), income(0.97, L)],
+        effects: [eta(L, 1.04), sat(L, 1.015), income(0.97, L), wellbeing(1), absorb(L, 0.002)],
         reply: 'Two-thousand-hour lamp on sale; Geneva “disappointed”',
       },
     ],
@@ -219,6 +221,7 @@ export const lightDispatches: DispatchDef[] = [
         label: 'Fit lime purifiers',
         outcome: 'The gas burns cleaner, and the river path reopens.',
         price: '£ for the purifiers',
+        effects: [wellbeing(1), absorb(L, 0.002)],
         cost: { capitalSeconds: 30 },
         modifier: timed(15, intensity(L, 0.85)),
         reply: 'Lime purifiers fitted at the gasworks; the river path reopens',
@@ -253,8 +256,8 @@ export const lightDispatches: DispatchDef[] = [
       {
         label: 'Grant the flat rate',
         outcome: 'The works are lit on every floor at every hour, since nothing is saved by switching off.',
-        price: 'Lamps left burning, since switching off saves nothing',
-        effects: [cash(25)],
+        price: 'Lamps left burning, and the fog that comes of it',
+        effects: [cash(25), smoke(L, 0.08)],
         modifier: timed(15, sat(L, 1.05)),
         reply: 'Pryce works lit at a flat rate; nobody at Pryce’s switches off',
       },

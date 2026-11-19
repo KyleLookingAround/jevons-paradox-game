@@ -74,6 +74,19 @@ function trueMap(x: unknown): Record<string, boolean> {
   if (isObj(x)) for (const [k, v] of Object.entries(x)) if (v === true) out[k] = true;
   return out;
 }
+/** M3 (finish) migration: "the History was cleared this run", as it used to be read: a 'history' news item, or a
+ *  'historyCleared' event since the last 'reckoning' event. */
+function legacyHistoryCleared(news: unknown, events: unknown): boolean {
+  if (Array.isArray(news) && news.some((n) => isObj(n) && n.key === 'history')) return true;
+  const ev = Array.isArray(events) ? events : [];
+  for (let i = ev.length - 1; i >= 0; i--) {
+    const e = ev[i];
+    if (!isObj(e)) continue;
+    if (e.kind === 'historyCleared') return true;
+    if (e.kind === 'reckoning') return false;
+  }
+  return false;
+}
 function amountMap(x: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (isObj(x)) for (const [k, v] of Object.entries(x)) if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out[k] = v;
@@ -580,6 +593,10 @@ export function deserialize(text: string, content: Content): GameState | null {
         opening: validOpeningActions(run.opening),
         firstBudgetAt: isNum(run.firstBudgetAt) ? run.firstBudgetAt : null,
         ...(isNum(withheld0) ? { hindsightWithheld: withheld0 } : {}),
+        // M3 (finish): run flags; a save without them is migrated from its news and events (the old reading)
+        historyCleared: undefined, returnPublished: undefined,
+        ...((run.historyCleared === undefined ? legacyHistoryCleared(merged.news, merged.events) : run.historyCleared === true) ? { historyCleared: true } : {}),
+        ...((run.returnPublished === undefined ? Array.isArray(merged.news) && merged.news.some((n) => isObj(n) && n.key === 'return') : run.returnPublished === true) ? { returnPublished: true } : {}),
       },
       events: validEvents(merged.events, meta.eventSeq),
       pendingDividends: validPending(merged.pendingDividends, content),
@@ -594,6 +611,8 @@ export function deserialize(text: string, content: Content): GameState | null {
       ambientLast: amountMap(merged.ambientLast),
       orderLog: validOrderLog(merged.orderLog, content),
       historyLifted: merged.historyLifted === true,
+      // M3 (finish): the headline rotation, kept only when well formed (absent = {})
+      headlineUse: isObj(merged.headlineUse) ? amountMap(merged.headlineUse) : undefined,
       news: Array.isArray(merged.news)
         ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number')
           .map((n) => (typeof n.year === 'number' ? n : { ...n, year: Math.floor(START_YEAR + n.time * YEARS_PER_SECOND) }))

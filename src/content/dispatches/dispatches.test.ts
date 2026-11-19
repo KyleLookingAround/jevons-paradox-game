@@ -112,6 +112,10 @@ function effectProblems(where: string, e: EffectDef, out: string[]) {
   if (e.type === 'wellbeingAdd' && Math.abs(v!) > 1) out.push(`${where}: wellbeingAdd ${v}`);
   if (e.type === 'absorptionAdd' && Math.abs(v!) > 0.002) out.push(`${where}: absorptionAdd ${v}`);
   if (e.type === 'marginAdd' && Math.abs(v!) > 0.03) out.push(`${where}: marginAdd ${v}`);
+  /* M3 finish: the three new kinds */
+  if ((e.type === 'leakMul' || e.type === 'spillMul') && (v! < 0.5 || v! > 2)) out.push(`${where}: ${e.type} ${v} outside [0.5, 2]`);
+  if (e.type === 'leverCostMul' && [e.cost ?? 1, e.upkeep ?? 1].some((x) => x < 0.5 || x > 2)) out.push(`${where}: leverCostMul outside [0.5, 2]`);
+  if (e.type === 'leverCostMul' && e.lever !== undefined && !leverIds.has(e.lever)) out.push(`${where}: leverCostMul ${e.lever}`);
   if (['slotAdd', 'reveal', 'unlock', 'startLever', 'startFounded', 'institutionLoan', 'orderUnlock', 'offlineCapAdd', 'startCapitalMul', 'metaFlag'].includes(e.type)) out.push(`${where}: ${e.type} is not for dispatches`);
 }
 /** An effect that costs the player something (or trades one good for another). */
@@ -124,7 +128,9 @@ function adverse(e: EffectDef): boolean {
     case 'incomeMul': case 'mandateRateMul': case 'commonsYieldMul': return v < 1;
     case 'intensityMul': case 'costMul': case 'costMulOf': case 'capCostMul': return v > 1;
     case 'satMul': case 'halfPriceMul': case 'resourcePriceMul': case 'popGrowthMul': return v !== 1;
-    case 'forbid': return true;
+    case 'forbid': case 'suspendOrder': return true;
+    case 'leakMul': case 'spillMul': return v > 1;
+    case 'leverCostMul': return (e.cost ?? 1) > 1 || (e.upkeep ?? 1) > 1;
     default: return false;
   }
 }

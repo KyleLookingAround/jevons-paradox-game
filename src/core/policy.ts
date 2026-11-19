@@ -7,12 +7,12 @@ import type { Actor, Content, GameState, LeverRecycle, LeverView, NewsItem, Sect
 import { calendarYear } from './calendar';
 import { commonsOpen } from './commons';
 import { idx } from './contentIndex';
-import { modsOf, isForbidden, refreshEta } from './effects';
+import { modsOf, isForbidden, refreshEta, leverMulOf } from './effects';
 import { evalCond } from './conditions';
 import { emit } from './events';
 import type { EvDraft } from './events';
 import { computeFlows } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { leverLevelDef, leverNetUpkeep, leverReachable, leverVisible, recycleOptions, recycleOf } from './levers';
 import { featureOn } from './features';
 import { budgetROf, isWithin, newBudget, pacesOf } from './steady';
@@ -57,7 +57,8 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   if (target - cur.level > MAX_LEVEL_JUMP || isForbidden(mods, def.id, def)) return state;
   const inst = mods.startLevers[leverId] ?? 0;
   let cost = 0;
-  for (let l = cur.level + 1; l <= target; l++) if (l > inst) cost += leverLevelDef(def, l)?.mandateCost ?? 0;
+  const lm = leverMulOf(mods, def).cost;
+  for (let l = cur.level + 1; l <= target; l++) if (l > inst) cost += (leverLevelDef(def, l)?.mandateCost ?? 0) * lm;
   if (!(state.mandate >= cost)) return state;
   const f = fl.sectors[def.sector];
   let ref = cur.ref;
@@ -82,7 +83,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const raised = emit({
     ...state, mandate: state.mandate - cost, sectors, run,
     levers: { ...state.levers, [leverId]: { ...cur, level: target, ref: fin(ref) } },
-    news: withNews(state.news, items),
+    ...newsWith(state, content, items),
   }, ev, state.time, year);
   return def.kind === 'measure' ? refreshEta(raised, content) : raised;
 }
@@ -109,7 +110,7 @@ export function drawBudget(state: GameState, content: Content, sector: SectorId,
   const ev: EvDraft[] = [];
   const sectors = drawBudgetAt(state, content, sector, f.R, fl.wellbeing, items, ev, 'player', pace);
   const run = state.run.firstBudgetAt === null ? { ...state.run, firstBudgetAt: state.time } : state.run;
-  return emit({ ...state, sectors, run, news: withNews(state.news, items) }, ev, state.time, calendarYear(state, content));
+  return emit({ ...state, sectors, run, ...newsWith(state, content, items) }, ev, state.time, calendarYear(state, content));
 }
 
 const cap1 = (x: string): string => x.charAt(0).toUpperCase() + x.slice(1);
@@ -125,7 +126,8 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
     const visible = leverVisible(state, content, def, mods);
     const maxLevel = leverReachable(state, content, def);
     const next = level < maxLevel ? leverLevelDef(def, level + 1) : null;
-    const nextCost = next ? (level + 1 <= inst ? 0 : next.mandateCost) : null;
+    const lm = leverMulOf(mods, def);
+    const nextCost = next ? (level + 1 <= inst ? 0 : next.mandateCost * lm.cost) : null;
     const forbidden = isForbidden(mods, def.id, def);
     const se = def.sideEffects;
     let bite: LeverView['bite'] = null;
@@ -138,7 +140,7 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
     return {
       def, level, maxLevel, current: leverLevelDef(def, level), next, visible, nextCost,
       canRaise: visible && nextCost !== null && state.mandate >= nextCost && !forbidden,
-      upkeep: leverNetUpkeep(def, level, inst),
+      upkeep: leverNetUpkeep(def, level, inst, lm.upkeep),
       recycleOptions: opts, recycle: recycleOf(def, ls),
       recycleChoices: opts.map((option) => ({
         option,

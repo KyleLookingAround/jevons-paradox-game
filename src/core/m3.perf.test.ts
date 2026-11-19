@@ -62,24 +62,37 @@ describe('M3 purity, determinism, speed', () => {
     expect(f.lastOffline!.simulated).toBeGreaterThan(0);
     expect(ms).toBeLessThan(3000);
   });
-  test('a step with the load and travel sectors open costs at most ~2× the M2 step (loose bound: 3×)', () => {
+  // M3 finish: robust on a loaded machine. Each sample times the two fixtures back to back (interleaved, best of three
+  // batches each), so a burst of load hits both sides of one ratio; the bound is on the MEDIAN of nine such ratios. Idle
+  // it measures about ×2; the bound stays 3×, so a real regression in the M3 solve (load's bisection path, travel's
+  // inner fixed point) still fails it.
+  test('a step with the load and travel sectors open costs at most ~2× the M2 step (median of 9 interleaved ratios < 3×)', () => {
     const s3 = play(200);
     const s2 = model.setOrders(openAll(C2, 120), C2, { market: { on: true } });
-    const time = (s: GameState, c: Content) => {
+    const batch = (s: GameState, c: Content) => {
       let best = Infinity;
-      for (let r = 0; r < 7; r++) {
+      for (let r = 0; r < 3; r++) {
         const t0 = performance.now();
         let t = s;
-        for (let i = 0; i < 100; i++) { const u = model.tick(t, c, 1); t = u === t ? s : u; }
-        best = Math.min(best, (performance.now() - t0) / 100);
+        for (let i = 0; i < 60; i++) { const u = model.tick(t, c, 1); t = u === t ? s : u; }
+        best = Math.min(best, (performance.now() - t0) / 60);
       }
       return best;
     };
     expect(model.derive(s2, C2).pendingReckoning).toBeNull();
     expect(model.derive(s3, M).pendingReckoning).toBeNull();
     expect(C2.sectorOrder.every((e) => s2.sectors[e].open && s3.sectors[e].open)).toBe(true);
-    const a = time(s2, C2), b = time(s3, M);
-    console.log(`µs per 1 s tick, five Industries open: M2 fixture ${(a * 1000).toFixed(1)}, fixtureM3 (load, travel, priceSeen, a measure, bites) ${(b * 1000).toFixed(1)} (×${(b / a).toFixed(2)})`);
-    expect(b / a).toBeLessThan(3);
+    batch(s2, C2); batch(s3, M); // warm both paths
+    const ratios: number[] = [];
+    let a = Infinity, b = Infinity;
+    for (let k = 0; k < 9; k++) {
+      const x = batch(s2, C2), y = batch(s3, M);
+      a = Math.min(a, x); b = Math.min(b, y);
+      ratios.push(y / x);
+    }
+    ratios.sort((p, q) => p - q);
+    const med = ratios[4];
+    console.log(`µs per 1 s tick, five Industries open: M2 fixture ${(a * 1000).toFixed(1)}, fixtureM3 (load, travel, priceSeen, a measure, bites) ${(b * 1000).toFixed(1)} (median ratio ×${med.toFixed(2)}, range ×${ratios[0].toFixed(2)}–×${ratios[8].toFixed(2)})`);
+    expect(med).toBeLessThan(3);
   });
 });

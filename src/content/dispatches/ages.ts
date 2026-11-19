@@ -4,7 +4,10 @@
  * Content is data (see ../README.md); the rules and magnitudes are in kit.ts and dispatches.test.ts.
  */
 import type { DispatchDef } from '../../types';
-import { AFTER_FIRST, BUDGET, all, cash, income, mandate, mrate, owns, price, rk, sat, timed, wellbeing } from './kit';
+import {
+  AFTER_FIRST, BUDGET, absorb, all, cash, income, intensity, mandate, mrate, owns, price, rk, sat, smoke, timed,
+  wellbeing,
+} from './kit';
 
 export const ageDispatches: DispatchDef[] = [
   {
@@ -76,14 +79,15 @@ export const ageDispatches: DispatchDef[] = [
         label: 'Back the evening off',
         outcome: 'One evening a week is quiet, and the others are a little busier.',
         price: 'One evening’s takings a week',
+        effects: [wellbeing(1), absorb('compute', 0.002)],
         modifier: timed(15, sat('compute', 0.95), wellbeing(0.75), income(0.96)),
         reply: 'Wednesday declared an evening off the screens; Thursday busier',
       },
       {
         label: 'Leave it to households',
         outcome: 'Households are left to it, and the machines keep every evening.',
-        price: 'Every evening spent on the machines',
-        effects: [cash(25)],
+        price: 'Every evening on the machines, and the carbon of it',
+        effects: [cash(25), smoke('compute', 0.08)],
         modifier: timed(10, sat('compute', 1.02)),
       },
     ],

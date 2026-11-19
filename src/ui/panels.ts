@@ -6,6 +6,7 @@ import type { EffectDef, LeverRecycle, LeverView, PaceDef, SectorDef, UpgradeVie
 import { STEADY_STATE_YEARS, FEATURE_IDS } from '../types';
 import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion, replay, watchNear, isNear } from './dom';
 import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit, dur, unitOne } from './fmt';
+import { tradeText } from './trade';
 import { sound } from './sound';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
@@ -64,6 +65,16 @@ export function effectText(ctx: Ctx, e: EffectDef): string {
     case 'populationMul': return `Population ${pct(e.value - 1)} at once`;
     case 'pressureAdd': return `${def?.pressure.name ?? 'Pressure'} ${e.value >= 0 ? '+' : '−'}${fmt(Math.abs(e.value * 100))} points at once`;
     case 'metaFlag': return '';
+    /* --- M3 finish --- */
+    case 'leverCostMul': {
+      const nm = e.lever ? ctx.content.levers?.find((l) => l.id === e.lever)?.name : undefined;
+      const who = nm ?? (e.leverKind ? `${e.leverKind === 'measure' ? 'Measures' : `${e.leverKind.charAt(0).toUpperCase()}${e.leverKind.slice(1)} levers`}${e.sector ? ` in ${sectorDef(ctx, e.sector)?.name ?? ''}` : ''}` : e.sector ? `${sectorDef(ctx, e.sector)?.name ?? 'Its'} levers` : 'Every lever');
+      const parts = [e.cost != null && e.cost !== 1 ? `${pct(e.cost - 1)} Mandate to raise` : '', e.upkeep != null && e.upkeep !== 1 ? `${pct(e.upkeep - 1)} upkeep` : ''].filter(Boolean);
+      return parts.length ? `${who}: ${parts.join(', ')}` : '';
+    }
+    case 'suspendOrder': return e.order === 'market' ? 'The Market places no orders' : e.order === 'civilService' ? 'The Civil Service stands idle' : e.order === 'treasury' ? 'No Treasury rules for the Commons' : 'No standing replies';
+    case 'leakMul': return `${pct(e.value - 1)} leakage past the cap`;
+    case 'spillMul': { const to = def?.spill ? sectorDef(ctx, def.spill.to)?.name : undefined; return `${pct(e.value - 1)} spill${to ? ` into ${to}` : ''}`; }
     default: return '';
   }
 }
@@ -137,18 +148,20 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
   const reach = h('div', { class: 'reach' });
   const ruled = h('p', { class: 'ruled' });
   const eff = h('p', { class: 'up-eff' });
+  // M3 finish: a temptation card's trade under a drawn line (UpgradeView.wantedChange; null otherwise)
+  const trade = h('p', { class: 'up-trade', hidden: true });
   const projected = kind === 'efficiency' || kind === 'capital';
 
   let el: HTMLElement;
   if (kind === 'efficiency') {
     el = h('article', { class: 'up up-efficiency' },
       h('header', { class: 'up-h' }, name, lvl), blurb,
-      h('div', { class: 'up-promise' }, promise, promiseCap), decade, reach, ruled, buy);
+      h('div', { class: 'up-promise' }, promise, promiseCap), decade, reach, trade, ruled, buy);
   } else if (kind === 'research') {
     el = h('article', { class: 'up up-research' },
-      h('div', { class: 'pamph-k', text: 'A study' }), name, h('div', { class: 'pamph-rule', 'aria-hidden': 'true' }), blurb, eff, ruled, buy);
+      h('div', { class: 'pamph-k', text: 'A study' }), name, h('div', { class: 'pamph-rule', 'aria-hidden': 'true' }), blurb, eff, trade, ruled, buy);
   } else {
-    el = h('article', { class: `up up-${kind}` }, h('header', { class: 'up-h' }, name, lvl), blurb, eff, ...(projected ? [decade, reach] : []), ruled, buy);
+    el = h('article', { class: `up up-${kind}` }, h('header', { class: 'up-h' }, name, lvl), blurb, eff, ...(projected ? [decade, reach] : []), trade, ruled, buy);
   }
   setText(promiseCap, `${res} per unit of ${lower(sec?.service.name ?? 'service')}`);
   setText(eff, def.effects.map((e) => effectText(ctx, e)).filter(Boolean).join(' · '));
@@ -172,6 +185,9 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
     if (by) setText(ruled, `Ruled out by ${ctx.content.upgrades.find((u) => u.id === by)?.name ?? 'another choice'}`);
     else if (v.forbidden) setText(ruled, 'Forbidden for this run');
     show(ruled, !!by || !!v.forbidden);
+    const wc = by ? null : v.wantedChange;
+    show(trade, wc != null && Number.isFinite(wc));
+    if (wc != null && Number.isFinite(wc)) setText(trade, tradeText(res, wc, 'buy'));
     if (kind === 'efficiency') {
       const pc = v.promisedChange;
       const s = pc == null || !Number.isFinite(pc) ? '' : pc < -0.0005 ? 'minus' : pc > 0.0005 ? 'plus' : '';

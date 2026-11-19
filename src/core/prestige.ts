@@ -14,7 +14,7 @@ import type { EvDraft } from './events';
 import { featureOn } from './features';
 import { dueFeature, unlockFeature } from './unfold';
 import { computeFlows } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { hindsightTerms } from './hindsight';
 import { stageOf } from './purchases';
 import { clearedThisRun } from './history';
@@ -109,7 +109,7 @@ export function reckon(state: GameState, content: Content): GameState {
   const offer = featureOn(content, s0.meta, 'charters') ? drawOffer(s0, content, charter ?? undefined) : [];
   const s = { ...s0, charterOffer: offer };
   const year = calendarYear(s, content);
-  const out = { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector), ...fItems]) };
+  const out = { ...s, ...newsWith(s, content, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector), ...fItems]) };
   const r = emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }, ...fEv], 0, year);
   // M3: an unpublished household return is published into the new run's news (only once the Proprietor's Day has come)
   return r.meta.flags?.proprietor === true ? publish(r, content, 0, true) : r;

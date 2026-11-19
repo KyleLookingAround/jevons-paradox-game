@@ -20,16 +20,9 @@ export function historyOffered(state: GameState, content: Content, def: HistoryD
   return featureOn(content, state.meta, 'histories') && (!def.requires || evalCond(state, content, def.requires));
 }
 
-/** The History in force was cleared in this run (no run-scoped field exists: read this run's news and events). */
-export function clearedThisRun(state: GameState): boolean {
-  if (state.news.some((n) => n.key === 'history')) return true;
-  const ev = state.events ?? [];
-  for (let i = ev.length - 1; i >= 0; i--) {
-    if (ev[i].kind === 'historyCleared') return true;
-    if (ev[i].kind === 'reckoning') return false;
-  }
-  return false;
-}
+/** The History in force was cleared in this run (RunStats.historyCleared; M3 finish: a run flag, no longer read from
+ *  the last 40 news items, which a long run could cycle through and clear the History twice). */
+export const clearedThisRun = (state: GameState): boolean => state.run.historyCleared === true;
 
 export function chooseHistory(state: GameState, content: Content, id: string | null): GameState {
   if (!isFreshRun(state) || !featureOn(content, state.meta, 'histories')) return state;
@@ -70,7 +63,7 @@ export function stepHistory(prev: GameState, next: GameState, content: Content, 
     };
     if (def.reward?.achievement && !meta.achievements[def.reward.achievement]) meta = { ...meta, achievements: { ...meta.achievements, [def.reward.achievement]: true } };
     meta = milestone(meta, 'history', null, year);
-    s = { ...s, meta };
+    s = { ...s, meta, run: { ...s.run, historyCleared: true } };
     items.push(headline(prev, content, 'history', s.time, { year, name: def.name }));
     ev.push({ kind: 'historyCleared', id, ...(first ? { first: true } : {}) });
   }

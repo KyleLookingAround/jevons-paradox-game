@@ -90,6 +90,8 @@ import { content as realContent } from '../src/content';
 import { fixture, fixtureM3, fixtureM3Bank } from '../src/core/fixture';
 import { BUDGET_TOLERANCE, YEARS_PER_SECOND } from '../src/types';
 import type { Content, EffectDef, GameState, HindsightTerms, InstitutionDef, SectorId, UpgradeView } from '../src/types';
+// @ts-ignore — node types are not installed; Bun provides node:fs
+import { readFileSync, writeFileSync } from 'node:fs';
 
 declare const process: { argv: string[]; exit(code?: number): never };
 
@@ -176,13 +178,30 @@ const HOLD_FOR = parseFloat(flag('hold-for', '30')) * 60;
 const FIXED_RUN = parseFloat(flag('fixed-run', '0')) * 60;
 const PACE = flag('pace', '') || undefined;
 const DIVIDEND = flag('dividend', '0');
-const SETTLE = flag('settle', 'false') === 'true';
+/**
+ * --ending=on|off (M3 finish; default on): the restraint players (budget, mixed from run 3, market, human) pursue the
+ * first ending as a competent player would under its rule (every Industry settled at once, held endingYears): they
+ * settle each Industry as soon as it can be settled; under a held line whose sky is not yet clear they reach for the
+ * cap (one Tighten every --sky-every seconds, 60 by default; the human every 300 s once the line has held ten
+ * minutes), then the levers under the line; and they stay in the run, past the --hours cap (to --ending-hours, 8),
+ * while four or more Industries are settled or a clear streak is running towards the fifth.
+ */
+const ENDING = flag('ending', 'on') !== 'off';
+const SKY_EVERY = parseFloat(flag('sky-every', '60'));
+const ENDING_HOURS = parseFloat(flag('ending-hours', '8'));
+const SETTLE = flag('settle', 'false') === 'true' || ENDING;
 const COMMONS = flag('commons', 'false') === 'true';
 const MARKET = flag('market', '');
 const OFFLINE_CHECK = flag('offline-check', 'false') === 'true';
 const DECISIONS = flag('decisions', 'false') === 'true';
 const TOTAL_HOURS = parseFloat(flag('total-hours', '0'));
 const PAYBACK = parseFloat(flag('payback', '0'));
+/** --dump-at=K [--dump-to=<file>]: write the serialize()d state at the start of run K (after the Hindsight spend); --from=<file>
+ *  starts a campaign from such a state (balance experiments: replay one long run without the hours before it). */
+const DUMP_AT = parseInt(flag('dump-at', '0'), 10) || 0;
+const DUMP_TO = flag('dump-to', `design/scratch/state-run${DUMP_AT}.json`);
+const FROM = flag('from', '');
+const SKY = flag('sky', 'false') === 'true';
 const ORDER = C.sectorOrder;
 /* M3 flags */
 const SEAMS = flag('seams', 'on') !== 'off';
@@ -408,7 +427,7 @@ function raiseLevers(s: GameState, ctx: RunCtx): GameState {
 
 /* ---------------- the budget player ---------------- */
 
-interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number>; lastStock?: number; stockP?: Record<string, number>; lastPush?: Record<string, number> }
+interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number>; lastStock?: number; stockP?: Record<string, number>; lastPush?: Record<string, number>; lastSky?: Record<string, number>; skyP?: Record<string, number> }
 
 function budgetFoundOk(prev: GameState): (next: GameState, e: SectorId) => string | null {
   return (next, e) => {
@@ -491,6 +510,7 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
   }
   s = tendStock(s, ctx, memo);
   s = pushToSink(s, ctx, memo, 120, 0);
+  s = towardsSky(s, ctx, memo, SKY_EVERY, 0);
   // keep Mandate positive: drop the costliest non-cap lever while net Mandate is negative and the reserve is thin
   const d = model.derive(s, C);
   if (d.mandatePerSec < 0 && s.mandate < -60 * d.mandatePerSec) {
@@ -558,6 +578,49 @@ function pushToSink(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
   return s;
 }
 
+/**
+ * M3 finish (--ending): under a held line whose sky has not cleared, a player who wants the Industry settled tightens
+ * its cap (the line's own instrument: R falls, and the smoke with it), one level every `every` seconds per Industry
+ * while the smoke is not already falling, wellbeing is at the target and Mandate allows; with no cap left to tighten,
+ * the levers under the line (pushToSink's order). Code's stock (absorbed by nothing) is cleared by deletion.
+ */
+function towardsSky(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, heldFor: number): GameState {
+  if (!ENDING) return s;
+  const d = model.derive(s, C);
+  if (!d.features.settlement || d.wellbeing < C.global.wellbeingTarget) return s;
+  memo.lastSky ??= {};
+  memo.skyP ??= {};
+  for (const e of ORDER) {
+    const x = d.sectors[e], es = s.sectors[e];
+    if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null || es.clearYears > 0) continue;
+    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (s.time - (memo.lastSky[e] ?? -Infinity) < every) continue;
+    const p0 = memo.skyP[e];
+    memo.skyP[e] = es.pressure;
+    memo.lastSky[e] = s.time;
+    if (p0 === undefined || es.pressure < p0 * 0.97) continue; // falling on its own: wait
+    const views = model.leverViews(s, C).filter((v) => v.def.sector === e && v.visible && v.canRaise && v.nextCost !== null
+      && s.mandate >= (v.nextCost ?? 0) + 50 && d.mandatePerSec - upkeepStep(s, v.def.id) > 0.02);
+    const order = C.sectors[e].pressureSource === 'service' ? ['deletion', 'sharedLibs', 'reviewGate'] : ['cap', 'substitution', 'sufficiency', 'greenSpending'];
+    const l = views.filter((v) => order.includes(v.def.kind)).sort((a, b) => order.indexOf(a.def.kind) - order.indexOf(b.def.kind) || a.level - b.level)[0];
+    if (!l) continue;
+    const next = model.setLever(s, C, l.def.id, l.level + 1);
+    if (next === s) continue;
+    s = next;
+    ctx.ev.push({ t: s.time, text: `lever ${l.def.id} → L${l.level + 1} (towards a clear sky to settle: P ${n(es.pressure)} > ${n(x.clearP)})` });
+  }
+  return s;
+}
+
+/** --ending: the run is worth staying in for the first ending: not yet won this run, and four or more Industries
+ *  settled, or three settled with a clear streak running in another (Settlement does not survive a Reckoning). */
+function pursuing(s: GameState): boolean {
+  if (s.flags.won || (C.features?.settlement && s.meta.features?.settlement === undefined)) return false;
+  const settled = ORDER.filter((e) => s.sectors[e]?.settled).length;
+  const streak = ORDER.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
+  return settled >= 4 || (settled >= 3 && streak);
+}
+
 /* ---------------- the plausible human restraint player (QA, 19 Nov 2026) ---------------- */
 
 /**
@@ -609,6 +672,7 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
   // once a line has held ten minutes and the panel says the sky waits, a person reaches for the next lever on the page,
   // every five minutes; and settles an Industry as soon as it is offered (M3 balance, second pass)
   s = pushToSink(s, ctx, memo, 300, 600);
+  s = towardsSky(s, ctx, memo, 300, 600);
   s = humanBite(s, ctx);
   for (const e of ORDER) if (model.derive(s, C).sectors[e]?.canSettle) { const nx = model.settle(s, C, e); if (nx !== s) { s = nx; ctx.ev.push({ t: s.time, text: `SETTLED ${e} (human)` }); } }
   return s;
@@ -787,52 +851,56 @@ function armPay(effects: EffectDef[] | undefined, cost?: { mandate?: number; cap
   return x;
 }
 /**
- * --dispatch=thoughtful: the arm that suits the player's situation. Holding a line (in the letter's Industry, or any line
- * for a general letter): demand, smoke and dearer service are bad, cheaper coal and income are neutral-to-bad, Mandate
- * is good (it buys levers). Booming (no line): demand and income are good, smoke is bad only near a crisis, Mandate is
- * worth little. Each effect is weighed by how long it lasts (a standing effect counts as 60 model years).
+ * --dispatch=thoughtful: the arm that suits the player's situation (M3 finish: reweighed to what each effect is worth
+ * in Hindsight in that situation). Holding a line (in the letter's Industry, or any line for a general letter): demand
+ * strains the line (a cap leaks; the streak breaks) and income buys little (capital piles up under a line); what pays is wellbeing,
+ * efficiency (under a cap it is service, and so wellbeing), clearer skies (smoke per ton, absorption: Steady State),
+ * and Mandate while it is short (it buys the levers). Booming (no line): demand, income, capital and cheap coal are
+ * wellbeing-years; smoke matters near a crisis; Mandate is worth little. A standing effect counts as 60 model years.
  */
 function armSuits(s: GameState, sector: SectorId | undefined, a: { effects?: EffectDef[]; modifier?: { effects: EffectDef[]; years: number }; cost?: { mandate?: number; capitalSeconds?: number } }): number {
   const holding = sector ? !!s.sectors[sector]?.budget : ORDER.some((e) => s.sectors[e]?.budget);
+  const short = s.mandate < 20_000; // Mandate is short until the pile covers many Tightenings (a cap step costs hundreds to thousands)
+  const mVal = holding ? (short ? 30 : 300) : 200;
   const ONE = new Set(['mandateAdd', 'capitalAdd', 'populationMul', 'pressureAdd', 'metaFlag', 'reserveAdd']);
-  let v = -(a.cost?.mandate ?? 0) / (holding ? 40 : 120) - (a.cost?.capitalSeconds ?? 0) / 60;
+  let v = -(a.cost?.mandate ?? 0) / mVal - (a.cost?.capitalSeconds ?? 0) / (holding ? 300 : 40);
   const weigh = (e: EffectDef, years: number) => {
     const t = years / 10;
     const x = (e as { value?: number }).value ?? 1;
     if (holding) {
-      // under a cap: demand is held anyway (and buys wellbeing within the line); what counts is Mandate (levers),
-      // wellbeing (full decades), and smoke (clear skies)
       switch (e.type) {
-        case 'mandateAdd': v += x / 30; return;
-        case 'capitalAdd': v += x / 60; return;
+        case 'mandateAdd': v += x / mVal; return;
+        case 'capitalAdd': v += x / 300; return;
         case 'pressureAdd': v -= x * 40; return;
-        case 'populationMul': v += (x - 1) * 10; return;
-        case 'satMul': case 'halfPriceMul': v += (x - 1) * 5 * t; return;
-        case 'etaMul': v += (x - 1) * 10 * t; return;
-        case 'intensityMul': v -= (x - 1) * 40 * t; return;
-        case 'resourcePriceMul': return;
-        case 'incomeMul': v += (x - 1) * 15 * t; return;
-        case 'mandateRateMul': v += (x - 1) * 40 * t; return;
+        case 'populationMul': v += (x - 1) * 2; return;
+        case 'satMul': case 'halfPriceMul': v -= (x - 1) * 20 * t; return; // more appetite strains the line (a cap leaks): a broken streak
+        case 'etaMul': v += (x - 1) * 20 * t; return;
+        case 'intensityMul': v -= (x - 1) * 20 * t; return;
+        case 'incomeMul': v += (x - 1) * 3 * t; return;
+        case 'mandateRateMul': v += (x - 1) * (short ? 40 : 5) * t; return;
         case 'wellbeingAdd': v += x * 6 * t; return;
         case 'absorptionAdd': v += x * 4000 * t; return;
-        case 'forbid': v -= 1 * t; return;
+        case 'forbid': v -= 2 * t; return;
+        case 'leverCostMul': v += ((1 - (e.cost ?? 1)) + (1 - (e.upkeep ?? 1))) * (short ? 20 : 3) * t; return;
+        case 'leakMul': v -= (x - 1) * 5 * t; return;
+        case 'spillMul': v -= (x - 1) * 3 * t; return;
         default: return;
       }
     }
     switch (e.type) {
-      case 'mandateAdd': v += x / (holding ? 40 : 120); break;
-      case 'capitalAdd': v += x / 60; break;
-      case 'pressureAdd': v -= x * (holding ? 40 : 10); break;
+      case 'mandateAdd': v += x / mVal; break;
+      case 'capitalAdd': v += x / 40; break;
+      case 'pressureAdd': v -= x * 10; break;
       case 'populationMul': v += (x - 1) * 20; break;
-      case 'satMul': case 'halfPriceMul': v += (holding ? -(x - 1) * 30 : (x - 1) * 10) * t; break;
-      case 'etaMul': v += (holding ? -(x - 1) * 10 : (x - 1) * 10) * t; break;
-      case 'intensityMul': v += -(x - 1) * 20 * t; break;
-      case 'resourcePriceMul': v += (holding ? (x - 1) * 10 : -(x - 1) * 10) * t; break;
-      case 'incomeMul': v += (x - 1) * (holding ? 5 : 20) * t; break;
-      case 'mandateRateMul': v += (x - 1) * (holding ? 30 : 8) * t; break;
+      case 'satMul': case 'halfPriceMul': v += (x - 1) * 15 * t; break;
+      case 'etaMul': v += (x - 1) * 10 * t; break;
+      case 'intensityMul': v += -(x - 1) * 8 * t; break;
+      case 'resourcePriceMul': v += -(x - 1) * 10 * t; break;
+      case 'incomeMul': v += (x - 1) * 20 * t; break;
+      case 'costMulOf': v += -(x - 1) * 10 * t; break;
+      case 'mandateRateMul': v += (x - 1) * 4 * t; break;
       case 'wellbeingAdd': v += x * 3 * t; break;
-      case 'popGrowthMul': v -= (x - 1) * (holding ? 10 : 0) * t; break;
-      case 'forbid': v -= holding ? 3 * t : 0; break;
+      case 'spillMul': v += (x - 1) * 3 * t; break;
       default: break;
     }
   };
@@ -962,6 +1030,8 @@ interface RunReport {
     seams: Record<SectorId, number>; loadFactor: Record<SectorId, number>; speed: Record<SectorId, number>; sprawl: Record<SectorId, number>;
     answered: number; defaulted: number; history: string | null; historyClearedMin: number | null; endingHour: number | null; mandateEnd: number;
     wy: Record<string, number>;
+    /** M3 finish: each Industry's player income this run (Σ SectorDerived.income × dt, £), and when each opened (s) */
+    inc: Record<string, number>;
   };
 }
 
@@ -974,6 +1044,8 @@ function sampleRow(s: GameState, open: SectorId[], extra: boolean): string {
     row += ` │ ${pad(n(x.etaFold), 5)} ${pad(n(x.rFold), 5)} ${pad(pct(x.reserveFraction), 4)} ${pad(pct(x.pressureFraction), 4)}`;
     if (x.load) row += ` LF${x.load.factor.toFixed(2)} c${n(x.load.capCostEff)} p${n(x.servicePrice)}`;
     if (x.travel) row += ` v${x.travel.speed.toFixed(2)} h${x.travel.hoursPerHead.toFixed(2)}`;
+    // --sky: smoke over its clear level, the clear streak (years) and S when settled
+    if (SKY) row += x.settled ? ' SETTLED' : ` P/clr ${x.clearP ? (s.sectors[e].pressure / x.clearP).toFixed(2) : '-'} cy${Math.floor(s.sectors[e].clearYears ?? 0)}`;
     if (extra) {
       row += ` ${pad(pct(x.rebound), 5)} ${pad(n(x.frontierFold), 5)} ${pad(x.budgetR !== null && x.resourceUse > 0 ? n(x.budgetR / x.resourceUse) : '-', 5)}` +
         ` ${pad(n(x.steadyYears), 5)} ${pad(String(x.budgetDecades), 3)}`;
@@ -1027,6 +1099,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
   const seenApps = new Map<string, number>();
   /** each Industry's own wellbeing-years this run (Σ W_s dt): its contribution to the main Hindsight term (--ignore) */
   const wy: Record<string, number> = {};
+  const inc: Record<string, number> = {};
   const restraint = mode === 'budget' || mode === 'levers' || mode === 'market' || mode === 'human' || mode === 'crisisFarm';
   let firstDecadeLean: boolean | null = null;
   let settlements = 0;
@@ -1050,7 +1123,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
   while (true) {
     const pend = model.derive(s, C).pendingReckoning;
     if (pend) break;
-    if (s.time >= capT) { stopReason = `time cap ${HOURS} h`; break; }
+    if (s.time >= capT && !(ENDING && restraint && s.time < ENDING_HOURS * 3600 && pursuing(s))) { stopReason = s.flags.won && s.time > capT + 1 ? 'the ending reached, past the time cap' : `time cap ${s.time >= ENDING_HOURS * 3600 ? ENDING_HOURS : HOURS} h`; break; }
     if (mode !== 'idle') {
       const tick5 = Math.floor(s.time) % 5 === 0;
       if (mode === 'budget') {
@@ -1156,13 +1229,13 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       for (const e of ORDER) if (d.sectors[e]) reboundAtReveal[e] = d.sectors[e]!.rebound;
     }
     if (click.atCondenser === null && (s.upgrades['steam.condenser'] ?? 0) > 0) click.atCondenser = clickRatio(s);
-    if (!prev.flags.won && s.flags.won) ev.push({ t: s.time, text: 'WON: Steady State across every sector' });
+    if (!prev.flags.won && s.flags.won) ev.push({ t: s.time, text: 'WON: every Industry settled, held for the ending years' });
     for (const l of C.levers) {
       const la = prev.levers[l.id]?.level ?? 0, lb = s.levers[l.id]?.level ?? 0;
       if (lb < la) ev.push({ t: s.time, text: `     lever ${l.id} lapses to L${lb}` });
     }
     const d = model.derive(s, C);
-    for (const e of ORDER) if (d.sectors[e]) wy[e] = (wy[e] ?? 0) + d.sectors[e]!.wellbeingShare * DT * YEARS_PER_SECOND;
+    for (const e of ORDER) if (d.sectors[e]) { wy[e] = (wy[e] ?? 0) + d.sectors[e]!.wellbeingShare * DT * YEARS_PER_SECOND; inc[e] = (inc[e] ?? 0) + d.sectors[e]!.income * DT; }
     for (const b of ctx.effBuys) {
       if (b.rAfter60 === undefined && s.time >= b.t + 60) b.rAfter60 = d.sectors[b.sector]?.resourceUse ?? 0;
       if (b.rAfter120 === undefined && s.time >= b.t + 120) b.rAfter120 = d.sectors[b.sector]?.resourceUse ?? 0;
@@ -1201,7 +1274,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     // about to pay a decade or a Steady State)
     if (fixedRun <= 0 && FIXED_RUN > 0 && idx >= 3 && s.time >= FIXED_RUN && !pend) { stopReason = `fixed ${min(FIXED_RUN).trim()} min`; break; }
     if (fixedRun > 0 && s.time >= fixedRun) { stopReason = `fixed ${min(fixedRun).trim()} min`; break; }
-    if (fixedRun <= 0 && !(FIXED_RUN > 0 && idx >= 3) && (mode === 'budget' || mode === 'market' || mode === 'human') && Math.floor(s.time) % 10 === 0) {
+    if (fixedRun <= 0 && !(FIXED_RUN > 0 && idx >= 3) && (mode === 'budget' || mode === 'market' || mode === 'human') && Math.floor(s.time) % 10 === 0 && !(ENDING && pursuing(s))) {
       hist.push([s.time, d.hindsightIfReckonNow]);
       const old = hist.find(([t]) => t >= s.time - 600);
       const T = d.hindsightTerms;
@@ -1343,7 +1416,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       sprawl: Object.fromEntries(ORDER.filter((e) => d.sectors[e]?.travel).map((e) => [e, d.sectors[e]!.travel!.sprawl])),
       answered: s.run.dispatchesAnswered, defaulted: s.run.dispatchesDefaulted, history: s.meta.history,
       historyClearedMin: ctx.firsts.historyCleared !== undefined ? ctx.firsts.historyCleared / 60 : null,
-      endingHour: ctx.firsts.ending !== undefined ? ctx.firsts.ending / 3600 : null, mandateEnd: s.mandate, wy,
+      endingHour: ctx.firsts.ending !== undefined ? ctx.firsts.ending / 3600 : null, mandateEnd: s.mandate, wy, inc,
     } } : {}),
   };
   if (COMMONS && SUMMARY) {
@@ -1369,12 +1442,18 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
 interface CampaignOpts { seed?: number; chooseCharter?: (s: GameState) => string | null; quietSummary?: boolean }
 function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: string[], opts: CampaignOpts = {}): RunReport[] {
   let s = model.createState(C, undefined, opts.seed ?? SEED);
+  // --from=<file> (balance experiments): start from a serialize()d state (e.g. written by --dump-at); the run numbers
+  // and the cumulative hours start from that save
+  if (FROM) { const t = model.deserialize(readFileSync(FROM, 'utf8'), C); if (!t) { console.error(`--from: unusable save ${FROM}`); process.exit(2); } s = t; }
+  const base = FROM ? s.meta.totalSeconds : 0;
+  const run0 = FROM ? s.meta.reckonings : 0;
   if (HISTORY && HISTORY_AT <= 0 && model.historyViews(s, C).find((v) => v.def.id === HISTORY)?.canChoose) s = model.chooseHistory(s, C, HISTORY);
   const reports: RunReport[] = [];
   let cum = 0;
   const cumDecisions: number[] = [];
   const total = TOTAL_HOURS > 0 ? TOTAL_HOURS * 3600 : Infinity;
-  for (let i = 1; TOTAL_HOURS > 0 ? cum < total : i <= nRuns; i++) {
+  for (let i = run0 + 1; TOTAL_HOURS > 0 ? base + cum < total : i <= run0 + nRuns; i++) {
+    if (DUMP_AT === i) { writeFileSync(DUMP_TO, model.serialize(s)); log(`  state at the start of run ${i} written to ${DUMP_TO}`); }
     const runMode: Strategy = mode === 'mixed' || mode === 'charter' ? (i <= 2 ? 'efficiency' : 'budget')
       : mode === 'market' ? (i === 1 ? 'efficiency' : 'market') : mode;
     const r = playRun(s, i, runMode, skip, arms);
@@ -1385,7 +1464,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
       const R = r.report, f = R.firsts, M = R.m2;
       const t = (k: string) => (f[k] !== undefined ? f[k].toFixed(1) : '-');
       const T = R.terms;
-      console.log(`${mode} #${i} cum ${(cum / 3600).toFixed(2)} h · ${(R.seconds / 60).toFixed(1)} min ${R.cause}${R.causeSector ? `(${R.causeSector})` : ''}` +
+      console.log(`${mode} #${i} cum ${((base + cum) / 3600).toFixed(2)} h · ${(R.seconds / 60).toFixed(1)} min ${R.cause}${R.causeSector ? `(${R.causeSector})` : ''}` +
         ` · H ${R.hindsight} (${R.hindsightPerMin.toFixed(2)}/min) · open ${R.sectorsOpen.map((e) => `${e}@${R.sectors[e]?.openedMin?.toFixed(0) ?? '?'}`).join(',')}` +
         ` · reveal ${t('buy:steam.coalQuestion')} cond ${t('buy:steam.condenser')} crisis ${R.firstCrisisMin?.toFixed(1) ?? '-'} lever ${t('firstLever')}` +
         ` · dec ${M.firstDecadeMin?.toFixed(1) ?? '-'}${M.firstDecadeLean === null ? '' : M.firstDecadeLean ? ' lean' : ' full'} clear ${M.firstClearMin?.toFixed(1) ?? '-'} steady ${M.steadyMin?.toFixed(1) ?? '-'}` +
@@ -1417,6 +1496,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
       if (id !== null) { s = model.chooseCharter(s, C, id); log(`  charter: ${id} (offered ${s.charterOffer.join(', ')})`); }
     }
   }
+  if (DUMP_AT === run0 + reports.length + 1) { writeFileSync(DUMP_TO, model.serialize(s)); log(`  state at the start of run ${DUMP_AT} written to ${DUMP_TO}`); }
   const nDone = reports.length;
   log(`\n${nDone} run(s) done. total Hindsight earned ${n(s.meta.hindsightEarned)}; sectors opened ${Object.keys(s.meta.sectorsOpened).join(', ')}; achievements: ${Object.keys(s.meta.achievements).join(', ') || '—'}`);
   log('  Hindsight per minute by run: ' + reports.map((r) => `#${r.run} ${n(r.hindsightPerMin)} (${r.hindsight} in ${(r.seconds / 60).toFixed(1)} min)`).join(' · '));
@@ -1426,6 +1506,13 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
     const wyAll: Record<string, number> = {};
     for (const r of reports) for (const [e, v] of Object.entries(r.m3?.wy ?? {})) wyAll[e] = (wyAll[e] ?? 0) + v;
     console.log(`${mode}: total ${totH} H in ${totM.toFixed(1)} min (${(totH / Math.max(1e-9, totM)).toFixed(2)}/min); each Industry's wellbeing-years ${Object.entries(wyAll).map(([e, v]) => `${e} ${v.toFixed(0)}`).join(', ') || '-'}`);
+    // M3 finish (the temptation audit): each Industry's income summed over the campaign, and when it first opened
+    const incAll: Record<string, number> = {};
+    for (const r of reports) for (const [e, v] of Object.entries(r.m3?.inc ?? {})) incAll[e] = (incAll[e] ?? 0) + v;
+    let cumO = 0;
+    const openH: Record<string, number> = {};
+    for (const r of reports) { for (const e of ORDER) if (r.sectors[e]?.openedMin != null && openH[e] === undefined) openH[e] = (cumO + r.sectors[e]!.openedMin! * 60) / 3600; cumO += r.seconds; }
+    console.log(`${mode}: each Industry's income £ ${Object.entries(incAll).map(([e, v]) => `${e} ${n(v)}`).join(', ') || '-'}; first opened (h) ${Object.entries(openH).map(([e, v]) => `${e} ${v.toFixed(3)}`).join(', ')}`);
   }
   if (DECISIONS) {
     const out = {

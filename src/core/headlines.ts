@@ -78,16 +78,48 @@ export function textItem(key: HeadlineKey, text: string, time: number, year: num
   if (sector) item.sector = sector;
   return item;
 }
-export function headline(state: GameState, content: Content, key: HeadlineKey, time: number, ctx: HeadlineCtx, sector?: SectorId): NewsItem {
+/** M3 (finish): the variant slot of a headline (GameState.headlineUse): '<key>:<sector>' for an Industry's own variants,
+ *  else the key; null when the key has no variants at all. */
+function slotOf(content: Content, key: HeadlineKey, sector?: SectorId): { slot: string; variants: string[] } | null {
   const own = sector ? content.sectorHeadlines?.[sector]?.[key] : undefined;
-  const variants = own && own.length ? own : content.headlines?.[key];
-  const n = (state.seed >>> 0) + Math.floor(time * 7) + state.news.length + key.length;
-  let text = variants && variants.length ? variants[n % variants.length] : FALLBACK[key] ?? key;
+  if (own && own.length) return { slot: `${key}:${sector}`, variants: own };
+  const all = content.headlines?.[key];
+  return all && all.length ? { slot: key, variants: all } : null;
+}
+/** The fixed starting offset of a slot's rotation: (seed + Σ char codes of the slot) mod n. */
+function slotOffset(seed: number, slot: string, n: number): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < slot.length; i++) h = (h + slot.charCodeAt(i)) >>> 0;
+  return h % n;
+}
+
+export function headline(state: GameState, content: Content, key: HeadlineKey, time: number, ctx: HeadlineCtx, sector?: SectorId): NewsItem {
+  // M3 (finish): the least recently used variant of the slot this run (a rotation from a fixed offset), not an index
+  // from the time and the news count, which could repeat a crisis headline within a run
+  const sl = slotOf(content, key, sector);
+  let text = sl ? sl.variants[(slotOffset(state.seed, sl.slot, sl.variants.length) + (state.headlineUse?.[sl.slot] ?? 0)) % sl.variants.length] : FALLBACK[key] ?? key;
   const year = Math.floor(ctx.year);
   text = substitute(text, values(state, content, ctx, sector));
   const item: NewsItem = { time, year, key, text };
   if (sector) item.sector = sector;
   return item;
+}
+
+/**
+ * M3 (finish): the news list with `items` added (as withNews) and GameState.headlineUse counting each item's slot, so
+ * the next headline of that slot takes the next variant. Spread into the new state: { ...state, ...newsWith(...) }.
+ */
+export function newsWith(state: GameState, content: Content, items: NewsItem[]): { news: NewsItem[]; headlineUse?: Record<string, number> } {
+  if (!items.length) return state.headlineUse ? { news: state.news, headlineUse: state.headlineUse } : { news: state.news };
+  let use = state.headlineUse;
+  for (const it of items) {
+    const sl = slotOf(content, it.key, it.sector);
+    if (!sl) continue;
+    if (use === state.headlineUse) use = { ...(use ?? {}) };
+    use![sl.slot] = (use![sl.slot] ?? 0) + 1;
+  }
+  const news = withNews(state.news, items);
+  return use ? { news, headlineUse: use } : { news };
 }
 
 export function withNews(news: NewsItem[], items: NewsItem[]): NewsItem[] {

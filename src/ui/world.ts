@@ -4,6 +4,7 @@ import { sectorDef, sd, lookFor, openSectors, ageOfSector } from './ctx';
 import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
 import { fmt, money, fmtPrice, pct, num, clamp, lower, unitOne } from './fmt';
+import { tradeText } from './trade';
 import { infoBtn } from './gauges';
 import type { SceneView, SceneTarget } from './scene';
 import { sceneViewFrom } from './scene/adapter';
@@ -221,7 +222,9 @@ export function buildWorld(ctx: Ctx): WorldComp {
   const hand = h('button', { class: 'hand linkish', type: 'button', hidden: true, onclick: () => toHand() }, handN);
   const mount = h('div', { class: 'world-mount' });
   const frame = h('div', { class: 'world-frame' }, mount);
-  const el = h('section', { class: 'apps', 'aria-label': 'Uses of the service' }, title, frame, priceRow, hand);
+  // M3 finish: the trade of the staked-out use tapped in the picture (AppDerived.wantedChange), under a drawn line
+  const tradeEl = h('p', { class: 'up-trade world-trade', hidden: true });
+  const el = h('section', { class: 'apps', 'aria-label': 'Uses of the service' }, title, frame, priceRow, hand, tradeEl);
   let selected: string | null = null;
   /** M3: the machine's display name from the latest 'stageReached' (GameEvent.label), per Industry. */
   const stageLabel = new Map<string, string>();
@@ -248,13 +251,15 @@ export function buildWorld(ctx: Ctx): WorldComp {
     const apps = ctx.d?.sectors?.[id]?.apps;
     if (!sdef || !apps) return;
     if (!plainEl) { plainEl = h('ul', { class: 'world-plain' }); mount.append(plainEl); plainKey = ''; }
-    const key = id + '|' + sdef.applications.map((a) => { const x = apps[a.id]; return `${x?.founded ? 2 : x?.available ? 1 : 0}${x?.canFound ? 'c' : ''}${Math.round((x?.adoption ?? 0) * 20)}`; }).join(',');
+    const key = id + '|' + sdef.applications.map((a) => { const x = apps[a.id]; return `${x?.founded ? 2 : x?.available ? 1 : 0}${x?.canFound ? 'c' : ''}${Math.round((x?.adoption ?? 0) * 20)}${x?.wantedChange != null ? `w${Math.round(x.wantedChange * 100)}` : ''}`; }).join(',');
     if (key === plainKey) return;
     plainKey = key;
     plainEl.replaceChildren(...sdef.applications.filter((a) => apps[a.id]?.available || apps[a.id]?.founded).map((a) => {
       const x = apps[a.id]!;
       const li = h('li', null, h('b', { text: a.name }), ' ', h('span', { class: 'muted', text: x.founded ? `${pct(x.adoption, false)} adopted` : `staked out, ${money(x.foundCost)}` }));
       if (!x.founded) li.append(' ', h('button', { class: 'btn small', type: 'button', 'aria-disabled': x.canFound ? null : 'true', onclick: () => { if (x.canFound) ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, a.id)); } }, 'Found'));
+      // M3 finish: a temptation's trade under a drawn line (AppDerived.wantedChange)
+      if (!x.founded && x.wantedChange != null && Number.isFinite(x.wantedChange)) li.append(h('p', { class: 'up-trade', text: tradeText(lower(sdef.resource.name), x.wantedChange, 'found') }));
       return li;
     }));
   }
@@ -300,6 +305,13 @@ export function buildWorld(ctx: Ctx): WorldComp {
       visited.add(def.id);
       // A first visit to an Industry opened this session is an event: its name over the picture.
       if (first) titleCard(frame, ageOfSector(ctx.content, def.id)?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
+    }
+    {
+      const sx = selected ? ctx.d?.sectors?.[def.id]?.apps?.[selected] : undefined;
+      const wc = sx && !sx.founded ? sx.wantedChange : null;
+      const on = wc != null && Number.isFinite(wc);
+      show(tradeEl, on);
+      if (on) setText(tradeEl, `${def.applications.find((a) => a.id === selected)?.name ?? 'This use'}. ${tradeText(lower(def.resource.name), wc as number, 'found')}`);
     }
     const m = document.documentElement.getAttribute('data-motion') ?? '';
     if (m !== motion) { motion = m; renderer?.setReducedMotion(motionOverride()); }

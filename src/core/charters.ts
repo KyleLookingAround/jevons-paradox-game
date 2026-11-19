@@ -8,7 +8,7 @@ import { calendarYear } from './calendar';
 import { evalCond } from './conditions';
 import { idx } from './contentIndex';
 import { emit } from './events';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { isFreshRun, withMeta } from './state';
 
 export { mix32 } from './util';
@@ -34,6 +34,6 @@ export function chooseCharter(state: GameState, content: Content, id: string | n
   if (id === null) return s;
   const def = idx(content).charters.get(id)!;
   const year = calendarYear(s, content);
-  const out = { ...s, news: withNews(s.news, [headline(s, content, 'charter', 0, { year, name: def.name }, def.sector)]) };
+  const out = { ...s, ...newsWith(s, content, [headline(s, content, 'charter', 0, { year, name: def.name }, def.sector)]) };
   return emit(out, [{ kind: 'charterChosen', id }], 0, year);
 }

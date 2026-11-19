@@ -8,7 +8,7 @@ import type { Content, GameState, ReckoningCause, SectorDef, SectorId, SectorSta
 import { POP_MIN, REBOUND_MIN_FOLD, FLOW_MIN_CAPACITY_SHARE, DEFAULT_FREE_EXCESS } from './constants';
 import { addCommonsIntensity, commonsWellbeing } from './commons';
 import { idx } from './contentIndex';
-import { modsOf, flowCapacity, absorptionOf } from './effects';
+import { modsOf, flowCapacity, absorptionOf, leverMulOf } from './effects';
 import type { Mods } from './effects';
 import { sectorLevers, NO_LEVERS, leverNetUpkeep, mandateShareOf } from './levers';
 import { solveSector } from './solver';
@@ -105,7 +105,7 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
       wellbeing += f.wellbeingShare;
       income += f.income;
       if (def.spill && state.sectors[def.spill.to]?.open && es.basePs > 0) {
-        const a = def.spill.rate * Math.max(0, 1 - f.ps / es.basePs);
+        const a = def.spill.rate * (mods.spillMul[s] ?? 1) * Math.max(0, 1 - f.ps / es.basePs);
         spill[def.spill.to] = (spill[def.spill.to] ?? 1) * (1 + Math.max(0, a));
       }
       if (def.drawsOn && state.sectors[def.drawsOn.sector]?.open) {
@@ -131,7 +131,7 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
     if (lev.dutyRecycle === 'commons') commonsLevy += f.dutyRevenue;
     if (lev.capRecycle === 'commons') commonsLevy += f.permitRevenue;
     if (def.spill && state.sectors[def.spill.to]?.open && es.basePs > 0) {
-      const a = def.spill.rate * (1 - lev.green) * Math.max(0, 1 - f.ps / es.basePs);
+      const a = def.spill.rate * (mods.spillMul[s] ?? 1) * (1 - lev.green) * Math.max(0, 1 - f.ps / es.basePs);
       spill[def.spill.to] = (spill[def.spill.to] ?? 1) * (1 + Math.max(0, a));
     }
     if (def.drawsOn && state.sectors[def.drawsOn.sector]?.open) {
@@ -145,7 +145,7 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
   let upkeep = 0;
   for (const def of content.levers ?? []) {
     const ls = state.levers[def.id];
-    if (ls && ls.level > 0) upkeep += leverNetUpkeep(def, ls.level, mods.startLevers[def.id] ?? 0);
+    if (ls && ls.level > 0) upkeep += leverNetUpkeep(def, ls.level, mods.startLevers[def.id] ?? 0, leverMulOf(mods, def).upkeep);
   }
   const flows: Flows = {
     sectors, inputs, wellbeing, income: fin(income), levyRevenue: fin(levy), treasuryLevy: fin(treasury),

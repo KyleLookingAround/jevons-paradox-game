@@ -201,7 +201,7 @@ const computeUpgrades: UpgradeDef[] = withStages([
       cost: 3_000_000, requires: ['compute.virtualisation'],
       /* M3 (live): the web and streaming are free at the point of use (M2: adoption at 1.4× the price, every use). */
       effects: MECHANICS_LIVE
-        ? [seen('compute.web', 0), seen('compute.streaming', 0), margin('compute', 0.02)]
+        ? [seen('compute.web', 0), seen('compute.streaming', 0), margin('compute', 0.04)]
         : [half('compute', 1.4), margin('compute', 0.02)],
     },
     {

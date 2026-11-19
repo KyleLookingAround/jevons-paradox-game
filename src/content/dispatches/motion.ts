@@ -9,7 +9,8 @@
  */
 import type { DispatchDef } from '../../types';
 import {
-  AFTER_FIRST, answered, cash, eta, forbidKind, half, income, intensity, mandate, mrate, owns, rk, sat, smoke, timed, wellbeing, all,
+  AFTER_FIRST, absorb, all, answered, cash, eta, forbidKind, half, income, intensity, mandate, mrate, owns, rk, sat,
+  smoke, timed, wellbeing,
 } from './kit';
 
 const M = 'motion';
@@ -61,7 +62,7 @@ export const motionDispatches: DispatchDef[] = [
         label: 'Grant a grace period',
         outcome: 'The van is a van for a few years more, and Mr Pryce is all smiles.',
         price: 'The heavy vans sell on in the meantime',
-        effects: [mandate(50)],
+        effects: [mandate(50), wellbeing(1), absorb(M, 0.002)],
         modifier: timed(12, sat(M, 1.03, 'motion.suburbs')),
         reply: 'Grace period for the family van; Pryce Motors to build at home',
       },
@@ -86,7 +87,7 @@ export const motionDispatches: DispatchDef[] = [
         label: 'Bless the store',
         outcome: 'The store opens, prices fall, and every household makes a weekly drive of it.',
         price: 'A weekly drive for every household',
-        effects: [cash(35)],
+        effects: [cash(35), wellbeing(1), absorb(M, 0.002)],
         modifier: timed(15, sat(M, 1.05, 'motion.shopping')),
         reply: 'Pryce store opens by the ring road; two thousand spaces filled by noon',
       },
@@ -114,7 +115,7 @@ export const motionDispatches: DispatchDef[] = [
         outcome: 'The jam clears for a season, and then the new estates fill it.',
         price: '£, and the traffic it will bring',
         cost: { capitalSeconds: 40 },
-        effects: [mandate(40), sat(M, 1.03, 'motion.commuting')],
+        effects: [mandate(40), sat(M, 1.03, 'motion.commuting'), wellbeing(1), absorb(M, 0.002)],
         reply: 'Relief road opens to the eastern approach; jam to return “in time”',
       },
       {
@@ -147,7 +148,7 @@ export const motionDispatches: DispatchDef[] = [
         label: 'Close the roads on Sundays',
         outcome: 'Sunday is quiet and the children skate on the bypass; Saturday is twice as busy.',
         price: 'Sundays’ fares, and a busier Saturday',
-        effects: [mandate(30)],
+        effects: [mandate(30), wellbeing(1), absorb(M, 0.002)],
         modifier: timed(15, sat(M, 0.97), wellbeing(0.6), income(0.97, M)),
         reply: 'Roads closed to cars on summer Sundays; Saturday traffic doubles',
       },
@@ -182,14 +183,14 @@ export const motionDispatches: DispatchDef[] = [
         outcome: 'The saloon does more miles to the gallon, and its owners drive further.',
         price: '£ to retool, and longer drives',
         cost: { capitalSeconds: 40 },
-        effects: [eta(M, 1.05), sat(M, 1.015)],
+        effects: [eta(M, 1.05), sat(M, 1.015), wellbeing(1), absorb(M, 0.002)],
         reply: 'Ashworth saloon a fifth lighter; owners “find reasons to drive”',
       },
       {
         label: 'Sell it as power',
         outcome: 'The saloon is quicker off the lights, and sells to people who never wanted one.',
-        price: 'The weight saved is spent on speed',
-        effects: [cash(40), half(M, 1.05)],
+        price: 'The weight saved is spent on speed, and on exhaust',
+        effects: [cash(40), half(M, 1.05), smoke(M, 0.08)],
       },
     ],
     rebound: 'The horsepower race: the engineers’ gains spent on weight and power, not miles per gallon',
@@ -223,7 +224,7 @@ export const motionDispatches: DispatchDef[] = [
         outcome: 'The hauliers are paid off, and the duty stands for everybody else.',
         price: '£ for the rebate',
         cost: { capitalSeconds: 40 },
-        effects: [mandate(30)],
+        effects: [mandate(30), wellbeing(1), absorb(M, 0.002)],
       },
     ],
     rebound: 'Decay and repeal: a single blockade ends a measure that took years to build',
@@ -241,8 +242,8 @@ export const motionDispatches: DispatchDef[] = [
       {
         label: 'Lend the name',
         outcome: 'The estates sell out, forty minutes away by a faster road.',
-        price: 'The same hour on the road, from further out',
-        effects: [cash(30)],
+        price: 'The same hour on the road, further out, more exhaust',
+        effects: [cash(30), smoke(M, 0.08)],
         modifier: timed(10, sat(M, 1.05, 'motion.commuting')),
         reply: 'New estates sell out; still forty minutes from the office',
       },
@@ -276,7 +277,7 @@ export const motionDispatches: DispatchDef[] = [
         label: 'Hold to the timetable',
         outcome: 'The flights stay as they were, and the home resorts have a good year.',
         price: 'The charter fares',
-        effects: [mandate(15)],
+        effects: [mandate(15), wellbeing(1), absorb(M, 0.002)],
         modifier: timed(8, income(0.95, M)),
       },
     ],

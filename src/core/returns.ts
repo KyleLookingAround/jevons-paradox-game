@@ -11,7 +11,7 @@ import { SURVEY_FLAT_BAND } from './constants';
 import { emit } from './events';
 import type { EvDraft } from './events';
 import { featureOn } from './features';
-import { fillText, textItem, withNews } from './headlines';
+import { fillText, textItem, newsWith } from './headlines';
 import { milestone } from './milestones';
 import { fin, isObj, mix32 } from './util';
 
@@ -96,8 +96,9 @@ function returnText(state: GameState, content: Content, r: FiledReturn): { headl
   return { headline: fillText(state, content, t.headline, ctx), body: fillText(state, content, t.body, ctx) };
 }
 
-/** A household return was published in this run already (the paper's annual statistics; read from this run's news). */
-const publishedThisRun = (state: GameState): boolean => state.news.some((n) => n.key === 'return');
+/** A household return was published in this run already (the paper's annual statistics; RunStats.returnPublished, M3
+ *  finish: a run flag, no longer read from the last 40 news items). */
+const publishedThisRun = (state: GameState): boolean => state.run.returnPublished === true;
 
 /** Publish the unpublished household return (if any): published, template, the 'return' item and event, milestone.
  *  `force` skips the once-a-run check (reckon() publishes into the new run). */
@@ -111,9 +112,9 @@ export function publish(state: GameState, content: Content, time: number, force 
   const year = calendarYear(state, content);
   let meta: MetaState = { ...state.meta, returns: { ...state.meta.returns, household: filed } };
   meta = milestone(meta, 'proprietor', null, year);
-  const s0: GameState = { ...state, meta };
+  const s0: GameState = { ...state, meta, run: { ...state.run, returnPublished: true } };
   const text = returnText(s0, content, filed);
-  const out: GameState = { ...s0, news: withNews(s0.news, [textItem('return', text.headline, time, year)]) };
+  const out: GameState = { ...s0, ...newsWith(s0, content, [textItem('return', text.headline, time, year)]) };
   return emit(out, [{ kind: 'returnPublished', id: 'household', n: sv.workdayChange === null ? 0 : Math.round(sv.workdayChange * 100) }], time, year);
 }
 
@@ -150,7 +151,7 @@ export function withdrawReturn(state: GameState, content: Content, id: string): 
   const text = content.proprietor?.withdrawn || FALLBACK_WITHDRAWN;
   const items: NewsItem[] = [textItem('returnWithdrawn', fillText(state, content, text, { year }), state.time, year)];
   const ev: EvDraft[] = [{ kind: 'returnWithdrawn', id }];
-  return emit({ ...state, meta: { ...state.meta, returns }, news: withNews(state.news, items) }, ev, state.time, year);
+  return emit({ ...state, meta: { ...state.meta, returns }, ...newsWith(state, content, items) }, ev, state.time, year);
 }
 
 /** Derived.survey: from meta.returns.household; null without one or while feature 'survey' is off. */

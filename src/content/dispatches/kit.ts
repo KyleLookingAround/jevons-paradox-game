@@ -79,6 +79,16 @@ export const forbid = (id: string): EffectDef => ({ type: 'forbid', id });
 export const forbidKind = (leverKind: 'duty' | 'cap' | 'sufficiency' | 'substitution' | 'circularity' | 'greenSpending', sector?: SectorId): EffectDef =>
   (sector ? { type: 'forbid', leverKind, sector } : { type: 'forbid', leverKind });
 export const commonsYield = (value: number): EffectDef => ({ type: 'commonsYieldMul', value });
+/* M3 finish: the three kinds the register asked for (design/scratch/m3-register-dispatches.md, gaps 2–4) */
+/** A lever's (or a kind's) Mandate cost to raise × cost and upkeep × upkeep. */
+export const leverCost = (target: { lever?: string; leverKind?: 'duty' | 'cap' | 'sufficiency' | 'substitution' | 'circularity' | 'greenSpending' | 'measure'; sector?: SectorId }, cost: number, upkeep: number): EffectDef =>
+  ({ type: 'leverCostMul', ...target, cost, upkeep });
+/** A standing order idle while in force (for a timed modifier: "a week without the Market"). */
+export const suspendOrder = (order: 'market' | 'civilService' | 'treasury' | 'dispatch'): EffectDef => ({ type: 'suspendOrder', order });
+/** A cap's leak in the sector × value. */
+export const leak = (sector: SectorId, value: number): EffectDef => ({ type: 'leakMul', sector, value });
+/** The sector's spill × value. */
+export const spill = (sector: SectorId, value: number): EffectDef => ({ type: 'spillMul', sector, value });
 
 /** A timed modifier of `years` model years. */
 export const timed = (years: number, ...effects: EffectDef[]): NonNullable<DispatchArm['modifier']> => ({ years, effects });

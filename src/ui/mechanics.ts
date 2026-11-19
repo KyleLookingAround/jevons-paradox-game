@@ -9,6 +9,7 @@ import type { SectorDerived } from '../types';
 import { h, s as sv, svg, setText, setAttr, setStyle, setFill, show, cls, syncChildren, reducedMotion, snapSmall } from './dom';
 import { fmt, fmtPrice, money, pct, num, clamp, lower, unitOne } from './fmt';
 import { sound } from './sound';
+import { tradeText } from './trade';
 
 /** "1 h 04 min", "52 min" (hours given as a fraction of an hour). */
 export function hm(hours: number): string {
@@ -29,8 +30,10 @@ export function buildMechanics(ctx: Ctx): Comp {
   const lead = h('p', { class: 'mech-lead' });
   const see = h('button', { class: 'place-link mech-see', type: 'button', onclick: () => ctx.showPlace(null) }, 'in the picture ↑');
   const body = h('div', { class: 'mech-body' });
+  // M3 finish: under a drawn line, one sentence on what the mechanic is doing to it now (figures from the views)
+  const line = h('p', { class: 'mech-line', hidden: true });
   const el = h('section', { class: 'mech', 'aria-label': 'This Industry’s mechanic', hidden: true },
-    h('header', { class: 'sec-h' }, title, tag), lead, body, see);
+    h('header', { class: 'sec-h' }, title, tag), lead, body, line, see);
   let key = '';
   let part: Part | null = null;
 
@@ -53,8 +56,40 @@ export function buildMechanics(ctx: Ctx): Comp {
       el.setAttribute('data-kind', k);
     }
     part?.update(e);
+    const t = e.budgetR != null ? lineFor(k, e, def) : '';
+    show(line, !!t);
+    if (t) setText(line, t);
   }
   return { el, update };
+}
+
+/** M3 finish: the mechanic's effect on the player's line, in one sentence; '' when there is nothing to say. */
+function lineFor(k: Kind, e: SectorDerived, def: NonNullable<ReturnType<typeof sectorDef>>): string {
+  const res = lower(def.resource.name), svc = lower(def.service.name);
+  if (k === 'seams' && e.seams) {
+    const v = e.seams;
+    return v.sunk === 0 ? `Under the line: no seam sunk; when the old workings give out, so does the run.`
+      : `Under the line: the deeper ${res} sells at ×${num(v.priceMul, 1).toFixed(2)}, which the line welcomes; the extra tons are what tempt the next engine.`;
+  }
+  if (k === 'load' && e.load && def.load) {
+    const dflt = def.load.defaultProfile;
+    let night = 0;
+    for (const a of def.applications) if (e.apps?.[a.id]?.founded && (a.profile ?? dflt) !== dflt) night += num(e.apps[a.id].demand);
+    const share = num(e.demand) > 0 ? night / num(e.demand) : 0;
+    return share > 0.005 ? `Under the line: night uses carry ${pct(share, false)} of the ${svc}; each fills idle plant, cheapens the next unit, and adds to what the cap must hold back.`
+      : `Under the line: no night uses yet; the idle plant keeps every unit dear, which suits the line.`;
+  }
+  if (k === 'travel' && e.travel) {
+    const sh = num(e.travel.sprawlShare);
+    return sh > 0.005 ? `Under the line: ${pct(sh, false)} of the miles are sprawl, which no quota squeezes out; the line has to be held above them.`
+      : `Under the line: no sprawl yet; every mile is still one a quota can reach.`;
+  }
+  if (k === 'free' && e.free) {
+    const sh = num(e.free.freeShare);
+    return sh > 0.005 ? `Under the line: ${pct(sh, false)} of the use sees no price, so no duty or thriftier chip moves it; only the cap and sufficiency reach it.` : '';
+  }
+  if (k === 'upkeep' && e.upkeep) return `Under the line: ${pct(num(e.upkeep.share), false)} of attention goes on keeping the code alive; only deletion shrinks the stock.`;
+  return '';
 }
 
 /* ------------------------------------------------------------------ */
@@ -80,7 +115,8 @@ function seamsPart(ctx: Ctx): Part {
       if (!reducedMotion()) { sink.classList.remove('nope'); void sink.offsetWidth; sink.classList.add('nope'); }
     }
   } }, fill, h('span', { class: 'btn-l', text: 'Sink it' }), cost);
-  const next = h('div', { class: 'seam-next' }, h('p', null, 'Next: ', nName, ' ', nFacts), nReach, sink);
+  const nTrade = h('p', { class: 'up-trade', hidden: true });
+  const next = h('div', { class: 'seam-next' }, h('p', null, 'Next: ', nName, ' ', nFacts), nReach, nTrade, sink);
   const mul = h('p', { class: 'seam-mul num muted' });
   const done = h('p', { class: 'seam-done muted' });
   const el = h('div', { class: 'seams' }, cut, next, done, mul);
@@ -130,6 +166,9 @@ function seamsPart(ctx: Ctx): Part {
           : n.reachable ? `Within reach: pumping is cheap enough (power under £${fmtPrice(rb)} per ${unitS}; now £${fmtPrice(ps)}).`
             : `Out of reach until power sells under £${fmtPrice(rb)} per ${unitS} (now £${fmtPrice(ps)}). Thriftier engines will get there.`);
         cls(nReach, 'warn', !n.reachable);
+        const wc = v.wantedChange;
+        show(nTrade, wc != null && Number.isFinite(wc));
+        if (wc != null && Number.isFinite(wc)) setText(nTrade, tradeText(res, wc, 'sink'));
         setText(cost, money(n.cost));
         setAttr(sink, 'aria-disabled', n.canSink ? null : 'true');
         setFill(fill, n.canSink ? 0 : num(ctx.state.capital) / Math.max(1e-9, n.cost), 100);

@@ -64,6 +64,14 @@ export interface Mods {
   anyPriceSeen: boolean;
   /** Content has measure or side-effect levers (the overlay has something to look at). */
   runVarying: boolean;
+  /* M3 finish */
+  /** leverCostMul effects in force (matched per lever by leverMulOf). */
+  leverCost: { lever?: string; leverKind?: LeverKind; sector?: string; cost: number; upkeep: number }[];
+  /** Standing orders suspended while in force (suspendOrder). */
+  suspendOrder: Set<OrderId>;
+  /** leakMul and spillMul per sector. */
+  leakMul: Record<string, number>;
+  spillMul: Record<string, number>;
 }
 
 function emptyMods(): Mods {
@@ -74,6 +82,7 @@ function emptyMods(): Mods {
     offlineCapAdd: 0, orderUnlock: new Set(), commonsYieldMul: 1, startFounded: new Set(), loans: {},
     resourcePriceMul: {}, intensityMul: {}, incomeMul: {}, incomeMulAll: 1, costMulOf: {}, forbids: [], travelSpeed: {},
     travelRoads: {}, priceSeenApp: {}, priceSeenSector: {}, anyPriceSeen: false, runVarying: false,
+    leverCost: [], suspendOrder: new Set(), leakMul: {}, spillMul: {},
   };
 }
 /** A shallow copy deep enough for an overlay (every record and set copied). */
@@ -86,6 +95,7 @@ function cloneMods(b: Mods): Mods {
     resourcePriceMul: { ...b.resourcePriceMul }, intensityMul: { ...b.intensityMul }, incomeMul: { ...b.incomeMul },
     costMulOf: { ...b.costMulOf }, forbids: b.forbids.slice(), travelSpeed: { ...b.travelSpeed }, travelRoads: { ...b.travelRoads },
     priceSeenApp: { ...b.priceSeenApp }, priceSeenSector: { ...b.priceSeenSector },
+    leverCost: b.leverCost.slice(), suspendOrder: new Set(b.suspendOrder), leakMul: { ...b.leakMul }, spillMul: { ...b.spillMul },
   };
 }
 const seenBetter = (a: { share: number; flat: number } | undefined, share: number, flat: number): boolean =>
@@ -135,9 +145,32 @@ function applyEffect(m: Mods, ef: EffectDef, times: number): void {
       else if (seenBetter(m.priceSeenSector[ef.sector], share, flat)) m.priceSeenSector[ef.sector] = { share, flat };
       break;
     }
+    /* M3 finish */
+    case 'leverCostMul': {
+      const c = Math.pow(Math.max(0, fin(ef.cost ?? 1, 1)), times), u = Math.pow(Math.max(0, fin(ef.upkeep ?? 1, 1)), times);
+      m.leverCost.push({ ...(ef.lever !== undefined ? { lever: ef.lever } : {}), ...(ef.leverKind ? { leverKind: ef.leverKind } : {}), ...(ef.sector !== undefined ? { sector: ef.sector } : {}), cost: c, upkeep: u });
+      break;
+    }
+    case 'suspendOrder': m.suspendOrder.add(ef.order); break;
+    case 'leakMul': mul(m.leakMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
+    case 'spillMul': mul(m.spillMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
     default: break;
   }
 }
+
+/** M3 finish: the product of the leverCostMul effects in force that match this lever (cost and upkeep multipliers). */
+export function leverMulOf(m: Mods, def: { id: string; kind: LeverKind; sector: string }): { cost: number; upkeep: number } {
+  if (!m.leverCost.length) return ONE_MUL;
+  let cost = 1, upkeep = 1;
+  for (const e of m.leverCost) {
+    if (e.lever !== undefined && e.lever !== def.id) continue;
+    if (e.leverKind !== undefined && e.leverKind !== def.kind) continue;
+    if (e.sector !== undefined && e.sector !== def.sector) continue;
+    cost *= e.cost; upkeep *= e.upkeep;
+  }
+  return { cost, upkeep };
+}
+const ONE_MUL = { cost: 1, upkeep: 1 } as const;
 
 /** Effects of the owned levels of an institution (level 1 = def.effects, then nextLevels). */
 function institutionEffects(def: InstitutionDef, level: number): EffectDef[] {

@@ -1202,7 +1202,23 @@ export type EffectDef =
   | { type: 'pressureAdd'; sector: SectorId; value: number }
   /** ONE-OFF: meta.flags[flag] = true, for good (read by Cond { flag }). 'proprietor' is the Proprietor's Day: the
    *  moment it is first set, an unpublished household return on file is published (see ModelApi.fileReturn). */
-  | { type: 'metaFlag'; flag: string };
+  | { type: 'metaFlag'; flag: string }
+  /* --- M3 (finish): three kinds the letter-writer asked for (standing; in a dispatch arm, a modifier or anywhere) --- */
+  /** A lever's Mandate cost to raise × cost, and its upkeep × upkeep (each default 1; multiplicative across effects),
+   *  for the lever `lever`, or every lever of `leverKind` (in `sector` if given), or every lever of `sector`; with none
+   *  of the three, every lever. Applies to LeverView.nextCost and upkeep, setLever, the Civil Service, the lapse rule and
+   *  Derived.mandatePerSec alike; an Institution's free levels stay free. "The House makes the duty cheaper to pass." */
+  | { type: 'leverCostMul'; lever?: string; leverKind?: LeverKind; sector?: SectorId; cost?: number; upkeep?: number }
+  /** The standing order does not act while in force (no order ticks for it; its settings are kept): OrdersView's
+   *  `available` reads false for it (the Market's marketWhy 'unavailable', as when a History suspends it). For a timed
+   *  modifier: "a week without the Market". */
+  | { type: 'suspendOrder'; order: OrderId }
+  /** A cap's leak in the sector × value (multiplicative; the leak share stays within 0–1): above 1 the barrels arrive
+   *  by other routes sooner, below 1 the customs men are keener. */
+  | { type: 'leakMul'; sector: SectorId; value: number }
+  /** The sector's spill (SectorDef.spill: the demand its savings add to the sector it spills into) × value
+   *  (multiplicative; `sector` is the source). */
+  | { type: 'spillMul'; sector: SectorId; value: number };
 
 export interface UpgradeDef {
   id: string;              // 'steam.condenser'
@@ -1825,6 +1841,16 @@ export interface GameState {
   orderLog: Record<SectorId, { t: number; outcome: 'bought' | 'none' | 'cash' | 'payback'; id?: string; payback?: number }>;
   /** M3: the History in force has met its forbidUntil this run (its forbid effects no longer apply). */
   historyLifted: boolean;
+  /**
+   * M3 (finish): headline variants used this run, by slot, so a key's variants come round in turn (the least recently
+   * used first) instead of repeating. A slot is the HeadlineKey, or '<key>:<sector>' when the variants are that
+   * sector's own (Content.sectorHeadlines). Value: how many headlines of the slot this run has printed. The variant
+   * printed is (o + count) mod n, where n is the number of variants and o = (seed + the slot's character codes summed)
+   * mod n, fixed per save and slot: every variant once before any repeats. Two headlines of one slot made from the same
+   * state (one step) take the same variant (their placeholders differ). Absent = {} (older saves start the rotation
+   * afresh). A Reckoning clears it (a fresh run has none). Not shown anywhere.
+   */
+  headlineUse?: Record<string, number>;
 }
 
 /** M3: a dispatch waiting for an answer (GameState.dispatch.pending). */
@@ -2245,6 +2271,14 @@ export interface RunStats {
   dispatchesAnswered: number;
   /** M3: dispatches resolved by default or by the standing dispatch order this run. */
   dispatchesDefaulted: number;
+  /* --- M3 (finish): run-scoped flags that used to be read from the last 40 news items (and so could repeat) --- */
+  /** M3 (finish): the History in force has been cleared in this run (its goal is checked once a run; Derived.history
+   *  .cleared and RunSummary.historyCleared read this). Absent = false. A save without it is migrated from its news
+   *  and events (a 'history' item, or a 'historyCleared' event since the last 'reckoning'). */
+  historyCleared?: boolean;
+  /** M3 (finish): a household return has been published in this run (one publication a run; see ModelApi.fileReturn).
+   *  Absent = false. A save without it is migrated from its news (a 'return' item). */
+  returnPublished?: boolean;
 }
 
 /** M2: one recorded opening action (for M5's rival profile). `t` is run time in seconds (game time, not wall time). */
@@ -2974,6 +3008,13 @@ export interface SeamsView {
     /** A forbid effect is in force on it. */
     forbidden: boolean;
   }[];
+  /** M3 (finish): the temptation's trade, shown where the player decides (design: each Industry's
+   *  mechanic pays the burner and tests the restrainer). Once the Industry's mechanic feature is on and it has a budget
+   *  line drawn: R the Industry would burn with this taken now ÷ R without it, both solved free of any cap (the use the
+   *  line would have to hold back), − 1. Else null (absent on views from before M3 finish). Recomputed at most once per
+   *  PROJECTION_BUCKET seconds of run time while nothing structural changes.
+   *  Here: sinking the next seam now (null when none is left). */
+  wantedChange?: number | null;
 }
 
 /** M3: SectorDerived.load. */
@@ -3018,6 +3059,14 @@ export interface AppDerived {
   foundCost: number;
   /** M3: a forbid effect is in force on it. */
   forbidden: boolean;
+  /** M3 (finish): the temptation's trade, shown where the player decides (design: each Industry's
+   *  mechanic pays the burner and tests the restrainer). Once the Industry's mechanic feature is on and it has a budget
+   *  line drawn: R the Industry would burn with this taken now ÷ R without it, both solved free of any cap (the use the
+   *  line would have to hold back), − 1. Else null (absent on views from before M3 finish). Recomputed at most once per
+   *  PROJECTION_BUCKET seconds of run time while nothing structural changes.
+   *  Here: for an available, unfounded application that IS the mechanic (a load profile other than the default, a
+   *  travel use with lockIn, an ApplicationDef.priceSeen), founding it now. */
+  wantedChange?: number | null;
 }
 
 export interface UpgradeView {
@@ -3053,6 +3102,14 @@ export interface UpgradeView {
   /** M3: a forbid effect is in force on it (it stays visible; `affordable` is false). M3 CHANGE: `visible` also needs
    *  UpgradeDef.when; `cost` includes costMulOf effects. */
   forbidden: boolean;
+  /** M3 (finish): the temptation's trade, shown where the player decides (design: each Industry's
+   *  mechanic pays the burner and tests the restrainer). Once the Industry's mechanic feature is on and it has a budget
+   *  line drawn: R the Industry would burn with this taken now ÷ R without it, both solved free of any cap (the use the
+   *  line would have to hold back), − 1. Else null (absent on views from before M3 finish). Recomputed at most once per
+   *  PROJECTION_BUCKET seconds of run time while nothing structural changes.
+   *  Here: for a visible, unmaxed card with a priceSeen effect (a business model, a flat rate), under feature
+   *  'freeAtUse', buying it now (its other effects included). */
+  wantedChange?: number | null;
 }
 
 export interface LeverView {

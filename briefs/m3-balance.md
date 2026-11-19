@@ -37,9 +37,14 @@ M3 exit criteria:
 4. **The pure half of shift 3:** `efficiency` with the Market on shows at least 20% more decisions per model decade
    than without (`--market=on|off`, decisions per decade from the summary). Closing automations (the Civil Service, the
    dispatch order) cut them at least 30% where they apply.
-5. **Each mechanic matters:** for each of seams, load, travel and free, the strategy that ignores it
-   (`--ignore=<kind>`) earns at least 25% less Hindsight per minute (or, for free, shows the expected demand) over the
-   runs where the Industry is open.
+5. **Each mechanic is a temptation** (M3 finish; replaces "the strategy that ignores it earns at least 25% less
+   Hindsight per minute", which measured the opposite for restraint: ignoring load and travel is better under a held
+   line, and that is the thesis). Two measurable criteria: (a) for each of seams, load, travel and free, `efficiency`
+   that engages earns at least 15% more income in that Industry than with `--ignore=<kind>` (`--seams=off` for seams),
+   from the same start (`--from=<state>`, e.g. a `--dump-at=5` of `mixed`); (b) the trade is shown at the point of
+   decision: under a drawn line, the card, the staked-out use and the next seam carry a plain line saying what they add
+   to the use the line must hold back (the views' `wantedChange`), and the mechanic's instrument says in one sentence
+   what it is doing to the line now.
 6. **Dispatch and fork audit:** random arms within ±10% Hindsight per minute of each other per dispatch
    (`--dispatch-audit`); the existing fork audit still within ±10%.
 7. **Each History cleared** by `budget` within 2× the median clearing time (`--history=<id>` for all ten).

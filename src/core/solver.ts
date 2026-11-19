@@ -311,7 +311,7 @@ export function solveSector(
       };
       const leakOf = (s: { permit: number; prBase: number }): number =>
         Number.isFinite(lev.leakAbove) && s.prBase > 0
-          ? CAP_LEAK_MAX * clamp(s.permit / (lev.leakAbove * s.prBase) - 1, 0, 1)
+          ? clamp(CAP_LEAK_MAX * (mods.leakMul[sid] ?? 1) * clamp(s.permit / (lev.leakAbove * s.prBase) - 1, 0, 1), 0, 1)
           : 0;
       let sol = solveCap(capR);
       const f0 = leakOf(sol);

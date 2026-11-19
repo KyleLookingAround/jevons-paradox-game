@@ -13,7 +13,7 @@ import type { Mods } from './effects';
 import type { OneOffs } from './effects';
 import { emit } from './events';
 import { computeFlows } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import { fin } from './util';
 
 export const commonsCost = (def: CommonsDef, L: number, mods?: Mods): number => {
@@ -60,7 +60,7 @@ export function buyCommonsAs(state: GameState, content: Content, id: string, by:
     capital: Math.max(0, fin(state.capital - (cost - fromFund) + one.capital)),
     mandate: Math.max(0, fin(state.mandate - (def.mandateCost ?? 0) + one.mandate)),
     commons: { levels: { ...state.commons.levels, [id]: L + 1 }, fund: fin(state.commons.fund - fromFund) },
-    news: withNews(state.news, [headline(state, content, 'commonsBuilt', state.time, { year, name: def.name }, def.sector)]),
+    ...newsWith(state, content, [headline(state, content, 'commonsBuilt', state.time, { year, name: def.name }, def.sector)]),
   };
   out = applyM3OneOffs(out, content, one);
   return emit(out, [{ kind: 'commonsBuilt', id, n: L + 1, ...(def.sector ? { sector: def.sector } : {}), by }], state.time, year);

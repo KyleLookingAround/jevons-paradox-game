@@ -44,6 +44,6 @@ export const ending: EndingText = {
     { key: 'settled:*', headline: '{year}: {sector} settles at its sink line, and stays there' },
     { key: 'history', headline: '{year}: a History cleared, in run {run}' },
     { key: 'proprietor', headline: '{year}: the Statistics Office publishes the proprietor’s day' },
-    { key: 'won', headline: '{year}: every Industry settled at its sink line; the ledger balances, for now' },
+    { key: 'won', headline: '{year}: every Industry settled at once; the ledger balances, for now' },
   ],
 };

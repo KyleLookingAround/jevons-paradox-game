@@ -18,6 +18,11 @@ const SECTORS = ['steam', 'light', 'motion', 'compute', 'code'];
 const MID: Cond[] = [{ stat: 'time', op: '>=', value: 1200 }, { stat: 'time', op: '<', value: 1440 }];
 /** M3: only the unlock check in reckon() sees a run this young (the step's checks read the state at 5 s and later). */
 const AT_RECKONING: Cond[] = [{ stat: 'time', op: '<', value: 2 }];
+/* M3 finish: Settlement arrives at the first Reckoning from this hour of play (it was the Reckoning after the first
+ * Steady State, about hour 4–6). The first ending is every Industry settled at once, held fifty years, and Settlement
+ * does not survive a Reckoning, so the ending comes one long run after Settlement arrives: from hour 11, at 15–20 h
+ * for the scripted restraint players (design/unlock-schedule.md). */
+const SETTLEMENT_HOURS = 11;
 /** M3: the household survey is not due (it has arrived, or waits on hour 6 or the Civil Service): the quiet Reckoning
  *  arrivals (the Archive, the free price) give way to it, so the Proprietor's Day stays near hour 6–7. */
 const SURVEY_NOT_DUE: Cond = { any: [{ stat: 'totalHours', op: '<', value: 6 }, { not: { owns: 'inst.civilService' } }, { feature: 'survey' }] };
@@ -80,7 +85,7 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
   commons: { when: rk(3), intro: 'Ratepayers petition for baths and libraries out of the levies', name: 'The Commons' },
   /* The Reckoning after the first Steady State (from run 5): the next Steady State can be kept as it is. M3 balance:
    * at the Reckoning only (AT_RECKONING): a Steady State earned early in a run no longer brings Settlement mid-run. */
-  settlement: { when: { all: [{ owns: 'steadyState' }, rk(4), ...AT_RECKONING] }, intro: 'A settled industry proposed: burn at the sink line, and no more', name: 'Settlement' },
+  settlement: { when: { all: [{ owns: 'steadyState' }, rk(4), ...AT_RECKONING, { stat: 'totalHours', op: '>=', value: SETTLEMENT_HOURS }] }, intro: 'A settled industry proposed: burn at the sink line, and no more', name: 'Settlement' },
 
   /* ---------------- M3 (design/m3-contract-notes.md §0; the schedule and its reasons: design/unlock-schedule.md) ----
    * Owner's direction (19 Nov 2026): "options should be unlocked more slowly". From run 4 on, at most two arrivals a run:

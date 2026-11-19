@@ -11,7 +11,7 @@ import {
   DEFAULT_ORDER_INTERVAL_YEARS, DEFAULT_MARKET_FROM_RECKONING, DEFAULT_PAYBACK_CHOICES, PAYBACK_MIN, ORDER_SECONDS_MAX,
 } from './constants';
 import { idx } from './contentIndex';
-import { modsOf, etaAt, isForbidden, suspended } from './effects';
+import { modsOf, etaAt, isForbidden, suspended, leverMulOf } from './effects';
 import type { Mods } from './effects';
 import { computeFlows, steadyView } from './flows';
 import type { Flows } from './flows';
@@ -43,10 +43,12 @@ export function ordersOf(state: GameState, content: Content): OrdersState {
 export function marketAvailable(state: GameState, content: Content, mods: Mods): boolean {
   const from = content.global?.orders?.marketFromReckoning ?? DEFAULT_MARKET_FROM_RECKONING;
   return (state.meta.reckonings >= from || mods.orderUnlock.has('market')) && featureOn(content, state.meta, 'market')
-    && !suspended(state.meta, content, 'market');
+    && !suspended(state.meta, content, 'market') && !mods.suspendOrder.has('market');
 }
 /** M3: the standing dispatch order is available (a standing orderUnlock 'dispatch'). */
-export const dispatchOrderAvailable = (mods: Mods): boolean => mods.orderUnlock.has('dispatch');
+export const dispatchOrderAvailable = (mods: Mods): boolean => mods.orderUnlock.has('dispatch') && !mods.suspendOrder.has('dispatch');
+/** M2: the Civil Service and the Treasury rules are available (a standing orderUnlock; M3 finish: not suspended). */
+const orderOn = (mods: Mods, o: 'civilService' | 'treasury'): boolean => mods.orderUnlock.has(o) && !mods.suspendOrder.has(o);
 
 /* ------------------------------------------------------------------ */
 /* The orders                                                          */
@@ -147,7 +149,7 @@ function civilIn(state: GameState, content: Content, s: SectorId, list: string[]
     for (const l of listed) {
       const lvl = state.levers[l!.id]?.level ?? 0;
       if (lvl >= leverMaxLevel(l!) || isForbidden(mods, l!.id, l!)) continue;
-      const cost = lvl + 1 <= (mods.startLevers[l!.id] ?? 0) ? 0 : leverLevelDef(l!, lvl + 1)?.mandateCost ?? 0;
+      const cost = lvl + 1 <= (mods.startLevers[l!.id] ?? 0) ? 0 : (leverLevelDef(l!, lvl + 1)?.mandateCost ?? 0) * leverMulOf(mods, l!).cost;
       if (!(state.mandate >= cost)) continue;
       if (pick === null || cost < pick.cost) pick = { id: l!.id, level: lvl, cost };
     }
@@ -158,7 +160,7 @@ function civilIn(state: GameState, content: Content, s: SectorId, list: string[]
     for (const l of listed) {
       const lvl = state.levers[l!.id]?.level ?? 0;
       if (lvl <= 0) continue;
-      const up = leverNetUpkeep(l!, lvl, mods.startLevers[l!.id] ?? 0);
+      const up = leverNetUpkeep(l!, lvl, mods.startLevers[l!.id] ?? 0, leverMulOf(mods, l!).upkeep);
       if (pick === null || up > pick.up) pick = { id: l!.id, level: lvl, up };
     }
     return pick ? setLeverAs(state, content, pick.id, pick.level - 1, 'civilService') : state;
@@ -191,7 +193,7 @@ export function runOrders(prev: GameState, next: GameState, content: Content, li
     }
   }
   if (orderLog) s = { ...s, orderLog };
-  if (o.civilService.on && mods.orderUnlock.has('civilService')) {
+  if (o.civilService.on && orderOn(mods, 'civilService')) {
     for (const id of ix.ids) {
       const es = s.sectors[id];
       const list = o.civilService.levers[id];
@@ -200,7 +202,7 @@ export function runOrders(prev: GameState, next: GameState, content: Content, li
       if (t !== s) { s = t; auto++; }
     }
   }
-  if (o.treasury.on && mods.orderUnlock.has('treasury') && commonsOpen(s, content)) {
+  if (o.treasury.on && orderOn(mods, 'treasury') && commonsOpen(s, content)) {
     const keep = Math.max(0, o.treasury.keepSeconds) * Math.max(0, computeFlows(s, content).income);
     for (const id of o.treasury.projects) {
       const def = ix.commons.get(id);
@@ -281,8 +283,8 @@ export function ordersView(state: GameState, content: Content): OrdersView {
       available: marketAvailable(state, content, mods), on: o.market.on, paybackMax: o.market.paybackMax,
       paybackChoices: (content.global?.orders?.paybackChoices ?? DEFAULT_PAYBACK_CHOICES).slice(), sectors,
     },
-    civilService: { available: mods.orderUnlock.has('civilService'), on: o.civilService.on, levers: { ...o.civilService.levers } },
-    treasury: { available: mods.orderUnlock.has('treasury'), on: o.treasury.on, keepSeconds: o.treasury.keepSeconds, projects: o.treasury.projects.slice() },
+    civilService: { available: orderOn(mods, 'civilService'), on: o.civilService.on, levers: { ...o.civilService.levers } },
+    treasury: { available: orderOn(mods, 'treasury'), on: o.treasury.on, keepSeconds: o.treasury.keepSeconds, projects: o.treasury.projects.slice() },
     nextTickIn: nextTickIn(state.time, content),
     marketWhy: marketWhyOf(state, content, o, mods),
     dispatch: { available: dispatchOrderAvailable(mods), on: o.dispatch?.on ?? false, cast: { ...(o.dispatch?.cast ?? {}) } },

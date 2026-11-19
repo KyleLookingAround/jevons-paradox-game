@@ -14,12 +14,12 @@ import { commonsCfg } from './commons';
 import { evalCond } from './conditions';
 import { idx } from './contentIndex';
 import { appendDividend, decadeOffer } from './dividends';
-import { modsOf, etaAt, fireOneOffs, absorptionOf } from './effects';
+import { modsOf, etaAt, fireOneOffs, absorptionOf, leverMulOf } from './effects';
 import type { OneOffs } from './effects';
 import { pushEvents } from './events';
 import type { EvDraft } from './events';
 import { computeFlows, instruments, steadyView } from './flows';
-import { headline, withNews } from './headlines';
+import { headline, newsWith } from './headlines';
 import type { HeadlineCtx } from './headlines';
 import { sectorLevers, NO_LEVERS, leverNetUpkeep } from './levers';
 import { runOrders } from './orders';
@@ -331,7 +331,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       for (const ld of content.levers ?? []) {
         const ls = levers[ld.id];
         if (!ls || ls.level <= 0) continue;
-        const up = leverNetUpkeep(ld, ls.level, mods.startLevers[ld.id] ?? 0);
+        const up = leverNetUpkeep(ld, ls.level, mods.startLevers[ld.id] ?? 0, leverMulOf(mods, ld).upkeep);
         if (up > worstUp) { worstUp = up; worst = ld; }
       }
       if (!worst) {
@@ -349,7 +349,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       if (levers === state.levers) levers = { ...levers };
       const lvl = ls.level - 1;
       levers[worst.id] = { ...ls, level: lvl, ref: lvl > 0 ? ls.ref : 0 };
-      upkeep += leverNetUpkeep(worst, lvl, mods.startLevers[worst.id] ?? 0) - worstUp;
+      upkeep += leverNetUpkeep(worst, lvl, mods.startLevers[worst.id] ?? 0, leverMulOf(mods, worst).upkeep) - worstUp;
       items.push(headline(tmp, content, 'leverLapsed', time, hc, worst.sector));
       ev.push({ kind: 'leverLapsed', sector: worst.sector, id: worst.id, n: lvl, by: 'default' });
     }
@@ -442,7 +442,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let next: GameState = {
     ...state, time, capital: fin(state.capital + fl.income * dt + one.capital), mandate, population,
     peakPopulation: Math.max(state.peakPopulation, population), sectors, levers, flags, steadyYearsAll, run, meta,
-    news: withNews(state.news, items), events: evs.events,
+    ...newsWith(state, content, items), events: evs.events,
     commons: commonsIn > 0 ? { ...state.commons, fund: fin(state.commons.fund + commonsIn) } : state.commons,
   };
   // A newly opened sector records its baseline now, before the player can buy anything for it.
@@ -495,7 +495,7 @@ function stepM3(prev: GameState, next0: GameState, content: Content, year: numbe
     if (m2 !== next.meta) next = { ...next, meta: m2 };
   }
   if (!lite && !away && content.ambient?.length) next = stepAmbient(prev, next, content, year, items);
-  if (items.length) next = { ...next, news: withNews(next.news, items) };
+  if (items.length) next = { ...next, ...newsWith(next, content, items) };
   if (ev.length) next = emit(next, ev, time, year);
   return publishOnFlag(prev, next, content);
 }

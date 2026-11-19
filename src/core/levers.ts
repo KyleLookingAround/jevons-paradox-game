@@ -88,11 +88,13 @@ export function sectorLevers(state: GameState, content: Content): Record<string,
   return bySector;
 }
 
-export function leverNetUpkeep(def: LeverDef, level: number, instLevel: number): number {
+/** Net upkeep of a lever at `level` (an Institution's free levels taken off); M3 finish: × `mul` (leverCostMul's
+ *  upkeep, from leverMulOf). */
+export function leverNetUpkeep(def: LeverDef, level: number, instLevel: number, mul = 1): number {
   if (level <= 0) return 0;
   const full = leverLevelDef(def, level)?.mandateUpkeep ?? 0;
   const free = instLevel > 0 ? leverLevelDef(def, Math.min(instLevel, level))?.mandateUpkeep ?? 0 : 0;
-  return Math.max(0, fin(full - free));
+  return Math.max(0, fin((full - free) * mul));
 }
 
 export const mandateShareOf = (content: Content): number => fin(content.global?.levy?.mandateShare ?? DEFAULT_MANDATE_SHARE);

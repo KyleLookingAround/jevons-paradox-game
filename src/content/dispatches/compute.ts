@@ -4,7 +4,9 @@
  * Content is data (see ../README.md); the rules and magnitudes are in kit.ts and dispatches.test.ts.
  */
 import type { DispatchDef } from '../../types';
-import { AFTER_FIRST, cash, eta, half, income, intensity, mandate, mrate, sat, smoke, timed, wellbeing } from './kit';
+import {
+  AFTER_FIRST, absorb, cash, eta, half, income, intensity, mandate, mrate, sat, smoke, timed, wellbeing,
+} from './kit';
 
 const P = 'compute';
 
@@ -28,7 +30,7 @@ export const computeDispatches: DispatchDef[] = [
         outcome: 'The campus opens to a framed certificate, and the second campus breaks ground.',
         price: '£, and the second campus beside it',
         cost: { capitalSeconds: 45 },
-        effects: [eta(P, 1.05), sat(P, 1.025, 'compute.training')],
+        effects: [eta(P, 1.05), sat(P, 1.025, 'compute.training'), wellbeing(1), absorb(P, 0.002)],
         reply: 'info: certified campus online; second campus approved',
       },
       {
@@ -58,8 +60,8 @@ export const computeDispatches: DispatchDef[] = [
       {
         label: 'Make it free',
         outcome: 'The service is free, and the user is the point of use, all day.',
-        price: 'A price that can never fall again, and use without a ceiling',
-        effects: [cash(40)],
+        price: 'A price that cannot fall, use without a ceiling, carbon',
+        effects: [cash(40), smoke(P, 0.08)],
         modifier: timed(15, sat(P, 1.05, 'compute.web'), mrate(0.96)),
         reply: 'info: price shown to user set to £0.00',
       },
@@ -85,7 +87,7 @@ export const computeDispatches: DispatchDef[] = [
         label: 'Print both on page one',
         outcome: 'Both figures run side by side, and the industry writes to the editor.',
         price: 'The industry’s goodwill',
-        effects: [mandate(40)],
+        effects: [mandate(40), wellbeing(1), absorb(P, 0.002)],
         modifier: timed(10, income(0.95, P)),
         reply: 'warn: watts doubled with computing per watt, say Whitlow tables',
       },
@@ -141,8 +143,8 @@ export const computeDispatches: DispatchDef[] = [
       {
         label: 'Connect them all',
         outcome: 'Every campus is connected, and every campus fills.',
-        price: 'A grid built for the campuses',
-        effects: [cash(40)],
+        price: 'A grid built for the campuses, and their carbon',
+        effects: [cash(40), smoke(P, 0.08)],
         modifier: timed(15, sat(P, 1.04)),
         reply: 'info: queue cleared; all campuses connected',
       },
@@ -150,7 +152,7 @@ export const computeDispatches: DispatchDef[] = [
         label: 'Hold to the queue',
         outcome: 'The queue holds, first come first served, and the campuses complain of it.',
         price: 'The campuses’ custom',
-        effects: [mandate(40)],
+        effects: [mandate(40), wellbeing(1), absorb(P, 0.002)],
         modifier: timed(10, income(0.94, P)),
       },
     ],
@@ -168,6 +170,7 @@ export const computeDispatches: DispatchDef[] = [
         label: 'Mention the repair shops',
         outcome: 'The repair shops are busy, and the savings go on streaming.',
         price: '£ for the advertisement, and the savings spent online',
+        effects: [wellbeing(1), absorb(P, 0.002)],
         cost: { capitalSeconds: 20 },
         modifier: timed(12, sat(P, 0.97), wellbeing(0.45), half(P, 1.03, 'compute.streaming')),
       },

@@ -17,6 +17,8 @@ import { modifierViews } from './modifiers';
 import { foundCostOf } from './purchases';
 import { surveyView } from './returns';
 import { seamsView } from './seams';
+import { appWanted, seamWanted } from './temptation';
+import type { SeamsView } from '../types';
 import { travelView } from './travel';
 import { commonsOpen } from './commons';
 import { computeFlows, instruments, reserveFractionOf, steadyView } from './flows';
@@ -70,6 +72,7 @@ export function derive(state: GameState, content: Content): Derived {
         adoption: sat > 0 ? clamp(f.appD[i] / sat, 0, 1) : 0,
         canFound: !!st?.available && !st.founded && state.capital >= cost && !fl.pending && !es.settled && !forbidden,
         priceSeen: seen, foundCost: cost, forbidden,
+        wantedChange: es.budget ? appWanted(state, content, s, a) : null,
       };
     });
     let secondsLeft = Infinity;
@@ -101,7 +104,7 @@ export function derive(state: GameState, content: Content): Derived {
       stage: stageOf(state, content, s),
       standingDrawIn: Number.isFinite(lev.capFrac) && !es.budget
         ? Math.max(0, standingDrawYearsOf(def, content) - es.openFor * YEARS_PER_SECOND) : null,
-      seams: seamsView(state, content, s, mods),
+      seams: seamsWithTrade(state, content, s, seamsView(state, content, s, mods)),
       load: features.load ? loadView(def, es, f) : null,
       travel: features.travel ? travelView(def, es, f, state.population) : null,
       free: features.freeAtUse && anySeen ? { bill: fin(freeBill), freeShare: f.D > 0 ? fin(freeD / f.D) : 0 } : null,
@@ -160,4 +163,10 @@ function endingView(state: GameState, content: Content): Derived['ending'] {
     allOpen: ix.ids.every((x) => !!state.sectors[x]?.open),
     settled, total: ix.ids.length, years, yearsNeeded: need,
   };
+}
+
+/** SeamsView with the temptation's trade for the next seam (M3 finish; null when no line is drawn). */
+function seamsWithTrade(state: GameState, content: Content, s: SectorId, v: SeamsView | null): SeamsView | null {
+  if (!v) return v;
+  return { ...v, wantedChange: state.sectors[s]?.budget ? seamWanted(state, content, s) : null };
 }
