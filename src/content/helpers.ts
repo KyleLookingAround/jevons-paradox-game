@@ -203,7 +203,7 @@ export function withStages(upgrades: UpgradeDef[], stages: Record<string, [stage
  * false = the M2 numbers (every M3 field is present but solves as M2: roads effectively infinite, no speed effect, M2's
  * capCost and halfPriceMul). Set true once src/core solves the M3 mechanics, then run the balance pass.
  */
-export const MECHANICS_LIVE = false;
+export const MECHANICS_LIVE = true;
 
 /** M3: the load term c_eff / c for a set of profiles weighted by demand (see LoadDef), for compensating capCost. */
 export function loadTerm(profiles: number[][], weights: number[], fixedShare: number, floor = 0.05): number {

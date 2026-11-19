@@ -14,6 +14,10 @@ import { getPrefs, setPrefs, isOpen, setOpen, type TextSize, type Motion, type D
 import { lapseBlock, type Lapse } from './timelapse';
 import { setSound, setVolumes, setCalm } from './sound';
 import type { Notation } from './fmt';
+import { historyPicker } from './history';
+import { archiveSheet, archiveUnread } from './archive';
+import { surveyFiler } from './survey';
+import { surveyDisclosure } from '../content/proprietor';
 
 type Updater = (() => void) | void;
 interface OpenOpts { label: string; full?: boolean; blocking?: boolean; dismissable?: boolean; cls?: string }
@@ -160,6 +164,10 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       rfold: ['R ÷ R₀', (e) => fold(e.rFold)],
       grow: ['growth', (e) => fold(e.frontierFold)],
       rb: ['rebound', (e) => (ctx.state.flags?.revealed ? (e.rebound != null ? pct(e.rebound, false) : '—') : '?')],
+      // M3: the mechanics' terms, only where the core reports them (their features on).
+      cBase: ['c, plant at full use', (e) => (e.load ? `£${fmtPrice(e.load.capCostBase)}/${unitS}` : '—')],
+      cEff: ['c with idle plant', (e) => (e.load ? `£${fmtPrice(e.load.capCostEff)}/${unitS} (load factor ${pct(e.load.factor, false)})` : '—')],
+      seam: ['seams', (e) => (e.seams ? `pᵣ ×${e.seams.priceMul.toFixed(2)} (${e.seams.sunk} sunk)` : '—')],
     };
     const pick: Record<FormulaKind, string[]> = {
       eff: ['eta', 'fold', 'pr', 'c', 'ps', 'D', 'R'],
@@ -179,6 +187,9 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       pick.price = pick.price.filter((k) => k !== 'permit' && k !== 'permitPart');
     }
     if (!f?.moreLevers && kind === 'cons') pick.cons = pick.cons.filter((k) => k !== 'sigma');
+    const e0 = sd(ctx);
+    if (kind === 'price' && e0?.load) { pick.price.splice(pick.price.indexOf('c') + 1, 0, 'cBase', 'cEff'); lines.price.push('c with idle plant = c × ((1 − k) + k ÷ load factor)'); }
+    if (kind === 'price' && e0?.seams) { pick.price.splice(1, 0, 'seam'); }
     b.append(h('div', { class: 'formula' }, ...lines[kind].map((l) => h('div', { class: 'f-line', text: l }))));
     const rows = pick[kind].map((k) => { const v = h('dd', { class: 'num' }); return { v, row: R[k] }; });
     const dl = h('dl', { class: 'f-vals' });
@@ -626,9 +637,11 @@ export function shopSheet(ctx: Ctx, sheets: Sheets, after?: () => void, summary?
     if (after && summary) b.append(h('p', { class: 'shop-back' }, h('button', { class: 'linkish', type: 'button', onclick: summary }, '← The last run’s summary, its replay and picture')));
     // Between runs the Charter (a choice for the run about to begin) leads, above the seats and the shop.
     const ch = after ? charterChoice(ctx) : null;
-    const u = buildShop(ctx, b, ch?.el);
+    const hs = after ? historyPicker(ctx) : null;
+    const lead = ch && hs ? h('div', { class: 'between-lead' }, ch.el, hs.el) : ch?.el;
+    const u = buildShop(ctx, b, lead);
     if (after) b.append(h('div', { class: 'sheet-foot sticky-foot' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); after(); } }, 'Begin the next run')));
-    return () => { u(); ch?.update(); };
+    return () => { u(); ch?.update(); hs?.update(); };
   }, { label: 'Hindsight', cls: 'shop-sheet' + (after ? ' full-ish' : ''), blocking: !!after, dismissable: !after });
 }
 
@@ -762,6 +775,7 @@ export function charterChoice(ctx: Ctx): { el: HTMLElement; update(): void } {
 export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, exportText?: () => string, lapse?: Lapse | null, toShop?: () => void): void {
   const lr = ctx.state.meta?.lastRun;
   const ch = charterChoice(ctx);
+  const hs = historyPicker(ctx);
   sheets.open('summary', (b, close) => {
     if (!lr) { b.append(h('p', { text: 'The books are closed.' })); }
     else {
@@ -799,7 +813,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
           ...(lr.hindsightTerms ? [h('h3', { class: 'paper-sub', text: 'Where the Hindsight came from' }), tl.el] : []),
           h('p', { class: 'paper-h big' }, h('span', { class: 'muted', text: 'Hindsight gained ' }), h('b', { class: 'num', text: fmt(num(lr.hindsightGained)) }))));
     }
-    b.append(ch.el);
+    b.append(ch.el, hs.el);
     b.append(h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => { toShop?.(); shopSheet(ctx, sheets, onDone, () => summarySheet(ctx, sheets, onDone, exportText, lapse, toShop)); } }, 'Spend Hindsight'),
       h('button', { class: 'btn', type: 'button', onclick: () => { close(); onDone(); } }, 'Begin the next run')));
@@ -810,7 +824,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
       if (ok) setPrefs({ lastExport: Date.now() });
       setText(dlNote, ok ? ' Downloaded.' : ' Download blocked; the menu has the save as text.');
     } }, 'Download a copy of the save'), dlNote));
-    return () => ch.update();
+    return () => { ch.update(); hs.update(); };
   }, { label: 'Run summary', full: true, blocking: true, dismissable: false, cls: 'reckon-sheet' });
 }
 
@@ -867,6 +881,8 @@ export interface BackupInfo { at: number; reckonings: number; year: number }
 export interface MenuHooks {
   /** The household survey (the local play ledger): close deletes it and stops; open starts it again, empty. */
   survey: { close(): void; open(): void };
+  /** M3: the first ending's credits again. */
+  credits?(): void;
   exportText(): string;
   importText(t: string): boolean;
   hardReset(): void;
@@ -912,7 +928,11 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
     const statsBtn = h('button', { class: 'btn', type: 'button', onclick: () => statsSheet(ctx, sheets) }, 'Statistics');
     const shopBtn = h('button', { class: 'btn', type: 'button', onclick: () => shopSheet(ctx, sheets) }, 'Hindsight shop');
     const rkBtn = h('button', { class: 'btn', type: 'button', onclick: () => ctx.confirmReckoning() }, 'Call a Reckoning');
-    b.append(h('div', { class: 'm-row' }, statsBtn, shopBtn, rkBtn));
+    // M3: the Archive (once it has arrived), with its unread count; the first ending's credits once reached.
+    const un = archiveUnread(ctx);
+    const arcBtn = ctx.d?.features?.archive ? h('button', { class: 'btn', type: 'button', onclick: () => archiveSheet(ctx, sheets) }, 'The Archive', un ? h('span', { class: 'arc-n num', text: ` · ${fmt(un)} unread` }) : null) : null;
+    const endBtn = ctx.d?.ending?.reached && hooks.credits ? h('button', { class: 'btn', type: 'button', onclick: () => hooks.credits?.() }, ctx.content.ending?.credits.title ?? 'The credits') : null;
+    b.append(h('div', { class: 'm-row' }, statsBtn, shopBtn, arcBtn, rkBtn, endBtn));
 
     // Settings: notation and text size (kept with the UI preferences, not the save).
     const nota = segmented<Notation>('Numbers', [['suffix', '12.3M', 'Suffixes, 12.3M'], ['sci', '1.23e7', 'Scientific, 1.23e7'], ['eng', '12.3e6', 'Engineering, 12.3e6']],
@@ -942,14 +962,15 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
     const svTog = h('button', { class: 'tog', type: 'button', role: 'switch', 'aria-checked': 'false', onclick: () => {
       if (getPrefs().survey) hooks.survey.close(); else hooks.survey.open();
       paintSurvey();
-    } }, h('span', { class: 'tog-k', 'aria-hidden': 'true' }), h('span', { class: 'tog-l', text: 'The Household Survey' }));
+    } }, h('span', { class: 'tog-k', 'aria-hidden': 'true' }), h('span', { class: 'tog-l', text: surveyDisclosure.title }));
     const svTxt = h('p', { class: 'small' });
     const paintSurvey = () => {
       const on = getPrefs().survey;
       setAttr(svTog, 'aria-checked', String(on)); cls(svTog, 'on', on);
+      setAttr(svTog, 'aria-label', on ? surveyDisclosure.closeLabel : surveyDisclosure.openLabel);
       setText(svTxt, on
-        ? 'The Statistics Office keeps a household survey on this device: minutes played, sessions and decisions. It never leaves the device and is not in your save. Switching it off closes the survey and deletes it.'
-        : 'The Household Survey is closed: nothing is being kept. Switching it on starts an empty one.');
+        ? `${surveyDisclosure.body}${ctx.state.meta?.returns?.household ? ' Closing it also withdraws the return on file, so the save holds no figures.' : ''}`
+        : `${surveyDisclosure.title} is closed: nothing is being kept. Switching it on starts an empty one.`);
     };
     paintSurvey();
     b.append(h('section', { class: 'm-sec settings' }, h('h3', { text: 'Settings' }), nota.el, size.el, motion.el, detail.el,
@@ -1167,7 +1188,14 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
       ['Decades within budget', () => (revealed() && ctx.d?.features?.budget ? fmt(num(s().run?.budgetDecades)) : null)],
       ['Years decoupled', () => (revealed() && ctx.d?.features?.budget ? fmt(Math.floor(num(s().run?.decoupledYears))) : null)],
       ['Hindsight on offer', () => (reckoningOffered(ctx) ? fmt(Math.floor(num(d()?.hindsightIfReckonNow))) : null)],
+      ['Letters answered', () => (ctx.d?.features?.dispatches ? `${fmt(num(s().run?.dispatchesAnswered))}${num(s().run?.dispatchesDefaulted) ? `, ${fmt(num(s().run?.dispatchesDefaulted))} left to lapse` : ''}` : null)],
+      ['History in force', () => { const id = d()?.history?.id; const x = id ? ctx.content.histories?.find((hh) => hh.id === id) : undefined; return x ? `${x.name}${d().history.cleared ? ', cleared' : `: ${x.goalLabel}`}` : null; }],
     ]));
+    // M3: the household return, filed from here as from the feed (feature 'survey').
+    const filer = surveyFiler(ctx);
+    const svSec = h('section', { class: 'm-sec sv-sec' }, h('h3', { text: surveyDisclosure.title }), filer.el);
+    b.append(svSec);
+    ups.push(() => { show(svSec, !!ctx.d?.features?.survey); if (ctx.d?.features?.survey) filer.update(); });
 
     // One block per open industry.
     const perHost = h('div', { class: 'stats-per' });
@@ -1196,6 +1224,10 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
           ['Crises', () => fmt(num(st()?.crisesFired))],
           ['Backfired', () => (revealed() ? (st()?.backfired ? `yes, ${res} rose with thrift` : 'not yet') : null)],
           ['Decades in the ledger', () => (revealed() && ctx.d?.features?.budget ? fmt((st()?.decadesWithin || []).length) : null)],
+          ['Seams sunk', () => { const v = e()?.seams; return v ? `${fmt(v.sunk)} of ${fmt(v.total)}` : null; }],
+          ['Load factor', () => (e()?.load ? pct(num(e()!.load!.factor), false) : null)],
+          ['At the wheel', () => { const t = e()?.travel; if (!t) return null; const mm = Math.round(num(t.hoursPerHead) * 60); return `${Math.floor(mm / 60)} h ${String(mm % 60).padStart(2, '0')} min a day`; }],
+          ['Paid elsewhere', () => (e()?.free ? `${money(num(e()!.free!.bill))}/s` : null)],
           ['Open for', () => dur(num(st()?.openFor))],
         ], undefined, local);
         perHost.append(sec);
@@ -1215,6 +1247,9 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
       ['Institutions founded', () => (ran() ? `${Object.values(m()?.institutions || {}).filter((x) => num(x) > 0).length} of ${(ctx.content.institutions || []).length}` : null)],
       ['Seats in use', () => (ran() ? `${num(d()?.slots?.used)} of ${num(d()?.slots?.total)}` : null)],
       ['Achievements', () => { const a = ctx.content.achievements || []; return `${a.filter((x) => m()?.achievements?.[x.id]).length} of ${a.length}`; }],
+      ['Archive notes found', () => (ctx.d?.features?.archive ? `${fmt(num(d()?.archive?.unlocked))} of ${fmt(num(d()?.archive?.total))}` : null)],
+      ['Histories cleared', () => (ctx.d?.features?.histories ? `${Object.values(m()?.histories || {}).filter((x) => x?.cleared).length} of ${(ctx.content.histories || []).length}` : null)],
+      ['First ending', () => { const r = d()?.ending?.record; return r ? `run ${fmt(r.run)}, ${(num(r.totalSeconds) / 3600).toFixed(1)} hours in, ${Math.floor(num(r.year))}` : null; }],
     ]));
 
     b.append(block('The last run', [
@@ -1245,6 +1280,7 @@ export function statsSheet(ctx: Ctx, sheets: Sheets): void {
         const ch = r.charter ? ctx.content.charters?.find((c) => c.id === r.charter)?.name : undefined;
         const bits = [
           ch ? `under ${ch}` : null,
+          r.history ? `History: ${ctx.content.histories?.find((x) => x.id === r.history)?.name ?? r.history}${r.historyCleared ? ', cleared' : ''}` : null,
           dec ? `${fmt(dec)} decade${dec === 1 ? '' : 's'}${lean && ctx.d?.features?.clearSkies ? ` (${fmt(lean)} lean, ${fmt(dec - lean)} full)` : ''}` : ctx.d?.features?.budget ? 'no decades' : null,
           settled ? `${fmt(settled)} settled` : null,
           r.decisions != null ? `${fmt(num(r.decisions))} decisions${num(r.automated) ? `, ${fmt(num(r.automated))} by standing orders` : ''}` : null,

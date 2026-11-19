@@ -196,6 +196,7 @@ function boot(o: GameOpts): void {
     jumpToAffordable: () => ui.jumpToAffordable(),
     showPlace: (id) => ui.showPlace(id),
     confirmFork: (id, onYes) => ui.confirmFork(id, onYes),
+    openArchive: () => ui.openArchive(),
     refreshAll: () => refresh(true),
   };
 
@@ -271,7 +272,11 @@ function boot(o: GameOpts): void {
   let ledger: PlayLedger | null = null;
   ui = mountUI(document.getElementById('app')!, ctx, {
     survey: {
-      close: () => ledger?.close(),
+      // Closing the survey deletes the ledger and withdraws any return on file, so the save holds no figures (M3).
+      close: () => {
+        ledger?.close();
+        if (state?.meta?.returns?.household) ctx.act('withdrawReturn', (m, s, c) => m.withdrawReturn(s, c, 'household'));
+      },
       open: () => ledger?.open(),
     },
     exportText: () => guard('serialize', () => model.serialize(state!)) ?? '',
@@ -327,6 +332,7 @@ function boot(o: GameOpts): void {
   // The household survey (playledger.ts): local only, disclosed in the settings, off with one switch. The mock without
   // `persist` keeps nothing, as it keeps no save.
   ledger = startPlayLedger(ctx, persist);
+  ctx.ledger = ledger;
   mark('rebound-mounted');
   installKeys(ctx, ui);
   void installManifest();
@@ -408,6 +414,11 @@ function boot(o: GameOpts): void {
         state = s;
         acc -= STEP;
         n++;
+      }
+      // M3: banked time at 2× (only while the player asks and the core accepts): one extra slice of the elapsed time.
+      if (n > 0 && ctx.bankPlay && d.bank?.usable && typeof model.useBank === 'function') {
+        const s = guard('useBank', () => model.useBank(state!, content, n * STEP));
+        if (s && s !== state) { state = s; feed.skip(s); } else ctx.bankPlay = false;
       }
       if (n > 0) {
         refresh(false);

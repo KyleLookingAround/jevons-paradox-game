@@ -829,7 +829,8 @@ describe('forks and Charters', () => {
     // in force (found in the core's own offer by Reckoning the run-2 end state with seeds 1, 2, 3…), a fixed length
     const end = MIX.ends[1];
     const rates: Record<string, number> = {};
-    for (const c of C.charters ?? []) {
+    // M3: a `locked` Charter is a History's reward and is correctly never drawn before it (tested below)
+    for (const c of (C.charters ?? []).filter((x) => !x.locked)) {
       let next: GameState | null = null;
       for (let k = 1; k <= 4000 && next === null; k++) { const r = model.reckon({ ...end, seed: k }, C); if (r.charterOffer.includes(c.id)) next = r; }
       expect(`${c.id} ${next !== null}`).toBe(`${c.id} true`);
@@ -839,5 +840,17 @@ describe('forks and Charters', () => {
     const vals = Object.values(rates);
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     for (const [id, v] of Object.entries(rates)) expect(`${id} ${(v / mean - 1).toFixed(2)} ${Math.abs(v / mean - 1) <= 0.15}`).toEndWith('true');
+  }, 60_000);
+  test('E11b: each locked Charter is never offered before its History is cleared, and can be offered after', () => {
+    const end = MIX.ends[1];
+    for (const c of (C.charters ?? []).filter((x) => x.locked)) {
+      const h = (C.histories ?? []).find((x) => x.reward.unlock?.includes(c.id));
+      expect(`${c.id} ${!!h}`).toBe(`${c.id} true`);
+      const offered = (s: GameState) => { for (let k = 1; k <= 400; k++) if (model.reckon({ ...s, seed: k }, C).charterOffer.includes(c.id)) return true; return false; };
+      expect(`${c.id} before ${offered(end)}`).toBe(`${c.id} before false`);
+      // the History cleared, as the core records it (meta.histories and the reward's unlocks)
+      const cleared: GameState = { ...end, meta: { ...end.meta, histories: { ...(end.meta.histories ?? {}), [h!.id]: { runs: 1, cleared: true, best: 3600 } }, unlocks: { ...(end.meta.unlocks ?? {}), [c.id]: true } } };
+      expect(`${c.id} after ${offered(cleared)}`).toBe(`${c.id} after true`);
+    }
   }, 60_000);
 });

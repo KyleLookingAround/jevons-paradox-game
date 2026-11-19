@@ -4,7 +4,7 @@
 // setOrders patch; the model decides when they act (nextTickIn).
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, openSectors } from './ctx';
-import type { GameEvent, OrderId, OrdersPatch } from '../types';
+import type { GameEvent, MarketWhy, OrderId, OrdersPatch } from '../types';
 import { h, setText, setAttr, show, cls, syncChildren } from './dom';
 import { fmt, num, dur } from './fmt';
 
@@ -53,7 +53,13 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     }
   }
   const mOff = h('p', { class: 'od-off muted' });
-  const market = h('div', { class: 'od od-market' }, h('div', { class: 'od-h' }, mOn.el), mPayTxt, mPay, mSecs, mDid, mNext, mOff);
+  // M3: why the Market did or did not act in the Industry on screen (OrdersView.marketWhy).
+  const mWhy = h('p', { class: 'od-why' });
+  // Shift 3, after the Proprietor's Day: which orders close a loop and which open one (OrdersView.kind), with an
+  // estimate from the household ledger.
+  const kindTag = (): HTMLElement => h('span', { class: 'od-kind', hidden: true });
+  const mKind = kindTag(), cKind = kindTag(), tKind = kindTag(), dKind = kindTag();
+  const market = h('div', { class: 'od od-market' }, h('div', { class: 'od-h' }, mOn.el, mKind), mPayTxt, mPay, mSecs, mWhy, mDid, mNext, mOff);
   let payKey = '', secKey = '';
   const secBtns = new Map<string, HTMLButtonElement>();
 
@@ -62,7 +68,7 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
   const cTxt = h('p', { class: 'od-txt' });
   const cLevs = h('div', { class: 'od-chips', role: 'group', 'aria-label': 'Levers the Civil Service may move' });
   const cOff = h('p', { class: 'od-off muted' });
-  const civil = h('div', { class: 'od od-civil' }, h('div', { class: 'od-h' }, cOn.el), cTxt, cLevs, cOff);
+  const civil = h('div', { class: 'od od-civil' }, h('div', { class: 'od-h' }, cOn.el, cKind), cTxt, cLevs, cOff);
   let levKey = '';
 
   /* --- Treasury rules --- */
@@ -73,19 +79,26 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
   const tList = h('ol', { class: 'od-prio' });
   const tAdd = h('div', { class: 'od-chips', role: 'group', 'aria-label': 'Projects to add' });
   const tOff = h('p', { class: 'od-off muted' });
-  const treasury = h('div', { class: 'od od-treasury' }, h('div', { class: 'od-h' }, tOn.el), tTxt, tKeepRow, tList, tAdd, tOff);
+  const treasury = h('div', { class: 'od od-treasury' }, h('div', { class: 'od-h' }, tOn.el, tKind), tTxt, tKeepRow, tList, tAdd, tOff);
+
+  /* --- M3: standing replies to letters (OrdersView.dispatch) --- */
+  const dOn = toggle('Standing replies', () => patch({ dispatch: { on: !o()?.dispatch?.on } }));
+  const dTxt = h('p', { class: 'od-txt' });
+  const dCast = h('div', { class: 'od-chips', role: 'group', 'aria-label': 'Correspondents answered by standing reply' });
+  const dispatchOd = h('div', { class: 'od od-dispatch', hidden: true }, h('div', { class: 'od-h' }, dOn.el, dKind), dTxt, dCast);
+  let castKey = '';
   let prioKey = '', keepKey = '';
   const KEEP = [0, 60, 300, 1800];
 
   const el = h('section', { class: 'orders', 'aria-label': 'Standing orders', hidden: true },
     h('header', { class: 'sec-h' }, h('h2', { class: 'sec-t', text: 'Standing orders' })),
     h('p', { class: 'od-lead muted', text: 'Orders act on their own at each look at the books, here and while you are away. Forks, research and levies stay yours.' }),
-    market, civil, treasury);
+    market, civil, treasury, dispatchOd);
 
   function update(): void {
     const ov = o();
     // The panel appears once any order exists to give (the Market from run 2), or with any order already on.
-    const any = !!ov && (ov.market.available || ov.civilService.available || ov.treasury.available);
+    const any = !!ov && (ov.market.available || ov.civilService.available || ov.treasury.available || !!ov.dispatch?.available);
     show(el, any);
     if (!ov || !any) return;
     const open = openSectors(ctx);
@@ -134,6 +147,10 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
       : auto > 0 ? `${acts(auto)} by standing orders this run.`
         : `Waiting: nothing on offer has paid back within ${span(num(ov.market.paybackMax))} yet this run.`);
     show(mDid, ma && ov.market.on);
+    const why = ov.marketWhy?.[ctx.sector];
+    const wt = why && ma && ov.market.on ? whyText(why) : '';
+    setText(mWhy, wt);
+    show(mWhy, !!wt);
     setText(mOff, ma ? '' : `The Market takes standing orders from run ${fmt(num(ctx.content.global?.orders?.marketFromReckoning, 1) + 1)}.`);
     show(mOff, !ma);
 
@@ -194,6 +211,62 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
     const tBy = unlockedBy('treasury');
     setText(tOff, ta ? '' : `Opens with ${tBy ?? 'an Institution'}, seated.`);
     show(tOff, !ta);
+
+    // Standing replies: only once the order exists (an orderUnlock 'dispatch'); one chip per correspondent who has written.
+    const dv = ov.dispatch;
+    show(dispatchOd, !!dv?.available);
+    if (dv?.available) {
+      dOn.set(dv.on);
+      setText(dTxt, dv.on ? 'Letters from those chosen are answered at once with the answer they take if left. Nothing is paid that a lapse would not pay.' : 'Off: every letter waits for you.');
+      const seen = Object.keys(ctx.state.meta?.dispatches?.seen ?? {});
+      const writers = (ctx.content.cast ?? []).filter((c) => seen.some((id) => ctx.content.dispatches?.find((d) => d.id === id)?.cast === c.id));
+      const ck = writers.map((w) => w.id).join(',') + '|' + JSON.stringify(dv.cast);
+      if (ck !== castKey) {
+        castKey = ck;
+        dCast.replaceChildren(...writers.map((w) => {
+          const on = !!dv.cast?.[w.id];
+          return h('button', { class: 'chip-t' + (on ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(on), onclick: () => patch({ dispatch: { cast: { [w.id]: !on } } }) }, w.name);
+        }));
+      }
+      show(dCast, dv.on && writers.length > 0);
+    }
+
+    // After the Proprietor's Day: the label on each order, and what the ledger says it saves.
+    const reveal = !!ctx.state.meta?.flags?.proprietor;
+    const per = reveal ? ctx.ledger?.automatedPerSession() ?? null : null;
+    const label = (el: HTMLElement, k: OrderId) => {
+      const kd = ov.kind?.[k];
+      show(el, reveal && !!kd);
+      if (!reveal || !kd) return;
+      setText(el, kd === 'closing' ? 'closes a loop' : 'opens a loop');
+      cls(el, 'opening', kd === 'opening');
+      setAttr(el, 'title', kd === 'opening'
+        ? `It takes decisions off the books, and the books open new ones.${per != null ? ` The ledger counts about ${fmt(Math.round(per))} of its actions a visit.` : ''}`
+        : `What it settles stays settled; nothing new comes of it.${per != null ? ` Standing orders save about ${fmt(Math.round(per))} decisions a visit.` : ''}`);
+    };
+    label(mKind, 'market'); label(cKind, 'civilService'); label(tKind, 'treasury'); label(dKind, 'dispatch' as OrderId);
+  }
+
+  /** Why the Market acted or waited, in a line. */
+  function whyText(w: MarketWhy): string {
+    const name = sectorDef(ctx)?.name ?? 'this Industry';
+    const pm = span(num(o()?.market.paybackMax));
+    switch (w.reason) {
+      case 'unavailable': return `Not buying in ${name} this run.`;
+      case 'off': return '';
+      case 'sectorOff': return `Switched off for ${name}.`;
+      case 'settled': return `${name} is settled: the Market leaves it alone.`;
+      case 'fresh': case 'waiting': return 'Waiting for its first look at the books.';
+      case 'pending': return 'Waiting: the Reckoning comes first.';
+      case 'bought': {
+        const n = ctx.content.upgrades?.find((u) => u.id === w.id)?.name ?? sectorDef(ctx)?.applications.find((a) => a.id === w.id)?.name ?? 'something';
+        return `Last bought ${n} in ${name}.`;
+      }
+      case 'none': return `Waiting: nothing in ${name} it may buy.`;
+      case 'cash': return `Waiting: not enough capital for what it would buy in ${name}.`;
+      case 'payback': return `Waiting: the best card in ${name} pays back in ${span(num(w.payback))}, over your ${pm}.`;
+      default: return '';
+    }
   }
   return { el, update, onEvents };
 }

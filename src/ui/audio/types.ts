@@ -24,11 +24,36 @@ export type SoundEventKind =
   | 'steady'          // Steady State reached
   | 'reckoning'       // a Reckoning (the world winds down from SceneView.reckoning)
   | 'industryOpened'  // a new Industry opened
-  | 'ageBegun';       // a new Age begun
+  | 'ageBegun'        // a new Age begun
+  /* --- M3 (additive). Each has a contract-named alias (below) that plays the same sound. --- */
+  | 'seam'            // a seam sunk (event 'seamSunk'): a deep blast, the cage bell, a pump stroke; detail.depth 0–1 = lower
+  | 'letter'          // a dispatch arrives ('dispatchArrived'): the post in the Age's idiom, then the writer's motif (detail.cast)
+  | 'letterOpened'    // the player opens a dispatch: paper (or a key) — very small
+  | 'answer'          // a dispatch answered ('dispatchAnswered'): pen, stamp or key; detail.by 'default' plays 'letterExpired'
+  | 'letterExpired'   // a dispatch lapsed unanswered: barely there
+  | 'bite'            // a lever's side effect first bites ('biteBack'): the lever's own signature, detuned (detail.lever = kind)
+  | 'survey'          // the household return published ('returnPublished'): a ledger page and a clock's tick
+  | 'proprietor'      // the Proprietor's Day: his watch, heard for the first time (ducks the world, like 'reveal')
+  | 'ending'          // the first ending ('ending'): the world resolves and clears; a credits bed holds for about a minute
+  | 'ledgerContinues' // "The ledger continues": the credits bed gives way to play, with a pen stroke
+  | 'arrived'         // a new system unlocks ('featureUnlocked'): one small "something has arrived" cue per Age
+  | 'history'         // a History cleared ('historyCleared'): a line ruled off
+  /* contract-named aliases of the above (the page may call either) */
+  | 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared';
 
+/** M3: contract event names accepted as aliases of the sound's own name. */
+export const SOUND_EVENT_ALIASES: Readonly<Record<string, SoundEventKind>> = {
+  seamSunk: 'seam', dispatchArrived: 'letter', dispatchAnswered: 'answer', biteBack: 'bite', returnPublished: 'survey',
+  featureUnlocked: 'arrived', historyCleared: 'history',
+};
+
+/** Every kind event() accepts (the sound's own names, then the aliases). Unknown kinds are ignored silently. */
 export const SOUND_EVENT_KINDS: readonly SoundEventKind[] = [
   'sell', 'buy', 'cannotAfford', 'found', 'lever', 'fork', 'headline', 'reveal', 'backfire', 'crisis', 'decade',
   'steady', 'reckoning', 'industryOpened', 'ageBegun',
+  'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues',
+  'arrived', 'history',
+  'seamSunk', 'dispatchArrived', 'dispatchAnswered', 'biteBack', 'returnPublished', 'featureUnlocked', 'historyCleared',
 ];
 
 export interface SoundEventDetail {
@@ -40,6 +65,18 @@ export interface SoundEventDetail {
   strength?: number;
   /** −1 (left) … 1 (right): where on screen the tap was. Default 0. */
   pan?: number;
+  /* --- M3 (optional) --- */
+  /** 'letter': the writer, a cast id or figure key ('correspondent', 'whitlow', 'whitlowChair', 'missWhitlow',
+   *  'fenwick', 'ashworth', 'pryce', 'minister', …; GameEvent.label of 'dispatchArrived'). Unknown: no motif. */
+  cast?: string;
+  /** 'answer': who answered (GameEvent.by): 'default' (it lapsed) plays the barely-there 'letterExpired'. */
+  by?: string;
+  /** 'seam': how deep, 0–1 (seams sunk / total). Deeper is lower and longer. */
+  depth?: number;
+  /** 'bite': the lever's kind (LeverDef.kind: 'duty', 'cap', …); its own signature is played, detuned. */
+  lever?: string;
+  /** Marks a first time in the save (GameEvent.first): the moment is played a little fuller. */
+  first?: boolean;
 }
 
 export interface Volumes {
@@ -125,6 +162,8 @@ export interface LayerMix {
   tone: number;
   /** Rolling blackouts apply to this layer now. */
   blackout: boolean;
+  /** M3: the recipe variant to play when the layer's def says `variantBy` (e.g. a deeper seam's longer winding). */
+  variant?: number;
 }
 
 export interface Mix {
@@ -148,4 +187,13 @@ export interface Mix {
   traces: Record<string, number>;
   /** Lever kinds in force → level 0–1. */
   levers: Record<string, number>;
+  /* --- M3 --- */
+  /** Lever kind → how hard it bites back, 0–1 (SceneLever.bite; 0 when absent): its signature sours (detunes). */
+  bites: Record<string, number>;
+  /** 0–1: the proprietor's watch — mean faint ticks per two seconds (SceneView.watch; 0 when absent or frozen). */
+  watch: number;
+  /** 0–1: the first ending's credits are holding the world (air cleared, stress gone, world stepped back). */
+  ending: number;
+  /** Light's day: the hour the sound is at (0–24), or null without a load curve. */
+  hour: number | null;
 }

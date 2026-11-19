@@ -1,6 +1,6 @@
 // Shared UI context: the one mutable place the UI reads game data from.
 import type {
-  AgeDef, CommonsView, Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorDef, SectorDerived, SectorId, UpgradeView,
+  AgeDef, CommonsView, Content, Derived, HouseholdFigures, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorDef, SectorDerived, SectorId, UpgradeView,
 } from '../types';
 
 import type { AffordState } from './afford';
@@ -44,6 +44,12 @@ export interface Ctx {
   refreshAll(): void;
   /** In-page confirmation before taking one arm of a fork. */
   confirmFork(upgradeId: string, onYes: () => void): void;
+  /** M3: the household survey's local ledger (playledger.ts), read only when the player files a return. */
+  ledger?: { figures(): HouseholdFigures | null; automatedPerSession(): number | null };
+  /** M3: open the Archive sheet. */
+  openArchive?(): void;
+  /** M3: banked time played at 2× beside the clock (game.ts reads it each frame). */
+  bankPlay?: boolean;
 }
 
 export interface Comp {

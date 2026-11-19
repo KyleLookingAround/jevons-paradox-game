@@ -1348,6 +1348,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         }
         if (opts.m3) m3Fixture(s, c);
         for (let i = 0; i < 60; i++) step(s, c, 1);
+        if (opts.m3 && opts.letter === 3) s.mandate = 0;
         if (opts.smog != null) for (const id of ids) if (s.sectors[id]?.open && !s.sectors[id].settled) s.sectors[id].pressure = c.sectors[id].collapseAt * opts.smog;
         if (opts.late) {
           // A depleting Steam late in a run: reserve nearly gone and an efficiency fold far past its shadow.

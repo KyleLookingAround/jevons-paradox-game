@@ -38,6 +38,8 @@ export interface Prefs {
   open: Record<string, boolean>;
   /** Features (Derived.features) that arrived in play and whose "New" mark the player has not looked at yet. */
   newMarks: string[];
+  /** M3: Archive notes the player has opened (ids); unread = found and not here. The page's own, never in the save. */
+  archiveRead: string[];
 }
 
 export const PREFS_KEY = 'rebound.ui.prefs';
@@ -45,13 +47,13 @@ export const TEXT_SCALE = [1, 1.15, 1.3] as const;
 
 const DEFAULTS: Prefs = {
   notation: 'suffix', textSize: 0, motion: 'system', detail: 'auto', lastExport: 0, persist: null, iosHintDismissed: false, passed: { run: '', ids: {} },
-  sound: false, volumes: { master: 0.8, world: 0.7, interface: 0.7 }, calm: 'system', survey: true, awaySeen: [], open: {}, newMarks: [],
+  sound: false, volumes: { master: 0.8, world: 0.7, interface: 0.7 }, calm: 'system', survey: true, awaySeen: [], open: {}, newMarks: [], archiveRead: [],
 };
 
 let prefs: Prefs = load();
 
 function load(): Prefs {
-  const p: Prefs = { ...DEFAULTS, passed: { run: '', ids: {} }, volumes: { ...DEFAULTS.volumes }, awaySeen: [], open: {}, newMarks: [] };
+  const p: Prefs = { ...DEFAULTS, passed: { run: '', ids: {} }, volumes: { ...DEFAULTS.volumes }, awaySeen: [], open: {}, newMarks: [], archiveRead: [] };
   try {
     const raw = lsGet(PREFS_KEY);
     const o = raw ? JSON.parse(raw) : null;
@@ -81,6 +83,7 @@ function load(): Prefs {
       if (o.open && typeof o.open === 'object') {
         for (const k of Object.keys(o.open).slice(0, 64)) if (typeof o.open[k] === 'boolean') p.open[k] = o.open[k];
       }
+      if (Array.isArray(o.archiveRead)) p.archiveRead = o.archiveRead.filter((x: unknown) => typeof x === 'string').slice(-600);
       if (Array.isArray(o.newMarks)) p.newMarks = o.newMarks.filter((x: unknown) => typeof x === 'string').slice(0, 16);
     }
   } catch { /* unreadable prefs: defaults */ }

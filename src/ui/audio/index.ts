@@ -4,5 +4,5 @@ export { mixFrom, sourcesFrom, momentsBetween } from './mix';
 export { SOUNDSCAPES, registerSoundscape, soundscapeFor, paletteFor } from './defs';
 export type { SoundscapeDef, LayerDef, BedDef, HitsDef, Drive, Src } from './defs';
 export { KEYS } from './music';
-export { SOUND_EVENT_KINDS } from './types';
+export { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES } from './types';
 export type { Soundscape, SoundscapeOptions, SoundEventKind, SoundEventDetail, Volumes, SoundscapeStats, Mix, LayerMix } from './types';

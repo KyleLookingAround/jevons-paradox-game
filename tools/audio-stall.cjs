@@ -14,6 +14,33 @@ const path = require('node:path');
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate });
   await page.waitForTimeout(500);
+  if (process.argv[3] === 'cycle') {
+    // Robustness: turn sound on and off N times quickly (the page destroys the soundscape on off), hide/show the tab
+    // in between, then count listeners left on document and window, the heap and the final state.
+    const n = +(process.argv[4] || 15);
+    const lis = async () => {
+      const cnt = async (expr) => { const { result } = await cdp.send('Runtime.evaluate', { expression: expr }); const r = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId }); return r.listeners.map((l) => l.type).sort().join(','); };
+      return { doc: await cnt('document'), win: await cnt('window') };
+    };
+    console.log('listeners before:', JSON.stringify(await lis()));
+    await page.click('#on'); await page.evaluate(() => window.stall.start('steam')); await page.waitForTimeout(1500);
+    console.log('listeners while on:', JSON.stringify(await lis()));
+    for (let i = 0; i < n; i++) {
+      await page.evaluate(() => window.stall.off()); await page.waitForTimeout(150 + (i % 3) * 200);
+      await page.click('#on'); await page.waitForTimeout(300 + (i % 4) * 250);
+      if (i % 5 === 2) { await page.evaluate(() => { window.stall.quiet(true); }); await page.waitForTimeout(300); await page.evaluate(() => { window.stall.quiet(false); }); await page.waitForTimeout(400); }
+    }
+    await page.waitForTimeout(2500);
+    const st = await page.evaluate(() => window.stall.stats());
+    console.log('listeners after', n, 'cycles (on):', JSON.stringify(await lis()));
+    await page.evaluate(() => window.stall.off()); await page.waitForTimeout(800);
+    console.log('listeners after off:', JSON.stringify(await lis()));
+    await cdp.send('HeapProfiler.collectGarbage');
+    const heap = await page.evaluate(() => Math.round(performance.memory.usedJSHeapSize / 1e5) / 10);
+    const longs = await page.evaluate(() => window.__long);
+    console.log('final state while on:', JSON.stringify(st), 'heap MB after off + GC:', heap, 'long tasks:', JSON.stringify(longs.map((x) => x.ms)));
+    await browser.close(); return;
+  }
   const mark = async (label) => { const t = await page.evaluate(() => Math.round(performance.now())); marks.push([t, label]); };
   const marks = [];
   await mark('tap on (steam)');

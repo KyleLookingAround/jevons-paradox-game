@@ -47,6 +47,23 @@ export function effectText(ctx: Ctx, e: EffectDef): string {
     case 'offlineCapAdd': return `Time away counted for ${dur(e.seconds)} longer`;
     case 'orderUnlock': return e.order === 'civilService' ? 'The Civil Service takes standing orders' : e.order === 'treasury' ? 'Treasury rules for the Commons' : 'The Market takes standing orders';
     case 'commonsYieldMul': return `Commons projects give ${pct(e.value - 1)} wellbeing`;
+    /* --- M3 --- */
+    case 'resourcePriceMul': return `${def?.resource.name ?? 'The resource'} ${pct(e.value - 1)} in price`;
+    case 'intensityMul': return `${pct(e.value - 1)} ${lower(def?.pressure.name ?? 'pressure')} per ${unitOne(def?.resource) || 'unit'}`;
+    case 'incomeMul': { const s2 = e.sector ? sectorDef(ctx, e.sector)?.name : undefined; return `${pct(e.value - 1)} income${s2 ? ` from ${s2}` : ''}`; }
+    case 'costMulOf': {
+      const nm = ctx.content.upgrades?.find((u) => u.id === e.id)?.name ?? ctx.content.sectors?.[e.id]?.name ?? ctx.content.commons?.find((x) => x.id === e.id)?.name;
+      return `${pct(e.value - 1)} on the cost of ${nm ?? 'one thing'}`;
+    }
+    case 'forbid': {
+      const nm = e.id ? (ctx.content.upgrades?.find((u) => u.id === e.id)?.name ?? ctx.content.levers?.find((l) => l.id === e.id)?.name ?? appName(e.id)) : undefined;
+      return nm ? `No ${nm}` : e.leverKind ? `No ${e.leverKind === 'measure' ? 'measures' : `${e.leverKind} levers`}${e.sector ? ` in ${sectorDef(ctx, e.sector)?.name ?? ''}` : ''}` : 'Something forbidden';
+    }
+    case 'travelMul': return [e.speed != null ? `${pct(e.speed - 1)} speed` : '', e.roads != null ? `${pct(e.roads - 1)} road space` : ''].filter(Boolean).join(', ');
+    case 'priceSeen': return `${appName(e.app) ?? 'Its uses'} shown ${e.share <= 0 ? (e.flat ? `a flat £${fmt(e.flat)}` : 'free') : `${pct(e.share, false)} of the price`}`;
+    case 'populationMul': return `Population ${pct(e.value - 1)} at once`;
+    case 'pressureAdd': return `${def?.pressure.name ?? 'Pressure'} ${e.value >= 0 ? '+' : '−'}${fmt(Math.abs(e.value * 100))} points at once`;
+    case 'metaFlag': return '';
     default: return '';
   }
 }
@@ -147,9 +164,11 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
     // Fork already taken: the card stays as a record of the choice, without a button.
     const by = v.excludedBy;
     cls(el, 'excluded', !!by);
-    show(buy, !by);
+    cls(el, 'forbidden', !!v.forbidden && !by);
+    show(buy, !by && !v.forbidden);
     if (by) setText(ruled, `Ruled out by ${ctx.content.upgrades.find((u) => u.id === by)?.name ?? 'another choice'}`);
-    show(ruled, !!by);
+    else if (v.forbidden) setText(ruled, 'Forbidden for this run');
+    show(ruled, !!by || !!v.forbidden);
     if (kind === 'efficiency') {
       const pc = v.promisedChange;
       const s = pc == null || !Number.isFinite(pc) ? '' : pc < -0.0005 ? 'minus' : pc > 0.0005 ? 'plus' : '';
@@ -591,10 +610,20 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     setText(catchT, t);
     setAttr(catchT.parentElement, 'title', t);
   };
+  // M3: the lever that bites back (LeverView.bite): a small meter of how far its side effect has taken hold, the line,
+  // and the pairing that stops it, ticked while it holds. Shown only while feature 'sideEffects' is on (bite non-null).
+  const biteFill = h('span', { class: 'fillx' });
+  const biteV = h('span', { class: 'bite-v num' });
+  const biteTxt = h('span', { class: 'bite-t' });
+  const unless = h('span', { class: 'bite-u' });
+  const biteEl = h('div', { class: 'lev-bite', hidden: true },
+    h('div', { class: 'bite-row' }, h('span', { class: 'bite-k', text: 'Bites back' }), h('span', { class: 'bite-bar', 'aria-hidden': 'true' }, biteFill), biteV),
+    h('p', { class: 'bite-p' }, biteTxt, ' ', unless));
+  const forbidEl = h('p', { class: 'lev-forbid', hidden: true, text: 'Forbidden for this run: it can be lowered, not raised.' });
   const el = h('article', { class: 'lever' },
     h('header', { class: 'lev-h' }, h('h3', { class: 'lev-name', text: def.name }), h('span', { class: 'pip-wrap' }, pips, pipMore)),
     h('p', { class: 'lev-blurb', text: def.blurb }),
-    h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), catchT),
+    h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), catchT), biteEl, forbidEl,
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk, seeIt),
     levy, noLineEl, next, rec,
     h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
@@ -604,6 +633,20 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
   function update(v: LeverView): void {
     cur = v;
     catchNow();
+    const b = v.bite;
+    show(biteEl, !!b);
+    if (b) {
+      const bv = clamp(num(b.value), 0, 1);
+      setFill(biteFill, bv, 50);
+      setText(biteV, bv < 0.005 ? 'none yet' : pct(bv, false));
+      setText(biteTxt, b.blurb);
+      setText(unless, b.unlessLabel ? (b.unlessMet ? `✓ Held off: ${b.unlessLabel.replace(/^unless\s+/i, '')}.` : `Unless ${b.unlessLabel.replace(/^unless\s+/i, '')}.`) : '');
+      cls(unless, 'met', b.unlessMet);
+      cls(biteEl, 'growing', b.growing && bv > 0.005);
+      cls(biteEl, 'bitten', bv >= 0.5);
+      setAttr(biteEl, 'title', b.growing ? 'Growing while the lever is up and unpaired' : bv > 0.005 ? 'Fading as slowly as it grew' : null);
+    }
+    show(forbidEl, !!v.forbidden);
     const lv = num(v.level);
     const max = Number.isFinite(v.maxLevel) ? num(v.maxLevel, authored) : Infinity;
     // Pips for every reachable step when there are few; past the authored ones, a count.
@@ -618,7 +661,7 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
       setText(raiseL, lv === 0 ? 'Enact' : lv >= authored ? 'Tighten' : 'Raise');
       setText(raiseC, v.nextCost > 0 ? `${fmt(v.nextCost)} Mandate` : 'Free');
       show(raise, true);
-      setAttr(raise, 'aria-disabled', v.canRaise ? null : 'true');
+      setAttr(raise, 'aria-disabled', v.canRaise && !v.forbidden ? null : 'true');
       // Offered only when there is more than one step left to take; whether the Mandate stretches is the model's call.
       show(maxBtn, v.canRaise && max - lv >= 2);
     } else {

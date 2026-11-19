@@ -1,5 +1,5 @@
 // Screenshots and a scripted play-through of the game, for visual checks.
-//   node tools/shot.mjs [scenes|flow|checks|audit|m2|real|realplay|looks|first|all] [filter]
+//   node tools/shot.mjs [scenes|flow|checks|audit|m2|m3|real|realplay|looks|first|all] [filter]
 // Builds a mock-only page (src/ui/mock-main.ts bundled with `bun build`, inlined into index.html) at shots/mock.html,
 // so the UI can be checked while the real model or content does not build. `real` runs `bun run build.ts` and plays
 // dist/index.html. Sizes: 390×844 (phone), 1280×800 (desk), 360×740 (narrow: overflow check only).
@@ -1441,6 +1441,223 @@ async function m2() {
   }
 }
 
+/* ---------------------------------------------------------------- m3 */
+// M3: every new element on the mock at phone, landscape, narrow and desk sizes (design/scratch/m3-ui-progress.md).
+async function m3() {
+  const M3SIZES = [{ w: 390, h: 844, tag: 'phone' }, { w: 844, h: 390, tag: 'land' }, { w: 320, h: 700, tag: 'narrow' }, { w: 1280, h: 800, tag: 'desk' }];
+  for (const sz of M3SIZES) {
+    if (filter && !sz.tag.includes(filter)) continue;
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: sz.tag === 'phone' ? 2 : 1 });
+    const T = `m3-${sz.tag}`;
+    const big = sz.tag === 'phone' || sz.tag === 'desk' || sz.tag === 'land';
+    const step = async (name, f) => {
+      try { await f(); console.log(`  ok   ${T} ${name}`); }
+      catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); }
+    };
+    const shot = async (n, sel, block = 'start') => {
+      if (!big) return;
+      if (sel) await page.locator(sel).first().evaluate((el, b) => { el.scrollIntoView({ block: b }); if (b === 'start') window.scrollBy(0, -(document.querySelector('.cockpit')?.getBoundingClientRect().right <= el.getBoundingClientRect().left + 1 ? 0 : (document.querySelector('.cockpit')?.getBoundingClientRect().height ?? 0) + 8)); }, block).catch(() => {});
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: `${out}/${T}-${n}.png` });
+    };
+    const closeToasts = () => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
+    const go = async (hash, wait = 1300) => { await page.goto(mock + hash); await page.waitForTimeout(wait); await closeToasts(); };
+    const noOverflow = async (what) => { const o = await overflow(page); if (o.sw > o.cw) throw new Error(`sideways scroll at ${what} (${o.sw} > ${o.cw})`); };
+    const visible = (sel) => page.evaluate((s) => [...document.querySelectorAll(s)].some((e) => e.getClientRects().length && !e.closest('[hidden]')), sel);
+    // (The Market's reason for waiting is not a locked system: it explains the Market, which is open.)
+    const M3SEL = ['section.mech', 'section.letters', 'section.survey', '.arc-link', '.lev-bite', '.histories', '.bank-row', '.od-dispatch', '.od-kind', '.news-spot svg'];
+
+    await step('fresh game: nothing of M3 visible', async () => {
+      await go('#mock');
+      for (const s of M3SEL.filter((x) => x !== '.news-spot svg')) if (await visible(s)) throw new Error(`${s} visible in a fresh game`);
+      await noOverflow('fresh');
+      await shot('fresh');
+    });
+    await step('run 3 (M2, M3 locked): nothing of M3 visible', async () => {
+      await go('#mock:m2');
+      for (const s of M3SEL.filter((x) => x !== '.news-spot svg')) if (await visible(s)) throw new Error(`${s} visible before its feature`);
+      const menu = await page.evaluate(() => { window.rebound.ctx.openMenu(); return document.querySelector('.sheet')?.textContent ?? ''; });
+      if (/The Archive|Fifty Years/.test(menu)) throw new Error('the menu names a locked system');
+      await page.keyboard.press('Escape');
+    });
+
+    await go('#mock:m3,letter=3');
+    await step('a letter with three answers: priced, one unaffordable with its reason, the default marked', async () => {
+      const n = await page.locator('.letter .lt-arm').count();
+      if (n !== 3) throw new Error(`${n} answers`);
+      if (!(await page.locator('.lt-arm[aria-disabled="true"]').count())) throw new Error('no unaffordable answer');
+      const why = await page.locator('.lt-arm[aria-disabled="true"] .lt-why').first().textContent();
+      if (!/Needs/.test(why)) throw new Error(`no reason: ${why}`);
+      if (!(await page.locator('.lt-default').count())) throw new Error('default not marked');
+      const lapse = await page.locator('.lt-lapse').textContent();
+      if (!/waits .* if left/.test(lapse)) throw new Error(`no countdown: ${lapse}`);
+      if (await page.locator('.sheet-open, .layer:not([hidden])').count()) throw new Error('the letter opened over the page');
+      await shot('letter-3', '.letter');
+      await noOverflow('letter');
+    });
+    await step('modifiers in force with time left', async () => {
+      if (!(await page.locator('.mods li').count())) throw new Error('no modifier line');
+      const t = await page.locator('.mod-t').first().textContent();
+      if (!/left/.test(t)) throw new Error(t);
+    });
+    await step('answer the letter: it goes, the answer is remembered, the paper prints the reply', async () => {
+      const before = await page.evaluate(() => window.rebound.state.dispatch.answered.length);
+      await closeToasts();
+      await page.locator('.lt-arm:not([aria-disabled="true"])').first().click();
+      await page.waitForTimeout(500);
+      if (await page.locator('.lt-list .letter').count()) throw new Error(`letter still waiting: ${JSON.stringify(await page.evaluate(() => window.rebound.state.dispatch.pending))}`);
+      const after = await page.evaluate(() => window.rebound.state.dispatch.answered.length);
+      if (after !== before + 1) throw new Error('not answered');
+      const sum = await page.locator('.lt-past summary').textContent();
+      if (!/Letters this run, \d/.test(sum)) throw new Error(sum);
+    });
+    await step('the seam ladder: sink the next seam', async () => {
+      await shot('seams', 'section.mech');
+      const n0 = await page.evaluate(() => window.rebound.state.sectors.steam.seamsSunk);
+      await page.locator('.seam-sink').click();
+      await page.waitForTimeout(400);
+      const n1 = await page.evaluate(() => window.rebound.state.sectors.steam.seamsSunk);
+      if (n1 !== n0 + 1) throw new Error(`seams ${n0} → ${n1}`);
+      if (await page.locator('.seam.sunk').count() < n1 + 1) throw new Error('ladder not patched');
+    });
+    await step('a lever that bites back', async () => {
+      if (!(await visible('.lev-bite'))) throw new Error('no bite line');
+      const t = await page.locator('.lev-bite').first().textContent();
+      if (!/Bites back/.test(t) || !/[Uu]nless|Held off/.test(t)) throw new Error(t);
+      await shot('bite', '.lev-bite', 'center');
+    });
+    await step('standing orders: the Market says why it waits', async () => {
+      const t = await page.locator('.od-why').first().textContent();
+      if (!/Waiting|bought|settled|Switched/.test(t)) throw new Error(t);
+    });
+    for (const sec of ['light', 'motion', 'compute', 'code']) {
+      await step(`mechanic instrument: ${sec}`, async () => {
+        await page.evaluate((s) => window.rebound.ctx.selectSector(s), sec);
+        await page.waitForTimeout(700);
+        const kind = await page.locator('section.mech').getAttribute('data-kind');
+        const want = { light: 'load', motion: 'travel', compute: 'free', code: 'upkeep' }[sec];
+        if (kind !== want) throw new Error(`kind ${kind}`);
+        if (sec === 'light' && (await page.locator('.load-chart .lb').count()) !== 24) throw new Error('not 24 bars');
+        if (sec === 'compute' && !(await page.locator('.ptag').count())) throw new Error('no price tag');
+        await noOverflow(sec);
+        await shot(`mech-${sec}`, 'section.mech');
+      });
+    }
+    await page.evaluate(() => window.rebound.ctx.selectSector('steam'));
+    await step('the Archive: browse, filter, search, read', async () => {
+      await page.evaluate(() => window.rebound.ctx.openArchive());
+      await page.waitForTimeout(400);
+      const unread0 = await page.locator('.arc-note.unread:not([hidden])').count();
+      if (!unread0) throw new Error('nothing unread');
+      if (!(await page.locator('.arc-locked').count())) throw new Error('no locked titles');
+      await page.locator('.arc-note:not([hidden]) summary').first().click();
+      await page.waitForTimeout(200);
+      if (!(await page.locator('.arc-src li').count())) throw new Error('no sources');
+      const read = await page.evaluate(() => JSON.parse(localStorage.getItem('rebound.ui.prefs') || '{}').archiveRead?.length ?? 0);
+      if (!read) throw new Error('read mark not kept');
+      await shot('archive');
+      await page.fill('.arc-q', 'coal');
+      await page.waitForTimeout(150);
+      const shown = await page.locator('.arc-note:not([hidden])').count();
+      if (!shown) throw new Error('search found nothing');
+      await page.locator('.arc-chips .chip-t', { hasText: 'All' }).click();
+      await noOverflow('archive');
+      await page.keyboard.press('Escape');
+    });
+
+    await go('#mock:m3,letter=0', 1500);
+    await step('a letter arrives on the note line and waits in the feed', async () => {
+      await page.waitForFunction(() => window.rebound.d.dispatch.pending.length > 0, null, { timeout: 20000 });
+      await page.waitForTimeout(300);
+      if (!(await visible('.letter'))) throw new Error('no letter in the feed');
+      if ((await page.locator('.lt-arm').count()) !== 2) throw new Error('not two answers');
+      await shot('letter-2', '.letter');
+    });
+    await step('left alone, it lapses to its default, reported once', async () => {
+      await closeToasts();
+      await page.evaluate(() => {
+        const r = window.rebound; let s = r.state;
+        for (let i = 0; i < 260; i++) s = r.model.tick(s, r.content, 1);
+        r.ctx.state = s; r.ctx.refreshAll();
+      });
+      // Other notes from the same stretch queue ahead of it: step through them.
+      let note = '', seen = false;
+      for (let i = 0; i < 8 && !seen; i++) {
+        await page.waitForTimeout(300);
+        note = (await page.locator('.note-slot').textContent()) ?? '';
+        if (/lapsed/.test(note)) seen = true; else await page.evaluate(() => document.querySelector('.note-slot:not([hidden]) .note-x')?.click());
+      }
+      if (!seen) throw new Error(`note: ${note}`);
+      const by = await page.evaluate(() => window.rebound.state.dispatch.answered.at(-1)?.by);
+      if (by !== 'default') throw new Error(by);
+    });
+
+    for (const dir of ['up', 'down', 'flat']) {
+      await step(`the Proprietor's Day, published ${dir}`, async () => {
+        await go(`#mock:m3,letter=0,survey=${dir}`);
+        if (!(await visible('.sv-gauges'))) throw new Error('no second gauges');
+        const h = await page.locator('.sv-clip-h').textContent();
+        if (dir === 'up' && !/lengthens|longer|labour up|grows/.test(h)) throw new Error(h);
+        if (dir === 'down' && !/shortens|shorter|saves/.test(h)) throw new Error(h);
+        if (!(await visible('.od-kind'))) throw new Error('no closing/opening labels');
+        await shot(`survey-${dir}`, 'section.survey');
+      });
+    }
+    await step('file a return, buy the card, the return printed; closing the survey withdraws it', async () => {
+      await go('#mock:m3,letter=0,survey=none,persist,rich', 1500);
+      await page.evaluate(() => document.querySelector('section.survey')?.scrollIntoView());
+      await page.locator('.survey .sv-file').click();
+      await page.waitForTimeout(400);
+      if (!(await page.evaluate(() => !!window.rebound.state.meta.returns.household))) throw new Error('not filed');
+      if (!(await visible('.pamphlet'))) throw new Error('no pamphlet');
+      await shot('pamphlet', '.pamphlet');
+      await page.evaluate(() => { window.rebound.state.capital = 1e6; });
+      await page.waitForTimeout(1500);
+      await page.locator('.up[data-up="steam.proprietorsDay"] .buy').click();
+      await page.waitForTimeout(500);
+      if (!(await page.evaluate(() => window.rebound.state.meta.flags.proprietor))) throw new Error('card not bought');
+      if (!(await visible('.sv-gauges'))) throw new Error('no gauges after the card');
+      await page.evaluate(() => window.rebound.ctx.openMenu());
+      await page.locator('.setting.survey .tog').click();
+      await page.waitForTimeout(400);
+      const left = await page.evaluate(() => ({ key: localStorage.getItem('rebound.playledger'), ret: !!window.rebound.state.meta.returns.household }));
+      if (left.key != null) throw new Error('ledger key kept');
+      if (left.ret) throw new Error('return kept in the save');
+      await page.keyboard.press('Escape');
+    });
+    await step('the first ending: credits, retrospective, back to play; again from the menu', async () => {
+      await go('#mock:m3,letter=0,ending', 1200);
+      await page.waitForSelector('.credits-sheet', { timeout: 15000 });
+      await page.waitForTimeout(sz.tag === 'phone' ? 7000 : 500);
+      await shot('credits');
+      await noOverflow('credits');
+      await page.locator('.sheet button', { hasText: 'Read the retrospective' }).click();
+      await page.waitForTimeout(300);
+      if ((await page.locator('.rt-list li').count()) < 5) throw new Error('retrospective thin');
+      await shot('retro');
+      await page.locator('.sheet-foot button.primary').click();
+      await page.waitForTimeout(300);
+      if (await page.locator('.layer:not([hidden])').count()) throw new Error('did not return to play');
+      await page.evaluate(() => window.rebound.ctx.openMenu());
+      if (!(await page.locator('.sheet button', { hasText: 'Fifty Years' }).count())) throw new Error('no credits in the menu');
+      await page.keyboard.press('Escape');
+    });
+    await step('a History between runs: offered first, cleared folded, chosen', async () => {
+      await go('#mock:m3,letter=0,fresh', 1500);
+      await page.waitForSelector('.histories:not([hidden])', { timeout: 5000 });
+      const n = await page.locator('.histories .hs-list').first().locator('.hs-card').count();
+      if (!n) throw new Error('none offered');
+      await page.locator('.histories .hs-card').first().click();
+      await page.waitForTimeout(300);
+      if (!(await page.locator('.hs-card[aria-checked="true"]').count())) throw new Error('not chosen');
+      await shot('history', '.histories');
+      await noOverflow('history');
+    });
+    if (errs.length) fail(`${T} console: ${errs.slice(0, 4).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
 if (mode === 'scenes' || mode === 'all') await scenes();
 if (mode === 'flow' || mode === 'all') await flow(mock);
 if (mode === 'checks' || mode === 'all') await checks();
@@ -1450,6 +1667,7 @@ if (mode === 'realplay') await realplay();
 if (mode === 'looks') await looks();
 if (mode === 'first') await first();
 if (mode === 'm2') await m2();
+if (mode === 'm3') await m3();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

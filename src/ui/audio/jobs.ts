@@ -49,5 +49,14 @@ export function runJob(j: Job): JobResult {
     }
     chans.push(d);
   }
+  // Normalised here exactly as a ConvolverNode with normalize = true would (Web Audio spec, "normalize"), because the
+  // engine splits the impulse over several convolvers (setting one long buffer stalls the main thread for 50–80 ms at
+  // 4× CPU throttle) and must not let each segment normalise itself.
+  let pow = 0;
+  for (const d of chans) for (let i = 0; i < n; i++) pow += d[i] * d[i];
+  let power = Math.sqrt(pow / (chans.length * n));
+  if (!Number.isFinite(power) || power < 0.000125) power = 0.000125;
+  const scale = (0.00125 / power) * (44100 / sr);
+  for (const d of chans) for (let i = 0; i < n; i++) d[i] *= scale;
   return { chans, sr };
 }

@@ -112,7 +112,31 @@ const runs = Math.max(1, parseInt(positional[1] ?? '3', 10) || 3);
 const realOk = Array.isArray((realContent as Partial<Content> | undefined)?.sectorOrder) && !!realContent?.sectors;
 const FIXTURE = flag('fixture', 'false');
 const useFixture = FIXTURE !== 'false' || !realOk;
-const C: Content = useFixture ? (FIXTURE === 'm2' ? fixture : FIXTURE === 'bank' ? fixtureM3Bank : fixtureM3) : realContent;
+const C0: Content = useFixture ? (FIXTURE === 'm2' ? fixture : FIXTURE === 'bank' ? fixtureM3Bank : fixtureM3) : realContent;
+/**
+ * --off=load,travel,free (balance experiments): the content with a mechanic's physics stripped, to attribute a change in
+ * pacing to it. load: no LoadDef (capCost × the load term the sector would have at its opening profile is NOT restored;
+ * compare like with like); travel: roads infinite, no speed or roads effects, no lockInDecay; free: no priceSeen anywhere.
+ */
+const OFF = new Set(flag('off', '').split(',').filter(Boolean));
+/** --feature-on=<id>[,…]: those features dropped from Content.features, so they are on from the start (views print). */
+const FEATURE_ON = new Set(flag('feature-on', '').split(',').filter(Boolean));
+function stripMechanics(c: Content): Content {
+  if (!OFF.size && !FEATURE_ON.size) return c;
+  const keep = (e: EffectDef) => !((OFF.has('travel') && e.type === 'travelMul') || (OFF.has('free') && e.type === 'priceSeen'));
+  const sectors = Object.fromEntries(Object.entries(c.sectors).map(([id, d]) => [id, {
+    ...d,
+    ...(OFF.has('load') && d.load ? { load: undefined } : {}),
+    ...(OFF.has('travel') && d.travel ? { travel: { ...d.travel, roads: 1e15 } } : {}),
+    applications: d.applications.map((a) => ({
+      ...a,
+      ...(OFF.has('travel') ? { lockInDecay: undefined } : {}),
+      ...(OFF.has('free') ? { priceSeen: undefined } : {}),
+    })),
+  }]));
+  return { ...c, sectors, features: FEATURE_ON.size ? Object.fromEntries(Object.entries(c.features ?? {}).filter(([k]) => !FEATURE_ON.has(k))) : c.features, upgrades: c.upgrades.map((u) => ({ ...u, effects: u.effects.filter(keep) })), levers: c.levers.map((l) => ({ ...l, ...(l.effects ? { effects: l.effects.filter(keep) } : {}) })) } as Content;
+}
+const C: Content = stripMechanics(C0);
 const HOURS = parseFloat(flag('hours', '3'));
 const EVERY = parseFloat(flag('every', '120'));
 const CPS = parseFloat(flag('cps', '5'));
@@ -748,6 +772,7 @@ interface RunReport {
   m3?: {
     seams: Record<SectorId, number>; loadFactor: Record<SectorId, number>; speed: Record<SectorId, number>; sprawl: Record<SectorId, number>;
     answered: number; defaulted: number; history: string | null; historyClearedMin: number | null; endingHour: number | null; mandateEnd: number;
+    wy: Record<string, number>;
   };
 }
 
@@ -758,6 +783,8 @@ function sampleRow(s: GameState, open: SectorId[], extra: boolean): string {
     const x = d.sectors[e];
     if (!x) { row += ` │ ${'·'.padStart(extra ? 52 : 22)}`; continue; }
     row += ` │ ${pad(n(x.etaFold), 5)} ${pad(n(x.rFold), 5)} ${pad(pct(x.reserveFraction), 4)} ${pad(pct(x.pressureFraction), 4)}`;
+    if (x.load) row += ` LF${x.load.factor.toFixed(2)} c${n(x.load.capCostEff)} p${n(x.servicePrice)}`;
+    if (x.travel) row += ` v${x.travel.speed.toFixed(2)} h${x.travel.hoursPerHead.toFixed(2)}`;
     if (extra) {
       row += ` ${pad(pct(x.rebound), 5)} ${pad(n(x.frontierFold), 5)} ${pad(x.budgetR !== null && x.resourceUse > 0 ? n(x.budgetR / x.resourceUse) : '-', 5)}` +
         ` ${pad(n(x.steadyYears), 5)} ${pad(String(x.budgetDecades), 3)}`;
@@ -809,6 +836,8 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     if (PAYBACK > 0) s = model.setOrders(s, C, { market: { paybackMax: PAYBACK } });
   }
   const seenApps = new Map<string, number>();
+  /** each Industry's own wellbeing-years this run (Σ W_s dt): its contribution to the main Hindsight term (--ignore) */
+  const wy: Record<string, number> = {};
   const restraint = mode === 'budget' || mode === 'levers' || mode === 'market' || mode === 'human' || mode === 'crisisFarm';
   let firstDecadeLean: boolean | null = null;
   let settlements = 0;
@@ -944,6 +973,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       if (lb < la) ev.push({ t: s.time, text: `     lever ${l.id} lapses to L${lb}` });
     }
     const d = model.derive(s, C);
+    for (const e of ORDER) if (d.sectors[e]) wy[e] = (wy[e] ?? 0) + d.sectors[e]!.wellbeingShare * DT * YEARS_PER_SECOND;
     for (const b of ctx.effBuys) {
       if (b.rAfter60 === undefined && s.time >= b.t + 60) b.rAfter60 = d.sectors[b.sector]?.resourceUse ?? 0;
       if (b.rAfter120 === undefined && s.time >= b.t + 120) b.rAfter120 = d.sectors[b.sector]?.resourceUse ?? 0;
@@ -1120,7 +1150,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       sprawl: Object.fromEntries(ORDER.filter((e) => d.sectors[e]?.travel).map((e) => [e, d.sectors[e]!.travel!.sprawl])),
       answered: s.run.dispatchesAnswered, defaulted: s.run.dispatchesDefaulted, history: s.meta.history,
       historyClearedMin: ctx.firsts.historyCleared !== undefined ? ctx.firsts.historyCleared / 60 : null,
-      endingHour: ctx.firsts.ending !== undefined ? ctx.firsts.ending / 3600 : null, mandateEnd: s.mandate,
+      endingHour: ctx.firsts.ending !== undefined ? ctx.firsts.ending / 3600 : null, mandateEnd: s.mandate, wy,
     } } : {}),
   };
   if (COMMONS && SUMMARY) {
@@ -1174,7 +1204,8 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
         (R.m3 ? ` · m3 seams ${Object.entries(R.m3.seams).map(([e, v]) => `${e}:${v}`).join(',') || '-'} LF ${Object.entries(R.m3.loadFactor).map(([e, v]) => `${e}:${v.toFixed(2)}`).join(',') || '-'}` +
           ` speed ${Object.entries(R.m3.speed).map(([e, v]) => `${e}:${v.toFixed(2)}`).join(',') || '-'} sprawl ${Object.entries(R.m3.sprawl).map(([e, v]) => `${e}:${n(v)}`).join(',') || '-'}` +
           ` disp ${R.m3.answered}/${R.m3.defaulted} hist ${R.m3.history ?? '-'}${R.m3.history ? ` ${R.m3.historyClearedMin !== null ? `cleared@${R.m3.historyClearedMin.toFixed(1)}` : 'not cleared'}` : ''}` +
-          ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'}${mode === 'crisisFarm' ? ` mandate ${n(R.m3.mandateEnd)}` : ''}` : '') +
+          ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'}${mode === 'crisisFarm' ? ` mandate ${n(R.m3.mandateEnd)}` : ''}` +
+          ` Wy ${Object.entries(R.m3.wy).map(([e, v]) => `${e}:${v.toFixed(0)}`).join(',')}` : '') +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }
     s = model.reckon(r.s, C);
@@ -1196,7 +1227,13 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
   const nDone = reports.length;
   log(`\n${nDone} run(s) done. total Hindsight earned ${n(s.meta.hindsightEarned)}; sectors opened ${Object.keys(s.meta.sectorsOpened).join(', ')}; achievements: ${Object.keys(s.meta.achievements).join(', ') || '—'}`);
   log('  Hindsight per minute by run: ' + reports.map((r) => `#${r.run} ${n(r.hindsightPerMin)} (${r.hindsight} in ${(r.seconds / 60).toFixed(1)} min)`).join(' · '));
-  if (SUMMARY && !opts.quietSummary) console.log(`${mode}: Hindsight/min by run ${reports.map((r) => r.hindsightPerMin.toFixed(2)).join(' ')}`);
+  if (SUMMARY && !opts.quietSummary) {
+    console.log(`${mode}: Hindsight/min by run ${reports.map((r) => r.hindsightPerMin.toFixed(2)).join(' ')}`);
+    const totH = reports.reduce((a, r) => a + r.hindsight, 0), totM = reports.reduce((a, r) => a + r.seconds / 60, 0);
+    const wyAll: Record<string, number> = {};
+    for (const r of reports) for (const [e, v] of Object.entries(r.m3?.wy ?? {})) wyAll[e] = (wyAll[e] ?? 0) + v;
+    console.log(`${mode}: total ${totH} H in ${totM.toFixed(1)} min (${(totH / Math.max(1e-9, totM)).toFixed(2)}/min); each Industry's wellbeing-years ${Object.entries(wyAll).map(([e, v]) => `${e} ${v.toFixed(0)}`).join(', ') || '-'}`);
+  }
   if (DECISIONS) {
     const out = {
       decisionsByDecade: mean(reports.map((r) => mean(r.m2.decisionsByDecade))),

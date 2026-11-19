@@ -143,10 +143,115 @@ function chord(rng: Rng, key: Key, degs: number[], dur: number, oct = 1, att = 0
   return envPts(x, [[0, 0], [att, 1], [dur * 0.6, 0.8], [dur, 0]]);
 }
 
-export const UI_KINDS = ['sell', 'buy', 'cannotAfford', 'found', 'lever', 'fork', 'headline', 'reveal', 'backfire', 'crisis', 'decade', 'steady', 'reckoning', 'industryOpened', 'ageBegun'] as const;
+export const UI_KINDS = ['sell', 'buy', 'cannotAfford', 'found', 'lever', 'fork', 'headline', 'reveal', 'backfire', 'crisis', 'decade', 'steady', 'reckoning', 'industryOpened', 'ageBegun',
+  'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues', 'arrived', 'history'] as const;
+
+/* ------------------------------------------------------------------ */
+/* M3: the post, the pen, the watch                                    */
+/* ------------------------------------------------------------------ */
+
+/** The cast's motifs: a few scale degrees each, in the Age's key, on the palette's instrument, played after the post
+ *  so a regular correspondent is known by ear. Later generations keep the family's (the figure key); Miss Whitlow has
+ *  her father's turned round. [degrees, step seconds]. Distinct by interval content (a test checks). */
+export const MOTIFS: Record<string, [number[], number]> = {
+  correspondent: [[4, 4, 0], 0.15],      // the by-line: a repeated note, then down a fifth ("by return")
+  whitlow: [[0, 1, 2, 3], 0.12],         // counting, step by step
+  missWhitlow: [[3, 2, 1, 0], 0.12],     // her father's arithmetic, turned on the proprietor
+  fenwick: [[0, 2, 0, 2], 0.1],          // brisk thirds: a list
+  ashworth: [[0, 4, 7], 0.14],           // proud: up a fifth, up to the octave
+  pryce: [[0, 5, 4], 0.17],              // genial: up a sixth and settle ("now then")
+  minister: [[0, -2, -2], 0.26],         // slow, down a third and stays there ("in due course")
+};
+/** Cast id → the family whose motif it plays (unknown ids: none). */
+export const CAST_FAMILY: Record<string, string> = {
+  correspondent: 'correspondent', whitlow: 'whitlow', whitlowChair: 'whitlow', missWhitlow: 'missWhitlow',
+  fenwick: 'fenwick', fenwickCouncil: 'fenwick', ashworth: 'ashworth', ashworthLater: 'ashworth', pryce: 'pryce', minister: 'minister',
+};
+
+function motif(p: Palette, rng: Rng, key: Key, fam: string): Float32Array {
+  const m = MOTIFS[fam];
+  if (!m) return buf(0.05);
+  const [degs, step] = m;
+  const x = buf(step * degs.length + 0.8);
+  degs.forEach((d, i) => add(x, note(p, rng, freq(key, d, 2), i === degs.length - 1 ? 0.7 : 0.4), sec(step * i), i === degs.length - 1 ? 0.75 : 0.6));
+  return svf(x, 'lp', 3200, 0.7);
+}
+
+/** A pen stroke on paper: a grainy scratch whose pitch follows the nib. */
+function penStroke(rng: Rng, dur: number): Float32Array {
+  const n = sec(dur);
+  const x = svf(white(n, rng), 'bp', (i) => 1700 + 700 * Math.sin((i / n) * Math.PI * 2.3 + rng() * 0.01), 3);
+  for (let i = 0; i < n; i++) { const t = i / n; x[i] *= (0.55 + 0.45 * Math.sin(i / 37)) * Math.sin(Math.PI * Math.min(1, t * 1.1)) ** 0.7; }
+  return svf(x, 'lp', 3800, 0.7);
+}
+
+/** Paper handled: a soft bandpassed rustle that rises. */
+function paper(rng: Rng, dur: number, f0 = 900, f1 = 2400): Float32Array {
+  const n = sec(dur);
+  const x = svf(pink(n, rng), 'bp', (i) => f0 + (f1 - f0) * (i / n), 0.9);
+  for (let i = 0; i < n; i++) x[i] *= (0.5 + 0.5 * Math.abs(Math.sin(i / 230 + rng() * 0.2))) * Math.sin((Math.PI * i) / n);
+  return x;
+}
+
+/** The post arriving, in each Age's idiom: a knock and the letter-box; a telegraph sounder; a teleprinter; a mail
+ *  chime; a soft notification. Small and short by design (a letter arrives every few minutes at most). */
+function post(p: Palette, rng: Rng, key: Key): Float32Array {
+  switch (p) {
+    case 'ledger': { // two knocks on a door, then the letter-box flap and the letter on the mat
+      const x = buf(1.2);
+      add(x, svf(knock(rng, 190, 0.12), 'lp', 1200, 0.7), 0, 0.8);
+      add(x, svf(knock(rng, 182, 0.12), 'lp', 1200, 0.7), sec(0.19), 0.7);
+      add(x, knock(rng, 880, 0.05, true), sec(0.62), 0.35);
+      add(x, knock(rng, 640, 0.04, true), sec(0.66), 0.25);
+      add(x, paper(rng, 0.28, 1500, 900), sec(0.68), 0.35);
+      return x;
+    }
+    case 'gaslight': { // the telegraph sounder: ·−· (down-clack, up-clack)
+      const x = buf(1.1);
+      let t = 0.02;
+      for (const len of [0.07, 0.2, 0.07]) {
+        add(x, knock(rng, 1250 + 60 * rng(), 0.03, true), sec(t), 0.6);
+        add(x, knock(rng, 900 + 40 * rng(), 0.025, true), sec(t + len), 0.4);
+        t += len + 0.11;
+      }
+      return svf(x, 'lp', 3500, 0.7);
+    }
+    case 'chrome': { // the teleprinter: a short chatter, the carriage, a small bell
+      const x = buf(1.2);
+      let t = 0.02;
+      for (let i = 0; i < 12; i++) { add(x, knock(rng, 1100 + 400 * rng(), 0.018, true), sec(t), 0.35 + 0.15 * rng()); t += 0.038 + 0.02 * rng(); }
+      add(x, thump(rng, 140, 0.12, 0.4), sec(t + 0.04), 0.4);
+      add(x, note('chrome', rng, freq(key, 4, 3), 0.5), sec(t + 0.12), 0.3);
+      return svf(x, 'lp', 3500, 0.7);
+    }
+    case 'terminal': { // a mail chime: two soft blips, down a fourth
+      const x = buf(0.6);
+      add(x, note('terminal', rng, freq(key, 7, 2), 0.12), 0, 0.6);
+      add(x, note('terminal', rng, freq(key, 4, 2), 0.16), sec(0.13), 0.55);
+      return x;
+    }
+    case 'neon': { // a soft notification: two glass notes, up
+      const x = buf(1.0);
+      add(x, note('neon', rng, freq(key, 4, 2), 0.5), 0, 0.5);
+      add(x, note('neon', rng, freq(key, 7, 2), 0.7), sec(0.11), 0.45);
+      return svf(x, 'lp', 3500, 0.7);
+    }
+  }
+}
+
+/** Seconds after the post's start at which the writer's motif comes in. */
+export const MOTIF_AT: Record<Palette, number> = { ledger: 1.05, gaslight: 0.95, chrome: 0.95, terminal: 0.45, neon: 0.5 };
+
+/** One watch tick (v 0) or tock (v 1): a small, close metal tick. */
+function watchTick(rng: Rng, v: number): Float32Array {
+  const f = v % 2 ? 1900 : 2350;
+  const x = modal(sec(0.05), f, [[1, 1, 0.014], [1.62, 0.45, 0.009], [2.4, 0.15, 0.005]], SR, rng);
+  return add(x, noiseBurst(rng, 'bp', 2600, 1.4, 0.0004, 0.004), 0, 0.25);
+}
 
 function ui(p: Palette, kind: string, c: RecipeCtx): Float32Array {
   const { rng, key, v } = c;
+  if (kind.startsWith('motif.')) return motif(p, rng, key, kind.slice(6));
   switch (kind) {
     case 'sell': return gesture(p, rng, v);
     case 'buy': {
@@ -245,6 +350,81 @@ function ui(p: Palette, kind: string, c: RecipeCtx): Float32Array {
       add(x, arp(p, rng, key, [0, 4, 7, 11], 0.12, 0.8, 1), sec(0.08), 0.7);
       return x;
     }
+    /* --- M3 --- */
+    case 'seam': return W.seamSink(c);
+    case 'letter': return post(p, rng, key);
+    case 'letterOpened': {
+      if (p === 'terminal') return svf(gesture('terminal', rng, 1), 'lp', 2000, 0.7);
+      if (p === 'neon') return svf(gesture('neon', rng, 0), 'lp', 2400, 0.7);
+      const x = buf(0.6);
+      add(x, paper(rng, 0.22, 700, 1600), 0, 0.6);
+      add(x, paper(rng, 0.3, 1100, 2300), sec(0.18), 0.5);
+      return x;
+    }
+    case 'answer': { // a decision made: pen and stamp, a key, a press
+      const x = buf(1.3);
+      if (p === 'ledger' || p === 'gaslight') { add(x, penStroke(rng, 0.38), 0, 0.6); add(x, commit(p, rng), sec(0.42), 0.8); }
+      else add(x, commit(p, rng), 0, 0.9);
+      add(x, note(p, rng, freq(key, 0, 2), 0.6), sec(p === 'ledger' || p === 'gaslight' ? 0.5 : 0.1), 0.35);
+      return x;
+    }
+    case 'letterExpired': // put away unanswered: a drawer's soft slide, nothing more
+      return svf(paper(rng, 0.45, 500, 800), 'lp', 1000, 0.7);
+    case 'bite': { // the lever's own voice gone sour (used when the page names no lever)
+      const x = buf(1.4);
+      const f = freq(key, 4, 2);
+      add(x, note(p, rng, f, 1.1), 0, 0.5);
+      add(x, note(p, rng, f * 1.035, 1.1), sec(0.012), 0.45);
+      add(x, note(p, rng, freq(key, 3, 2) * 0.985, 0.9), sec(0.3), 0.4);
+      return svf(x, 'lp', 3000, 0.7);
+    }
+    case 'survey': { // the household return published: a ledger page, a clock's tick, one note
+      const x = buf(3.2);
+      add(x, paper(rng, 0.6, 900, 2600), 0, 0.55);
+      for (let i = 0; i < 4; i++) add(x, svf(knock(rng, i % 2 ? 1500 : 1800, 0.03), 'lp', 3000, 0.7), sec(0.75 + 0.5 * i), 0.4);
+      add(x, note(p, rng, freq(key, 0, 2), 1.2), sec(2.75), 0.3);
+      return x;
+    }
+    case 'proprietor': { // the Proprietor's Day: the lid of his watch, its hurry, a considered chord, the lid shut
+      const x = buf(5.2);
+      add(x, knock(rng, 2100, 0.03, true), 0, 0.5);
+      add(x, knock(rng, 1350, 0.03, true), sec(0.02), 0.35);
+      for (let t = 0.18, k = 0; t < 3.85; t += 0.2, k++) add(x, watchTick(rng, k), sec(t), 0.28 + 0.04 * (k % 2));
+      add(x, chord(rng, key, [0, 2, 4], 3.6, 1, 1.0, 0.25), sec(0.7), 0.3);
+      add(x, note(p, rng, freq(key, 4, 2), 1.2), sec(1.2), 0.35);
+      add(x, note(p, rng, freq(key, 2, 2), 1.6), sec(2.1), 0.3);
+      add(x, knock(rng, 1700, 0.04, true), sec(3.95), 0.55);
+      add(x, knock(rng, 1100, 0.05, true), sec(3.97), 0.4);
+      return svf(x, 'lp', 4500, 0.6);
+    }
+    case 'ending': { // the first ending: a bell, the chord opening slowly, the palette's voice, and a bird
+      const x = buf(8);
+      add(x, bell(rng, freq(key, 0, 1), 6, 0.7), 0, 0.45);
+      add(x, chord(rng, key, [0, 4, 7], 7.6, 1, 2.4, 0.25), sec(0.3), 0.32);
+      add(x, arp(p, rng, key, [0, 2, 4, 7, 9], 0.45, 1.2, 2, 2.2), sec(1.2), 0.32);
+      add(x, birdPhrase(rng, 1), sec(4.6), 0.18);
+      return svf(x, 'lp', 4500, 0.6);
+    }
+    case 'ledgerContinues': {
+      const x = buf(1.4);
+      if (p === 'ledger' || p === 'gaslight') add(x, penStroke(rng, 0.32), 0, 0.5);
+      else add(x, gesture(p, rng, 2), 0, 0.5);
+      add(x, note(p, rng, freq(key, 0, 2), 1.0), sec(0.3), 0.4);
+      return x;
+    }
+    case 'arrived': { // something has arrived: the palette's gesture, then up a fourth to the octave
+      const x = buf(1.3);
+      add(x, gesture(p, rng, 1), 0, 0.35);
+      add(x, note(p, rng, freq(key, 4, 2), 0.6), sec(0.06), 0.5);
+      add(x, note(p, rng, freq(key, 7, 2), 0.9), sec(0.2), 0.5);
+      return x;
+    }
+    case 'history': { // a line ruled off, then a small cadence
+      const x = buf(2.0);
+      add(x, penStroke(rng, 0.5), 0, 0.5);
+      add(x, arp(p, rng, key, [0, 4, 7], 0.16, 0.7, 2, 1.4), sec(0.45), 0.5);
+      return x;
+    }
     case 'ageBegun': {
       const x = buf(4.2);
       add(x, chord(rng, key, [3, 5, 7], 1.8, 1, 0.5, 0.3), 0, 0.3);
@@ -312,12 +492,13 @@ const W: Record<string, Recipe> = {
   chuff: ({ rng, v }) => add(noiseBurst(rng, 'bp', 800 + 120 * v, 1.0, 0.006, 0.2, 0.3, 'p'), thump(rng, 120, 0.15, 0.2), 0, 0.3),
   chuffFar: ({ rng, v }) => svf(add(noiseBurst(rng, 'bp', 650 + 80 * v, 1.0, 0.01, 0.25, 0.35, 'p'), thump(rng, 130, 0.15, 0.2), 0, 0.25), 'lp', 1100, 0.7),
   loom: ({ rng, v }) => add(knock(rng, 520 + 90 * v, 0.06), noiseBurst(rng, 'lp', 2600, 0.7, 0.001, 0.015), 0, 0.25),
-  winder: ({ rng, key }) => { // pithead bell, then the drum runs up, holds and runs down
-    const x = buf(9.5);
+  winder: ({ rng, key, v }) => { // pithead bell, then the drum runs up, holds and runs down (deeper seams: a longer run)
+    const run = 7.5 + 1.8 * v;
+    const x = buf(2 + run);
     add(x, bell(rng, freq(key, 0, 3), 1.0, 1.2), 0, 0.35);
     add(x, bell(rng, freq(key, 0, 3), 1.0, 1.2), sec(0.45), 0.3);
-    const n = sec(7.5);
-    const sp = (i: number) => { const t = i / SR; return Math.min(1, t / 2.2) * Math.min(1, Math.max(0, (7.3 - t) / 2.2)); };
+    const n = sec(run);
+    const sp = (i: number) => { const t = i / SR; return Math.min(1, t / 2.2) * Math.min(1, Math.max(0, (run - 0.2 - t) / 2.2)); };
     const drum = osc(n, (i) => freq(key, 0, 0) * (0.7 + 0.6 * sp(i)), 'saw');
     svf(drum, 'lp', 520, 0.8);
     for (let i = 0; i < n; i++) drum[i] *= sp(i);
@@ -454,6 +635,18 @@ const W: Record<string, Recipe> = {
     return envPts(x, [[0, 0], [0.3, 1], [3.8, 1], [4.2, 0]]);
   },
   siren2: ({ rng, key }) => siren(rng, key, 4.5, 1),
+  carHorn: ({ rng, key, v }) => { // a horn in a jam: one toot, two, or a long one; two notes a third apart
+    const x = buf(1.2);
+    const toots = v % 3 === 0 ? [[0, 0.22]] : v % 3 === 1 ? [[0, 0.12], [0.2, 0.14]] : [[0, 0.55]];
+    for (const [t, d] of toots) {
+      const y = new Float32Array(sec(d));
+      for (const dg of [2, 4]) add(y, osc(y.length, freq(key, dg, 2), 'saw', rng()), 0, 0.5);
+      svf(y, 'lp', 1600, 0.8);
+      envPts(y, [[0, 0], [0.012, 1], [d - 0.03, 0.9], [d, 0]]);
+      add(x, y, sec(t), 0.7);
+    }
+    return x;
+  },
 
   // Compute
   tick: ({ rng, v }) => add(modal(sec(0.03), 1500 + 260 * v, [[1, 1, 0.018], [1.6, 0.5, 0.01], [2.3, 0.25, 0.006]], SR, rng), noiseBurst(rng, 'bp', 2000, 1.5, 0.0005, 0.004), 0, 0.2),
@@ -461,6 +654,41 @@ const W: Record<string, Recipe> = {
   throb: ({ rng, key }) => { const x = osc(sec(0.6), freq(key, 0, 1), 'sine'); add(x, osc(sec(0.6), freq(key, 0, 2), 'sine'), 0, 0.6); envAD(x, 0.04, 0.5); return add(x, noiseBurst(rng, 'lp', 220, 0.7, 0.03, 0.3, 0.5, 'b'), 0, 0.3); },
   alarm: ({ rng, key }) => { const x = buf(2.2); for (let i = 0; i < 9; i++) if (i % 3 !== 2) add(x, note('terminal', rng, freq(key, 7, 2), 0.14), sec(0.22 * i), 0.6); return x; },
   whoosh: ({ rng }) => noiseBurst(rng, 'bp', (i) => 400 + 1000 * (i / sec(2)), 1.2, 0.8, 1.2, 2.2, 'p'),
+  // M3: the till that rings for what is still paid for, and the one that does not
+  till: ({ rng, key, v }) => {
+    const x = buf(1.0);
+    add(x, knock(rng, 950 + 80 * v, 0.03, true), 0, 0.5);
+    add(x, svf(bell(rng, freq(key, 4, 3), 0.8, 0.6), 'lp', 4000, 0.7), sec(0.05), 0.4);
+    add(x, noiseBurst(rng, 'lp', 900, 0.7, 0.02, 0.18, 0.25, 'p'), sec(0.12), 0.35);
+    add(x, thump(rng, 130, 0.12, 0.5), sec(0.33), 0.35);
+    return x;
+  },
+  tillKey: ({ rng, v }) => { // the same key and drawer, and where the bell would be, nothing: a spring's small twang
+    const x = buf(0.8);
+    add(x, knock(rng, 950 + 80 * v, 0.03, true), 0, 0.5);
+    const sp = osc(sec(0.16), (i) => 620 * (1 + 0.05 * Math.sin(i / 40)), 'sine', rng());
+    envAD(sp, 0.002, 0.14);
+    add(x, sp, sec(0.06), 0.12);
+    add(x, noiseBurst(rng, 'lp', 900, 0.7, 0.02, 0.18, 0.25, 'p'), sec(0.12), 0.35);
+    add(x, thump(rng, 130, 0.12, 0.5), sec(0.33), 0.35);
+    return x;
+  },
+  watchTick: ({ rng, v }) => watchTick(rng, v),
+  seamSink: ({ rng, key, v }) => { // a seam sunk: the blast underground, the cage bell, a pump stroke rising (deeper: lower)
+    const x = buf(4.6);
+    const f = 50 - 4 * v;
+    add(x, thump(rng, f, 1.8, 0.2), 0, 0.8);
+    const rum = svf(brown(sec(2.6), rng), 'lp', 260 - 25 * v, 0.7);
+    envPts(rum, [[0, 0], [0.04, 1], [0.6, 0.6], [2.6, 0]]);
+    add(x, rum, sec(0.02), 0.7);
+    add(x, svf(bell(rng, freq(key, 0, 3), 0.9, 1.0), 'lp', 3000, 0.7), sec(1.5), 0.22);
+    add(x, svf(bell(rng, freq(key, 0, 3), 0.9, 1.0), 'lp', 3000, 0.7), sec(1.85), 0.18);
+    const st = svf(brown(sec(1.8), rng), 'bp', (i) => (110 - 8 * v) + (300 - 20 * v) * (i / sec(1.8)), 1.4);
+    envPts(st, [[0, 0], [1.0, 1], [1.5, 0.8], [1.8, 0]]);
+    add(x, st, sec(2.3), 0.6);
+    for (let k = 0; k < 4; k++) add(x, knock(rng, 560 + 40 * k, 0.05, true), sec(2.45 + 0.28 * k), 0.12);
+    return x;
+  },
   cricket: ({ rng }) => { const x = buf(1.2); for (let k = 0; k < 3; k++) { const y = osc(sec(0.18), 3500 + 200 * rng(), 'sine'); for (let i = 0; i < y.length; i++) y[i] *= Math.max(0, Math.sin((2 * Math.PI * 30 * i) / SR)); envAD(y, 0.01, 0.17); add(x, y, sec(0.35 * k), 0.6); } return x; },
 
   // Code
@@ -536,7 +764,7 @@ export function render(name: string, c: RecipeCtx): Float32Array {
 }
 
 export function hasRecipe(name: string): boolean {
-  if (name.startsWith('ui:')) { const [, p, kind] = name.split(':'); return (PALETTES as readonly string[]).includes(p) && (UI_KINDS as readonly string[]).includes(kind); }
+  if (name.startsWith('ui:')) { const [, p, kind] = name.split(':'); return (PALETTES as readonly string[]).includes(p) && ((UI_KINDS as readonly string[]).includes(kind) || (kind.startsWith('motif.') && kind.slice(6) in MOTIFS)); }
   return name in W;
 }
 

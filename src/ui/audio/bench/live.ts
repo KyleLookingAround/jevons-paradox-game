@@ -21,8 +21,9 @@ btn.addEventListener('click', () => {
   const a = performance.now();
   if (!ss) { ss = createSoundscape({ enabled: false, seed: 1 }); ss.setSector(sector); }
   ss.setEnabled(true);
-  ss.update(runView(sector, 0.5, 'collapse'));
   clickMs = performance.now() - a;
+  // The page's 10 Hz loop feeds the next view in its own task, as the game does.
+  setTimeout(() => { const b = performance.now(); ss?.update(runView(sector, 0.5, 'collapse')); w.__log.push(`first update ${(performance.now() - b).toFixed(1)} ms`); }, 0);
   w.__log.push(`click handler ${clickMs.toFixed(1)} ms`);
 });
 
@@ -34,6 +35,7 @@ const api = {
   switchTo(sec: string) { sector = sec; ss?.setSector(sec); },
   off() { const a = performance.now(); ss?.setEnabled(false); ss?.destroy(); ss = null; return performance.now() - a; },
   event(k: string) { const a = performance.now(); ss?.event(k as never); return performance.now() - a; },
+  quiet(on: boolean) { if (on) ss?.suspend(); else ss?.resume(); },
   stats() { return ss?.stats() ?? null; },
   clickMs() { return clickMs; },
   stop() { if (timer) clearInterval(timer); timer = null; },

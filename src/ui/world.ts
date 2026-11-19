@@ -5,7 +5,8 @@ import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
 import { fmt, money, fmtPrice, pct, num, clamp, lower, unitOne } from './fmt';
 import { infoBtn } from './gauges';
-import { createScene, sceneViewFrom, type SceneView, type SceneTarget } from './scene';
+import { createScene, sceneViewFrom, spot, type SceneView, type SceneTarget } from './scene';
+import { archiveUnread } from './archive';
 import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
 import { soundUpdate, soundSector, sound, soundUnlock, panOf } from './sound';
@@ -28,10 +29,17 @@ export function buildNews(ctx: Ctx): Comp & { backfire(): void } {
   const txt = h('span', { class: 'news-txt' });
   const more = h('span', { class: 'news-more', 'aria-hidden': 'true' });
   const kicker = h('span', { class: 'news-kick', text: 'A new Age' });
+  // M3: an engraved spot beside the lead headline (the scene's drawings, one per headline kind and look), cached.
+  const spotEl = h('span', { class: 'news-spot', 'aria-hidden': 'true' });
   const head = h('button', { class: 'news-head', type: 'button', 'aria-expanded': 'false', onclick: () => toggle() },
-    h('span', { class: 'news-top' }, mast, yr, more), kicker, txt);
+    h('span', { class: 'news-top' }, mast, yr, more), spotEl, kicker, txt);
   const list = h('ol', { class: 'news-list', hidden: true });
-  const el = h('section', { class: 'news', 'aria-label': 'Broadsheet' }, head, list);
+  // M3: the Archive, from the paper (feature 'archive'): a quiet link with its unread count.
+  const arcN = h('span', { class: 'arc-dotn num' });
+  const arcLink = h('button', { class: 'arc-link linkish', type: 'button', hidden: true, onclick: () => ctx.openArchive?.() }, 'The Archive', arcN);
+  const el = h('section', { class: 'news', 'aria-label': 'Broadsheet' }, head, list, arcLink);
+  const spots = new Map<string, string>();
+  let spotKey = '';
   let open = false, lastKey = '\u0000', listKey = '';
   let backfireUntil = -1;
 
@@ -62,6 +70,21 @@ export function buildNews(ctx: Ctx): Comp & { backfire(): void } {
     setText(kicker, crisis ? 'Late extra' : bf ? 'Backfire' : 'A new Age');
     setText(more, news.length > 1 ? (open ? 'Fold' : `${news.length} items`) : '');
     const k = top ? `${top.time}|${top.text}` : '';
+    // The spot follows the lead item's kind in the look on screen (rebuilt only when either changes).
+    const sk = top?.key ? `${top.key}|${theme}` : '';
+    if (sk !== spotKey) {
+      spotKey = sk;
+      let mk = sk ? spots.get(sk) : '';
+      if (sk && mk == null) {
+        try { mk = spot(top!.key, theme === 'agentic' ? 'cyberpunk' : theme, { standalone: true, width: 60, height: 40 }); } catch { mk = ''; }
+        spots.set(sk, mk);
+      }
+      spotEl.innerHTML = mk || '';
+      show(spotEl, !!mk);
+    }
+    const arc = !!ctx.d?.features?.archive;
+    show(arcLink, arc);
+    if (arc) { const n = archiveUnread(ctx); setText(arcN, n ? ` · ${fmt(n)} unread` : ''); }
     if (k !== lastKey) {
       const fresh = lastKey !== '\u0000' && lastKey !== '' && !!top;
       lastKey = k;
@@ -194,6 +217,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
   const frame = h('div', { class: 'world-frame' }, mount);
   const el = h('section', { class: 'apps', 'aria-label': 'Uses of the service' }, title, frame, priceRow, hand);
   let selected: string | null = null;
+  /** M3: the machine's display name from the latest 'stageReached' (GameEvent.label), per Industry. */
+  const stageLabel = new Map<string, string>();
   const renderer = createWorldRenderer(mount, {
     onFound: (appId) => ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, appId)),
     onSelect: (appId) => { selected = appId; markHand(); },
@@ -203,7 +228,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
       // The first sight of an Industry (a tab opened, a page loaded) records its stage: only a rise seen is news.
       const was = lastStage.get(id);
       lastStage.set(id, stage);
-      if (was != null && id === ctx.sector && stage > was) moment('stage', `New machines in ${sectorDef(ctx, id)?.name ?? 'the picture'}`, 'See them');
+      if (was != null && id === ctx.sector && stage > was) moment('stage', `New machines in ${sectorDef(ctx, id)?.name ?? 'the picture'}${stageLabel.get(id) ? `: ${stageLabel.get(id)}` : ''}`, 'See them');
     },
   });
   function markHand(): void {
@@ -353,6 +378,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
   function queueEvents(ev: GameEvent[]): void {
     sceneEvents = sceneEvents.concat(ev).slice(-50);
     for (const e of ev) {
+      if (e.kind === 'stageReached' && e.sector && e.label) stageLabel.set(e.sector, e.label);
       if (e.sector !== ctx.sector) continue;
       if (e.kind === 'crisis') moment('crisis');
       else if (e.kind === 'leverEnacted' && e.by === 'player' && e.n === 1) {

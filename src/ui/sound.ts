@@ -43,9 +43,12 @@ export function setCalm(c: 'system' | 'on' | 'off'): void {
 }
 export function soundUpdate(view: SceneView): void { if (sc && getPrefs().sound) { try { sc.update(view); } catch { /* ignore */ } } }
 export function soundSector(id: string): void { sector = id; try { sc?.setSector(id); } catch { /* ignore */ } }
-export function sound(kind: SoundEventKind, detail?: SoundEventDetail): void {
+/** M3 moments the audio lane adds to SoundEventKind (briefs/m3-audio.md); until its union carries them the soundscape
+ *  ignores an unknown kind (inside the try). */
+export type M3SoundKind = 'seam' | 'letter' | 'answer' | 'bite' | 'survey' | 'ending';
+export function sound(kind: SoundEventKind | M3SoundKind, detail?: SoundEventDetail): void {
   if (!sc || !getPrefs().sound) return;
-  try { sc.event(kind, detail); } catch { /* ignore */ }
+  try { sc.event(kind as SoundEventKind, detail); } catch { /* ignore */ }
 }
 /** Cheap and idempotent: recover after an iOS interruption on the next tap. */
 export function soundUnlock(): void { if (sc && getPrefs().sound) { try { sc.unlock(); } catch { /* ignore */ } } }

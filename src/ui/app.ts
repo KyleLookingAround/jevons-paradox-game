@@ -24,6 +24,12 @@ import { sound } from './sound';
 import { createNewMarks } from './unfold';
 import { buildNotes } from './notes';
 import { fitLayout } from './layout';
+import { buildMechanics } from './mechanics';
+import { buildLetters } from './dispatch';
+import { buildSurvey } from './survey';
+import { creditsSheet } from './ending';
+import { archiveSheet } from './archive';
+import { dur } from './fmt';
 
 export interface UI {
   update(): void;
@@ -56,6 +62,10 @@ export interface UI {
   awayCheck(): void;
   /** Write the page's own local records (the time-lapse) beside an autosave. */
   saveLocal(): void;
+  /** M3: the first ending's credits again (from the menu). */
+  openCredits(): void;
+  /** M3: the Archive sheet. */
+  openArchive(): void;
 }
 
 const THEME_COLOUR: Record<string, string> = {
@@ -87,6 +97,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const divs = buildDividends(ctx);
   const commons = buildCommons(ctx);
   const orders = buildOrders(ctx);
+  const mech = buildMechanics(ctx);
+  const letters = buildLetters(ctx);
+  const survey = buildSurvey(ctx);
 
   const afford = createAfford(ctx);
   // The unfolding: a "New" mark on whatever a feature has just opened (unfold.ts).
@@ -115,7 +128,13 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // The run's header line: which run this is, and the Charter in force (named for the rest of the run).
   const runN = h('span', { class: 'num' });
   const runCh = h('span', { class: 'rl-ch' });
-  const runline = h('p', { class: 'runline', hidden: true }, runN, runCh);
+  const runHs = h('span', { class: 'rl-hs' });
+  const runline = h('p', { class: 'runline', hidden: true }, runN, runCh, runHs);
+  // M3: banked time (only if content turns it on): the seconds kept, and a switch to play them at twice the pace.
+  const bankTxt = h('span', { class: 'num' });
+  const bankBtn = h('button', { class: 'tog', type: 'button', role: 'switch', 'aria-checked': 'false', onclick: () => { ctx.bankPlay = !ctx.bankPlay; } },
+    h('span', { class: 'tog-k', 'aria-hidden': 'true' }), h('span', { class: 'tog-l', text: 'Play it at 2×' }));
+  const bankRow = h('p', { class: 'bank-row', hidden: true }, h('span', { class: 'muted', text: 'Banked: ' }), bankTxt, bankBtn);
   const hb = h('b', { class: 'num' });
   const reckonBtn = h('button', { class: 'btn', type: 'button', onclick: () => ui.confirmReckoning() }, 'Call a Reckoning');
   const foot = h('footer', { class: 'run-foot' },
@@ -131,7 +150,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // Improvements sit above the world so that a phone shows the first purchase above the fold.
   // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
   // improvements (the affordable chip by the sell button covers the rest).
-  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, onboard, world.el, news.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, foot);
+  // M3: the mechanic's instrument sits under its picture; a waiting letter under the paper; the survey after the orders.
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, bankRow, onboard, world.el, mech.el, news.el, letters.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, survey.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, live);
   fitLayout(cockpit, feed, gauges.el, gauges.more);
 
@@ -142,10 +162,11 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     replay(cockpit, 'm-crisis', 2400);
   });
 
-  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders]];
+  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey]];
 
   let look = '', accent: string | null | undefined;
   let wasWon = !!ctx.state.flags?.won;
+  let endingNow = false;
   let onboardState: 'show' | 'fading' | 'gone' | '' = '';
 
   function reckonNow(): void {
@@ -191,7 +212,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     sheets,
     toast: (t, a) => toasts.push(t, a),
     openFormula: (k) => formulaSheet(ctx, sheets, k),
-    openMenu: (focus) => menuSheet(ctx, sheets, hooks, focus),
+    openMenu: (focus) => menuSheet(ctx, sheets, { ...hooks, credits: () => ui.openCredits() }, focus),
     openShop: () => shopSheet(ctx, sheets),
     openShopBetweenRuns: shopBetween,
     openBetweenRuns: () => { const last = loadLast(ctx); if (last?.at === 'summary') openSummary(last.lapse); else shopBetween(); },
@@ -213,6 +234,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     onEvents,
     awayCheck: () => away.check(),
     saveLocal: () => lapse.save(),
+    openCredits: () => creditsSheet(ctx, sheets, lapse.finish(null)),
+    openArchive: () => archiveSheet(ctx, sheets),
   };
 
   /** A brief mark on an element (a class for `ms`); restarts if already running. Never loops, never blocks input. */
@@ -225,6 +248,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     world.queueEvents(ev);
     gauges.onEvents?.(ev);
     orders.onEvents(ev);
+    letters.onEvents(ev);
     let automated = 0;
     for (const e of ev) {
       const def = e.sector ? sectorDef(ctx, e.sector) : undefined;
@@ -280,6 +304,27 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
           if (name && ctx.content.features[id]?.intro) toasts.push(`New: ${name}.`, { label: 'Show', run: () => showFeature(id) }, 9000);
           break;
         }
+        /* --- M3 (the scene plays its own moments for seamSunk, biteBack and ending) --- */
+        case 'seamSunk': sound('seam', { sector: e.sector }); break;
+        case 'biteBack': {
+          sound('bite', { sector: e.sector });
+          const l = ctx.content.levers?.find((x) => x.id === e.id);
+          if (ctx.d?.features?.sideEffects && l?.sideEffects) toasts.push(`${l.name} bites back: ${l.sideEffects.blurb.replace(/\.$/, '')}.`, e.sector !== ctx.sector ? goThere(e.sector) : undefined, 8000);
+          break;
+        }
+        case 'historyCleared': {
+          const hs = ctx.content.histories?.find((x) => x.id === e.id);
+          toasts.push(`History cleared: ${hs?.name ?? 'the goal is met'}.${e.first ? ' Its reward is yours for good.' : ''}`, undefined, 9000);
+          break;
+        }
+        case 'returnPublished': sound('survey'); toasts.push('The Statistics Office prints the household survey.', { label: 'Read it', run: () => { const el = document.querySelector<HTMLElement>('section.survey'); el?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' }); } }, 9000); break;
+        case 'stageReached': if (e.label && e.sector !== ctx.sector) toasts.push(`New machines in ${nameOf(e.sector)}: ${e.label}.`, goThere(e.sector)); break;
+        case 'ending':
+          endingNow = true;
+          sound('ending');
+          // The credits wait for any sheet the player is in, and never cover a pending Reckoning.
+          setTimeout(() => { if (!ctx.d?.pendingReckoning) ui.openCredits(); }, reducedMotion() ? 0 : 2200);
+          break;
         default: break; // unknown kinds are ignored (the union grows)
       }
     }
@@ -384,6 +429,18 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     show(runline, rk >= 1 && !ctx.d?.freshRun);
     setText(runN, `Run ${fmt(rk + 1)}`);
     setText(runCh, chName ? ` · under ${chName}` : '');
+    const hsId = ctx.d?.history?.id;
+    const hsDef = hsId ? ctx.content.histories?.find((x) => x.id === hsId) : undefined;
+    setText(runHs, hsDef ? ` · History: ${hsDef.name}${ctx.d.history.cleared ? ' ✓' : ''}` : '');
+    setAttr(runHs, 'title', hsDef ? `${hsDef.rebound}. Goal: ${hsDef.goalLabel}${ctx.d.history.cleared ? ' (met)' : ''}` : null);
+    const bk = ctx.d?.bank;
+    show(bankRow, !!ctx.d?.features?.bank && !!bk && bk.seconds > 0);
+    if (bk && bk.seconds > 0) {
+      setText(bankTxt, dur(bk.seconds));
+      if (!bk.usable && ctx.bankPlay) ctx.bankPlay = false;
+      setAttr(bankBtn, 'aria-checked', String(!!ctx.bankPlay)); cls(bankBtn, 'on', !!ctx.bankPlay);
+      setAttr(bankBtn, 'aria-disabled', bk.usable ? null : 'true');
+    }
     setText(hb, fmt(Math.floor(ctx.d?.hindsightIfReckonNow ?? 0)));
     // Offered once the run has had its reveal (or after a first Reckoning); a forced Reckoning needs no button.
     show(foot, reckoningOffered(ctx) && !ctx.d?.pendingReckoning);
@@ -411,8 +468,13 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       sound('reckoning', { sector: ctx.d.pendingReckoning.sector });
     }
     // Win: first time only.
+    // Win: the first ending has its own credits (the 'ending' event); a later win is a quiet note; content without
+    // the M3 ending keeps the plain card.
     const won = !!ctx.state.flags?.won;
-    if (won && !wasWon) winSheet(ctx, sheets);
+    if (won && !wasWon && !endingNow) {
+      if (ctx.d?.ending?.reached && ctx.content.ending) toasts.push('Steady State everywhere again. The ledger continues.', { label: 'The credits', run: () => ui.openCredits() }, 9000);
+      else if (!ctx.content.ending) winSheet(ctx, sheets);
+    }
     wasWon = won;
 
     timed('ui.sheets', () => sheets.update());

@@ -1386,8 +1386,26 @@ describe('M3: the feature schedule (the unfolding, continued)', () => {
     // ambient news first in run 2 (five minutes in, the first check after the Market): no time floor that would push it
     // into more levers' slot
     expect(`${rkFloor(F.ambient!.when)} ${timeFloor(F.ambient!.when)}`).toBe('1 0');
-    // the Archive, the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding)
-    for (const id of ['archive', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse'] as const) expect(`${id} ${rkFloor(F[id]!.when)}`).toBe(`${id} 3`);
+    // the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding), then one run
+    // apart (balance lane, owner's direction "options should be unlocked more slowly": at most two arrivals a run from
+    // run 4, one at the Reckoning and one mid-run; design/unlock-schedule.md)
+    const floors = { seams: 3, load: 4, travel: 5, freeAtUse: 6, sideEffects: 7, archive: 5, survey: 5, histories: 6 } as const;
+    for (const [id, n] of Object.entries(floors)) expect(`${id} ${rkFloor(F[id as keyof typeof floors]!.when)}`).toBe(`${id} ${n}`);
+    // the mid-run arrivals share one window shorter than the gap between arrivals, so at most one of them arrives a run
+    // (the free price has the window's floor only, and the bite needs it: they can never share a run either)
+    const gap = C.global.featureGapSeconds ?? 0;
+    expect(timeFloor(F.freeAtUse!.when)).toBe(1200);
+    expect(leaves(F.sideEffects!.when).some((x) => 'feature' in x && x.feature === 'freeAtUse')).toBe(true);
+    for (const id of ['seams', 'load', 'travel', 'sideEffects'] as const) {
+      const top = (F[id]!.when as { all: Cond[] }).all;
+      const lo = timeFloor(F[id]!.when);
+      const hi = Math.min(...top.flatMap((x) => ('stat' in x && x.stat === 'time' && x.op === '<' ? [x.value] : [])));
+      expect(`${id} ${lo} ${hi} ${hi - lo < gap}`).toBe(`${id} 1200 1440 true`);
+    }
+    // the Reckoning arrivals: only the check in reckon() sees a run under two seconds old
+    for (const id of ['archive', 'survey', 'histories'] as const) {
+      expect(`${id} ${(F[id]!.when as { all: Cond[] }).all.some((x) => 'stat' in x && x.stat === 'time' && x.op === '<' && x.value <= 2)}`).toBe(`${id} true`);
+    }
   });
 
   test('the survey from hour 6 with the Civil Service; Histories from hour 8 after a Steady State; the bank never', () => {

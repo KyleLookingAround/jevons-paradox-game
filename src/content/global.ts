@@ -14,12 +14,13 @@ import { DECADE_PAIRS } from './helpers';
  * The pace of a budget line. A steeper line falls faster towards the sink line and pays a larger one-off dividend
  * (dividendMul scales mandateAdd and capitalAdd of the decade's base and of the chosen dividend; standing effects are
  * not scaled). Severe's ×2.5 makes its one-offs worth having, not decisive: a Severe decade is much harder to earn.
+ * QA B14: the blurbs do not repeat the decline or the multiplier, which the page prints beside them.
  * The first pace is the default for lines the player did not draw by hand.
  */
 export const PACES: PaceDef[] = [
-  { id: 'gentle', name: 'Gentle', declinePerDecade: 0.05, dividendMul: 1, blurb: 'Five per cent a decade. The dividend as it stands.' },
-  { id: 'firm', name: 'Firm', declinePerDecade: 0.1, dividendMul: 1.6, blurb: '10 per cent a decade. A larger dividend, and a line that bites sooner.' },
-  { id: 'severe', name: 'Severe', declinePerDecade: 0.2, dividendMul: 2.5, blurb: 'A fifth a decade. The dividend more than doubles, if the decade is ever earned.' },
+  { id: 'gentle', name: 'Gentle', declinePerDecade: 0.05, dividendMul: 1, blurb: 'A line that falls slowly, and the dividend as it stands.' },
+  { id: 'firm', name: 'Firm', declinePerDecade: 0.1, dividendMul: 1.6, blurb: 'A larger dividend, and a line that bites sooner.' },
+  { id: 'severe', name: 'Severe', declinePerDecade: 0.2, dividendMul: 2.5, blurb: 'The largest dividend, if the decade is ever earned.' },
 ];
 
 /* ------------------------------------------------------------------ */

@@ -7,7 +7,9 @@ import type { Palette } from './recipes';
 
 /** A source of a 0–1 number read from the view (see mix.ts for the exact meaning of each):
  *  'one' · 'pace' · 'pressure' · 'haze' · 'reserve' · 'pop' · 'stage' · 'built' · 'empty' · 'steady' · 'clear' ·
- *  'decoupling' · 'stress' · 'app:<icon or id>' · 'lever:<kind>' — prefixed 'inv:' for 1 − x, or
+ *  'decoupling' · 'stress' · 'app:<icon or id>' · 'lever:<kind>' ·
+ *  M3 (0 or neutral when the view field is absent): 'seamsOn' · 'depth' · 'loadOn' · 'hourLoad' · 'night' · 'day' ·
+ *  'travelOn' · 'congestion' · 'sprawl' · 'freeOn' · 'freeShare' · 'paidShare' — prefixed 'inv:' for 1 − x, or
  *  'step<t>:<src>' for a soft step from 0 to 1 as <src> passes t (e.g. 'step0.5:reserve'). */
 export type Src = string;
 
@@ -69,6 +71,8 @@ export interface HitsDef extends LayerBase {
   sweep?: boolean;
   /** Density from its own drive (default: the level's drive). */
   density?: Drive;
+  /** M3: choose the variant from a source (0–1 → variant 0 … variants − 1) instead of at random. */
+  variantBy?: Src;
 }
 
 export type LayerDef = BedDef | HitsDef;
@@ -103,11 +107,11 @@ const steam: SoundscapeDef = {
     { id: 'birds', kind: 'hits', recipe: 'bird', variants: 6, rate: 0.55, minGap: 0.6, pan: [-0.8, 0.8],
       gain: 0.13, level: { add: [['empty', 0.6], one(0.25), ['steady', 0.7]], mul: [['inv:haze', 1], ['inv:pace', 0.4]], max: 1 }, send: 0.35 },
     // One engine voice per machine stage (Newcomen → Watt → high-pressure → turbine), from the first pump.
-    { id: 'eng0', kind: 'hits', recipe: 'newcomen', grid: { every: 4 }, stages: [0], mech: true, pan: [-0.25, -0.15], lp: 3000,
+    { id: 'eng0', kind: 'hits', recipe: 'newcomen', grid: { every: 4 }, stages: [0], mech: true, pan: [-0.25, -0.15], lp: 3000, pitch: ['depth', 1, 0.9],
       gain: 0.5, level: { add: [['app:pump', 1]] }, density: { add: [one(1)] }, send: 0.3 },
-    { id: 'eng1', kind: 'hits', recipe: 'watt', grid: { every: 2 }, stages: [1], mech: true, pan: [-0.25, -0.15],
+    { id: 'eng1', kind: 'hits', recipe: 'watt', grid: { every: 2 }, stages: [1], mech: true, pan: [-0.25, -0.15], pitch: ['depth', 1, 0.9],
       gain: 0.45, level: { add: [['app:pump', 0.6], ['built', 0.6]] }, density: { add: [one(1)] }, send: 0.3 },
-    { id: 'eng2', kind: 'hits', recipe: 'chuff', variants: 3, grid: { every: 0.5, pattern: [1, 0.7] }, stages: [2], mech: true, pan: [-0.3, -0.1],
+    { id: 'eng2', kind: 'hits', recipe: 'chuff', variants: 3, grid: { every: 0.5, pattern: [1, 0.7] }, stages: [2], mech: true, pan: [-0.3, -0.1], pitch: ['depth', 1, 0.9],
       gain: 0.28, level: { add: [['app:pump', 0.5], ['built', 0.7]] }, density: { add: [one(1)] }, send: 0.25 },
     { id: 'eng3', kind: 'bed', src: 'tones', tones: [[0, 3, 'triangle', 0.5], [4, 3, 'sine', 0.3, 4], [0, 1, 'sine', 0.6]], filter: ['lowpass', 1800, 0.7],
       stages: [3], mech: true, pan: -0.2, gain: 0.05, level: { add: [['app:pump', 0.4], ['built', 0.8]] }, pitch: ['pace', 1, 1.06] },
@@ -116,8 +120,12 @@ const steam: SoundscapeDef = {
       gain: 0.22, level: { add: [['app:mill', 1]] } },
     { id: 'looms', kind: 'hits', recipe: 'loom', variants: 4, grid: { every: 0.5, pattern: [1, 0.35, 0.8, 0.5], jitter: 0.012 }, mech: true, pan: [0, 0.35], lp: 2400,
       gain: 0.32, level: { add: [['app:mill', 1]] }, density: { add: [['app:mill', 1.1]] }, send: 0.25 },
-    { id: 'winder', kind: 'hits', recipe: 'winder', rate: 1 / 28, minGap: 12, pan: [-0.5, -0.35], mech: true,
-      gain: 0.36, level: { add: [['app:winder', 1]] } },
+    // The winding engine; with the seam ladder (M3) it winds deeper seams: longer runs, lower, more often.
+    { id: 'winder', kind: 'hits', recipe: 'winder', variants: 4, variantBy: 'depth', rate: 1 / 28, minGap: 12, pan: [-0.5, -0.35], mech: true, pitch: ['depth', 1, 0.8],
+      gain: 0.36, level: { add: [['app:winder', 1], ['depth', 0.6]], max: 1 }, density: { add: [['app:winder', 1], ['depth', 0.9]], max: 1.4 } },
+    // M3: the pumps labour as the seams go deeper: a slow heave on every other beat (silent without the ladder).
+    { id: 'pumpHeave', kind: 'bed', src: 'brown', filter: ['bandpass', 170, 1.1], lfo: { rate: 0.5, beats: true, depth: 0.7, to: 'gain' }, mech: true, pan: -0.25,
+      pitch: ['depth', 1, 0.85], gain: 0.2, level: { add: [['depth', 1]], mul: [['seamsOn', 1], ['app:pump', 0.4]] } },
     { id: 'train', kind: 'hits', recipe: 'trainPass', rate: 1 / 25, minGap: 14, sweep: true, mech: true,
       gain: 0.3, level: { add: [['app:train', 1]] }, density: { add: [['app:train', 1.2], one(0.2)], mul: [['app:train', 1]] }, send: 0.3 },
     { id: 'horn', kind: 'hits', recipe: 'shipHorn', rate: 1 / 45, minGap: 25, pan: [0.55, 0.75], lp: 1500,
@@ -150,17 +158,26 @@ const light: SoundscapeDef = {
     { id: 'nightHum', kind: 'bed', src: 'tones', tones: [[0, 0, 'sawtooth', 0.4], [4, 0, 'sawtooth', 0.25, 5], [0, 1, 'sine', 0.4]], filter: ['lowpass', 420, 0.7],
       pan: -0.3, mech: true, gain: 0.04, level: { add: [['app:factory-night', 1]] } },
     { id: 'nightMill', kind: 'hits', recipe: 'loom', variants: 4, grid: { every: 0.5, pattern: [1, 0.3, 0.7, 0.3] }, mech: true, pan: [-0.45, -0.25], lp: 1100,
-      gain: 0.22, level: { add: [['app:factory-night', 1]] } },
+      gain: 0.22, level: { add: [['app:factory-night', 1]], mul: [['hourLoad', 0.8]] } },
     { id: 'tram', kind: 'hits', recipe: 'tramPass', rate: 1 / 20, minGap: 9, sweep: true, mech: true,
-      gain: 0.22, level: { add: [['app:tram', 1]] }, density: { add: [['app:tram', 1], one(0.25)], mul: [['app:tram', 1]] }, send: 0.3 },
+      gain: 0.22, level: { add: [['app:tram', 1]] }, density: { add: [['app:tram', 1], one(0.25)], mul: [['app:tram', 1], ['hourLoad', 0.6]] }, send: 0.3 },
+    // M3, the day's load (silent without it; 'hourLoad' is 1 when absent, so the multipliers above change nothing then):
+    // the town's hum follows the hour; the mills strike up with the morning; in the small hours, crickets — unless the
+    // hollows have been sold and the night shift keeps the machines going.
+    { id: 'loadHum', kind: 'bed', src: 'tones', tones: [[0, 0, 'sawtooth', 0.35], [4, 0, 'sawtooth', 0.2, 4], [0, 1, 'sine', 0.4]], filter: ['lowpass', 360, 0.7],
+      tone: ['hourLoad', 0.8, 2.4], mech: true, pan: 0.1, gain: 0.055, level: { add: [['hourLoad', 0.85], one(0.15)], mul: [['loadOn', 1]] } },
+    { id: 'dayMill', kind: 'hits', recipe: 'loom', variants: 4, grid: { every: 0.5, pattern: [1, 0.4, 0.8, 0.4], jitter: 0.01 }, mech: true, pan: [0.2, 0.5], lp: 1800,
+      gain: 0.2, level: { add: [['hourLoad', 1]], mul: [['loadOn', 1], ['day', 1]] }, density: { add: [['hourLoad', 1.1]], mul: [['day', 1], ['loadOn', 1]] } },
+    { id: 'crickets', kind: 'hits', recipe: 'cricket', rate: 0.35, minGap: 1.2, pan: [-0.8, 0.8], lp: 4500,
+      gain: 0.07, level: { add: [['night', 1]], mul: [['loadOn', 1], ['inv:hourLoad', 1], ['inv:haze', 0.7]] }, send: 0.35 },
     { id: 'piano', kind: 'hits', recipe: 'piano', variants: 6, rate: 1 / 30, minGap: 12, pan: [0.2, 0.5], lp: 2200,
       gain: 0.12, level: { add: [['app:house', 1]], mul: [['inv:pace', 0.5]] }, send: 0.4 },
     { id: 'signs', kind: 'bed', src: 'tones', hz: [[100, 'sawtooth', 0.5], [200, 'sine', 0.3]], filter: ['bandpass', 800, 1.2], pan: 0.35,
       gain: 0.05, level: { add: [['app:sign', 1]] }, blackout: true },
     { id: 'cabs', kind: 'hits', recipe: 'cabPass', rate: 1 / 16, minGap: 6, sweep: true,
-      gain: 0.25, level: { add: [['pop', 0.7], ['built', 0.3]] }, send: 0.3 },
-    { id: 'town', kind: 'bed', src: 'brown', filter: ['bandpass', 400, 0.8], stereo: true,
-      gain: 0.11, level: { add: [['pop', 0.7], ['built', 0.4]] } },
+      gain: 0.25, level: { add: [['pop', 0.7], ['built', 0.3]] }, density: { add: [['pop', 0.7], ['built', 0.3]], mul: [['hourLoad', 0.7]] }, send: 0.3 },
+    { id: 'town', kind: 'bed', src: 'brown', filter: ['bandpass', 400, 0.8], stereo: true, tone: ['hourLoad', 0.8, 1],
+      gain: 0.11, level: { add: [['pop', 0.7], ['built', 0.4]], mul: [['hourLoad', 0.5]] } },
   ],
   crisis: { recipe: 'fogHorn', gain: 0.12 },
   trace: ['gas', 'tram'],
@@ -177,9 +194,17 @@ const motion: SoundscapeDef = {
     { id: 'birds', kind: 'hits', recipe: 'bird', variants: 6, rate: 0.3, minGap: 1, pan: [-0.8, 0.8],
       gain: 0.09, level: { add: [['empty', 0.6], one(0.15), ['steady', 0.6]], mul: [['inv:haze', 1]], max: 1 }, send: 0.3 },
     { id: 'wash', kind: 'bed', src: 'pink', filter: ['lowpass', 700, 0.6], tone: ['pace', 0.8, 2.6], stereo: true,
-      gain: 0.1, level: { add: [['app:car', 0.8], ['app:van', 0.3], ['app:mall', 0.2], ['pop', 0.2]], pow: 0.8 } },
-    { id: 'cars', kind: 'hits', recipe: 'carPass', variants: 5, rate: 0.18, minGap: 0.9, sweep: true, mech: true,
-      gain: 0.12, level: { add: [['app:car', 1], ['app:suburb', 0.2]] }, density: { add: [['app:car', 1.4], ['pace', 0.4]], mul: [['app:car', 1]] } },
+      gain: 0.1, level: { add: [['app:car', 0.8], ['app:van', 0.3], ['app:mall', 0.2], ['pop', 0.2], ['congestion', 0.35], ['sprawl', 0.15]], pow: 0.8 } },
+    { id: 'cars', kind: 'hits', recipe: 'carPass', variants: 5, rate: 0.18, minGap: 0.9, sweep: true, mech: true, pitch: ['congestion', 1, 0.86],
+      gain: 0.12, level: { add: [['app:car', 1], ['app:suburb', 0.2]] }, density: { add: [['app:car', 1.4], ['pace', 0.4]], mul: [['app:car', 1], ['inv:congestion', 0.5]] } },
+    // M3, travel (silent without it): the queue's idling engines as journeys lengthen; an occasional horn in a jam;
+    // the sprawl's distant traffic, which stays when the traffic thins.
+    { id: 'queue', kind: 'bed', src: 'tones', tones: [[0, 0, 'sawtooth', 0.4, -8], [0, 0, 'sawtooth', 0.4, 9], [4, 0, 'sawtooth', 0.25, 3]], filter: ['lowpass', 260, 0.7],
+      lfo: { rate: 0.23, depth: 0.3, to: 'gain' }, mech: true, pan: -0.1, gain: 0.06, level: { add: [['congestion', 1]], mul: [['travelOn', 1]], pow: 1.3 } },
+    { id: 'horn', kind: 'hits', recipe: 'carHorn', variants: 3, rate: 1 / 25, minGap: 8, pan: [-0.6, 0.6], lp: 2500,
+      gain: 0.07, level: { add: [['congestion', 1]], mul: [['travelOn', 1]], pow: 2 }, send: 0.3 },
+    { id: 'sprawlHum', kind: 'bed', src: 'brown', filter: ['bandpass', 320, 0.6], stereo: true, lp: 600,
+      gain: 0.09, level: { add: [['sprawl', 1]], mul: [['travelOn', 1]] } },
     { id: 'vans', kind: 'hits', recipe: 'vanPass', variants: 3, rate: 0.07, minGap: 2.5, sweep: true, mech: true,
       gain: 0.18, level: { add: [['app:van', 1]] } },
     { id: 'jet', kind: 'hits', recipe: 'jet', rate: 1 / 40, minGap: 20, pan: [-0.3, 0.3],
@@ -189,9 +214,9 @@ const motion: SoundscapeDef = {
     { id: 'doors', kind: 'hits', recipe: 'doorThunk', rate: 1 / 8, minGap: 2, pan: [0.3, 0.7], lp: 1500,
       gain: 0.15, level: { add: [['app:mall', 1]] } },
     { id: 'mower', kind: 'hits', recipe: 'mower', rate: 1 / 35, minGap: 15, pan: [-0.7, -0.4], lp: 1400,
-      gain: 0.06, level: { add: [['app:suburb', 1]], mul: [['inv:pace', 0.4]] } },
+      gain: 0.06, level: { add: [['app:suburb', 1], ['sprawl', 0.8]], mul: [['inv:pace', 0.4]], max: 1 } },
     { id: 'radio', kind: 'hits', recipe: 'radio', variants: 6, rate: 1 / 30, minGap: 12, pan: [-0.5, 0.5],
-      gain: 0.09, level: { add: [['app:suburb', 1]] }, send: 0.25 },
+      gain: 0.09, level: { add: [['app:suburb', 1], ['sprawl', 0.8]], max: 1 }, send: 0.25 },
     { id: 'hum', kind: 'bed', src: 'tones', tones: [[0, 0, 'sine', 0.6], [4, 0, 'sine', 0.3]], filter: ['lowpass', 300, 0.7],
       gain: 0.03, level: { add: [['built', 0.6], ['pace', 0.4]] }, pitch: ['pace', 1, 1.03] },
   ],
@@ -225,6 +250,17 @@ const compute: SoundscapeDef = {
       gain: 0.1, level: { add: [['app:play', 1]] }, send: 0.4 },
     { id: 'train', kind: 'hits', recipe: 'throb', grid: { every: 1, pattern: [1, 0.6, 0.9, 0.6] }, mech: true, pan: [0.1, 0.2],
       gain: 0.1, level: { add: [['app:brain', 1]] }, blackout: true },
+    // M3, "free at the point of use" (silent without it): the uses still paid for ring a small till now and then; the
+    // free ones press the key and the drawer springs, and no bell rings. The load arrives elsewhere: a dam's water and
+    // the grid's hum, far off, as the free share grows.
+    { id: 'till', kind: 'hits', recipe: 'till', variants: 2, rate: 1 / 8, minGap: 3, pan: [0.3, 0.6], lp: 3500,
+      gain: 0.07, level: { add: [['paidShare', 1]], mul: [['freeOn', 1]] }, send: 0.3 },
+    { id: 'tillMute', kind: 'hits', recipe: 'tillKey', variants: 2, rate: 1 / 8, minGap: 3, pan: [-0.6, -0.3], lp: 3500,
+      gain: 0.08, level: { add: [['freeShare', 1]], mul: [['freeOn', 1]] }, send: 0.2 },
+    { id: 'dam', kind: 'bed', src: 'brown', filter: ['bandpass', 230, 0.5], lp: 520, pan: -0.7,
+      gain: 0.12, level: { add: [['freeShare', 1]], mul: [['freeOn', 1]] }, send: 0.4 },
+    { id: 'grid', kind: 'bed', src: 'tones', hz: [[100, 'sine', 0.5], [150, 'sine', 0.3], [200, 'sine', 0.2]], filter: ['bandpass', 150, 0.8], pan: 0.7,
+      gain: 0.03, level: { add: [['freeShare', 1]], mul: [['freeOn', 1]] }, send: 0.4 },
   ],
   crisis: { recipe: 'alarm', gain: 0.16 },
   trace: ['fans', 'fanNoise'],

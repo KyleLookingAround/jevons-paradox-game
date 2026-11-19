@@ -507,12 +507,14 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Colliery agents take a second office on the strength of {app}',
     'Orders for coal double; {app} getting up steam',
   ],
-  /* On buying The Coal Question: Jevons's verified words (design/research/energy.md 1.6; Econlib text, ch. VII). */
+  /* On buying The Coal Question: Jevons's verified words (design/research/energy.md 1.6; Econlib text, ch. VII).
+   * QA B10: the reveal can come in the 1800s, decades before his book (1865) and before his birth (1835), so the
+   * headlines quote the inquiry without naming or dating him (the card's blurb does that). */
   reveal: [
-    '“The very contrary is the truth”: Mr Jevons on thrifty engines',
-    'Economy of fuel “a confusion of ideas”, writes Mr Jevons',
-    'Jevons: “the whole history of the steam-engine is one of economy”',
-    'Mr Jevons on the economy of fuel; the clubs are not amused',
+    '“The very contrary is the truth”: an inquiry on thrifty engines',
+    'Economy of fuel “a confusion of ideas”, an inquiry finds',
+    '“The whole history of the steam-engine is one of economy”',
+    'Thrifty engines save no coal, says an inquiry; clubs not amused',
   ],
   backfire: [
     'Engines use half the coal; the nation burns twice as much',
@@ -527,6 +529,10 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Black fog No. {n}: the shops shut, the chimneys do not',
     'Smoke so dense the river cannot be found, says waterman',
     'Washing hung out white, taken in grey; laundresses give up',
+    /* QA B9: more variants, so three fogs in a run seldom share a headline (the pick is by seed and time) */
+    'The fog lies a week; the coroner runs short of forms',
+    'Hackney carriages collide at noon in the black fog',
+    'Sweeps idle: nobody in the town can find the chimneys',
   ],
   collapse: [
     'The city stops. The air will not allow it to go on',

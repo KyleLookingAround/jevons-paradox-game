@@ -32,7 +32,7 @@ const FIXED_SHARE = 0.6;
  * sharpens and c rises; as the night shift and the trams fill the hollows it falls well below M2's (by about a quarter
  * with every use founded, more with the off-peak tariff). With MECHANICS_LIVE false: M2's 0.05.
  */
-const LIGHT_CAPCOST = MECHANICS_LIVE ? 0.05 / loadTerm([DUSK], [1], FIXED_SHARE) : 0.05;
+const LIGHT_CAPCOST = MECHANICS_LIVE ? 0.05 / ((1 - FIXED_SHARE) + FIXED_SHARE / 0.72) : 0.05;
 /** The load curve (LoadDef). Exported for the lint, which checks it whether or not it is live. */
 export const LOAD: LoadDef = {
   profiles: { dusk: DUSK, evening: EVENING, night: NIGHT, day: DAY, flat: FLAT },

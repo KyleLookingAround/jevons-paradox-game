@@ -6,10 +6,10 @@
 // built once when it is shown and crossfaded; the previous graph is torn down after the fade. Transients are
 // synthesised in JS once (./recipes) and each plays as one buffer source + gain (+ panner). Voices are capped.
 import type { SceneView } from '../scene/types';
-import type { Soundscape, SoundscapeOptions, SoundEventKind, SoundEventDetail, Volumes, SoundscapeStats, Mix } from './types';
+import { SOUND_EVENT_ALIASES, type Soundscape, type SoundscapeOptions, type SoundEventKind, type SoundEventDetail, type Volumes, type SoundscapeStats, type Mix } from './types';
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type SoundscapeDef, type LayerDef, type BedDef, type HitsDef } from './defs';
 import { mixFrom, momentsBetween } from './mix';
-import { hasRecipe } from './recipes';
+import { hasRecipe, CAST_FAMILY, MOTIFS, MOTIF_AT } from './recipes';
 import { rngFrom, hash, type Rng } from './synth';
 import { obtain, peek, attach, detach, bankSamples } from './synthq';
 import type { Job } from './jobs';
@@ -21,6 +21,9 @@ const MAX_WORLD_VOICES = 18;
 const MAX_UI_VOICES = 6;
 const MAX_SELL_VOICES = 3;
 const XFADE_TC = 0.7;            // crossfade time constant between Industries (≈ 2.1 s to 95%)
+const BUILD_MS = 5;              // live: most graph-building per update (ms); a full place thickens over a few updates
+const REV_DUR = 1.7;             // s, the generated room's impulse
+const REV_SEGS = 8;              // convolvers it is split over (see buildBuses)
 const SYNTH_BUDGET_MS = 6;       // offline only: most JS synthesis per tick (later hits wait for the next tick)
 
 type Ctx = BaseAudioContext;
@@ -46,6 +49,10 @@ interface LayerRt {
   pitch: number;
   vary: number;
   traceOf?: string;
+  /** M3: a lever's signature souring (0–1) as its side effect bites. */
+  sour?: number;
+  /** M3: the variant the mix chose (variantBy). */
+  variant?: number;
 }
 
 interface Graph {
@@ -70,16 +77,38 @@ interface Graph {
   dieAt: number;        // 0 = alive
   dead?: boolean;       // torn down
   blackoutNext: number;
+  /** M3: the proprietor's watch (built when he first checks it). */
+  watch?: LayerRt;
+  /** M3: when Light's day began for this graph (s, context time), or NaN. */
+  dayAt: number;
 }
 
-const KIND_GAIN: Record<SoundEventKind, number> = {
+/** The sound's own kinds (aliases resolve to these first). */
+type OwnKind = Exclude<SoundEventKind, keyof typeof SOUND_EVENT_ALIASES>;
+const KIND_GAIN: Record<OwnKind, number> = {
   sell: 0.22, buy: 0.3, cannotAfford: 0.26, found: 0.34, lever: 0.34, fork: 0.3, headline: 0.26, reveal: 0.42, backfire: 0.42,
   crisis: 0.32, decade: 0.3, steady: 0.38, reckoning: 0.4, industryOpened: 0.34, ageBegun: 0.4,
+  // M3. The post is deliberately small (it may come every few minutes); the two considered moments are as loud as
+  // the reveal; the rest sit with buy and lever.
+  seam: 0.36, letter: 0.2, letterOpened: 0.16, answer: 0.28, letterExpired: 0.1, bite: 0.3, survey: 0.3, proprietor: 0.42,
+  ending: 0.4, ledgerContinues: 0.26, arrived: 0.26, history: 0.28,
 };
 const KIND_VARIANTS: Partial<Record<SoundEventKind, number>> = { sell: 6, buy: 3 };
 /** Moments worth playing late (a beat or so) rather than not at all, if their sound is not ready on first use. */
-const LATE_OK = new Set<SoundEventKind>(['reveal', 'backfire', 'steady', 'reckoning', 'ageBegun', 'industryOpened', 'crisis', 'decade', 'found', 'fork']);
-const DUCKS: Partial<Record<SoundEventKind, [number, number]>> = { reveal: [0.45, 4.5], backfire: [0.6, 2], steady: [0.6, 3], ageBegun: [0.5, 3.5], reckoning: [0.7, 3] };
+const LATE_OK = new Set<SoundEventKind>(['reveal', 'backfire', 'steady', 'reckoning', 'ageBegun', 'industryOpened', 'crisis', 'decade', 'found', 'fork',
+  'seam', 'letter', 'survey', 'proprietor', 'ending', 'arrived', 'history', 'bite']);
+const DUCKS: Partial<Record<SoundEventKind, [number, number]>> = { reveal: [0.45, 4.5], backfire: [0.6, 2], steady: [0.6, 3], ageBegun: [0.5, 3.5], reckoning: [0.7, 3],
+  seam: [0.75, 2.5], proprietor: [0.4, 4.6], ending: [0.55, 5], survey: [0.8, 2.5] };
+const CREDITS_S = 75;            // the first ending's credits bed holds this long by itself before it fades
+const DAY_S = 60;                // Light's day: 24 hours in a minute, from dusk, as the picture's clock
+const LETTER_SPACING_S = 30;     // letters closer than this are played softer and without the motif (never nagging)
+
+type IdleWin = { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+/** Run f when the main thread is idle (or within 300 ms), so set-up work never lands inside a tap. */
+function idle(f: () => void): void {
+  const w = globalThis as unknown as IdleWin;
+  if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(f, { timeout: 300 }); else setTimeout(f, 16);
+}
 
 export function createSoundscape(opts: SoundscapeOptions & { clock?: () => number } = {}): Soundscape {
   const seed = (opts.seed ?? 0x5eed) >>> 0;
@@ -110,6 +139,10 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let mq: MediaQueryList | null = null;
   const warm: [string, Key, number][] = [];   // offline only: recipes to synthesise ahead of need, one per tick
   let attached: BaseAudioContext | null = null;
+  let lastLetter = -1e9;
+  // The first ending's credits: a held chord that breathes, with a bell now and then, for about a minute.
+  let credits: { out: GainNode; oscs: OscillatorNode[]; lfos: OscillatorNode[]; t0: number; stopAt: number; nextBell: number; key: Key; pal: string; rng: Rng } | null = null;
+  let endingAmt = 0;            // 0–1, what the mix is told (ramps in with the credits, out after them)
   const sync = !!external;                     // offline/tests: synthesise at once; live: in the worker
 
   const now = (): number => (opts.clock ? opts.clock() : ctx ? ctx.currentTime : 0);
@@ -168,14 +201,38 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (opts.meter) { meter = c.createAnalyser(); meter.fftSize = 2048; meterBuf = new Float32Array(meter.fftSize); lim.connect(meter); }
     // One shared room: a generated impulse (darkening noise tail), returned through a low-pass that follows the air.
     revIn = c.createGain(); revIn.gain.value = 1;
-    const conv = c.createConvolver();
-    conv.normalize = true;
-    // The impulse is synthesised off the main thread; the room is dry for the moment it takes.
-    const ib = obtain({ t: 'impulse', sr: c.sampleRate, dur: 1.7, seed }, { sync, pin: true, ctx: c, cb: (b) => { if (b && ctx === c) { try { conv.buffer = b; } catch { /* ignore */ } } } });
-    if (ib) conv.buffer = ib;
     revLp = c.createBiquadFilter(); revLp.type = 'lowpass'; revLp.frequency.value = 5000;
     const revOut = c.createGain(); revOut.gain.value = 0.5;
-    revIn.connect(conv); conv.connect(revLp); revLp.connect(revOut); revOut.connect(worldBus);
+    revLp.connect(revOut); revOut.connect(worldBus);
+    // The impulse is synthesised off the main thread, then split over REV_SEGS convolvers, each delayed by its offset:
+    // the same room, but each buffer is short enough that setting it (which a browser prepares on the main thread)
+    // stays well under a long task. Live, one segment is set per idle callback; the room is dry for the moment it takes.
+    const segs: { conv: ConvolverNode; at: number }[] = [];
+    const rin = revIn, rlp = revLp;
+    const seg = (k: number) => {
+      if (segs[k]) return segs[k];
+      const conv = c.createConvolver(); conv.normalize = false;
+      const dl = c.createDelay(2); dl.delayTime.value = (k * REV_DUR) / REV_SEGS;
+      rin.connect(conv); conv.connect(dl); dl.connect(rlp);
+      return (segs[k] = { conv, at: k });
+    };
+    const fill = (b: AudioBuffer) => {
+      const n = b.length, per = Math.ceil(n / REV_SEGS);
+      const one = (k: number) => {
+        if (ctx !== c || destroyed) return;
+        const len = Math.min(per, n - k * per);
+        if (len <= 0) return;
+        try {
+          const sb = c.createBuffer(b.numberOfChannels, len, b.sampleRate);
+          for (let ch = 0; ch < b.numberOfChannels; ch++) sb.getChannelData(ch).set(b.getChannelData(ch).subarray(k * per, k * per + len));
+          seg(k).conv.buffer = sb;
+        } catch { /* ignore */ }
+      };
+      if (sync) for (let k = 0; k < REV_SEGS; k++) one(k);
+      else { let k = 0; const next = () => { one(k++); if (k < REV_SEGS) idle(next); }; idle(next); }
+    };
+    const ib = obtain({ t: 'impulse', sr: c.sampleRate, dur: REV_DUR, seed }, { sync, pin: true, ctx: c, cb: (b) => { if (b) fill(b); } });
+    if (ib) fill(ib);
     ramp(master.gain, vol.master ** 2, 0.15);
   }
 
@@ -189,7 +246,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       disarm();
       if (!wanted()) { void (ctx as AudioContext).suspend().catch(() => {}); return; }
       startTimer();
-      if (view) apply(view);
+      applySoon();
     } else {
       stopTimer();
       // Interrupted (a call, Siri, another app) or suspended by the system: resume on the next tap.
@@ -301,12 +358,10 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     send.connect(revIn!);
     const g: Graph = {
       def, sector, out, world, air, thick, fog, send, layers: [], byId: new Map(), traces: new Map(), levers: new Map(),
-      rng: rngFrom(seed ^ hash(sector)), tempo: def.tempo[0], tempoTarget: def.tempo[0], beat: 0, beatAt: now(), mix: null, dieAt: 0, blackoutNext: 0,
+      rng: rngFrom(seed ^ hash(sector)), tempo: def.tempo[0], tempoTarget: def.tempo[0], beat: 0, beatAt: now(), mix: null, dieAt: 0, blackoutNext: 0, dayAt: NaN,
     };
-    for (const l of def.layers) {
-      const rt = buildLayer(g, l, def.key, air, send, sector);
-      g.layers.push(rt); g.byId.set(l.id, rt);
-    }
+    // Layers are built lazily, the first time the mix gives them a level (see apply): an empty valley costs a few nodes,
+    // and a busy one thickens as it fills.
     queueWarm(def, sector);
     return g;
   }
@@ -388,6 +443,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const a = g.layers.slice();
     for (const tr of g.traces.values()) a.push(...tr.layers);
     for (const l of g.levers.values()) a.push(l);
+    if (g.watch) a.push(g.watch);
     return a;
   }
 
@@ -428,6 +484,16 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   /* ---------------- applying a view ---------------- */
 
+  let applyQueued = false;
+  /** Apply the last view soon, outside the current task (live), so turning sound on inside a tap builds nothing but the
+   *  context and the buses; the world's graph is built at the next idle moment or the next update(). */
+  function applySoon(): void {
+    if (sync) { if (view) apply(view); return; }
+    if (applyQueued) return;
+    applyQueued = true;
+    idle(() => { applyQueued = false; if (view && ctx && running() && wanted()) apply(view); });
+  }
+
   function apply(v: SceneView): void {
     if (!ctx || !wanted()) return;
     const t0 = perf();
@@ -436,7 +502,14 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     view = v;
     if (v.sectorId !== sector) { updateMs = perf() - t0; return; }   // stale view of the old tab
     const g = showSector(sector);
-    const m = mixFrom(v, g.def, { calm: calm() });
+    // Light's day: the sound keeps its own 24-hour minute from dusk, as the picture's clock does (calm: the peak hour).
+    let hour: number | null = null;
+    if (v.load && Array.isArray(v.load.hours) && v.load.hours.length) {
+      if (!Number.isFinite(g.dayAt)) g.dayAt = now();
+      hour = calm() ? null : (18 + ((now() - g.dayAt) / DAY_S) * 24) % 24;
+    } else g.dayAt = NaN;
+    endingAmt = credits ? Math.min(1, endingAmt + 0.08) : Math.max(0, endingAmt - 0.02);
+    const m = mixFrom(v, g.def, { calm: calm(), hour, ending: endingAmt });
     g.mix = m;
     g.tempoTarget = m.tempo;
     ramp(g.air.frequency, m.air, 1.2);
@@ -444,9 +517,21 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     ramp(g.send.gain, m.wet, 1);
     ramp(g.world.gain, m.world, m.frozen ? 1.6 : 0.8);
     if (revLp) ramp(revLp.frequency, Math.min(6000, m.air), 1.2);
-    for (const rt of g.layers) applyLayer(g, rt, m.layers[rt.def.id]);
+    for (const l of g.def.layers) {
+      const lm = m.layers[l.id];
+      let rt = g.byId.get(l.id);
+      if (!rt) {
+        if (!lm || lm.level <= 0.001) continue;
+        // Live: at most BUILD_MS of graph-building per update; the rest of the place arrives on the next ones.
+        if (!sync && perf() - t0 > BUILD_MS) continue;
+        rt = buildLayer(g, l, g.def.key, g.air, g.send, g.sector);
+        g.layers.push(rt); g.byId.set(l.id, rt);
+      }
+      applyLayer(g, rt, lm);
+    }
     applyTraces(g, m);
     applyLevers(g, m);
+    applyWatch(g, m);
     // Moments the world plays by itself (the picture plays them too).
     const mo = momentsBetween(prev, v);
     if (mo.crisis) worldCrisis(g);
@@ -457,6 +542,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function applyLayer(g: Graph, rt: LayerRt, lm: Mix['layers'][string] | undefined, scale = 1): void {
     if (!lm) return;
     const l = rt.def;
+    rt.variant = lm.variant;
     ramp(rt.level.gain, lm.level * l.gain * scale, 0.6);
     rt.density = lm.density;
     rt.pitch = lm.pitch;
@@ -503,9 +589,22 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         rt = buildLayer(g, def, g.def.key, g.air, g.send, `lever:${kind}`);
         g.levers.set(kind, rt);
       }
-      applyLayer(g, rt, { level: 1, density: (calm() ? 0.5 : 1) * (m.frozen ? 0 : 1), pitch: 1, tone: 1, blackout: false });
+      const bite = m.bites[kind] ?? 0;
+      // A lever that bites back sours: its signature drops a little flat and, past half, a second voice beats against it.
+      applyLayer(g, rt, { level: 1, density: (calm() ? 0.5 : 1) * (m.frozen ? 0 : 1), pitch: 1 - 0.05 * bite, tone: 1, blackout: false });
+      rt.sour = bite;
     }
     for (const [kind, rt] of g.levers) if (!(kind in m.levers)) { ramp(rt.level.gain, 0, 0.8); rt.density = 0; }
+  }
+
+  /** The proprietor's watch, after the Proprietor's Day: a faint tick now and then, at most one every two seconds. */
+  function applyWatch(g: Graph, m: Mix): void {
+    if (m.watch <= 0) { if (g.watch) { g.watch.density = 0; } return; }
+    if (!g.watch) {
+      const def: HitsDef = { id: 'watch', kind: 'hits', recipe: 'watchTick', variants: 2, rate: 0.5, minGap: 2, pan: [0.15, 0.3], gain: 0.05, level: { add: [['one', 1]] }, send: 0.05, lp: 4000 };
+      g.watch = buildLayer(g, def, g.def.key, g.air, g.send, 'watch');
+    }
+    applyLayer(g, g.watch, { level: 1, density: m.watch * (calm() ? 0.6 : 1), pitch: 1, tone: 1, blackout: false });
   }
 
   function worldCrisis(g: Graph): void {
@@ -549,6 +648,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, horizon);
       if (g.mix.stress > 0.01 && !g.dieAt) blackouts(g, t);
     }
+    if (credits) creditsTick(t, horizon);
     // Offline: prewarm at most one recipe per tick, and only if nothing was synthesised for a hit this tick. (Live, the
     // whole list went to the worker when the graph was built.)
     if (sync && synthSpent === 0 && warm.length) { const [n, k, v] = warm.shift()!; recipe(n, k, v, true); }
@@ -597,7 +697,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   function playHit(g: Graph, rt: LayerRt, at: number, boost = 1): void {
     const l = rt.def as HitsDef;
-    const v = l.variants ? (rt.vary = (rt.vary + 1 + Math.floor(rt.rng() * (l.variants - 1))) % l.variants) : 0;
+    const v = l.variantBy && rt.variant != null ? rt.variant : l.variants ? (rt.vary = (rt.vary + 1 + Math.floor(rt.rng() * (l.variants - 1))) % l.variants) : 0;
     const b = recipe(l.recipe, rt.key, v);
     if (!b) return;
     let rate = rt.pitch;
@@ -608,6 +708,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const pan = p0 + (p1 - p0) * rt.rng();
     const sweep = l.sweep ? (rt.rng() < 0.5 ? -1 : 1) : 0;
     playBuf(b, rt.input, at, vel, pan, sweep ? sweep : null, null, 0, worldEnds, MAX_WORLD_VOICES, rate);
+    if ((rt.sour ?? 0) > 0.3) playBuf(b, rt.input, at + 0.018, vel * 0.7 * (rt.sour ?? 0), -pan, null, null, 0, worldEnds, MAX_WORLD_VOICES, rate * (1 + 0.035 * (rt.sour ?? 0)));
   }
 
   function blackouts(g: Graph, t: number): void {
@@ -663,15 +764,44 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   /* ---------------- interface sounds ---------------- */
 
-  function uiEvent(kind: SoundEventKind, d: SoundEventDetail = {}): void {
+  function uiEvent(asked: SoundEventKind, d: SoundEventDetail = {}): void {
     if (!ctx || !wanted() || !running() || !uiBus) return;
-    if (!(kind in KIND_GAIN)) return;
+    let kind = (SOUND_EVENT_ALIASES[asked] ?? asked) as OwnKind;
+    if (!Object.prototype.hasOwnProperty.call(KIND_GAIN, kind)) return;   // unknown kinds: silence
+    if (kind === 'answer' && d.by === 'default') kind = 'letterExpired';
     const sector = d.sector ?? current()?.sector ?? view?.sectorId ?? '';
     const pal = paletteFor(sector, d.look ?? view?.look);
     const key = soundscapeFor(sector).key;
     const t = now();
     const strength = Math.max(0.2, Math.min(1, d.strength ?? 1));
-    let gain = KIND_GAIN[kind] * strength * (calm() ? 0.75 : 1);
+    let gain = KIND_GAIN[kind] * strength * (calm() ? 0.75 : 1) * (d.first ? 1.1 : 1);
+    let name = `ui:${pal}:${kind}`;
+    let after: (() => void) | null = null;
+    if (kind === 'letter') {
+      // Never nagging: a letter soon after another is softer and comes without its writer's motif.
+      const close = t - lastLetter < LETTER_SPACING_S;
+      lastLetter = t;
+      if (close) gain *= 0.6;
+      const fam = d.cast ? CAST_FAMILY[d.cast] ?? (d.cast in MOTIFS ? d.cast : null) : null;
+      if (fam && !close) after = () => { const mb = recipe(`ui:${pal}:motif.${fam}`, key, 0, true); if (mb) playBuf(mb, uiBus!, now() + 0.01 + MOTIF_AT[pal as keyof typeof MOTIF_AT], gain * 0.8, 0, null, revIn, 0.3, uiEnds, MAX_UI_VOICES + 1); };
+    }
+    if (kind === 'seam') {
+      const dep = Math.max(0, Math.min(1, d.depth ?? 0));
+      name = 'seamSink';
+      seamV = Math.round(dep * 3);
+    }
+    if (kind === 'bite' && d.lever) {
+      // The lever's own small signature, twice, flat and beating: the thing you did, gone sour.
+      const lv = soundscapeFor(sector).levers?.[d.lever] ?? (hasRecipe(`lv.${d.lever}`) ? `lv.${d.lever}` : null);
+      if (lv) {
+        const lb = recipe(lv, key, 0, true, (nb) => { if (nb && ctx && running()) sourPair(nb, now() + 0.01, gain); });
+        if (lb) sourPair(lb, t + 0.005, gain);
+        duckFor(kind, t);
+        return;
+      }
+    }
+    if (kind === 'ending') startCredits(pal, key);
+    if (kind === 'ledgerContinues') stopCredits(3);
     let rate = 1;
     const nv = KIND_VARIANTS[kind] ?? 1;
     let v = nv > 1 ? Math.floor(uiRng() * nv) : 0;
@@ -702,12 +832,78 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const c0 = ctx;
     // Not synthesised yet (the first moments after sound is turned on): play it when it is ready if that is soon, or at
     // any delay for the rare moments that must not be lost; a tap's sound that would arrive late is dropped.
-    const b = recipe(`ui:${pal}:${kind}`, key, v, true, (nb) => {
+    if (kind === 'seam') v = seamV;
+    const b = recipe(name, key, v, true, (nb) => {
       if (!nb || ctx !== c0 || !wanted() || !running()) return;
       const late = now() - t;
-      if (late < 0.3 || LATE_OK.has(kind)) go(nb, now() + 0.01);
+      if (late < 0.3 || LATE_OK.has(kind)) { go(nb, now() + 0.01); after?.(); }
     });
-    if (b) go(b, t + 0.005);
+    if (b) { go(b, t + 0.005); after?.(); }
+  }
+  let seamV = 0;
+
+  function duckFor(kind: SoundEventKind, at: number): void {
+    const dk = DUCKS[kind];
+    if (!dk || !duck) return;
+    const p = duck.gain;
+    try { p.cancelScheduledValues(at); p.setTargetAtTime(dk[0], at, 0.08); p.setTargetAtTime(1, at + dk[1], 0.8); } catch { /* ignore */ }
+  }
+
+  function sourPair(b: AudioBuffer, at: number, gain: number): void {
+    playBuf(b, uiBus!, at, gain * 0.9, -0.2, null, revIn, 0.3, uiEnds, MAX_UI_VOICES, 0.945);
+    playBuf(b, uiBus!, at + 0.022, gain * 0.7, 0.2, null, revIn, 0.3, uiEnds, MAX_UI_VOICES, 0.97);
+  }
+
+  /* ---------------- the first ending's credits ---------------- */
+
+  function startCredits(pal: string, key: Key): void {
+    if (!ctx || !worldBus) return;
+    stopCredits(1.5);
+    const c = ctx, t = now();
+    const out = c.createGain(); out.gain.value = 0;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.5;
+    lp.connect(out); out.connect(worldBus);
+    const send = c.createGain(); send.gain.value = 0.35; out.connect(send); if (revIn) send.connect(revIn);
+    const oscs: OscillatorNode[] = [], lfos: OscillatorNode[] = [];
+    const rng = rngFrom(seed ^ 0xe7d);
+    // The held chord: tonic, fifth and octave low, the ninth above; each voice breathes on its own slow cycle, so the
+    // whole never repeats exactly and never swells much (a narrow loudness range is the point).
+    const voices: [number, number, OscillatorType, number][] = [[0, 1, 'sine', 0.5], [4, 1, 'sine', 0.32], [0, 2, 'triangle', 0.16], [1, 2, 'sine', 0.12], [2, 2, 'sine', 0.1]];
+    voices.forEach(([d, oct, wave, gn], i) => {
+      const o = c.createOscillator(); o.type = wave; o.frequency.value = freq(key, d, oct); o.detune.value = (rng() - 0.5) * 6;
+      const vg = c.createGain(); vg.gain.value = gn;
+      const l = c.createOscillator(); l.frequency.value = 0.045 + 0.02 * i + 0.01 * rng();
+      const ld = c.createGain(); ld.gain.value = gn * 0.28;
+      l.connect(ld); ld.connect(vg.gain);
+      o.connect(vg); vg.connect(lp);
+      o.start(t); l.start(t + rng() * 2);
+      oscs.push(o); lfos.push(l);
+    });
+    out.gain.setTargetAtTime(0.11, t, 1.6);
+    credits = { out, oscs, lfos, t0: t, stopAt: t + CREDITS_S, nextBell: t + 6, key, pal, rng };
+  }
+
+  function creditsTick(t: number, horizon: number): void {
+    const cr = credits!;
+    if (t >= cr.stopAt) { stopCredits(6); return; }
+    while (cr.nextBell <= horizon) {
+      const degs = [0, 2, 4, 7, 9, 4];
+      const d = degs[Math.floor(cr.rng() * degs.length)];
+      const b = recipe(`ui:${cr.pal}:decade`, cr.key, 0, true);
+      if (b && cr.nextBell >= t - 0.01) playBuf(b, cr.out, Math.max(t, cr.nextBell), 0.5 + 0.2 * cr.rng(), (cr.rng() - 0.5) * 0.8, null, null, 0, worldEnds, MAX_WORLD_VOICES, ratio(cr.key, d) * 0.5);
+      cr.nextBell += 7 + 5 * cr.rng();
+    }
+  }
+
+  function stopCredits(fade: number): void {
+    const cr = credits;
+    if (!cr) return;
+    credits = null;
+    const t = now();
+    try { cr.out.gain.cancelScheduledValues(t); cr.out.gain.setTargetAtTime(0, t, fade / 4); } catch { /* ignore */ }
+    for (const o of [...cr.oscs, ...cr.lfos]) { try { o.stop(t + fade * 1.5); } catch { /* ignore */ } }
+    const d = () => { try { cr.out.disconnect(); } catch { /* ignore */ } };
+    if (external) { /* offline: leave it connected; the render ends */ } else setTimeout(d, fade * 1500 + 100);
   }
 
   /* ---------------- public ---------------- */
@@ -734,7 +930,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') reasons.add('hidden');
         if (!unlock()) arm();
         if (ctx && master) { last.delete(master.gain); ramp(master.gain, vol.master ** 2, 0.15); }
-        if (running()) { startTimer(); if (view) apply(view); }
+        if (running()) { startTimer(); applySoon(); }
       } else {
         disarm(); listen(false); stopTimer();
         if (ctx && master) ramp(master.gain, 0, 0.05);
@@ -775,9 +971,10 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       stopTimer(); disarm(); listen(false);
       for (const g of graphs) killGraph(g, true);
       graphs = [];
+      stopCredits(0.1);
       last.clear(); warm.length = 0;
       if (attached) { detach(attached); attached = null; }
-      if (ctx && !external) { const a = ctx as AudioContext; a.onstatechange = null; setTimeout(() => { void a.close().catch(() => {}); }, 250); }
+      if (ctx && !external) { const a = ctx as AudioContext; a.onstatechange = null; setTimeout(() => { void a.close().catch(() => {}); }, 400); }
       ctx = null;
     },
   };
