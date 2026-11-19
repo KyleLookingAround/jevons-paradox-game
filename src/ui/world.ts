@@ -109,6 +109,9 @@ export interface WorldRenderer {
   destroy(): void;
 }
 
+/** Last machine stage announced per Industry, so only a rise is news. */
+const lastStage = new Map<string, number>();
+
 export function createWorldRenderer(host: HTMLElement, opts: WorldRendererOpts): WorldRenderer {
   const scene = createScene(host, {
     onFound: (id) => { opts.onFound(id); },
@@ -195,7 +198,12 @@ export function buildWorld(ctx: Ctx): WorldComp {
     onFound: (appId) => ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, appId)),
     onSelect: (appId) => { selected = appId; markHand(); },
     // The picture draws the new machines itself; the page only offers a way back to it if it is scrolled away.
-    onStage: (id) => { if (id === ctx.sector) moment('stage', 'The machines are rebuilt', 'See them'); },
+    // Only a rise is news: a new run puts the first engine back, which is not a rebuild.
+    onStage: (id, stage) => {
+      const was = lastStage.get(id) ?? 0;
+      lastStage.set(id, stage);
+      if (id === ctx.sector && stage > was) moment('stage', 'The machines are rebuilt', 'See them');
+    },
   });
   function markHand(): void {
     const ids = selected ? cardsFor(ctx, selected) : [];

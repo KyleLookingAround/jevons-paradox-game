@@ -202,13 +202,16 @@ function termsLedger(ctx: Ctx, get: () => HindsightTerms | null | undefined): { 
   const unburntName = stock.length === 1 ? `${stock[0]!.resource.name} left unburnt` : 'Left unburnt';
   const rows: [keyof HindsightTerms, string][] = [
     ['wellbeing', 'Wellbeing per ton'], ['budget', 'Decades in budget'], ['unburnt', unburntName],
-    ['backfire', 'First backfire'], ['sectorsReached', 'Industries reached'], ['steady', 'Steady State'],
+    ['backfire', 'First backfire'], ['sectorsReached', 'Industries reached'], ['steady', 'Steady State'], ['settled', 'Industries settled'],
   ];
   const cells = rows.map(([k, l]) => ({ k, row: h('div', { class: 'tl-row' }), l, v: h('span', { class: 'tl-v num' }), sub: h('span', { class: 'tl-sub num' }) }));
   for (const c of cells) c.row.append(h('span', { class: 'tl-l' }, c.l, c.sub), c.v);
   const tot = h('span', { class: 'tl-v num' });
+  // Shown only after time away: Hindsight is entered at a reduced rate in the proprietor's absence (HindsightTerms.withheld).
+  const awayV = h('span', { class: 'tl-v num' });
+  const awayRow = h('div', { class: 'tl-row' }, h('span', { class: 'tl-l', text: 'Kept back while away' }), awayV);
   const el = h('div', { class: 'tl', role: 'table', 'aria-label': 'Where the Hindsight comes from' },
-    ...cells.map((c) => c.row), h('div', { class: 'tl-row tl-tot' }, h('span', { class: 'tl-l', text: 'Hindsight' }), tot));
+    ...cells.map((c) => c.row), awayRow, h('div', { class: 'tl-row tl-tot' }, h('span', { class: 'tl-l', text: 'Hindsight' }), tot));
   return {
     el,
     update() {
@@ -222,6 +225,9 @@ function termsLedger(ctx: Ctx, get: () => HindsightTerms | null | undefined): { 
       }
       const w = cells[0];
       setText(w.sub, ` ${fmt(Math.round(num(t.wellbeingYears)))} wellbeing-years, burning ${fold(Math.max(1, num(t.intensity, 1)))}`);
+      const kept = num(t.withheld);
+      show(awayRow, kept > 0);
+      if (kept > 0) setText(awayV, `\u2212${fmt(Math.round(kept * 10) / 10)}`);
       setText(tot, fmt(num(t.total)));
     },
   };
