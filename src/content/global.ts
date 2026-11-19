@@ -66,9 +66,11 @@ export const global: GlobalParams = {
    * Hindsight away at 15% of the rate (offline fix): a held restraint run (run 4) away for 8 h earned +4,300, about six
    * runs' worth, at the full rate; 0.2 still left it at 1.06–1.17× its own run; 0.15 puts the worst case below one
    * run (src/balance.test.ts E9b).
+   * M3 balance: 0.08. Budget lines now pause while away (they no longer decline), and with M3's shorter held runs an
+   * 8-hour absence at 0.15 earned 1.44× the run it interrupted (933 against 648); 0.08 puts it near 0.8×.
    */
   offline: {
-    capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15,
+    capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.08,
     /* M3: banked time is OFF (feature 'bank' unreachable in features.ts). Turning it on is these two numbers and the
      * feature's `when` (design/m3-contract-notes.md §8). */
     bankRate: 0, bankMax: 0,

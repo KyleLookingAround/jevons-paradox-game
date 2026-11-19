@@ -558,14 +558,21 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE);
     if (over) memo.overSince[e] ??= s.time; else delete memo.overSince[e];
     const prompted = cap.level === 0 || (over && s.time - memo.overSince[e] >= 60);
-    if (!prompted || !cap.canRaise) continue;
-    const next = model.setLever(s, C, cap.def.id, cap.level + 1);
+    if (!prompted) continue;
+    // M3 balance: when the cap will go no further (its last level, or the panel refuses), a person tries the next lever
+    // on the page: the Industry's sufficiency
+    const suf = views.find((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible && l.canRaise);
+    const want = cap.canRaise ? cap : over ? suf : undefined;
+    if (!want) continue;
+    const next = model.setLever(s, C, want.def.id, want.level + 1);
     if (next !== s) {
       const w0 = d.wellbeing;
       s = next; ctx.firsts.firstLever ??= s.time; delete memo.overSince[e];
-      ctx.ev.push({ t: s.time, text: `lever ${cap.def.id} → L${cap.level + 1} (human) W ${n(w0)} R/line ${n(x.resourceUse / x.budgetR)}` });
+      ctx.ev.push({ t: s.time, text: `lever ${want.def.id} → L${want.level + 1} (human) W ${n(w0)} R/line ${n(x.resourceUse / x.budgetR)}` });
     }
   }
+  // a stock nothing absorbs (Code's) is tended once it has cost a crisis this run: the crisis is the prompt
+  if (ORDER.some((e) => C.sectors[e].pressureSource === 'service' && (s.sectors[e]?.crisesFired ?? 0) > 0)) s = tendStock(s, ctx, memo);
   return s;
 }
 
@@ -1111,8 +1118,8 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c) => c.met));
       // (once this run has paid a Steady State, the next industry outranks waiting for another)
       if (s.time >= PROGRESS_AT && gated && (!streaking || steadyNow > 0) && !opening) { stopReason = 'the next industry waits on a Reckoning'; break; }
-      const budgeted = ORDER.filter((e) => s.sectors[e]?.budget);
-      if (s.time >= MAX_RUN && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e])) { stopReason = `every line steady after ${min(MAX_RUN).trim()} min`; break; }
+      const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);
+      if (s.time >= MAX_RUN && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e] || s.sectors[e]?.settled)) { stopReason = `every line steady after ${min(MAX_RUN).trim()} min`; break; }
     }
   }
   if (series[series.length - 1] !== sampleRow(s, open(), extra)) pushSample();

@@ -63,12 +63,12 @@ const sector: SectorDef = {
    * M2: clear skies at 0.4 of the drawn pressure (M2 balance, as Steam and Light). Motion's lock-in holds demand at a share of its peak, so
    * a line drawn after the suburbs are built is hard to halve: rail and walking distance, before the motorway, reach it.
    */
-  /* M3 balance (the first ending): floor 3% of collapse (global 1%). The line is drawn as Motion opens, its exhaust
-   * still rising towards what the line holds (2.1–2.5% in long runs), so the drawn-pressure level sat at the floor
-   * and was never met. 3% is below every crisis (35%). */
+  /* M3 balance (the first ending): floor 2.5% of collapse (global 1%). The line is drawn as Motion opens, its exhaust
+   * still rising towards what the line holds (2.1–2.7% in long runs), so the drawn-pressure level sat at the floor
+   * and was never met. 2.5% is below every crisis (35%); 3% let a seated cap alone clear it in run 3. */
   steady: {
     clearBelow: 0.4,
-    clearFloor: 0.03,
+    clearFloor: 0.025,
     decadeChoices: decadeSequence([
       ['div.motion.carFreeSundays', 'div.motion.roadFund'],
       ['div.motion.treePlanting', 'div.motion.motorShow'],

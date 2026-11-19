@@ -206,10 +206,14 @@ function humanStep(s: GameState, m: Memo & { budgetAt?: number; over?: Record<st
     if (!cap) continue;
     const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE);
     if (over) m.over[e] ??= s.time; else delete m.over[e];
-    if (!cap.canRaise || !(cap.level === 0 || (over && s.time - m.over[e] >= 60))) continue;
-    const n = model.setLever(s, C, cap.def.id, cap.level + 1);
+    if (!(cap.level === 0 || (over && s.time - m.over[e] >= 60))) continue;
+    // the cap at its last level: the Industry's sufficiency next (tools/balance.ts)
+    const want = cap.canRaise ? cap : over ? model.leverViews(s, C).find((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible && l.canRaise) : undefined;
+    if (!want) continue;
+    const n = model.setLever(s, C, want.def.id, want.level + 1);
     if (n !== s) { s = n; delete m.over[e]; }
   }
+  if (ORDER.some((e) => C.sectors[e].pressureSource === 'service' && (s.sectors[e]?.crisesFired ?? 0) > 0)) s = tendStock(s, m);
   return s;
 }
 
@@ -355,6 +359,9 @@ function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameState; r:
           }
         }
       }
+      // M3: the restraint players read their letters and answer with the default (as harmless as letting them expire,
+      // but a decision, as a person reading the paper makes one; tools/balance.ts --dispatch=default lets them expire)
+      if (restraint && s.dispatch?.pending?.length) { const n = model.answerDispatch(s, C, C.dispatches?.find((x) => x.id === s.dispatch!.pending[0].id)?.defaultArm ?? 0, s.dispatch.pending[0].id); if (n !== s) s = n; }
       if (restraint && tick5) {
         const b4 = s;
         s = restraintExtras(s, !!opts.settle, !!opts.commons);
@@ -410,10 +417,11 @@ function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameState; r:
       const streaking = sure || (coming && s.time - (hold.since ?? s.time) <= 2700);
       const opening = s.time < 7200 && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
       const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c) => c.met));
-      const budgeted = ORDER.filter((e) => s.sectors[e]?.budget);
+      const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);
       if (s.time >= 1800 && marginal < 0.9 * avg && !streaking && !opening) break;
       if (s.time >= 2400 && gated && (!streaking || steadyNow > 0) && !opening) break;
-      if (s.time >= 5400 && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e])) break;
+      // (M3: a settled Industry counts as held; with every one held there is nothing left to wait for)
+      if (s.time >= 5400 && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e] || s.sectors[e]?.settled)) break;
     }
   }
   const d = D(s);
@@ -701,8 +709,9 @@ describe('the unfolding: one system at a time', () => {
   test('run 4: the Commons at the Reckoning, Steady State with the first clear sky; Settlement at the Reckoning after it', () => {
     expect(within(at(BUD, 'commons'), 4, 0, 0)).toEndWith('true');
     expect(at(BUD, 'steadyState')?.run).toBeLessThanOrEqual(4);
+    // Settlement at the first Reckoning after the first Steady State, from run 5 (M3: at the Reckoning only)
     const first = BUD.runs.findIndex((r) => r.steadyAt !== null);
-    expect(within(at(BUD, 'settlement'), first + 2, 0, 0)).toEndWith('true');
+    expect(within(at(BUD, 'settlement'), Math.max(first + 2, 5), 0, 0)).toEndWith('true');
   });
   test('never two systems within five minutes of each other, through hour 10 (efficiency, budget, mixed, human)', () => {
     for (const c of [EFF, BUD, MIX, HUM]) {
