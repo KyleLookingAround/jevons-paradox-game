@@ -36,7 +36,7 @@ import { stepAmbient } from './ambient';
 import { unlockNotes } from './archive';
 import { stepDispatch } from './dispatch';
 import { emit } from './events';
-import { endingRecord, firstEnding } from './ending';
+import { endingRecord, endingYearsOf, firstEnding } from './ending';
 import { stepHistory } from './history';
 import { milestone } from './milestones';
 import { expireModifiers } from './modifiers';
@@ -82,11 +82,9 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   const resourceUsed = { ...state.run.resourceUsed };
   let crisisCount = 0;
   let anyDecoupling = false;
-  let anyOpen = false;
   // the unfolding: gated accruals (a feature absent from content is on)
   const fBudget = featureOn(content, state.meta, 'budget'), fDiv = featureOn(content, state.meta, 'dividendChoice');
   const fSkies = featureOn(content, state.meta, 'clearSkies'), fSteady = featureOn(content, state.meta, 'steadyState');
-  let allSink = W >= target && fSteady;
   let levers = state.levers;
   const sectors = { ...state.sectors };
   const tmp = state; // headlines read the seed, the news count and the open sectors, not the time (passed apart)
@@ -95,7 +93,6 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     const es0 = state.sectors[s];
     const f = fl.sectors[s];
     if (!es0?.open || !f) continue;
-    anyOpen = true;
     if (es0.settled) {
       // M2: a settled sector is frozen; only its clock and its burn move.
       const st = es0.settled;
@@ -288,7 +285,6 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
         }
       }
     } else es.clearYears = 0;
-    if (!(sv.withinBudget && sv.clear)) allSink = false;
 
     // degrowth by accident
     if (state.population < 0.6 * state.peakPopulation && es.trendR < 0 && W < target) grant('degrowthByAccident');
@@ -386,15 +382,14 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     for (const a of def.applications) if (mods.startFounded.has(a.id)) ev.push({ kind: 'appFounded', sector: s, id: a.id, by: 'default' });
   }
 
-  // Steady State across the board (M2: every open sector settled or within budget and clear, at the target)
-  const allOpen = ix.ids.every((s) => sectors[s]?.open);
+  // The first ending's streak (M3 finish): every Industry in sectorOrder open and settled through the step
   let steadyYearsAll = state.steadyYearsAll;
   let flags = state.flags;
   if (revealNow && !flags.revealed) { flags = { ...flags, revealed: true }; firsts.push('reveal'); }
   let ending = false;
-  if (allSink && anyOpen && opened.length === 0) {
+  if (ix.ids.length > 0 && unsettleList.length === 0 && ix.ids.every((s) => !!state.sectors[s]?.open && !!state.sectors[s]?.settled)) {
     steadyYearsAll += dy;
-    if (allOpen && steadyYearsAll >= STEADY_STATE_YEARS && !flags.won) {
+    if (steadyYearsAll >= endingYearsOf(content) - 1e-9 && !flags.won) {
       flags = { ...flags, won: true };
       items.push(headline(tmp, content, 'steadyAll', time, hc));
       ev.push({ kind: 'won' });

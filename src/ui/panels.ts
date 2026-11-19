@@ -382,7 +382,9 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
 
   const live = h('div', { class: 'bud-live' }, status, statusSub, line, h('div', { class: 'm-row' }, draw, settleBtn), paceBox, sky, ledger, ledgerNote);
   const title = h('h2', { class: 'sec-t', text: 'The budget' });
-  const el = h('section', { class: 'budget', 'aria-label': 'The budget', hidden: true }, h('header', { class: 'sec-h' }, title), live, settledRow);
+  // The first ending, in one line, once Settlement has arrived (Derived.ending: the page counts nothing itself).
+  const endTxt = h('p', { class: 'bud-end muted num', hidden: true });
+  const el = h('section', { class: 'budget', 'aria-label': 'The budget', hidden: true }, h('header', { class: 'sec-h' }, title), live, settledRow, endTxt);
   let ledgerKey = '', sector = '';
 
   function nope(b: HTMLElement): void {
@@ -438,6 +440,17 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     const unit = def?.resource.unit ?? '';
     const g = ctx.content.global;
     const st = ctx.state.sectors?.[ctx.sector];
+
+    // The first ending: every Industry settled at once, held for its years (all from Derived.ending).
+    const en = ctx.d?.ending;
+    const showEnd = !!f?.settlement && !!en && num(en.total) > 0 && !en.reached;
+    show(endTxt, showEnd);
+    if (showEnd && en) {
+      const need = Math.round(num(en.yearsNeeded)), have = num(en.settled), all = num(en.total);
+      setText(endTxt, have >= all
+        ? `Every Industry settled: ${fmt(Math.floor(num(en.years)))} of ${fmt(need)} years held. An unsettled Industry starts the count again.`
+        : `The ledger balances when every Industry is settled at once and held for ${fmt(need)} years. Settled now: ${fmt(have)} of ${fmt(all)}.`);
+    }
 
     // Settled: the whole panel is one quiet row.
     const settled = !!e?.settled && !!st?.settled;

@@ -129,4 +129,11 @@ export const global: GlobalParams = {
   dispatch: { firstYears: 30, intervalYears: 8, jitter: 0.5, expiryYears: 12, maxPending: 1 },
   /* M3: at most one ambient headline every four model years (80 s); a template rests thirty years (ten minutes). */
   ambient: { everyYears: 4, cooldownYears: 30 },
+  /*
+   * M3 (finish): the first ending is every Industry settled at once, held for fifty model years (1000 s, about seventeen
+   * minutes of play). Long enough that every settlement must be defended through it (a lapsed defence or an unsettle
+   * starts it again), short enough that a player who has settled the fifth does not wait in an empty room. The
+   * credits' title, "Fifty Years Within the Line", reads this number.
+   */
+  endingYears: 50,
 };

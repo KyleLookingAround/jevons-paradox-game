@@ -62,3 +62,15 @@ export function badNumbers(x: unknown, path = '', out: string[] = []): string[] 
   }
   return out;
 }
+/**
+ * M3 (finish): the sector frozen as settled at its current flows (a hand-built SettledState, as settle() would record
+ * with no excess to defend: N0 = today's population, spillMul0 1 and extraD0 0 are generous bases).
+ */
+export function settledNow(s: GameState, c: Content, e: SectorId): GameState {
+  const x = model.derive(s, c).sectors[e]!;
+  const settled = {
+    since: s.time, sinceYear: 1900, D: x.demand, R: x.resourceUse, ps: x.servicePrice, pPre: x.servicePrice, income: 0,
+    P: s.sectors[e].pressure, eta: s.sectors[e].eta, defect: 1, N0: s.population * 100, spillMul0: 100, extraD0: 1e12, appD: {}, appAdoption: {},
+  };
+  return patchSector(s, e, { settled, settledBefore: true });
+}

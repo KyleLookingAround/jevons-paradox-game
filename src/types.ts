@@ -637,6 +637,13 @@ export interface GlobalParams {
    *   cooldownYears  default AmbientDef.cooldownYears.
    */
   ambient?: { everyYears?: number; cooldownYears?: number };
+  /**
+   * M3 (finish): model years the first ending must be held: every Industry in Content.sectorOrder open and settled at
+   * once, without a break, for this long (see GameState.steadyYearsAll). Default STEADY_STATE_YEARS (50 model years,
+   * 1000 s of run time: long enough that every settlement has to be defended through it, so the ending is a held
+   * achievement rather than the instant the fifth Industry settles). ≥ 0; 0 means the moment all are settled.
+   */
+  endingYears?: number;
 }
 
 /**
@@ -1697,16 +1704,21 @@ export interface GameState {
   flags: {
     /** The Coal Question has been researched (or a seated institution reveals). */
     revealed: boolean;
-    /** Overall Steady State reached this run. */
+    /** The first ending's condition met this run: every Industry settled for GlobalParams.endingYears (see
+     *  steadyYearsAll). Stays true for the rest of the run. */
     won: boolean;
   };
   /**
-   * Consecutive model years in which every OPEN sector has been decoupling (at least one open). Resets to 0 when any
-   * open sector stops decoupling and when a sector opens. flags.won is set when EVERY sector in content.sectorOrder is
-   * open and steadyYearsAll ≥ STEADY_STATE_YEARS (so the 50 years are always served with all of them open).
-   * M2 CHANGE: a step counts when wellbeing ≥ wellbeingTarget and every open sector is either settled or within budget
-   * and clear (SectorDerived.withinBudget && SectorDerived.clear), at least one sector open (M3's first ending is this
-   * win: every Industry at its sink line).
+   * The first ending's streak, in model years. (The name is M1's; the rule has changed twice, the field never.)
+   * M3 (finish) RULE: a step counts (steadyYearsAll += the step's model years) when EVERY sector in content.sectorOrder
+   * is open and settled (SectorState.settled ≠ null) at the step's start and end; any other step resets it to 0 (so an
+   * Industry unsettled by the player or by a lapsed defence, or a closed one, breaks it). Wellbeing is not part of the
+   * rule: each settlement was made at Steady State, which already required the wellbeing target. flags.won is set
+   * when steadyYearsAll ≥ GlobalParams.endingYears (default STEADY_STATE_YEARS). Not gated by the 'steadyState'
+   * feature (Settlement can only exist after it).
+   * (Superseded: M1 counted years in which every open sector decoupled; M2 counted wellbeing at the target with every
+   * open sector settled or within budget and clear. A save mid-streak under the old rule keeps its number and loses
+   * it on the first step that does not meet the new rule; no migration is needed, the shape is unchanged.)
    */
   steadyYearsAll: number;
   news: NewsItem[];        // newest first, capped at 40
@@ -2460,7 +2472,9 @@ export interface PlayReturn {
   figures: Record<string, number>;
 }
 
-/** M3: an ending reached (MetaState.endings). */
+/** M3: an ending reached (MetaState.endings). 'steadyAll' (the first ending) is recorded the first time flags.won is
+ *  set in any run: since M3 (finish), every Industry settled at once for GlobalParams.endingYears. Records written under
+ *  the earlier rule stand. */
 export interface EndingRecord {
   /** Run number (meta.reckonings + 1 then), run time and meta.totalSeconds when reached, calendar year (integer). */
   run: number;
@@ -2634,9 +2648,20 @@ export interface Derived {
   survey: SurveyView | null;
   /** M3: banked time: seconds, the cap, and whether useBank would run now. */
   bank: { seconds: number; max: number; usable: boolean };
-  /** M3: the first ending: reached in any run (meta.endings.steadyAll), and this run's progress to it
-   *  (steadyYearsAll / STEADY_STATE_YEARS, 0–1) and whether every sector is open (the win needs both). */
-  ending: { reached: boolean; record: EndingRecord | null; progress: number; allOpen: boolean };
+  /**
+   * M3: the first ending: reached in any run (meta.endings.steadyAll), and this run's progress to it.
+   *   progress     steadyYearsAll / endingYears, 0–1 (1 when endingYears is 0 and every Industry is settled).
+   *   allOpen      every sector in sectorOrder is open.
+   * M3 (finish), so the page can say what the ending needs without holding the rule:
+   *   settled      sectors in sectorOrder that are open and settled now.
+   *   total        sectorOrder.length.
+   *   years        GameState.steadyYearsAll (model years held with all of them settled).
+   *   yearsNeeded  GlobalParams.endingYears with its default.
+   */
+  ending: {
+    reached: boolean; record: EndingRecord | null; progress: number; allOpen: boolean;
+    settled: number; total: number; years: number; yearsNeeded: number;
+  };
   /** M3: Archive notes unlocked (in content) and in content. */
   archive: { unlocked: number; total: number };
 }
@@ -3206,7 +3231,8 @@ export interface ModelApi {
    *     milestone 'history' if absent.
    *   - Archive: notes whose subject rule now holds are unlocked (about once a real second; ArchiveDef).
    *   - Milestones (MetaState.milestones): written at the moment each first happens (keys listed there).
-   *   - The win: when flags.won is first set in a run and meta.endings.steadyAll is absent, write it (EndingRecord), the
+   *   - The win (M3 finish: every Industry settled for GlobalParams.endingYears; see GameState.steadyYearsAll): when
+   *     flags.won is first set in a run and meta.endings.steadyAll is absent, write it (EndingRecord), the
    *     milestone 'won', the 'ending' headline and event after 'won'. The run continues ("The ledger continues"); a
    *     later win in a later run sets flags.won and 'won' as in M2 but no second 'ending'.
    *   - Mandate: a 'measure' lever's upkeep counts as any lever's.

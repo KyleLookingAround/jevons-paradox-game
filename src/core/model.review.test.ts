@@ -6,6 +6,7 @@ import { model } from './index';
 import { fixture as C, FOUNDED, STEAM_EFFICIENCY } from './fixture';
 import { STEADY_STATE_YEARS } from '../types';
 import type { Content, SectorId, GameState, MetaState } from '../types';
+import { settledNow } from './m1.testkit';
 
 const SECTORS = C.sectorOrder;
 
@@ -147,10 +148,16 @@ describe('review: Steady State across all sectors (end to end)', () => {
     return s;
   }
 
-  test('verify: steadyYearsAll accrues while every era decouples, and 50 years sets flags.won with a steadyAll headline', () => {
-    let s = decouplingEverywhere();
+  // M3 (finish): the first ending's rule changed meaning. These two tests used to check that the streak accrues while
+  // every open sector decouples (M1), then while each is within budget and clear (M2). Now it accrues only while every
+  // Industry in sectorOrder is SETTLED at once; within budget and clear no longer counts.
+  const settleAll = (s: GameState): GameState => { for (const e of SECTORS) s = settledNow(s, CLEAN, e); return s; };
+
+  test('verify (M3 finish): steadyYearsAll accrues while every Industry is settled; endingYears of it sets flags.won once', () => {
+    let s = settleAll(decouplingEverywhere());
     const t1 = model.tick(s, CLEAN, 1);
     expect(t1.steadyYearsAll).toBeCloseTo(0.05, 9);
+    expect(model.derive(t1, CLEAN).ending).toMatchObject({ settled: SECTORS.length, total: SECTORS.length, yearsNeeded: STEADY_STATE_YEARS });
     s = { ...s, steadyYearsAll: STEADY_STATE_YEARS - 0.01 };
     const t = model.tick(s, CLEAN, 1);
     expect(t.flags.won).toBe(true);
@@ -159,24 +166,41 @@ describe('review: Steady State across all sectors (end to end)', () => {
     const t2 = model.tick(t, CLEAN, 1);
     expect(t2.flags.won).toBe(true);
     expect(t2.news.filter((n) => n.key === 'steadyAll').length).toBe(1);
-    // and one sector failing the test resets the all-sector counter
-    const broken = patchSector(t2, 'light', { budget: { r0: 1e-6, since: t2.time, drawnYear: 1900, w0: 1e3, p0: 0, pace: "gentle" } });
+    // one Industry unsettled resets the streak
+    const broken = model.unsettle(t2, CLEAN, 'light');
+    expect(broken.sectors.light.settled).toBeNull();
     expect(model.tick(broken, CLEAN, 1).steadyYearsAll).toBe(0);
-    // M2: a sector within budget but not clear (pressure rising) also resets it
-    expect(model.tick(t2, C, 1).steadyYearsAll).toBe(0);
+    expect(model.derive(broken, CLEAN).ending.settled).toBe(SECTORS.length - 1);
   });
 
-  test('defect (contract): steadyYearsAll counts years in which every OPEN sector decouples (types.ts), won still needs all of sectorOrder', () => {
-    // Only Steam open, decoupling: types.ts says the counter accrues; the win still needs every sector.
-    const C2: Content = { ...C, sectors: { ...C.sectors, steam: { ...C.sectors.steam, pressureIntensity: 0 } } };
-    let s = foundAll(model.createState(C2), C2, 'steam');
-    s = { ...s, population: 5, upgrades: Object.fromEntries(STEAM_EFFICIENCY.map((id) => [id, 1])) };
-    s = run(s, C2, 2);
-    s = patchSector(s, 'steam', { budget: { r0: 3 * model.derive(s, C2).sectors.steam!.resourceUse, since: s.time, drawnYear: 1800, w0: 1e3, p0: 0, pace: "gentle" } });
-    expect(model.derive(s, C2).sectors.steam!.decoupling).toBe(true);
-    const t = model.tick({ ...s, steadyYearsAll: STEADY_STATE_YEARS - 0.01 }, C2, 1);
-    expect(t.steadyYearsAll).toBeGreaterThan(STEADY_STATE_YEARS - 0.01);
+  test('rule change (M3 finish): every Industry within budget and clear, but not settled, no longer counts', () => {
+    const s = decouplingEverywhere();
+    for (const e of SECTORS) expect(model.derive(s, CLEAN).sectors[e]!.withinBudget).toBe(true);
+    const t = model.tick({ ...s, steadyYearsAll: STEADY_STATE_YEARS - 0.01 }, CLEAN, 1);
+    expect(t.steadyYearsAll).toBe(0);
     expect(t.flags.won).toBe(false);
+    // all but one settled: still nothing
+    let u = s;
+    for (const e of SECTORS.slice(1)) u = settledNow(u, CLEAN, e);
+    expect(model.tick({ ...u, steadyYearsAll: 10 }, CLEAN, 1).steadyYearsAll).toBe(0);
+  });
+
+  test('GlobalParams.endingYears sets the hold; a settlement lost to its defence breaks the streak', () => {
+    const SHORT: Content = { ...CLEAN, global: { ...CLEAN.global, endingYears: 1 } };
+    let s = settleAll(decouplingEverywhere(SHORT));
+    s = run(s, SHORT, 19);
+    expect(s.flags.won).toBe(false);
+    expect(model.derive(s, SHORT).ending.progress).toBeCloseTo(0.95, 6);
+    s = run(s, SHORT, 1);
+    expect(s.flags.won).toBe(true);
+    expect(s.meta.endings.steadyAll).toBeDefined();
+    // a defence that cannot be paid: the lapse rule unsettles one, the streak returns to 0
+    let d = settleAll(decouplingEverywhere());
+    d = { ...d, steadyYearsAll: 20, mandate: 0, sectors: { ...d.sectors, steam: { ...d.sectors.steam, settled: { ...d.sectors.steam.settled!, N0: d.population / 10, spillMul0: 1, extraD0: 0 } } } };
+    expect(model.derive(d, CLEAN).sectors.steam!.settleDefence).toBeGreaterThan(0);
+    const after = model.tick(d, CLEAN, 1);
+    expect(after.sectors.steam.settled).toBeNull();
+    expect(after.steadyYearsAll).toBe(0);
   });
 });
 

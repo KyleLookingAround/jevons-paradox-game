@@ -472,7 +472,7 @@ function emptyDerived(): Derived {
     respec: { allowed: false, refund: 0, refundByTree: {} },
     features: Object.fromEntries(FEATURE_IDS.map((f) => [f, false])) as Record<FeatureId, boolean>,
     dispatch: { pending: [], nextIn: null }, modifiers: [], history: { id: null, cleared: false, lifted: false }, survey: null,
-    bank: { seconds: 0, max: 0, usable: false }, ending: { reached: false, record: null, progress: 0, allOpen: false }, archive: { unlocked: 0, total: 0 },
+    bank: { seconds: 0, max: 0, usable: false }, ending: { reached: false, record: null, progress: 0, allOpen: false, settled: 0, total: 0, years: 0, yearsNeeded: 50 }, archive: { unlocked: 0, total: 0 },
   };
 }
 

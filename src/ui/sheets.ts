@@ -847,7 +847,7 @@ export function winSheet(ctx: Ctx, sheets: Sheets): void {
     b.append(h('div', { class: 'paper' },
       h('div', { class: 'paper-mast' }, h('span', { text: 'Late final' }), h('span', { class: 'num', text: String(Math.floor(num(ctx.d?.year))) })),
       h('h1', { class: 'paper-head', text: 'Steady State' }),
-      h('p', { class: 'paper-stand', text: `${STEADY_STATE_YEARS} years of a decent life inside the line, in every Industry at once. Nobody is quite sure when it happened. The engines kept improving; the burning stopped following them.` }),
+      h('p', { class: 'paper-stand', text: `${Math.round(num(ctx.d?.ending?.yearsNeeded, STEADY_STATE_YEARS))} years with every Industry settled at its sink line, all at once. Nobody is quite sure when it happened. The engines kept improving; the burning stopped following them.` }),
       h('p', { class: 'muted', text: 'The game carries on. So, presumably, does everyone.' })),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn primary', type: 'button', onclick: close }, 'Carry on')));
   }, { label: 'Credits', full: true, cls: 'reckon-sheet' });

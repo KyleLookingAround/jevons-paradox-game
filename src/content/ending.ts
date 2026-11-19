@@ -1,7 +1,8 @@
 /**
- * M3: the first ending (Content.ending): the credits card shown when every Industry has held its sink line for fifty
- * years (flags.won; meta.endings.steadyAll), and the templates from which the core assembles the retrospective Gazette
- * out of the player's own milestones (ModelApi.retrospective, MetaState.milestones). Owned by the content-archive lane.
+ * M3: the first ending (Content.ending): the credits card shown when every Industry has been settled at its sink line,
+ * all at once, for fifty years (GlobalParams.endingYears; flags.won; meta.endings.steadyAll), and the templates from
+ * which the core assembles the retrospective Gazette out of the player's own milestones (ModelApi.retrospective,
+ * MetaState.milestones). Owned by the content-archive lane.
  *
  * The credits are the game's argument closing, in the paper's voice; who made the game is not needed. The
  * retrospective reads as a newspaper's supplement: one headline per first time, oldest first, each dated. Templates
@@ -24,8 +25,8 @@ export const ending: EndingText = {
       'A duty that rose as the engines improved; a cap that fell as the decades passed.',
       'Money from the levies spent on baths, books and parks instead of furnaces.',
       'And a public that decided, now and then, that it had enough.',
-      'For fifty years every Industry has burned no more than the sky can carry off,',
-      'and nobody has been made to go without.',
+      'For fifty years every Industry has been settled at its sink line, burning no more than the sky can carry off;',
+      'none of them was settled while anyone went without.',
       'The efficiency gauge is still rising. This time the consumption gauge is not.',
       'The Statistics Office notes that this has not happened before, and may not last.',
     ],
@@ -43,6 +44,6 @@ export const ending: EndingText = {
     { key: 'settled:*', headline: '{year}: {sector} settles at its sink line, and stays there' },
     { key: 'history', headline: '{year}: a History cleared, in run {run}' },
     { key: 'proprietor', headline: '{year}: the Statistics Office publishes the proprietor’s day' },
-    { key: 'won', headline: '{year}: every Industry within the line; the ledger balances, for now' },
+    { key: 'won', headline: '{year}: every Industry settled at its sink line; the ledger balances, for now' },
   ],
 };

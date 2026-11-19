@@ -1,12 +1,24 @@
 /**
- * M3: the first ending (every Industry at its sink line for fifty years: flags.won) and the retrospective Gazette
+ * M3: the first ending (every Industry settled at once for GlobalParams.endingYears: flags.won; the streak is counted
+ * in step.ts) and the retrospective Gazette
  * assembled from MetaState.milestones and Content.ending (ModelApi.retrospective).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
+import { STEADY_STATE_YEARS } from '../types';
 import type { Content, EndingRecord, GameState, MetaState, RetroItem, SectorId } from '../types';
 import { idx } from './contentIndex';
 import { fillText } from './headlines';
 import { milestone } from './milestones';
+
+/** GlobalParams.endingYears with its default (model years every Industry must stay settled for the first ending). */
+export const endingYearsOf = (content: Content): number => {
+  const y = content.global.endingYears;
+  return typeof y === 'number' && Number.isFinite(y) && y >= 0 ? y : STEADY_STATE_YEARS;
+};
+
+/** Sectors in sectorOrder that are open and settled now (Derived.ending.settled). */
+export const settledCount = (state: GameState, content: Content): number =>
+  idx(content).ids.reduce((n, s) => n + (state.sectors[s]?.open && state.sectors[s]?.settled ? 1 : 0), 0);
 
 /** The EndingRecord for the state now (run = reckonings + 1, run time, total seconds, calendar year rounded down). */
 export const endingRecord = (state: GameState, year: number): EndingRecord =>

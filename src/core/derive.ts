@@ -2,10 +2,11 @@
  * derive(): the Derived view the UI reads every frame (flows, instruments, budgets, Hindsight, next sectors).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import { EXHAUSTED_BELOW, YEARS_PER_SECOND, STEADY_STATE_YEARS } from '../types';
+import { EXHAUSTED_BELOW, YEARS_PER_SECOND } from '../types';
 import type { AppDerived, Content, Derived, GameState, SectorDerived, SectorId } from '../types';
 import { calendarYear, currentAge } from './calendar';
 import { idx } from './contentIndex';
+import { endingYearsOf, settledCount } from './ending';
 import { modsOf, isForbidden } from './effects';
 import { archiveCounts } from './archive';
 import { bankView } from './bank';
@@ -142,10 +143,21 @@ export function derive(state: GameState, content: Content): Derived {
     history: { id: state.meta.history ?? null, cleared: (state.meta.history ?? null) !== null && clearedThisRun(state), lifted: !!state.historyLifted },
     survey: surveyView(state, content),
     bank: bankView(state, content),
-    ending: {
-      reached: !!state.meta.endings?.steadyAll, record: state.meta.endings?.steadyAll ?? null,
-      progress: clamp(state.steadyYearsAll / STEADY_STATE_YEARS, 0, 1), allOpen: ix.ids.every((x) => !!state.sectors[x]?.open),
-    },
+    ending: endingView(state, content),
     archive: archiveCounts(state, content),
+  };
+}
+
+/** Derived.ending: the first ending reached, and this run's progress to it (every Industry settled, held endingYears). */
+function endingView(state: GameState, content: Content): Derived['ending'] {
+  const ix = idx(content);
+  const need = endingYearsOf(content);
+  const settled = settledCount(state, content);
+  const years = Math.max(0, state.steadyYearsAll);
+  return {
+    reached: !!state.meta.endings?.steadyAll, record: state.meta.endings?.steadyAll ?? null,
+    progress: need > 0 ? clamp(years / need, 0, 1) : settled === ix.ids.length && ix.ids.length > 0 ? 1 : 0,
+    allOpen: ix.ids.every((x) => !!state.sectors[x]?.open),
+    settled, total: ix.ids.length, years, yearsNeeded: need,
   };
 }

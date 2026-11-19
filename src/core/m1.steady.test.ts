@@ -6,7 +6,7 @@ import { model } from './index';
 import { fixture as C } from './fixture';
 import { STEADY_STATE_YEARS, YEARS_PER_SECOND } from '../types';
 import type { Content, GameState, MetaState } from '../types';
-import { patchSector, steamAt, run, D, steamD, rich, greedy, CALM, decoupling, count, badNumbers } from './m1.testkit';
+import { patchSector, steamAt, run, D, steamD, rich, greedy, CALM, decoupling, count, badNumbers, settledNow } from './m1.testkit';
 
 /* ---------------- 3. budget ---------------- */
 
@@ -130,19 +130,19 @@ describe('budget lines (P2)', () => {
 /* ---------------- 4. the win ---------------- */
 
 describe('the win', () => {
-  test('needs every sector in sectorOrder open plus 50 years; opening a sector resets steadyYearsAll', () => {
+  // M3 (finish): this test used to say "every sector in sectorOrder open plus 50 years of every open one decoupling".
+  // The first ending now needs every Industry in sectorOrder open AND settled at once, so one decoupling (even settled)
+  // Industry among closed ones counts for nothing, and a sector opening (closed until then) leaves it at 0.
+  test('needs every sector in sectorOrder open and settled; one settled Industry among closed ones counts nothing', () => {
     let s = { ...decoupling(), steadyYearsAll: STEADY_STATE_YEARS - 0.01 };
     s = model.tick(s, CALM, 1);
-    expect(s.steadyYearsAll).toBeGreaterThanOrEqual(STEADY_STATE_YEARS);
-    expect(s.flags.won).toBe(false);
-    // make Light openable: one Reckoning, the condenser owned, enough service delivered
-    s = { ...s, meta: { ...s.meta, reckonings: 1 } };
-    s = patchSector(s, 'steam', { serviceDelivered: 1e6 });
-    expect(D(s, CALM).nextSectors[0]).toMatchObject({ id: 'light', ready: true });
-    s = model.tick(s, CALM, 1);
-    expect(s.sectors.light.open).toBe(true);
     expect(s.steadyYearsAll).toBe(0);
     expect(s.flags.won).toBe(false);
+    s = settledNow(s, CALM, 'steam');
+    s = model.tick({ ...s, steadyYearsAll: STEADY_STATE_YEARS - 0.01 }, CALM, 1);
+    expect(s.steadyYearsAll).toBe(0);
+    expect(s.flags.won).toBe(false);
+    expect(D(s, CALM).ending).toMatchObject({ settled: 1, total: CALM.sectorOrder.length, allOpen: false, progress: 0 });
   });
 });
 

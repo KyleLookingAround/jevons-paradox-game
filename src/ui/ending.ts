@@ -1,4 +1,4 @@
-// M3: the first ending. When the run's 'ending' event arrives (every Industry within its line for fifty years, the first
+// M3: the first ending. When the run's 'ending' event arrives (every Industry settled at once for fifty years, the first
 // time in the save), the credits card (Content.ending.credits) and, a tap away, the retrospective Gazette assembled by
 // the core from the player's own first times (ModelApi.retrospective), with the time-lapse of the valley. Dismissable;
 // "The ledger continues" returns to play. Both are reachable again from the menu.
@@ -15,7 +15,7 @@ export function creditsSheet(ctx: Ctx, sheets: Sheets, lapse: Lapse | null): voi
   const cr = ctx.content.ending?.credits;
   const rec = ctx.d?.ending?.record ?? ctx.state.meta?.endings?.steadyAll ?? null;
   sheets.open('credits', (b, close) => {
-    const lines = cr?.lines ?? ['Every Industry within the line, for fifty years.'];
+    const lines = cr?.lines ?? ['Every Industry settled at its sink line, for fifty years.'];
     const facts = rec ? `Run ${fmt(rec.run)} · ${(num(rec.totalSeconds) / 3600).toFixed(1)} hours of play · ${Math.floor(num(rec.year))}` : '';
     b.append(h('div', { class: 'paper credits' },
       h('div', { class: 'paper-mast' }, h('span', { text: 'Late final' }), h('span', { class: 'num', text: rec ? String(Math.floor(num(rec.year))) : '' })),

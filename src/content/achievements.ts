@@ -326,7 +326,7 @@ const m3: AchievementDef[] = [
   },
   {
     id: 'ach.m3.firstEnding', name: 'Within the Line', feature: 'steadyState',
-    blurb: 'Every Industry at its sink line for fifty years, with nobody going without. The ledger continued.',
+    blurb: 'Every Industry settled at its sink line at once, and held there for fifty years. The ledger continued.',
     when: { flag: 'won' },
   },
 ];

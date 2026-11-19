@@ -1539,7 +1539,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         history: { id: s.meta.history, cleared: !!(s.meta.history && s.meta.histories[s.meta.history]?.cleared), lifted: s.historyLifted },
         survey: householdDerived(s, c),
         bank: { seconds: s.meta.bankedSeconds, max: 0, usable: false },
-        ending: { reached: !!s.meta.endings.steadyAll, record: s.meta.endings.steadyAll ?? null, progress: Math.min(1, s.steadyYearsAll / STEADY_STATE_YEARS), allOpen: openIds.length === order(c).length },
+        ending: { reached: !!s.meta.endings.steadyAll, record: s.meta.endings.steadyAll ?? null, progress: Math.min(1, s.steadyYearsAll / (c.global.endingYears ?? STEADY_STATE_YEARS)), allOpen: openIds.length === order(c).length, settled: order(c).filter((x) => !!s.sectors[x]?.settled).length, total: order(c).length, years: s.steadyYearsAll, yearsNeeded: c.global.endingYears ?? STEADY_STATE_YEARS },
         archive: { unlocked: Object.keys(s.meta.archive).length, total: (c.archive || []).length },
       };
     },

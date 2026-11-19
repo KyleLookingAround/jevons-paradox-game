@@ -6,7 +6,7 @@ import { RETURN_FIGURE_MAX } from '../types';
 import type { Content, GameState, HouseholdFigures, MetaState, UpgradeDef } from '../types';
 import { model } from './index';
 import { fixtureM3 as M0, fixtureM3Bank, fixtureM3Gated } from './fixture';
-import { decoupling, foundAll, patchSector, run, steamAt } from './m1.testkit';
+import { decoupling, foundAll, patchSector, run, settledNow, steamAt } from './m1.testkit';
 import { freshMeta } from './state';
 import { evalCond } from './conditions';
 
@@ -196,8 +196,9 @@ describe('M3 Archive, milestones and the first ending', () => {
   });
   test('the first win writes meta.endings.steadyAll, emits ending after won once ever, and the run continues', () => {
     const solo: Content = { ...M, sectors: { steam: M.sectors.steam }, sectorOrder: ['steam'], ages: [M.ages[0]], dispatches: [], ambient: [] };
-    let s = decoupling(solo);
-    s = { ...s, steadyYearsAll: 49.99, sectors: { ...s.sectors, steam: { ...s.sectors.steam, budget: { ...s.sectors.steam.budget!, p0: 100 } } } };
+    // M3 (finish): the win is every Industry settled for endingYears (here the one Industry of `solo`)
+    let s = settledNow(decoupling(solo), solo, 'steam');
+    s = { ...s, steadyYearsAll: 49.99 };
     s = model.tick(s, solo, 1);
     expect(s.flags.won).toBe(true);
     const kinds = s.events.map((e) => e.kind);
@@ -208,8 +209,8 @@ describe('M3 Archive, milestones and the first ending', () => {
     const t = model.tick(s, solo, 1);
     expect(t.time).toBe(s.time + 1); // the ledger continues
     // a later win in a later run: 'won' again, no second 'ending'
-    let r = decoupling(solo);
-    r = { ...r, meta: s.meta, steadyYearsAll: 49.99, sectors: { ...r.sectors, steam: { ...r.sectors.steam, budget: { ...r.sectors.steam.budget!, p0: 100 } } } };
+    let r = settledNow(decoupling(solo), solo, 'steam');
+    r = { ...r, meta: s.meta, steadyYearsAll: 49.99 };
     r = model.tick(r, solo, 1);
     expect(ev(r, 'won').length).toBeGreaterThan(0);
     expect(r.events.filter((e) => e.kind === 'ending' && e.seq > s.meta.eventSeq)).toHaveLength(0);
