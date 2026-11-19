@@ -79,7 +79,10 @@ export function buildNews(ctx: Ctx): Comp & { backfire(): void } {
       spotKey = sk;
       let mk = sk ? spots.get(sk) : '';
       if (sk && mk == null) {
-        try { mk = spot(top!.key, theme === 'agentic' ? 'cyberpunk' : theme, { standalone: true, width: 60, height: 40 }); } catch { mk = ''; }
+        // Not `standalone`: that inlines the whole scene stylesheet into the spot, and every new spot put it into the page
+        // again, a stylesheet change that restyled the entire page and picture (~100 ms at 4× CPU; perf pass 2). The page
+        // already carries the scene's CSS (injected with the picture), plus the spot's one extra rule (styles.css).
+        try { mk = spot(top!.key, theme === 'agentic' ? 'cyberpunk' : theme, { width: 60, height: 40 }); } catch { mk = ''; }
         spots.set(sk, mk);
       }
       spotEl.innerHTML = mk || '';
@@ -331,6 +334,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
             if (!renderer) { plain(def.id); return; }
             plainEl?.remove(); plainEl = null;
             renderer.setSector(sector);
+            try { performance.mark('rebound-scene'); } catch { /* ignore */ }
           }
           armed = true; update();
         }, 0));

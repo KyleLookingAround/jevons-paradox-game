@@ -61,9 +61,15 @@ export function archiveViews(state: GameState, content: Content): ArchiveView[] 
 }
 
 /** Derived.archive. */
+/** Remembered per meta.archive object and content (derive asks every frame; the record changes rarely). */
+const countMemo = new WeakMap<object, { content: Content; unlocked: number; total: number }>();
 export function archiveCounts(state: GameState, content: Content): { unlocked: number; total: number } {
   const have = state.meta.archive ?? {};
+  const m = countMemo.get(have);
+  if (m && m.content === content) return { unlocked: m.unlocked, total: m.total };
   let u = 0;
   for (const n of content.archive ?? []) if (have[n.id] !== undefined) u++;
-  return { unlocked: u, total: content.archive?.length ?? 0 };
+  const total = content.archive?.length ?? 0;
+  countMemo.set(have, { content, unlocked: u, total });
+  return { unlocked: u, total };
 }

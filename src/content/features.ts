@@ -21,6 +21,9 @@ const AT_RECKONING: Cond[] = [{ stat: 'time', op: '<', value: 2 }];
 /** M3: the household survey is not due (it has arrived, or waits on hour 6 or the Civil Service): the quiet Reckoning
  *  arrivals (the Archive, the free price) give way to it, so the Proprietor's Day stays near hour 6–7. */
 const SURVEY_NOT_DUE: Cond = { any: [{ stat: 'totalHours', op: '<', value: 6 }, { not: { owns: 'inst.civilService' } }, { feature: 'survey' }] };
+/** M3: Histories are not due (arrived, or waiting on hour 8, a Steady State held, or run 7): the quiet arrivals give
+ *  way to them too, so they come soon after hour 8 (balance, second pass: they had slipped to hour 14). */
+const HISTORIES_NOT_DUE: Cond = { any: [{ stat: 'totalHours', op: '<', value: 8 }, { not: { owns: 'steadyState' } }, { stat: 'reckonings', op: '<', value: 6 }, { feature: 'histories' }] };
 const skiesDue: Cond = { all: [steamDecades(1), { any: [{ stat: 'wellbeing', op: '>=', value: 34 }, steamDecades(5)] }] };
 
 export const features: Partial<Record<FeatureId, FeatureDef>> = {
@@ -88,9 +91,9 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    *     or the run after the first Steady State), the load curve, the travel dial, and later the bite (once a lever has
    *     bitten). Twenty minutes in, the run's own Industries are open and known.
    *   - Reckoning arrivals (AT_RECKONING: run time under two seconds, which only the check in reckon() sees): the
-   *     Commons (run 4) and Settlement (M2), then the Archive, the free price (once a business model has been bought,
-   *     after the travel dial), the household survey (hour 6 or later) and Histories (hour 8 or later), one per
-   *     Reckoning, in FEATURE_IDS order.
+   *     Commons (run 4) and Settlement (M2), then the free price (once a business model has been bought, after the
+   *     travel dial), the household survey (hour 6 or later) and Histories (hour 8 or later), one per Reckoning, in
+   *     FEATURE_IDS order. The Archive is mid-run, the run after the travel dial.
    * Nothing M3 arrives in run 3 (the budget's own unfolding). Banked time stays off. */
 
   /* Run 2, five minutes in (the first check after the Market): the paper simply has more in it. No intro: its first
@@ -108,11 +111,11 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
     intro: 'Colliery agents report good coal below the old workings',
     name: 'The seams',
   },
-  /* At the Reckoning, from run 6, once Settlement (or the run after the seams) has had its turn: a quiet arrival (it asks
-   * nothing). Notes have been kept since the first minute of play, so nothing is lost by waiting. Gives way to the
-   * survey when that is due at the same Reckoning. */
+  /* Mid-run, in the window, the run after the travel dial (balance, second pass: at the Reckoning it queued behind
+   * Settlement, the survey and Histories and slipped to hour 12, leaving a three-hour gap): a quiet arrival (it asks
+   * nothing). Notes have been kept since the first minute of play, so nothing is lost by waiting. */
   archive: {
-    when: { all: [rk(5), ...AT_RECKONING, SURVEY_NOT_DUE] },
+    when: { all: [rk(6), { feature: 'travel' }, ...MID] },
     intro: 'The Gazette opens its archive to subscribers',
     name: 'The Archive',
   },
@@ -133,15 +136,14 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    * the card is bought again in the run. (Not mid-run: the card is often bought late in a run, after the window.)
    * Gives way to the survey when that is due at the same Reckoning. */
   freeAtUse: {
-    when: { all: [rk(6), { feature: 'travel' }, ...AT_RECKONING, { any: [{ owns: 'arc.compute.adFunded' }, { owns: 'arc.compute.subscriptions' }] }, SURVEY_NOT_DUE] },
+    when: { all: [rk(6), { feature: 'travel' }, ...AT_RECKONING, { any: [{ owns: 'arc.compute.adFunded' }, { owns: 'arc.compute.subscriptions' }] }, SURVEY_NOT_DUE, HISTORIES_NOT_DUE] },
     intro: 'info: price shown to user: £0.00',
     name: 'Free at the point of use',
   },
-  /* Mid-run, in the window, a run after the free price at the earliest, once a lever's side effect has taken hold
-   * anywhere: introduced by the 'biteBack' headline itself (a player who never lets a lever bite never needs it).
-   * (The free price arrives at a Reckoning, so the two may share a run, five minutes and more apart.) */
+  /* Mid-run, in the window, a run after the Archive at the earliest, once a lever's side effect has taken hold anywhere:
+   * introduced by the 'biteBack' headline itself (a player who never lets a lever bite never needs it). */
   sideEffects: {
-    when: { all: [rk(7), { feature: 'freeAtUse' }, ...MID, { any: SECTORS.map((sector): Cond => ({ stat: 'bite', sector, op: '>=', value: 0.3 })) }] },
+    when: { all: [rk(7), { feature: 'archive' }, ...MID, { any: SECTORS.map((sector): Cond => ({ stat: 'bite', sector, op: '>=', value: 0.3 })) }] },
     name: 'Levers that bite back',
   },
   /* At a Reckoning from hour 6, once the Civil Service is owned: the Statistics Office's household survey (The

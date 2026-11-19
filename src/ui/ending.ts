@@ -9,6 +9,7 @@ import { h } from './dom';
 import { fmt, num } from './fmt';
 import type { Sheets } from './sheets';
 import { lapseBlock, type Lapse } from './timelapse';
+import { sound } from './sound';
 
 export function creditsSheet(ctx: Ctx, sheets: Sheets, lapse: Lapse | null): void {
   const cr = ctx.content.ending?.credits;
@@ -24,7 +25,7 @@ export function creditsSheet(ctx: Ctx, sheets: Sheets, lapse: Lapse | null): voi
       lapseBlock(ctx, lapse, cr?.title ?? 'Steady State')),
     h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => retrospectiveSheet(ctx, sheets, lapse) }, 'Read the retrospective'),
-      h('button', { class: 'btn', type: 'button', onclick: close }, cr?.continueLabel ?? 'Carry on')));
+      h('button', { class: 'btn', type: 'button', onclick: () => { sound('ledgerContinues'); close(); } }, cr?.continueLabel ?? 'Carry on')));
   }, { label: 'Fifty years', full: true, cls: 'reckon-sheet credits-sheet' });
 }
 
@@ -50,6 +51,6 @@ export function retrospectiveSheet(ctx: Ctx, sheets: Sheets, lapse: Lapse | null
         : h('p', { class: 'muted', text: 'The files are thin: little was recorded on this device.' })),
     h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn', type: 'button', onclick: () => creditsSheet(ctx, sheets, lapse) }, '← The credits'),
-      h('button', { class: 'btn primary', type: 'button', onclick: close }, ctx.content.ending?.credits.continueLabel ?? 'Carry on')));
+      h('button', { class: 'btn primary', type: 'button', onclick: () => { sound('ledgerContinues'); close(); } }, ctx.content.ending?.credits.continueLabel ?? 'Carry on')));
   }, { label: 'The retrospective', full: true, cls: 'reckon-sheet retro-sheet' });
 }

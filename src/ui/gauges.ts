@@ -5,6 +5,7 @@
 import type { Ctx, Comp, FormulaKind } from './ctx';
 import { sectorDef, sd, ageOfSector } from './ctx';
 import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
+import { snapSmall } from './dom';
 import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, unitOne } from './fmt';
 import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
@@ -39,9 +40,23 @@ function dialSvg(extra = ''): SVGSVGElement {
   </svg>`);
 }
 
+/** Sweeps follow the needles' half-degree steps, so a creeping value rewrites the path (and repaints the dial) only
+ *  when it moves visibly. */
+const qa = (t: number): number => Math.round(t * 720) / 720;
+/** querySelector, remembered per root and selector (the dials' parts never change; perf pass 2). */
+const qsMemo = new WeakMap<Element, Map<string, Element | null>>();
+function qs(root: Element, sel: string): Element | null {
+  let m = qsMemo.get(root);
+  if (!m) { m = new Map(); qsMemo.set(root, m); }
+  if (!m.has(sel)) m.set(sel, root.querySelector(sel));
+  return m.get(sel)!;
+}
+
 function rot(el: Element | null, t: number): void {
   if (!el) return;
-  // Quantised to half a degree: a needle creeping every tick would otherwise restart its transition every tick.
+  // Quantised to half a degree, and eased only for a jump (dom.ts snapSmall): a needle creeping every tick would
+  // otherwise keep a transition running, and with it a main-thread frame every vsync.
+  snapSmall(el, clamp(t, 0, 1));
   setStyle(el as SVGElement, 'transform', `rotate(${(Math.round((clamp(t, 0, 1) - 0.5) * 360) / 2).toFixed(1)}deg)`);
 }
 
@@ -176,7 +191,7 @@ export function buildGauges(ctx: Ctx): GaugesComp {
   const measure = () => { const w = eff.box.getBoundingClientRect().width; tight = w > 0 && w < 128; };
   requestAnimationFrame(measure);
   window.addEventListener('resize', () => requestAnimationFrame(measure), { passive: true });
-  let sparkKey = '';
+  let sparkKey = '', sparkBase = '', sparkAt = 0;
   let lastTv = { cons: 0.5 };
 
   /** A purchase in this Industry: the needles swing slowly while the player watches; the old consumption reading is
@@ -223,8 +238,8 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     }
 
     // Efficiency
-    setAttr(eff.svgEl.querySelector('.d-sweep'), 'd', arc(0.5, tv(etaF)));
-    rot(eff.svgEl.querySelector('.d-needle'), tv(etaF));
+    setAttr(qs(eff.svgEl, '.d-sweep'), 'd', arc(0.5, qa(tv(etaF))));
+    rot(qs(eff.svgEl, '.d-needle'), tv(etaF));
     setText(eff.val, fold(etaF));
     // Units, not names: "hp per ton" fits a third of a 360 px phone where "motive power per ton" did not.
     const svcUnit = def?.service.unit;
@@ -232,13 +247,13 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     setAttr(eff.box, 'title', `${svcName} per ${unitOne(def?.resource) || lower(resName)} of ${lower(resName)}, against the start`);
 
     // Consumption (with the cosmetic trend as an arrow)
-    const sweep = cons.svgEl.querySelector('.d-sweep');
-    setAttr(sweep, 'd', arc(0.5, tv(rF)));
+    const sweep = qs(cons.svgEl, '.d-sweep');
+    setAttr(sweep, 'd', arc(0.5, qa(tv(rF))));
     cls(sweep, 'down', rF < 1);
-    rot(cons.svgEl.querySelector('.d-needle'), tv(rF));
+    rot(qs(cons.svgEl, '.d-needle'), tv(rF));
     lastTv = { cons: tv(rF) };
-    rot(cons.svgEl.querySelector('.d-ghost'), tv(1 / etaF));
-    show(cons.svgEl.querySelector('.d-ghost') as SVGElement | null, etaF > 1.001);
+    rot(qs(cons.svgEl, '.d-ghost'), tv(1 / etaF));
+    show(qs(cons.svgEl, '.d-ghost') as SVGElement | null, etaF > 1.001);
     setText(cons.val, fold(rF));
     const tr = num(e?.trendR);
     const arrow = tr > 0.001 ? ' ↑' : tr < -0.001 ? ' ↓' : '';
@@ -249,11 +264,11 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     // Rebound (direct, against the shadow)
     const rb = e?.rebound;
     cls(reb.box, 'unknown', !revealed);
-    const needle = reb.svgEl.querySelector('.d-needle') as SVGElement | null;
+    const needle = qs(reb.svgEl, '.d-needle') as SVGElement | null;
     const has = revealed && rb != null && Number.isFinite(rb);
     show(needle, has);
     const rv = has ? (rb as number) : 0;
-    setAttr(reb.svgEl.querySelector('.d-sweep'), 'd', has ? arc(0, clamp(rv, 0, 2.5) / 2.5) : '');
+    setAttr(qs(reb.svgEl, '.d-sweep'), 'd', has ? arc(0, qa(clamp(rv, 0, 2.5) / 2.5)) : '');
     rot(needle, clamp(rv, 0, 2.5) / 2.5);
     // A cap binds when it charges a permit price (SectorDerived.permitPrice > 0 only while a cap binds).
     const capped = has && capActive(ctx) && num(e?.permitPrice) > 0;
@@ -284,8 +299,12 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     const budNow = bRnow != null && num(e?.resourceUse) > 0 ? bRnow * rF / num(e?.resourceUse) : null;
     const sinkNow = e?.sinkR != null && num(e?.resourceUse) > 0 ? e.sinkR * rF / num(e?.resourceUse) : null;
     const k = `${id}|${hist.length}|${last?.time ?? 0}|${etaF.toFixed(3)}|${rF.toFixed(3)}|${budNow?.toFixed(3) ?? ''}|${sinkNow?.toFixed(3) ?? ''}`;
-    if (k !== sparkKey) {
-      sparkKey = k;
+    // The samples change every few seconds; the live head every tick. A head-only move redraws at most twice a second
+    // (five polylines rewritten and the gauge repainted at every tick were a steady cost; perf pass 2).
+    const kBase = k.slice(0, k.indexOf('|', k.indexOf('|', k.indexOf('|') + 1) + 1));
+    const nowMs = performance.now();
+    if (k !== sparkKey && (kBase !== sparkBase || nowMs - sparkAt >= 500)) {
+      sparkKey = k; sparkBase = kBase; sparkAt = nowMs;
       const pts: [number, number, number, number | null, number | null][] = [];
       const pos = (x: number | null | undefined) => (x != null && Number.isFinite(x) && x > 0 ? x : null);
       for (const smp of hist) {
@@ -300,24 +319,24 @@ export function buildGauges(ctx: Ctx): GaugesComp {
         if (mx - mn < 0.4) { const m2 = (mx + mn) / 2; mn = m2 - 0.2; mx = m2 + 0.2; }
         const y = (v: number) => (37 - ((Math.log(v) - mn) / (mx - mn)) * 34).toFixed(1);
         const x = (t: number) => (((t - t0) / span) * 200).toFixed(1);
-        setAttr(spark.querySelector('.sp-r'), 'points', pts.map((p) => `${x(p[0])},${y(p[2])}`).join(' '));
-        setAttr(spark.querySelector('.sp-eta'), 'points', pts.map((p) => `${x(p[0])},${y(p[1])}`).join(' '));
+        setAttr(qs(spark, '.sp-r'), 'points', pts.map((p) => `${x(p[0])},${y(p[2])}`).join(' '));
+        setAttr(qs(spark, '.sp-eta'), 'points', pts.map((p) => `${x(p[0])},${y(p[1])}`).join(' '));
         // The promised line means something only once efficiency has moved off the start.
         const promised = pts.some((p) => p[1] > 1.001);
-        setAttr(spark.querySelector('.sp-prom'), 'points', promised ? pts.map((p) => `${x(p[0])},${y(1 / p[1])}`).join(' ') : '');
+        setAttr(qs(spark, '.sp-prom'), 'points', promised ? pts.map((p) => `${x(p[0])},${y(1 / p[1])}`).join(' ') : '');
         // "promised" gives way to the budget and sink keys once those lines are drawn (one line of key on a phone).
         const lines = pts.filter((p) => p[3] != null).length >= 2 || pts.filter((p) => p[4] != null).length >= 2;
         show(kProm, promised && !lines);
         const bud = pts.filter((p) => p[3] != null);
-        setAttr(spark.querySelector('.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
+        setAttr(qs(spark, '.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
         show(kBud, bud.length >= 2);
         setText(kBud, ctx.state.sectors?.[id]?.budget?.heldAt != null ? 'budget, held' : 'budget');
         // The sink line: the use at which the sky clears and stays clear (SectorDerived.sinkR, sampled in history).
         const sink = pts.filter((p) => p[4] != null);
-        setAttr(spark.querySelector('.sp-sink'), 'points', sink.length >= 2 ? sink.map((p) => `${x(p[0])},${y(p[4] as number)}`).join(' ') : '');
+        setAttr(qs(spark, '.sp-sink'), 'points', sink.length >= 2 ? sink.map((p) => `${x(p[0])},${y(p[4] as number)}`).join(' ') : '');
         show(kSink, sink.length >= 2);
         const by = y(1);
-        setAttr(spark.querySelector('.sp-base'), 'y1', by); setAttr(spark.querySelector('.sp-base'), 'y2', by);
+        setAttr(qs(spark, '.sp-base'), 'y1', by); setAttr(qs(spark, '.sp-base'), 'y2', by);
       } else {
         for (const c of ['.sp-r', '.sp-eta', '.sp-prom', '.sp-bud', '.sp-sink']) setAttr(spark.querySelector(c), 'points', '');
         show(kBud, false);

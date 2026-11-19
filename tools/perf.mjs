@@ -36,12 +36,21 @@ const browser = await chromium.launch({ args: ['--enable-precise-memory-info', '
 const results = { when: new Date().toISOString(), sizes: sizes(), states: {} };
 
 function sizes() {
+  // build.json (since perf pass 2) names each file with its sizes; an older build has app.js and styles.css.
+  const bj = resolve(DIST, 'build.json');
+  if (existsSync(bj)) {
+    const b = JSON.parse(readFileSync(bj, 'utf8'));
+    const r = { initialGz: b.initialGz, initialJsGz: b.initialJsGz };
+    for (const [k, f] of Object.entries(b.files)) r[k] = { raw: f.raw, gz: f.gz, br: f.br, file: f.file, when: f.when };
+    return r;
+  }
   const r = {};
-  for (const f of ['app.js', 'styles.css', 'index.html']) {
+  for (const [k, f] of [['app', 'app.js'], ['styles', 'styles.css'], ['index', 'index.html']]) {
     if (!existsSync(resolve(DIST, f))) continue;
     const b = readFileSync(resolve(DIST, f));
-    r[f] = { raw: b.length, gz: gzipSync(b, { level: 9 }).length };
+    r[k] = { raw: b.length, gz: gzipSync(b, { level: 9 }).length };
   }
+  r.initialGz = (r.app?.gz ?? 0) + (r.styles?.gz ?? 0) + (r.index?.gz ?? 0); r.initialJsGz = r.app?.gz ?? 0;
   return r;
 }
 
@@ -194,7 +203,7 @@ const toBucket = {}; for (const [b, names] of Object.entries(BUCKET)) for (const
 async function trace(cdp, page, ms) {
   const chunks = [];
   const done = new Promise((ok) => cdp.once('Tracing.tracingComplete', ok));
-  await cdp.send('Tracing.start', { transferMode: 'ReturnAsStream', traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'disabled-by-default-devtools.timeline.frame'], excludedCategories: ['*'] } });
+  await cdp.send('Tracing.start', { transferMode: 'ReturnAsStream', traceConfig: { includedCategories: ['toplevel', 'devtools.timeline', 'v8', 'disabled-by-default-devtools.timeline.frame'], excludedCategories: ['*'] } });
   await page.waitForTimeout(ms);
   await cdp.send('Tracing.end');
   const { stream } = await done;
@@ -335,11 +344,25 @@ async function measureState(name, save, rate) {
   // Buy: give capital, tap the first affordable Buy (fork arms excluded), then hold a repeatable one.
   await page.evaluate(() => { const r = window.rebound; r.ctx.state = { ...r.state, capital: r.state.capital + 1e15 }; r.ctx.refreshAll(); });
   await page.waitForTimeout(300);
-  const buySel = await page.evaluate(() => {
-    const ok = window.rebound.ctx.ups.filter((v) => v.def.sector === window.rebound.ctx.sector && v.affordable && v.visible && !v.maxed && !v.excludedBy && !v.def.excludes?.length && !window.rebound.content.upgrades.some((u) => u.excludes?.includes(v.def.id)));
-    const rep = ok.find((v) => v.def.repeatable), one = ok.find((v) => !v.def.repeatable) ?? rep;
+  // The Industry on screen, or (late, when everything there is bought) the first one with something to buy.
+  const pick = () => page.evaluate(() => {
+    const R = window.rebound;
+    const can = (v) => v.affordable && v.visible && !v.maxed && !v.excludedBy && !v.def.excludes?.length && !R.content.upgrades.some((u) => u.excludes?.includes(v.def.id));
+    const here = R.ctx.ups.filter((v) => v.def.sector === R.ctx.sector && can(v));
+    if (!here.length) { const other = R.ctx.ups.find((v) => can(v)); return other ? { switchTo: other.def.sector } : {}; }
+    const rep = here.find((v) => v.def.repeatable), one = here.find((v) => !v.def.repeatable) ?? rep;
     return { one: one ? `.up[data-up="${one.def.id}"] .buy` : null, rep: rep ? `.up[data-up="${rep.def.id}"] .buy` : null };
   });
+  let buySel = await pick();
+  if (buySel.switchTo) {
+    await page.evaluate((id) => window.rebound.ctx.selectSector(id), buySel.switchTo);
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => window.rebound.ctx.refreshAll());
+    await page.waitForTimeout(500);
+    buySel = await pick();
+    r.buyIn = buySel.one ? 'switched' : undefined;
+  }
+
   if (buySel.one) {
     await page.locator(buySel.one).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -424,7 +447,8 @@ async function soak(save, minutes) {
 /* ------------------------------------------------------------ run */
 const f1 = (x) => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(1));
 const f0 = (x) => (x == null || !Number.isFinite(x) ? '—' : Math.round(x).toString());
-console.log(`bundle app.js ${(results.sizes['app.js'].raw / 1024).toFixed(0)} KB (${(results.sizes['app.js'].gz / 1024).toFixed(0)} KB gz), styles.css ${(results.sizes['styles.css'].raw / 1024).toFixed(0)} KB (${(results.sizes['styles.css'].gz / 1024).toFixed(0)} KB gz)`);
+{ const S = results.sizes; const K = (n) => (n / 1024).toFixed(0);
+  console.log(`bundle: first paint ${K(S.initialGz)} KB gz (main script ${K(S.app.raw)} KB, ${K(S.app.gz)} KB gz; styles ${K(S.styles.raw)} KB, ${K(S.styles.gz)} KB gz)` + ['scene', 'audio', 'archiveText'].filter((k) => S[k]).map((k) => `; ${k} ${K(S[k].gz)} KB gz (${S[k].when})`).join('')); }
 const saves = await makeStates();
 try { mkdirSync(resolve(root, 'design/scratch'), { recursive: true }); writeFileSync(resolve(root, 'design/scratch/perf-states.json'), JSON.stringify(saves)); } catch { /* optional */ }
 for (const k of ['mid', 'late']) console.log(`state ${k}: ${saves[k]?.info ?? saves[k]?.error}`);

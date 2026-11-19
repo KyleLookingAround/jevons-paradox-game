@@ -7,6 +7,11 @@
  * 20–150 Mandate; timed modifiers of 5–15 model years (100–300 s); multipliers 0.85–1.2; standing effects small, since
  * they stand for the rest of the run. A decade within budget pays 60 Mandate and 30 s of income: an arm is worth
  * about half a decade, never two.
+ * M3 balance pass: every demand multiplier above 1 on an arm was halved towards 1 (1.12 → 1.06; random answers cost a
+ * cap-holding player 12% of Hindsight per minute against letting every letter expire), Mandate costs were cut by two
+ * fifths (Mandate buys a restraint player's levers), and answers that forbid raising a duty last ten years, not fifteen;
+ * the answers that suit a held line (less smoke per ton: intensity; wellbeing) were strengthened by half, so reading the
+ * letter for the situation pays.
  */
 import type { Cond, DispatchArm, EffectDef, FeatureId, SectorId } from '../../types';
 

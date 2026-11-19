@@ -2,7 +2,7 @@
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, openSectors, lookFor, accentFor, ageOfSector, sectorIds, reckoningOffered } from './ctx';
 import type { FeatureId, GameEvent, GameState, SectorId } from '../types';
-import { h, setText, show, cls, setAttr } from './dom';
+import { h, setText, show, cls, setAttr, watchNear, isNear } from './dom';
 import { buildTopbar, buildTabs } from './bar';
 import { buildGauges } from './gauges';
 import { buildNews, buildWorld, buildDock } from './world';
@@ -32,7 +32,9 @@ import { archiveSheet } from './archive';
 import { dur } from './fmt';
 
 export interface UI {
-  update(): void;
+  /** Patch the page. `quick` (straight after a tap): only what the tap changes and the cockpit; the rest follows in
+   *  the next full update, after the frame (game.ts). */
+  update(quick?: boolean): void;
   blocking(): boolean;
   sheets: Sheets;
   toast(text: string, action?: { label: string; run: () => void }): () => void;
@@ -163,9 +165,16 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   });
 
   const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey]];
+  // Panels of the feed that only draw (no notes, sounds or moments from their update): while far from the screen they
+  // are not patched; one comes up to date as it nears the screen, and all of them before a jump to a card (perf pass 2).
+  const nearOnly = new Set<Comp>([ups, budget, divs, commons, orders, survey]);
+  const stale = new Set<Comp>();
+  for (const c of nearOnly) watchNear(c.el, () => { if (stale.delete(c)) c.update(); });
+  function flush(): void { for (const c of stale) c.update(); stale.clear(); }
 
   let look = '', accent: string | null | undefined;
   let wasWon = !!ctx.state.flags?.won;
+  let wasProprietor = !!ctx.state.meta?.flags?.proprietor;
   let endingNow = false;
   let onboardState: 'show' | 'fading' | 'gone' | '' = '';
 
@@ -189,6 +198,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   }
 
   function jumpToAffordable(): void {
+    flush();
     const it = afford.state.items[0];
     if (!it) return;
     if (it.sector !== ctx.sector) ctx.selectSector(it.sector);
@@ -223,7 +233,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       unreadSaveSheet(sheets, raw, info ? { info, restore: () => hooks.restoreBackup() } : undefined);
     },
     blocking: () => sheets.blocking(),
-    reset() { world.reset(); lapse.reset(); wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
+    reset() { world.reset(); lapse.reset(); wasWon = !!ctx.state.flags?.won; wasProprietor = !!ctx.state.meta?.flags?.proprietor; onboardState = ''; liveKey = ''; },
     afterAct: (before, after) => afford.afterAct(before, after),
     afford: afford.state,
     jumpToAffordable,
@@ -299,20 +309,26 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
           const id = e.id as FeatureId | undefined;
           if (!id || !ctx.content.features?.[id]) break;
           marks.add(id);
+          sound('arrived', { sector: e.sector });
           // The broadsheet prints the introduction; the mark is on the thing; the note says where it is.
           const name = ctx.content.features[id]?.name;
           if (name && ctx.content.features[id]?.intro) toasts.push(`New: ${name}.`, { label: 'Show', run: () => showFeature(id) }, 9000);
           break;
         }
         /* --- M3 (the scene plays its own moments for seamSunk, biteBack and ending) --- */
-        case 'seamSunk': sound('seam', { sector: e.sector }); break;
+        case 'seamSunk': {
+          const total = e.sector ? ctx.content.sectors[e.sector]?.seams?.length ?? 0 : 0;
+          sound('seam', { sector: e.sector, depth: total > 0 ? Math.min(1, num(e.n) / total) : undefined });
+          break;
+        }
         case 'biteBack': {
-          sound('bite', { sector: e.sector });
           const l = ctx.content.levers?.find((x) => x.id === e.id);
+          sound('bite', { sector: e.sector, lever: l?.kind });
           if (ctx.d?.features?.sideEffects && l?.sideEffects) toasts.push(`${l.name} bites back: ${l.sideEffects.blurb.replace(/\.$/, '')}.`, e.sector !== ctx.sector ? goThere(e.sector) : undefined, 8000);
           break;
         }
         case 'historyCleared': {
+          sound('history', { sector: e.sector });
           const hs = ctx.content.histories?.find((x) => x.id === e.id);
           toasts.push(`History cleared: ${hs?.name ?? 'the goal is met'}.${e.first ? ' Its reward is yours for good.' : ''}`, undefined, 9000);
           break;
@@ -334,6 +350,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
 
   /** Bring a newly arrived feature's place into view (below the pinned header on a phone). */
   function showFeature(id: FeatureId): void {
+    flush();
     marks.update();
     const el = marks.place(id);
     if (!el) return;
@@ -369,7 +386,10 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     try { doc.startViewTransition(apply); } catch { apply(); }
   }
 
-  function update(): void {
+  // After a tap, only these patch before the frame (the purchase, the figures, the sell button); the picture, the paper
+  // and the far panels follow in the full update a frame later (perf pass 2: tap to paint).
+  const quickSet = new Set<Comp>([topbar, tabs, gauges, dock, ups, budget, levs, mech, divs, commons, orders]);
+  function update(quick = false): void {
     const open = openSectors(ctx);
     // Keep the selected tab on an open industry.
     if (!open.includes(ctx.sector) && open.length) ctx.sector = open[0];
@@ -385,8 +405,13 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     if (ac !== accent) { accent = ac; setAttr(html, 'data-accent', ac); }
 
     timed('ui.afford', () => afford.update());
-    timed('ui.lapse', () => lapse.tick());
-    for (const [n, c] of comps) timed('ui.' + n, () => c.update());
+    if (!quick) timed('ui.lapse', () => lapse.tick());
+    for (const [n, c] of comps) {
+      if (quick && !quickSet.has(c)) continue;
+      if (nearOnly.has(c) && !isNear(c.el)) { stale.add(c); continue; }
+      stale.delete(c);
+      timed('ui.' + n, () => c.update());
+    }
     marks.update();
 
     // The chip: how many offers are news (afford.ts holds the no-nag rule), and where the first one is.
@@ -476,6 +501,10 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       else if (!ctx.content.ending) winSheet(ctx, sheets);
     }
     wasWon = won;
+    // The Proprietor's Day revealed (the flag rises in play; a save that already has it is not news).
+    const prop = !!ctx.state.meta?.flags?.proprietor;
+    if (prop && !wasProprietor) sound('proprietor');
+    wasProprietor = prop;
 
     timed('ui.sheets', () => sheets.update());
   }

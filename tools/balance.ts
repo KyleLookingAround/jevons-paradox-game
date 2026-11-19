@@ -67,8 +67,8 @@
  *   --fixture[=m3|m2|bank]  the test fixture: fixtureM3 (default; every M3 mechanism), the M2 fixture, or fixtureM3Bank
  *   --seams=on|off       restraint and efficiency strategies sink the next seam when reachable and affordable after
  *                        keeping 60 s of income (default on)
- *   --dispatch=default|first|random|best  answer policy: let it expire, arm 0, a seeded random arm (default), or the arm
- *                        whose one-offs pay most
+ *   --dispatch=default|first|random|best|thoughtful  answer policy: let it expire, arm 0, a seeded random arm (default),
+ *                        the arm whose one-offs pay most, or the arm that suits the situation (holding a line or booming)
  *   --dispatch-audit     each arm of each dispatch forced, the rest at `random`; Hindsight per minute per arm (±10%)
  *   --ignore=seams|load|travel|free[,…]  the strategy is blind to the mechanic: never sinks; never founds night-profile,
  *                        travel (sprawl) or free-at-use applications
@@ -207,6 +207,8 @@ for (const d of Object.values(C.sectors)) for (const a of d.applications) {
   if (IGNORE.has('travel') && d.travel && (!d.travel.apps || d.travel.apps.includes(a.id)) && ((a.lockIn ?? 0) > 0 || (a.lockInDecay ?? 0) > 0)) IGNORED_APPS.add(a.id);
   if (IGNORE.has('free') && a.priceSeen) IGNORED_APPS.add(a.id);
 }
+/** --ignore=free also skips the cards that set a seen price (Compute's business models, Light's flat rate). */
+const IGNORED_CARDS = new Set(IGNORE.has('free') ? C.upgrades.filter((u) => u.effects.some((e) => e.type === 'priceSeen')).map((u) => u.id) : []);
 /** --dispatch-audit: the arm forced for one dispatch. */
 let ARM_OVERRIDE: { id: string; arm: number } | null = null;
 const forkSector = FORK_SECTOR || ORDER[0];
@@ -344,7 +346,7 @@ function buyOne(s: GameState, ctx: RunCtx, v: UpgradeView): GameState {
 
 function buyUpgrades(s: GameState, ctx: RunCtx, prefer: string[] = []): GameState {
   for (let guard = 0; guard < 60; guard++) {
-    const views = cheapViews(s).filter((v) => v.visible && !v.maxed && !v.excludedBy && !ctx.skip.has(v.def.id));
+    const views = cheapViews(s).filter((v) => v.visible && !v.maxed && !v.excludedBy && !ctx.skip.has(v.def.id) && !IGNORED_CARDS.has(v.def.id));
     const pref = prefer.map((id) => views.find((v) => v.def.id === id)).find((v) => v !== undefined);
     if (pref && !pref.affordable) break; // save up for it
     const v = pref ?? views.filter((x) => x.affordable).sort((a, b) => a.cost - b.cost)[0];
@@ -406,7 +408,7 @@ function raiseLevers(s: GameState, ctx: RunCtx): GameState {
 
 /* ---------------- the budget player ---------------- */
 
-interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number>; lastStock?: number; stockP?: Record<string, number> }
+interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number>; lastStock?: number; stockP?: Record<string, number>; lastPush?: Record<string, number> }
 
 function budgetFoundOk(prev: GameState): (next: GameState, e: SectorId) => string | null {
   return (next, e) => {
@@ -431,8 +433,11 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     const x = d0.sectors[e];
     if (!es?.open || es.budget || !x) continue;
     const since = s.time - Math.max(memo.revealAt, s.time - es.openFor);
-    const ready = d0.wellbeing >= g.wellbeingTarget + 2 || x.resourceUse >= 0.9 * safeR(s, e)
-      || (since >= DRAW_AFTER && es.openFor >= MIN_DRAW);
+    // M3 balance: a later Industry's line waits until it has been open MIN_DRAW (12 min): drawn the moment it opens, its
+    // pressure is near nothing and the clear level sits at the floor, out of reach for good (a competent player learns
+    // to let the smoke show first). Steam, open from the start, keeps the old rule.
+    const ready = (e === ORDER[0] || es.openFor >= MIN_DRAW) && (d0.wellbeing >= g.wellbeingTarget + 2 || x.resourceUse >= 0.9 * safeR(s, e)
+      || (since >= DRAW_AFTER && es.openFor >= MIN_DRAW));
     if (!ready) continue;
     const next = model.drawBudget(s, C, e, PACE);
     if (next !== s) {
@@ -485,6 +490,7 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     }
   }
   s = tendStock(s, ctx, memo);
+  s = pushToSink(s, ctx, memo, 120, 0);
   // keep Mandate positive: drop the costliest non-cap lever while net Mandate is negative and the reserve is thin
   const d = model.derive(s, C);
   if (d.mandatePerSec < 0 && s.mandate < -60 * d.mandatePerSec) {
@@ -521,6 +527,33 @@ function tendStock(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     if (next === s) continue;
     s = next; memo.lastStock = s.time;
     ctx.ev.push({ t: s.time, text: `lever ${l.def.id} → L${l.level + 1} (the code stock at ${pct(x.pressureFraction)}, rising)` });
+  }
+  return s;
+}
+
+/**
+ * M3 balance, second pass: a held line does not clear the sky by itself (it settles the smoke at about half the drawn
+ * level, above Steam's clear level of 0.45). A competent player then reaches under the line: water wheels
+ * (substitution) first, then temperance (sufficiency), then green spending, one step every `every` seconds per
+ * Industry while the line holds, the sky is not clear, the line has held for `heldFor` seconds, and Mandate allows.
+ */
+function pushToSink(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, heldFor: number): GameState {
+  const d = model.derive(s, C);
+  memo.lastPush ??= {};
+  const order = ['substitution', 'sufficiency', 'greenSpending'];
+  for (const e of ORDER) {
+    const x = d.sectors[e], es = s.sectors[e];
+    if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null) continue;
+    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (s.time - (memo.lastPush[e] ?? -Infinity) < every) continue;
+    const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null)
+      .filter((v) => s.mandate >= (v.nextCost ?? 0) + 100 && d.mandatePerSec - upkeepStep(s, v.def.id) > 0.05)
+      .sort((a, b) => order.indexOf(a.def.kind) - order.indexOf(b.def.kind) || a.level - b.level)[0];
+    if (!l) continue;
+    const next = model.setLever(s, C, l.def.id, l.level + 1);
+    if (next === s) continue;
+    s = next; memo.lastPush[e] = s.time;
+    ctx.ev.push({ t: s.time, text: `lever ${l.def.id} → L${l.level + 1} (under the line, towards clear skies: P ${n(es.pressure)} > ${n(x.clearP)})` });
   }
   return s;
 }
@@ -573,6 +606,34 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
   }
   // a stock nothing absorbs (Code's) is tended once it has cost a crisis this run: the crisis is the prompt
   if (ORDER.some((e) => C.sectors[e].pressureSource === 'service' && (s.sectors[e]?.crisesFired ?? 0) > 0)) s = tendStock(s, ctx, memo);
+  // once a line has held ten minutes and the panel says the sky waits, a person reaches for the next lever on the page,
+  // every five minutes; and settles an Industry as soon as it is offered (M3 balance, second pass)
+  s = pushToSink(s, ctx, memo, 300, 600);
+  s = humanBite(s, ctx);
+  for (const e of ORDER) if (model.derive(s, C).sectors[e]?.canSettle) { const nx = model.settle(s, C, e); if (nx !== s) { s = nx; ctx.ev.push({ t: s.time, text: `SETTLED ${e} (human)` }); } }
+  return s;
+}
+
+/**
+ * The plausible mistake (M3 balance, item 6): from run 4, once a run, the human enacts an attractive measure that bites
+ * back (a lever with sideEffects) on its own; when its bite has soured it (0.5, the 'biteBack' headline), it enacts the
+ * pairing the lever's line names (its `unless`, when that is owning a lever).
+ */
+function humanBite(s: GameState, ctx: RunCtx): GameState {
+  if (s.meta.reckonings < 3) return s;
+  const views = model.leverViews(s, C);
+  for (const v of views) {
+    const se = v.def.sideEffects;
+    if (!se || !v.visible) continue;
+    const pair = se.unless && 'owns' in se.unless ? views.find((x) => x.def.id === (se.unless as { owns: string }).owns) : undefined;
+    if (v.level === 0 && v.canRaise && !ctx.skip.has(`bite:${v.def.id}`) && (!pair || pair.level === 0)) {
+      const next = model.setLever(s, C, v.def.id, 1);
+      if (next !== s) { s = next; ctx.skip.add(`bite:${v.def.id}`); ctx.ev.push({ t: s.time, text: `lever ${v.def.id} → L1 (human: the attractive measure, alone)` }); }
+    } else if (v.level > 0 && (s.levers[v.def.id]?.bite ?? 0) >= 0.5 && pair && pair.level === 0 && pair.canRaise) {
+      const next = model.setLever(s, C, pair.def.id, 1);
+      if (next !== s) { s = next; ctx.ev.push({ t: s.time, text: `lever ${pair.def.id} → L1 (human: pairs ${v.def.id}, which bit back)` }); }
+    }
+  }
   return s;
 }
 
@@ -636,6 +697,7 @@ function marketPlayer(s: GameState, ctx: RunCtx, seen: Map<string, number>, ok?:
   for (const e of ORDER) {
     if (!s.sectors[e]?.open) continue;
     for (const a of C.sectors[e].applications) {
+      if (IGNORED_APPS.has(a.id)) continue; // --ignore (balance lane fix: the market player founded them regardless)
       const st = s.sectors[e].apps[a.id];
       if (!st?.available || st.founded || s.capital < a.foundCost) { seen.delete(a.id); continue; }
       const since = seen.get(a.id) ?? s.time;
@@ -648,7 +710,7 @@ function marketPlayer(s: GameState, ctx: RunCtx, seen: Map<string, number>, ok?:
   // the cards the Market never buys: research (the reveal first), prospects and fork arms (cheapest first)
   for (let guard = 0; guard < 10; guard++) {
     const v = cheapViews(s).filter((x) => x.visible && x.affordable && !x.maxed && !x.excludedBy && !ctx.skip.has(x.def.id)
-      && (x.def.kind === 'research' || x.def.kind === 'prospect' || (x.def.excludes?.length ?? 0) > 0))
+      && !IGNORED_CARDS.has(x.def.id) && (x.def.kind === 'research' || x.def.kind === 'prospect' || (x.def.excludes?.length ?? 0) > 0))
       .sort((a, b) => (a.def.kind === 'research' ? -1 : 0) - (b.def.kind === 'research' ? -1 : 0) || a.cost - b.cost)[0];
     if (!v) break;
     const next = buyOne(s, ctx, v);
@@ -724,6 +786,60 @@ function armPay(effects: EffectDef[] | undefined, cost?: { mandate?: number; cap
   for (const e of effects ?? []) if (e.type === 'mandateAdd') x += e.value; else if (e.type === 'capitalAdd') x += e.value;
   return x;
 }
+/**
+ * --dispatch=thoughtful: the arm that suits the player's situation. Holding a line (in the letter's Industry, or any line
+ * for a general letter): demand, smoke and dearer service are bad, cheaper coal and income are neutral-to-bad, Mandate
+ * is good (it buys levers). Booming (no line): demand and income are good, smoke is bad only near a crisis, Mandate is
+ * worth little. Each effect is weighed by how long it lasts (a standing effect counts as 60 model years).
+ */
+function armSuits(s: GameState, sector: SectorId | undefined, a: { effects?: EffectDef[]; modifier?: { effects: EffectDef[]; years: number }; cost?: { mandate?: number; capitalSeconds?: number } }): number {
+  const holding = sector ? !!s.sectors[sector]?.budget : ORDER.some((e) => s.sectors[e]?.budget);
+  const ONE = new Set(['mandateAdd', 'capitalAdd', 'populationMul', 'pressureAdd', 'metaFlag', 'reserveAdd']);
+  let v = -(a.cost?.mandate ?? 0) / (holding ? 40 : 120) - (a.cost?.capitalSeconds ?? 0) / 60;
+  const weigh = (e: EffectDef, years: number) => {
+    const t = years / 10;
+    const x = (e as { value?: number }).value ?? 1;
+    if (holding) {
+      // under a cap: demand is held anyway (and buys wellbeing within the line); what counts is Mandate (levers),
+      // wellbeing (full decades), and smoke (clear skies)
+      switch (e.type) {
+        case 'mandateAdd': v += x / 30; return;
+        case 'capitalAdd': v += x / 60; return;
+        case 'pressureAdd': v -= x * 40; return;
+        case 'populationMul': v += (x - 1) * 10; return;
+        case 'satMul': case 'halfPriceMul': v += (x - 1) * 5 * t; return;
+        case 'etaMul': v += (x - 1) * 10 * t; return;
+        case 'intensityMul': v -= (x - 1) * 40 * t; return;
+        case 'resourcePriceMul': return;
+        case 'incomeMul': v += (x - 1) * 15 * t; return;
+        case 'mandateRateMul': v += (x - 1) * 40 * t; return;
+        case 'wellbeingAdd': v += x * 6 * t; return;
+        case 'absorptionAdd': v += x * 4000 * t; return;
+        case 'forbid': v -= 1 * t; return;
+        default: return;
+      }
+    }
+    switch (e.type) {
+      case 'mandateAdd': v += x / (holding ? 40 : 120); break;
+      case 'capitalAdd': v += x / 60; break;
+      case 'pressureAdd': v -= x * (holding ? 40 : 10); break;
+      case 'populationMul': v += (x - 1) * 20; break;
+      case 'satMul': case 'halfPriceMul': v += (holding ? -(x - 1) * 30 : (x - 1) * 10) * t; break;
+      case 'etaMul': v += (holding ? -(x - 1) * 10 : (x - 1) * 10) * t; break;
+      case 'intensityMul': v += -(x - 1) * 20 * t; break;
+      case 'resourcePriceMul': v += (holding ? (x - 1) * 10 : -(x - 1) * 10) * t; break;
+      case 'incomeMul': v += (x - 1) * (holding ? 5 : 20) * t; break;
+      case 'mandateRateMul': v += (x - 1) * (holding ? 30 : 8) * t; break;
+      case 'wellbeingAdd': v += x * 3 * t; break;
+      case 'popGrowthMul': v -= (x - 1) * (holding ? 10 : 0) * t; break;
+      case 'forbid': v -= holding ? 3 * t : 0; break;
+      default: break;
+    }
+  };
+  for (const e of a.effects ?? []) weigh(e, ONE.has(e.type) ? 0 : 60);
+  for (const e of a.modifier?.effects ?? []) weigh(e, a.modifier!.years);
+  return v;
+}
 const FIXED_RETURN: Record<string, number> = RETURN_JSON ? JSON.parse(RETURN_JSON) : {
   activeMinutesBefore: 600, activeMinutesAfter: 420, sessionsBefore: 20, sessionsAfter: 18, looksBefore: 60, looksAfter: 70,
   decisionsBefore: 900, decisionsAfter: 300, automatedAfter: 1500, daysBefore: 10, daysAfter: 10, quietDays: 4,
@@ -750,6 +866,7 @@ function m3Actions(s: GameState, ctx: RunCtx, mode: Strategy, tick5: boolean): G
       if (ARM_OVERRIDE && ARM_OVERRIDE.id === p.id) arm = ARM_OVERRIDE.arm;
       else if (DISPATCH === 'random') arm = Math.floor(dispatchRng() * def.arms.length);
       else if (DISPATCH === 'best') { let b = -Infinity; def.arms.forEach((a, i) => { const v = armPay(a.effects, a.cost); if (v > b) { b = v; arm = i; } }); }
+      else if (DISPATCH === 'thoughtful') { let b = -Infinity; def.arms.forEach((a, i) => { const v = armSuits(s, def.sector, a); if (v > b) { b = v; arm = i; } }); }
       const next = model.answerDispatch(s, C, arm, p.id);
       if (next !== s) { s = next; ctx.ev.push({ t: s.time, text: `DISPATCH ${p.id} → arm ${arm}` }); ctx.firsts.firstAnswer ??= s.time; }
     }
@@ -779,7 +896,12 @@ function scanUnlocks(s: GameState): void {
       case 'featureUnlocked': note(`f:${e.id}`, `feature ${e.id}`, true); break;
       case 'sectorOpened': note(`s:${e.sector}`, `Industry ${e.sector}`); break;
       case 'appAvailable': case 'appFounded': note(`a:${e.id}`, `application ${e.id}`); break;
-      case 'dispatchArrived': note('dispatch', `first dispatch ${e.id}`); break;
+      case 'dispatchArrived': {
+        note('dispatch', `first dispatch ${e.id}`);
+        const cast = C.dispatches?.find((x) => x.id === e.id)?.cast;
+        if (cast) note(`cast:${cast}`, `first letter from ${cast}`);
+        break;
+      }
       case 'historyChosen': note('history', `first History ${e.id}`); break;
       case 'reveal': note('reveal', 'the reveal'); break;
       case 'returnPublished': note('proprietor', "the Proprietor's Day"); break;
@@ -1118,6 +1240,9 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c) => c.met));
       // (once this run has paid a Steady State, the next industry outranks waiting for another)
       if (s.time >= PROGRESS_AT && gated && (!streaking || steadyNow > 0) && !opening) { stopReason = 'the next industry waits on a Reckoning'; break; }
+      // the human player calls the Reckoning once the next Industry waits on one and nothing has been decided for 150 s
+      // (it does not sit through a dead stretch at the end of a run; QA's late run 1)
+      if (mode === 'human' && s.time >= MIN_RUN && gated && !streaking && !opening && s.time - (decisionTimes[decisionTimes.length - 1] ?? 0) >= 150) { stopReason = 'nothing left to decide'; break; }
       const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);
       if (s.time >= MAX_RUN && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e] || s.sectors[e]?.settled)) { stopReason = `every line steady after ${min(MAX_RUN).trim()} min`; break; }
     }

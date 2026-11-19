@@ -30,7 +30,17 @@ const smooth = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 
 /** One clock: an Age's own (from yearSpan[0]) or a sector's (from its firstYear), opened at run time `at`. */
 interface Clock { age: number; first: number; at: number; last: number; start: number }
 
+/** calendarYear is asked for many times per state (the step, derive, conditions, headlines): remembered per sectors
+ *  object, time and content. Correct because states are never mutated (README: caches keyed by object identity). */
+const yearMemo = new WeakMap<object, { time: number; content: Content; y: number }>();
 export function calendarYear(state: { time: number; sectors: Record<SectorId, SectorState> }, content: Content): number {
+  const m = state.sectors ? yearMemo.get(state.sectors) : undefined;
+  if (m && m.time === state.time && m.content === content) return m.y;
+  const y = calendarYearOf(state, content);
+  if (state.sectors) yearMemo.set(state.sectors, { time: state.time, content, y });
+  return y;
+}
+function calendarYearOf(state: { time: number; sectors: Record<SectorId, SectorState> }, content: Content): number {
   const ages = content.ages ?? [];
   const now = state.time;
   // Every open clock with the run time it opened at (now − openFor): each Age's own from its first sector to open.

@@ -4,7 +4,7 @@ import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, PaceDef, SectorDef, UpgradeView } from '../types';
 import { STEADY_STATE_YEARS, FEATURE_IDS } from '../types';
-import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion, replay } from './dom';
+import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion, replay, watchNear, isNear } from './dom';
 import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit, dur, unitOne } from './fmt';
 import { sound } from './sound';
 
@@ -87,9 +87,12 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
   const buyLbl = kind === 'research' ? 'Commission' : 'Buy';
   const nope = () => { sound('cannotAfford', { sector: def.sector }); if (!reducedMotion()) { buy.classList.remove('nope'); void buy.offsetWidth; buy.classList.add('nope'); } };
   const tryBuy = (): boolean => {
-    const r = el.getBoundingClientRect();
+    // A card that stays (a repeatable with levels to go) is stamped in place: no measuring. One that will go needs its
+    // place read now, before the purchase changes the list (a read here, not after the writes: no forced layout).
+    const stays = !!def.repeatable && num(cur?.level) + 1 < num(def.maxLevel, Infinity);
+    const r = stays ? null : el.getBoundingClientRect();
     const ok = ctx.act('buyUpgrade', (m, s, c) => m.buyUpgrade(s, c, def.id));
-    if (ok) stamp(el, r, !!def.repeatable && num(cur?.level) + 1 < num(def.maxLevel, Infinity));
+    if (ok) stamp(el, r, stays);
     return ok;
   };
   // One arm of a fork rules the others out for the run: ask first (only when the purchase would go through).
@@ -213,12 +216,13 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
  * stamped, fading where it stood. Composited (transform and opacity), never in the way of the next tap, and nothing
  * under reduced motion.
  */
-export function stamp(card: HTMLElement, rect: DOMRect, stays = false): void {
-  if (reducedMotion() || !rect.width) return;
-  if (stays && card.isConnected && card.getClientRects().length && !card.closest('[hidden]')) {
+export function stamp(card: HTMLElement, rect: DOMRect | null, stays = false): void {
+  if (reducedMotion()) return;
+  if (stays && card.isConnected && !card.closest('[hidden]')) {
     replay(card, 'stamped', 900);
     return;
   }
+  if (!rect || !rect.width) return;
   const g = card.cloneNode(true) as HTMLElement;
   g.classList.add('up-ghost', 'stamped');
   g.setAttribute('aria-hidden', 'true');
@@ -720,8 +724,9 @@ export function buildLevers(ctx: Ctx): Comp {
   const el = h('section', { class: 'levers', 'aria-label': 'Counter-levers', hidden: true },
     h('header', { class: 'sec-h' }, h('h2', { class: 'sec-t', text: 'Counter-levers' }), bal), list, empty);
   const cards = new Map<string, LevCard>();
-  let key = '';
+  let key = '', lastDrawn = '';
   let warned = false;
+  watchNear(el, () => update());
 
   function update(): void {
     const all = (ctx.levs || []).filter((v) => v && v.def);
@@ -740,7 +745,8 @@ export function buildLevers(ctx: Ctx): Comp {
         return c.el;
       }));
     }
-    for (const v of vis) cards.get(ck(v))?.update(v);
+    // The cards patch only near the screen (perf pass 2; caught up as the panel nears it); the warning below always runs.
+    if (isNear(el) || k !== lastDrawn) { lastDrawn = k; for (const v of vis) cards.get(ck(v))?.update(v); }
     // Warn before levers lapse for want of Mandate (QA B32): the upkeep outruns the income and the purse is nearly dry.
     const m = num(ctx.state.mandate), rate = num(ctx.d?.mandatePerSec);
     const inForce = all.some((v) => num(v.level) > 0 && num(v.upkeep) > 0);

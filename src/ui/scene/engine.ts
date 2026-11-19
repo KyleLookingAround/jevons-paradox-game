@@ -70,6 +70,11 @@ interface Built {
   spots: Map<string, [number, number, number, number]>;
   prevPace: number; leverKey: string; smokeDirty: boolean; prevSteadyOn: boolean | null; moversDirty: boolean; lastSig: string;
   stageN: number; used: number; vars: Map<string, string>; scafs: number;
+  /** The few drawings that follow what is left of the reserve (`--res`, `--dep`): the values are set on them, not on the
+   *  world, since a custom property changed on the world restyles (and repaints) every node of it (perf pass 2). */
+  resEls: Element[]; resK: string;
+  /** The sprite layers (smoke reads `--smk-a` there, not on the bands, whose drawings would all restyle with it). */
+  fxLayers: HTMLDivElement[];
   /** M3: last applied state of the mechanics' drawings (so a patch touches the DOM only on change). */
   /** Last shown values of hysteresis-stepped inputs (see hyst). */
   hy: Map<string, number>;
@@ -633,6 +638,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const nb: Built = {
       key, sectorId: v.sectorId, el, layout: l, style, look, legend: leg, place: l.place, plots, elsByKey, smokeEls, restraintEls, commonsEls,
       steadyMoverEls: Array.from(el.world.querySelectorAll('.mv.stdy')), moverAnims: [], spots,
+      resEls: Array.from(el.world.querySelectorAll('.rx,.ry,.dx,.rsun,.sx')), resK: '', fxLayers: [...fxl.far, ...fxl.mid, ...fxl.near],
       prevPace: -1, leverKey: '\u0000', smokeDirty: true, prevSteadyOn: null, moversDirty: true, lastSig: '', stageN, used: 0, vars: new Map(), scafs: 0,
       hy: new Map(),
       m3: { seams: '', free: '', bites: '', slow: -1, overlay: '', hand: null, hourK: 1, hour: -1 },
@@ -860,12 +866,23 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     setVarOn(el.skySvg, '--light', q20(clamp(lightMean, 0, 1)));
     setVarOn(el.skySvg, '--clr', q20(clear));
     const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * (held ? 0.5 : 1) * 10) / 10).toFixed(1);
-    for (const bd of BANDS) setVarOn(el.bw[bd], '--smk-a', smk);
+    for (const lay of b.fxLayers) setVarOn(lay, '--smk-a', smk);
     // Pressure-driven growth inside the drawing (Code's pipework) repaints its band: step it in tenths, with
     // hysteresis, so a pressure hovering at a boundary does not repaint the band at every update.
     setVarOn(el.bw.near, '--pfc', hyst(b, '--pfc', Math.min(1, pf), 0.1).toFixed(2));
-    setVar(b, '--res', q(clamp(v.reserveFraction, 0.02, 1)));
-    setVar(b, '--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
+    // What is left of the reserve: on the few drawings that show it (Built.resEls). A step of a fiftieth lands at once (no
+    // transition: an SVG transition repaints its band every frame for its 1.5 s); a jump (a new seam) still glides.
+    const res = q(clamp(v.reserveFraction, 0.02, 1)), dep = q(1 - clamp(v.reserveFraction, 0, 1));
+    if (res + dep !== b.resK) {
+      const was = b.resK ? parseFloat(b.resK) : NaN;
+      b.resK = res + dep;
+      const snap = !(Math.abs(parseFloat(res) - was) >= 0.1); // the first setting (was NaN) lands at once too
+      for (const e of b.resEls) {
+        const st = (e as SVGElement).style;
+        st.setProperty('--res', res); st.setProperty('--dep', dep);
+        e.classList.toggle('tsnap', snap);
+      }
+    }
     setVarOn(el.bw.near, '--light', q20(clamp(lightMean, 0, 1)));
     const wash = style?.wash?.(Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5) ?? null;
     if (wash) { setVar(b, '--s-wash', wash[0]); setVar(b, '--s-water', wash[1]); }

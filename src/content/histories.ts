@@ -37,8 +37,10 @@ export const histories: HistoryDef[] = [
     rebound: 'The counterfactual: thrift was the boom',
     /* No condenser means no Coal Question, so the run starts revealed; Light cannot open (it needs the condenser). */
     effects: [forbid('steam.condenser'), { type: 'reveal' }],
-    goal: { stat: 'budgetDecades', sector: 'steam', op: '>=', value: 6, label: 'Six decades within budget in Steam' },
-    goalLabel: 'Six decades within budget in Steam, without the condenser',
+    /* Balance (second pass): without the condenser the calendar never reaches the first census (1801), so the budget
+     * never arrives in this run and "six decades within budget" could not be cleared; the goal is the coal kept. */
+    goal: { all: [{ stat: 'time', op: '>=', value: 2400, label: 'Forty minutes of the run' }, { stat: 'reserveFraction', sector: 'steam', op: '>=', value: 0.6, label: 'Three fifths of the coal unburnt' }] },
+    goalLabel: 'Forty minutes, without the condenser, with three fifths of the coal unburnt',
     reward: { title: 'Newcomen’s heir', cosmetic: 'engine.atmospheric' },
   },
   {

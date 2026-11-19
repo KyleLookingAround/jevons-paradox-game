@@ -28,7 +28,8 @@ jobs:
       - name: Build
         run: |
           if [ -f src/main.ts ] && [ -f index.html ]; then
-            bun run build.ts
+            # --check fails the build when a shipped file is over its size budget (build.ts BUDGET).
+            bun run build.ts --check
           else
             mkdir -p dist
             printf '<!DOCTYPE html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rebound</title><body style="font-family:Georgia,serif;margin:3rem 1.5rem;max-width:34rem"><h1>Rebound</h1><p>An incremental game about Jevons paradox. The first build is on its way.</p></body></html>' > dist/index.html

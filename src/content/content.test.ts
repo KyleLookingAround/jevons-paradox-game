@@ -1389,20 +1389,20 @@ describe('M3: the feature schedule (the unfolding, continued)', () => {
     // the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding), then one run
     // apart (balance lane, owner's direction "options should be unlocked more slowly": at most two arrivals a run from
     // run 4, one at the Reckoning and one mid-run; design/unlock-schedule.md)
-    const floors = { seams: 3, load: 4, travel: 5, freeAtUse: 6, sideEffects: 7, archive: 5, survey: 5, histories: 6 } as const;
+    const floors = { seams: 3, load: 4, travel: 5, freeAtUse: 6, sideEffects: 7, archive: 6, survey: 5, histories: 6 } as const;
     for (const [id, n] of Object.entries(floors)) expect(`${id} ${rkFloor(F[id as keyof typeof floors]!.when)}`).toBe(`${id} ${n}`);
     // the mid-run arrivals share one window shorter than the gap between arrivals, so at most one of them arrives a run
     // (the free price arrives at a Reckoning; the bite needs it and its window)
     const gap = C.global.featureGapSeconds ?? 0;
-    expect(leaves(F.sideEffects!.when).some((x) => 'feature' in x && x.feature === 'freeAtUse')).toBe(true);
-    for (const id of ['seams', 'load', 'travel', 'sideEffects'] as const) {
+    expect(leaves(F.sideEffects!.when).some((x) => 'feature' in x && x.feature === 'archive')).toBe(true);
+    for (const id of ['seams', 'load', 'travel', 'archive', 'sideEffects'] as const) {
       const top = (F[id]!.when as { all: Cond[] }).all;
       const lo = timeFloor(F[id]!.when);
       const hi = Math.min(...top.flatMap((x) => ('stat' in x && x.stat === 'time' && x.op === '<' ? [x.value] : [])));
       expect(`${id} ${lo} ${hi} ${hi - lo < gap}`).toBe(`${id} 1200 1440 true`);
     }
     // the Reckoning arrivals: only the check in reckon() sees a run under two seconds old
-    for (const id of ['archive', 'freeAtUse', 'survey', 'histories', 'settlement'] as const) {
+    for (const id of ['freeAtUse', 'survey', 'histories', 'settlement'] as const) {
       expect(`${id} ${(F[id]!.when as { all: Cond[] }).all.some((x) => 'stat' in x && x.stat === 'time' && x.op === '<' && x.value <= 2)}`).toBe(`${id} true`);
     }
   });

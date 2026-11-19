@@ -6,7 +6,7 @@
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd } from './ctx';
 import type { SectorDerived } from '../types';
-import { h, s as sv, svg, setText, setAttr, setStyle, setFill, show, cls, syncChildren, reducedMotion } from './dom';
+import { h, s as sv, svg, setText, setAttr, setStyle, setFill, show, cls, syncChildren, reducedMotion, snapSmall } from './dom';
 import { fmt, fmtPrice, money, pct, num, clamp, lower, unitOne } from './fmt';
 import { sound } from './sound';
 
@@ -231,7 +231,7 @@ function travelPart(ctx: Ctx): Part {
       miles));
   // Where the needle stood when first seen this session: a faint mark, so its stillness can be seen.
   let first: number | null = null, sector = '';
-  const rot = (sel: string, t: number) => setStyle(dial.querySelector(sel) as SVGElement, 'transform', `rotate(${(Math.round((clamp(t, 0, 1) - 0.5) * 360) / 2).toFixed(1)}deg)`);
+  const rot = (sel: string, t: number) => { const n = dial.querySelector(sel) as SVGElement; snapSmall(n, clamp(t, 0, 1)); setStyle(n, 'transform', `rotate(${(Math.round((clamp(t, 0, 1) - 0.5) * 360) / 2).toFixed(1)}deg)`); };
   return {
     el,
     update(e) {

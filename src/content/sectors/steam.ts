@@ -61,11 +61,12 @@ const sector: SectorDef = {
    * get there; slack recovery stretches the coal but not the air, so it is water wheels, temperance and the absorption
    * Institutions that reach the sink sooner.
    */
-  /* M3 balance (the first ending): 0.65, not 0.3. Held under the line's floor (half the drawn use), long budget runs
-   * settled Steam's smoke at 1.6–1.8× the 0.3 level for three hours and never cleared, so no run could put every
-   * Industry at Steady State together (at 0.55 it still sat 2% above); at 0.65 a well-held line clears in a long run. */
+  /* M3 balance, second pass: 0.5. A line held at its floor (half the drawn use) settles the smoke at about 0.55 of the
+   * drawn level, so it does not clear by itself, nor under a seated cap alone: clear skies take water wheels, temperance
+   * or absorption on top of the line (0.65 let a cap alone clear it in run 3; at 0.45 even every lever at level 10 left
+   * the budget player at 1.2× the level after three hours; 0.3 was out of reach of every player). */
   steady: {
-    clearBelow: 0.65,
+    clearBelow: 0.5,
     decadeChoices: decadeSequence([
       ['div.steam.pitheadBaths', 'div.steam.dividendInCoal'],
       ['div.steam.smokeFund', 'div.steam.engineBounty'],
@@ -351,7 +352,7 @@ const steamUpgrades: UpgradeDef[] = withStages([
     id: 'steam.anotherEngine', sector: 'steam', kind: 'capital',
     name: 'Another engine works',
     blurb: 'Another engine at another pit, each a little cheaper to build than the last. There is always room for one more.',
-    cost: 200, repeatable: true, costGrowth: 1.3, maxLevel: 25, effects: [capCost('steam', 0.97)],
+    cost: 200, repeatable: true, costGrowth: 1.25, maxLevel: 30, effects: [capCost('steam', 0.97)],
   },
   {
     id: 'steam.lathe', sector: 'steam', kind: 'capital',

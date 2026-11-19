@@ -40,6 +40,15 @@ function inject(url: string, name: string): Promise<void> {
     (waiters.get(name) ?? waiters.set(name, []).get(name)!).push(() => end());
     s.onload = () => end();
     s.onerror = () => end(new Error(`chunk ${name} failed to load`));
+    if (url.startsWith('#')) {
+      // The single-file build carries each part as inert text in <script type="text/plain" id=…>: run it now.
+      const src = document.getElementById(url.slice(1))?.textContent;
+      if (!src) { end(new Error(`chunk ${name} is not in this page`)); return; }
+      s.textContent = src;
+      document.head.appendChild(s); // runs synchronously, registering the part (→ end)
+      end();
+      return;
+    }
     s.async = true;
     s.src = url;
     document.head.appendChild(s);
@@ -60,7 +69,7 @@ export function loadChunk<T>(name: ChunkName): Promise<T> {
       if (i) await new Promise((r) => setTimeout(r, 600 * 2 ** i)); // 1.2 s, 2.4 s
       try {
         // A retry asks past any cached failure.
-        await inject(i ? url + (url.includes('?') ? '&' : '?') + 'r=' + i : url, name);
+        await inject(i && !url.startsWith('#') ? url + (url.includes('?') ? '&' : '?') + 'r=' + i : url, name);
         return chunkNow<T>(name)!;
       } catch (e) { err = e; }
     }

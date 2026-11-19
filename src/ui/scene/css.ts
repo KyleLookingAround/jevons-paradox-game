@@ -200,6 +200,7 @@ const BASE = `
 .scn.lowd .flow>b,.scn.lowd .drift>b{animation:none!important}
 .scn.lowd .mv.thin{display:none}
 .scn.lowd .scn-noise{display:none}
+.scn .tsnap{transition:none!important}
 .scn .rx{transform-box:fill-box;transform:scaleX(var(--res,1));transition:transform 1.5s}
 .scn .ry{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(var(--res,1));transition:transform 1.5s}
 .scn .dx{transform-box:fill-box;transform:scaleX(var(--dep,0));transition:transform 1.5s}

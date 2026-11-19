@@ -42,7 +42,7 @@ export const commons: CommonsDef[] = [
     wellbeing: { max: 1.5, perLevel: 3 },
     /* Unfolding balance: 80 (not 50), so the Commons add at least 2% to Steam's demand at the restraint player's run-4
      * end state (budgets from run 3 leave a larger Steam economy there). */
-    intensity: { sector: 'steam', perLevel: 80 },
+    intensity: { sector: 'steam', perLevel: 90 }, /* M3 balance: 90, not 80 (≥ 2% of Steam's demand at run 4) */
   },
   {
     id: 'commons.park', name: 'People’s park', icon: 'park', sector: 'steam',
@@ -58,7 +58,7 @@ export const commons: CommonsDef[] = [
     cost: 36_000,
     wellbeing: { max: 1, perLevel: 2 },
     /* Lit by gas once Light is open; and what is taught is engines. */
-    intensity: { sector: 'light', perLevel: 7 } /* unfolding balance: Light's projects up a fifth, ≥ 2% of its demand */,
+    intensity: { sector: 'light', perLevel: 42 } /* M3 balance: ×6 (lines drawn later leave a larger Light at run 4); ≥ 2% of its demand */,
     effects: [{ type: 'etaMul', sector: 'steam', value: 1.03 }],
     requires: { owns: 'steam.condenser', label: 'Own the Separate condenser' },
   },
@@ -69,14 +69,14 @@ export const commons: CommonsDef[] = [
     blurb: 'Mr Ewart’s Act, 1850: the rate may build the room but not buy the books. Readers stay until the gas is turned down, later every year.',
     cost: 60_000, mandateCost: 100,
     wellbeing: { max: 1.5, perLevel: 3 },
-    intensity: { sector: 'light', perLevel: 18 },
+    intensity: { sector: 'light', perLevel: 108 },
   },
   {
     id: 'commons.clock', name: 'Town clock', icon: 'clock', sector: 'light',
     blurb: 'Four faces, gas-lit from behind, on the corporation’s new tower. Everyone knows the hour now, the foreman included.',
     cost: 27_000,
     wellbeing: { max: 0.8, perLevel: 1.6 },
-    intensity: { sector: 'light', perLevel: 10 },
+    intensity: { sector: 'light', perLevel: 60 },
     /* Time discipline: the night shift starts on the stroke. */
     effects: [sat('light', 1.03, 'light.nightShifts')],
   },
@@ -96,7 +96,7 @@ export const commons: CommonsDef[] = [
     blurb: 'Corporation buses on every route, fares held down by the rates. They run on oil, rather less of it per head, and the commute grows longer.',
     cost: 400_000, mandateCost: 150,
     wellbeing: { max: 1.2, perLevel: 2.4 },
-    intensity: { sector: 'motion', perLevel: 80 },
+    intensity: { sector: 'motion', perLevel: 560 }, /* M3 balance: 560, not 80: ≥ 2% of a run-4 Motion opened before minute 20 */
     effects: [sat('motion', 1.02, 'motion.commuting')],
   },
   {

@@ -7,7 +7,7 @@
 // Never scolds: a working day that went down is printed as gladly as one that went up.
 import type { Ctx, Comp } from './ctx';
 import type { HouseholdFigures, PlayReturn } from '../types';
-import { h, svg, setText, setStyle, show, cls, reducedMotion } from './dom';
+import { h, svg, setText, setStyle, show, cls, reducedMotion, snapSmall } from './dom';
 import { fmt, num, clamp, pct } from './fmt';
 import { getPrefs } from './prefs';
 import { surveyDisclosure } from '../content/proprietor';
@@ -84,7 +84,7 @@ function miniDial(label: string): { el: HTMLElement; set(v: number | null, ghost
   const val = h('div', { class: 'dial-val num' });
   const sub = h('div', { class: 'dial-sub num' });
   const el = h('div', { class: 'dial sv-dial', role: 'group', 'aria-label': label }, h('div', { class: 'dial-head' }, h('span', { class: 'dial-lbl', text: label })), s, h('div', { class: 'dial-read' }, val, sub));
-  const rot = (sel: string, t: number) => setStyle(s.querySelector(sel) as SVGElement, 'transform', `rotate(${(Math.round((clamp(t, 0, 1) - 0.5) * 360) / 2).toFixed(1)}deg)`);
+  const rot = (sel: string, t: number) => { const n = s.querySelector(sel) as SVGElement; snapSmall(n, clamp(t, 0, 1)); setStyle(n, 'transform', `rotate(${(Math.round((clamp(t, 0, 1) - 0.5) * 360) / 2).toFixed(1)}deg)`); };
   return {
     el,
     set(v, ghost, max) {

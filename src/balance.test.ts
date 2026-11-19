@@ -1,489 +1,28 @@
-// Pacing targets as tests: the M1 targets still in force and the M2 exit criteria (briefs/m2-balance.md, roadmap M2,
-// design/genre-audit.md §3). The model is driven directly at dt = 1 by small strategies written here, which mirror
-// tools/balance.ts (the same rules, fewer options); nothing depends on balancer output. Tolerances are about ±15% on
-// times: wide enough for small content edits, tight enough to catch a regression. Where a target is not met in full,
-// the assertion sits at the measured value with a "target:" note, so a further slide is caught and the gap stays
-// visible (see the balance lane's report). The whole file runs in about 60–80 s.
+// Pacing targets as tests, the FAST set (every push): the first hour, the felt paradox, cadence, the unfolding to run 4,
+// the exits and exploits that short campaigns show, forks and Charters. The long campaigns (ten hours of budget play,
+// the Settlement path, the first ending, the unfolding to hour 10) are in src/balance.long.test.ts behind BAL_LONG=1.
+// Scripted players: src/balance.kit.ts (mirroring tools/balance.ts). Tolerances are about ±15% on times; where a target
+// is not met in full, the assertion sits at the measured value with a "target:" note.
 // @ts-ignore — bun-types are not installed (see model.test.ts)
 import { describe, expect, test } from 'bun:test';
 import { model } from './core';
-import { content as C } from './content';
-import { BUDGET_TOLERANCE } from './types';
-import type { FeatureId, GameState, InstitutionDef, SectorId } from './types';
-
-/* ---------------- tiny strategies (mirroring tools/balance.ts) ---------------- */
-
-const D = (s: GameState) => model.derive(s, C);
-const ORDER = C.sectorOrder;
-const TARGET = C.global.wellbeingTarget;
-const cheap = (s: GameState) => model.upgradeViews({ ...s, flags: { ...s.flags, revealed: false } }, C);
-const REVEAL_IDS = C.upgrades.filter((u) => u.effects.some((e) => e.type === 'reveal')).map((u) => u.id);
-
-interface Log {
-  buys: { t: number; id: string }[];
-  apps: { t: number; id: string }[];
-  /** efficiency cards bought after the reveal while some app of their sector was unfounded */
-  cards: { id: string; decade: number | null; reach: number }[];
-  /** run times of player decisions (run.decisions rising) */
-  decisions: number[];
-  marketBuys: number[];
-}
-const newLog = (): Log => ({ buys: [], apps: [], cards: [], decisions: [], marketBuys: [] });
-
-/** Tap 5 times a second while a tap is worth half a second of income or more (the UI's shrink rule). */
-function tap(s: GameState): GameState {
-  const d = D(s);
-  if (5 * d.clickValue < 0.5 * d.incomePerSec) return s;
-  for (let i = 0; i < 5; i++) s = model.click(s, C);
-  return s;
-}
-
-function buyCheapest(s: GameState, log: Log, prefer: string[] = []): GameState {
-  for (let guard = 0; guard < 60; guard++) {
-    const vs = cheap(s).filter((v) => v.visible && !v.maxed && !v.excludedBy);
-    const pref = prefer.map((id) => vs.find((v) => v.def.id === id)).find((v) => v);
-    if (pref && !pref.affordable) break;
-    const v = pref ?? vs.filter((x) => x.affordable).sort((a, b) => a.cost - b.cost)[0];
-    if (!v) break;
-    if (v.def.kind === 'efficiency' && s.flags.revealed) {
-      const es = s.sectors[v.def.sector];
-      // a frontier left to bring within reach: some application not yet available (unfolding balance: an application
-      // already available but not yet afforded cannot be brought within reach, and the decade line is honest about it)
-      if (C.sectors[v.def.sector].applications.some((a) => !es.apps[a.id]?.available)) {
-        const full = model.upgradeViews(s, C).find((u) => u.def.id === v.def.id)!;
-        log.cards.push({ id: v.def.id, decade: full.projectedDecade, reach: full.bringsWithinReach.length });
-      }
-    }
-    const n = model.buyUpgrade(s, C, v.def.id);
-    if (n === s) break;
-    s = n;
-    log.buys.push({ t: s.time, id: v.def.id });
-  }
-  return s;
-}
-
-function foundAll(s: GameState, log: Log, ok: (n: GameState, e: SectorId) => boolean = () => true): GameState {
-  for (const e of ORDER) {
-    if (!s.sectors[e]?.open) continue;
-    for (const a of C.sectors[e].applications) {
-      const n = model.foundApp(s, C, a.id);
-      if (n !== s && ok(n, e)) { s = n; log.apps.push({ t: s.time, id: a.id }); }
-    }
-  }
-  return s;
-}
-
-/** R at which the sector's smog would settle at half of collapse (the budget player's boom ceiling). */
-function safeR(s: GameState, e: SectorId): number {
-  const d = C.sectors[e];
-  if (d.pressureSource !== 'resource' || d.pressureIntensity <= 0) return Infinity;
-  let a = d.absorption;
-  for (const k of C.knowhow) for (const ef of k.effects) if (ef.type === 'absorptionAdd' && ef.sector === e) a += ef.value * (s.meta.knowhow[k.id] ?? 0);
-  for (const id of s.meta.loadout) {
-    const i = C.institutions.find((x) => x.id === id);
-    const lvl = s.meta.institutions[id] ?? 0;
-    const effs = i && lvl >= 1 ? [i.effects, ...(i.nextLevels ?? []).slice(0, lvl - 1).map((l) => l.effects)].flat() : [];
-    for (const ef of effs) if (ef.type === 'absorptionAdd' && ef.sector === e) a += ef.value;
-  }
-  for (const [id, lvl] of Object.entries(s.upgrades)) for (const ef of C.upgrades.find((u) => u.id === id)?.effects ?? []) if (ef.type === 'absorptionAdd' && ef.sector === e) a += ef.value * lvl;
-  return (0.5 * d.collapseAt * a) / d.pressureIntensity;
-}
-
-const upkeepStep = (s: GameState, id: string): number => {
-  const v = model.leverViews(s, C).find((l) => l.def.id === id)!;
-  return (v.next?.mandateUpkeep ?? 0) - (v.current?.mandateUpkeep ?? 0);
-};
-
-interface Memo { revealAt: number | null; lastSpare: number; lastStock?: number; stockP?: Record<string, number> }
-
-/** Before budgets arrive (the unfolding: runs 1–2), restraint is levers only: the cheapest lever raised whenever Mandate
- *  allows and the net rate stays positive (tools/balance.ts `levers` rule), authored levels only. */
-function leverStep(s: GameState): GameState {
-  for (let guard = 0; guard < 10; guard++) {
-    const net = D(s).mandatePerSec;
-    const l = model.leverViews(s, C).filter((v) => v.canRaise && v.nextCost !== null && v.level < v.def.levels.length && net - upkeepStep(s, v.def.id) > 0)
-      .sort((a, b) => (a.nextCost ?? 0) - (b.nextCost ?? 0))[0];
-    if (!l) break;
-    const n = model.setLever(s, C, l.def.id, l.level + 1);
-    if (n === s) break;
-    s = n;
-  }
-  return s;
-}
-
-/** The budget player's line: draw (switching the Market off there), cap, Tighten, sufficiency, spare circularity. */
-function budgetStep(s: GameState, m: Memo, marketOff: boolean): GameState {
-  if (!s.flags.revealed) return s;
-  m.revealAt ??= s.time;
-  const d0 = D(s);
-  if (!d0.features.budget) return leverStep(s);
-  for (const e of ORDER) {
-    const es = s.sectors[e], x = d0.sectors[e];
-    if (!es?.open || es.budget || !x) continue;
-    const since = s.time - Math.max(m.revealAt, s.time - es.openFor);
-    if (d0.wellbeing >= TARGET + 2 || x.resourceUse >= 0.9 * safeR(s, e) || (since >= 240 && es.openFor >= 720)) {
-      const n = model.drawBudget(s, C, e);
-      if (n !== s) { s = n; if (marketOff) s = model.setOrders(s, C, { market: { sectors: { [e]: false } } }); }
-    }
-  }
-  for (let guard = 0; guard < 6; guard++) {
-    const d = D(s);
-    const views = model.leverViews(s, C);
-    let acted = false;
-    for (const e of ORDER) {
-      const x = d.sectors[e];
-      if (!x || x.budgetR === null) continue;
-      const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5) || x.secondsLeft < 1200;
-      const caps = views.filter((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
-      const suf = views.find((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible && l.canRaise) ?? null;
-      const on = caps.find((l) => l.level > 0);
-      let want = on ? (over ? (on.level >= 3 && suf ? suf : on) : null) : caps.sort((a, b) => (a.nextCost ?? Infinity) - (b.nextCost ?? Infinity))[0] ?? null;
-      if (!want && over) want = suf;
-      if (!want || !want.canRaise || want.nextCost === null) continue;
-      if (d.mandatePerSec - upkeepStep(s, want.def.id) <= 0 && want.level > 0) continue;
-      const n = model.setLever(s, C, want.def.id, want.level + 1);
-      if (n !== s) { s = n; acted = true; }
-    }
-    if (!acted) break;
-  }
-  if (s.time - m.lastSpare >= 60) {
-    const dm = D(s);
-    const circ = model.leverViews(s, C).filter((l) => l.def.kind === 'circularity' && l.visible && l.canRaise && l.nextCost !== null)
-      .filter((l) => s.mandate >= 400 + 3 * (l.nextCost ?? 0) && dm.mandatePerSec - upkeepStep(s, l.def.id) > 0.05)
-      .sort((a, b) => (a.nextCost ?? 0) - (b.nextCost ?? 0))[0];
-    if (circ) { const n = model.setLever(s, C, circ.def.id, circ.level + 1); if (n !== s) { s = n; m.lastSpare = s.time; } }
-  }
-  s = tendStock(s, m);
-  const d = D(s);
-  if (d.mandatePerSec < 0 && s.mandate < -60 * d.mandatePerSec) {
-    const worst = model.leverViews(s, C).filter((l) => l.level > 0 && l.def.kind !== 'cap').sort((a, b) => b.upkeep - a.upkeep)[0];
-    if (worst) s = model.setLever(s, C, worst.def.id, worst.level - 1);
-  }
-  return s;
-}
-
-/** M3 (tools/balance.ts tendStock): a stock nothing absorbs (Code's) is held by its own levers, one a minute while it is
- *  above 15% of collapse and rising: deletion, then shared libraries, then review. */
-function tendStock(s: GameState, m: Memo): GameState {
-  if (s.time - (m.lastStock ?? -Infinity) < 60) return s;
-  const d = D(s);
-  for (const e of ORDER) {
-    const def = C.sectors[e], x = d.sectors[e];
-    if (!x || x.settled || def.pressureSource !== 'service' || def.absorption > 0) continue;
-    const prevP = m.stockP?.[e];
-    m.stockP = { ...(m.stockP ?? {}), [e]: s.sectors[e].pressure };
-    if (x.pressureFraction < 0.15 || prevP === undefined || s.sectors[e].pressure <= prevP) continue;
-    const order = ['deletion', 'sharedLibs', 'reviewGate'];
-    const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null && d.mandatePerSec - upkeepStep(s, v.def.id) > 0)
-      .sort((a, b) => order.indexOf(a.def.kind) - order.indexOf(b.def.kind))[0];
-    if (!l) continue;
-    const n = model.setLever(s, C, l.def.id, l.level + 1);
-    if (n !== s) { s = n; m.lastStock = s.time; }
-  }
-  return s;
-}
-
-/** The plausible human restraint player (tools/balance.ts `human`; QA, 19 Nov 2026): levers before budgets; once the
- *  budget has arrived, the line drawn three minutes later at whatever the use is then (the middle pace once paces are
- *  offered), the cap's first level enacted at once, tightened only after a minute "over budget". */
-function humanStep(s: GameState, m: Memo & { budgetAt?: number; over?: Record<string, number> }): GameState {
-  if (!s.flags.revealed) return s;
-  const d0 = D(s);
-  if (!d0.features.budget) return leverStep(s);
-  m.budgetAt ??= s.time;
-  m.over ??= {};
-  for (const e of ORDER) {
-    const es = s.sectors[e];
-    if (!es?.open || es.budget || s.time - Math.max(m.budgetAt, s.time - es.openFor) < 180) continue;
-    const paces = C.global.steady?.paces ?? [];
-    s = model.drawBudget(s, C, e, d0.features.budgetPace && paces.length >= 2 ? paces[1].id : undefined);
-  }
-  const d = D(s);
-  for (const e of ORDER) {
-    const x = d.sectors[e];
-    if (!x || x.budgetR === null) continue;
-    const cap = model.leverViews(s, C).find((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
-    if (!cap) continue;
-    const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE);
-    if (over) m.over[e] ??= s.time; else delete m.over[e];
-    if (!(cap.level === 0 || (over && s.time - m.over[e] >= 60))) continue;
-    // the cap at its last level: the Industry's sufficiency next (tools/balance.ts)
-    const want = cap.canRaise ? cap : over ? model.leverViews(s, C).find((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible && l.canRaise) : undefined;
-    if (!want) continue;
-    const n = model.setLever(s, C, want.def.id, want.level + 1);
-    if (n !== s) { s = n; delete m.over[e]; }
-  }
-  if (ORDER.some((e) => C.sectors[e].pressureSource === 'service' && (s.sectors[e]?.crisesFired ?? 0) > 0)) s = tendStock(s, m);
-  return s;
-}
-
-/** Dividends (option 0, the modest one), Settlement and the Commons, as tools/balance.ts --settle --commons. */
-function restraintExtras(s: GameState, settle: boolean, commons: boolean): GameState {
-  for (let g = 0; g < 20 && s.pendingDividends.length; g++) {
-    const n = model.chooseDecadeDividend(s, C, s.pendingDividends[0].sector, 0);
-    if (n === s) break;
-    s = n;
-  }
-  if (settle) for (const e of ORDER) if (D(s).sectors[e]?.canSettle) s = model.settle(s, C, e);
-  if (commons) {
-    for (let g = 0; g < 5; g++) {
-      const d = D(s);
-      if (!d.commons.available) break;
-      const keep = 60 * d.incomePerSec;
-      const v = model.commonsViews(s, C).filter((x) => x.canBuy && x.cost !== null && s.commons.fund + s.capital - keep >= x.cost)
-        .sort((a, b) => b.nextWellbeing / Math.max(1e-9, b.cost!) - a.nextWellbeing / Math.max(1e-9, a.cost!))[0];
-      if (!v) break;
-      const n = model.buyCommons(s, C, v.def.id);
-      if (n === s) break;
-      s = n;
-    }
-  }
-  return s;
-}
-
-/** The `market` player (run 2 on): leaves routine cards to the Market; founds what it passed over; forks, research, prospects. */
-function marketPlayer(s: GameState, log: Log, seen: Map<string, number>, okFound: (n: GameState, e: SectorId) => boolean): GameState {
-  for (const e of ORDER) {
-    if (!s.sectors[e]?.open) continue;
-    for (const a of C.sectors[e].applications) {
-      const st = s.sectors[e].apps[a.id];
-      if (!st?.available || st.founded || s.capital < a.foundCost) { seen.delete(a.id); continue; }
-      const since = seen.get(a.id) ?? s.time;
-      seen.set(a.id, since);
-      if (s.time - since < 25) continue;
-      const n = model.foundApp(s, C, a.id);
-      if (n !== s && okFound(n, e)) { s = n; log.apps.push({ t: s.time, id: a.id }); }
-    }
-  }
-  for (let g = 0; g < 10; g++) {
-    const v = cheap(s).filter((x) => x.visible && x.affordable && !x.maxed && !x.excludedBy
-      && (x.def.kind === 'research' || x.def.kind === 'prospect' || (x.def.excludes?.length ?? 0) > 0))
-      .sort((a, b) => (a.def.kind === 'research' ? -1 : 0) - (b.def.kind === 'research' ? -1 : 0) || a.cost - b.cost)[0];
-    if (!v) break;
-    const n = model.buyUpgrade(s, C, v.def.id);
-    if (n === s) break;
-    s = n;
-    log.buys.push({ t: s.time, id: v.def.id });
-  }
-  return s;
-}
-
-function instRank(d: InstitutionDef): number {
-  const effs = [d.effects, ...(d.nextLevels ?? []).map((l) => l.effects)].flat();
-  const lever = (k: string) => effs.some((e) => e.type === 'startLever' && C.levers.find((l) => l.id === e.lever)?.kind === k);
-  return lever('cap') ? 0 : effs.some((e) => e.type === 'wellbeingAdd') ? 1 : effs.some((e) => e.type === 'reveal') ? 2
-    : effs.some((e) => e.type === 'absorptionAdd') ? 3 : effs.some((e) => e.type === 'orderUnlock') ? 4 : lever('duty') ? 9 : 5;
-}
-
-/** Between runs: restraint buys Institutions by rank then Know-how and seats the best loadout; backfire buys Know-how. */
-function spend(s: GameState, restraint: boolean, capsOnly = false): GameState {
-  for (let guard = 0; guard < 400; guard++) {
-    const inst = model.institutionViews(s, C).filter((v) => v.canBuy).sort((a, b) => instRank(a.def) - instRank(b.def) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
-    const kh = model.knowhowViews(s, C).filter((v) => v.canBuy).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
-    const n = restraint && inst.length ? model.buyInstitution(s, C, inst[0].def.id) : kh.length ? model.buyKnowhow(s, C, kh[0].def.id) : s;
-    if (n === s) break;
-    s = n;
-  }
-  if (!restraint) return s;
-  const owned = C.institutions.filter((i) => (s.meta.institutions[i.id] ?? 0) >= 1 && instRank(i) < (capsOnly ? 1 : 9) && instRank(i) !== 4).sort((a, b) => instRank(a) - instRank(b));
-  const ids: string[] = [];
-  let used = 0;
-  for (const i of owned) if (used + (i.slots ?? 1) <= s.meta.slots) { ids.push(i.id); used += i.slots ?? 1; }
-  return model.setLoadout(s, C, ids);
-}
-
-type Mode = 'efficiency' | 'budget' | 'peakdraw' | 'idle' | 'market' | 'human';
-interface Opts { settle?: boolean; commons?: boolean; capS?: number; stopAt?: number }
-interface Run {
-  seconds: number; hindsight: number; hpm: number; cause: string; log: Log; mode: Mode;
-  reveal: number | null; crisis: number | null; crisisPopLoss: number | null; reboundAtReveal: number | null;
-  opened: Record<SectorId, number>; firstLever: number | null; steadyAt: number | null; decadeAt: number | null;
-  decadeLean: boolean | null; steady: Record<SectorId, boolean>; decades: number; fullDecades: number;
-  settledAt: number | null; settledEnd: number; forcedUnsettles: number; commonsLevels: number;
-  click: { at30: number | null; atCondenser: number | null; atReveal: number | null };
-  rAt: (t: number) => number;
-  /** the unfolding: features that unlocked during this run (run seconds), and at the Reckoning that began it (0) */
-  features: Partial<Record<FeatureId, number>>;
-  /** the player's own purchases and foundings in the first five minutes (ids), and the standing orders' */
-  opening5: { player: string[]; market: string[] };
-}
-
-const ratio = (s: GameState) => { const d = D(s); return d.incomePerSec > 0 ? (5 * d.clickValue) / d.incomePerSec : null; };
-
-function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameState; r: Run } {
-  let s = start;
-  const capS = opts.capS ?? 3 * 3600;
-  const log = newLog();
-  const memo: Memo = { revealAt: null, lastSpare: -Infinity };
-  const seen = new Map<string, number>();
-  const out: Run = {
-    seconds: 0, hindsight: 0, hpm: 0, cause: '', log, mode, reveal: s.flags.revealed ? 0 : null, crisis: null, crisisPopLoss: null,
-    reboundAtReveal: null, opened: {}, firstLever: null, steadyAt: null, decadeAt: null, decadeLean: null, steady: {}, decades: 0,
-    fullDecades: 0, settledAt: null, settledEnd: 0, forcedUnsettles: 0, commonsLevels: 0,
-    click: { at30: null, atCondenser: null, atReveal: null }, rAt: () => 0, features: {}, opening5: { player: [], market: [] },
-  };
-  for (const k of Object.keys(s.meta.features ?? {}) as FeatureId[]) if (s.meta.features![k] === s.meta.totalSeconds && s.time === 0 && s.meta.reckonings > 0) out.features[k] = 0;
-  if (mode === 'market' && s.meta.reckonings >= 1) s = model.setOrders(s, C, { market: { on: true, sectors: Object.fromEntries(ORDER.map((e) => [e, true])) } });
-  const restraint = mode === 'budget' || mode === 'market' || mode === 'human';
-  const rSeries: number[] = [];
-  const hist: [number, number][] = [];
-  const pHist: [number, Record<SectorId, number>][] = [];
-  const hold = { since: null as number | null, steady: 0 };
-  let lastDecisions = s.run.decisions;
-  const okLine = (pre: GameState) => (n: GameState, e: SectorId) => {
-    const x = D(n).sectors[e]!;
-    return x.budgetR !== null ? x.resourceUse <= x.budgetR * (1 + BUDGET_TOLERANCE) : x.resourceUse <= safeR(pre, e);
-  };
-  while (!D(s).pendingReckoning && s.time < capS && (opts.stopAt === undefined || s.time < opts.stopAt)) {
-    if (mode !== 'idle') {
-      const tick5 = Math.floor(s.time) % 5 === 0;
-      if (mode === 'budget') {
-        s = buyCheapest(s, log, s.flags.revealed ? [] : REVEAL_IDS);
-        s = foundAll(s, log, okLine(s));
-        if (tick5) s = budgetStep(s, memo, true);
-      } else if (mode === 'market') {
-        s = marketPlayer(s, log, seen, okLine(s));
-        if (tick5) s = budgetStep(s, memo, false);
-      } else if (mode === 'human') {
-        if (D(s).orders.market.available && s.meta.orders.market.on) s = marketPlayer(s, log, seen, () => true);
-        else { s = buyCheapest(s, log, s.flags.revealed ? [] : REVEAL_IDS); s = foundAll(s, log); }
-        if (tick5) s = humanStep(s, memo);
-      } else {
-        s = buyCheapest(s, log);
-        s = foundAll(s, log);
-        if (mode === 'peakdraw' && s.flags.revealed && tick5) {
-          for (const e of ORDER) {
-            const x = D(s).sectors[e];
-            const b = s.sectors[e]?.budget;
-            if (x && (!b || x.resourceUse > b.r0 * 1.02)) s = model.drawBudget(s, C, e);
-          }
-        }
-      }
-      // M3: the restraint players read their letters and answer with the default (as harmless as letting them expire,
-      // but a decision, as a person reading the paper makes one; tools/balance.ts --dispatch=default lets them expire)
-      if (restraint && s.dispatch?.pending?.length) { const n = model.answerDispatch(s, C, C.dispatches?.find((x) => x.id === s.dispatch!.pending[0].id)?.defaultArm ?? 0, s.dispatch.pending[0].id); if (n !== s) s = n; }
-      if (restraint && tick5) {
-        const b4 = s;
-        s = restraintExtras(s, !!opts.settle, !!opts.commons);
-        for (const e of ORDER) if (s.sectors[e]?.settled && !b4.sectors[e]?.settled) out.settledAt ??= s.time;
-      }
-      if (s.run.decisions > lastDecisions) log.decisions.push(s.time);
-      s = tap(s);
-    }
-    const prev = s;
-    s = model.tick(s, C, 1);
-    lastDecisions = s.run.decisions;
-    for (const e of s.events) {
-      if (e.seq <= prev.meta.eventSeq) continue;
-      if (e.by === 'market' && (e.kind === 'upgradeBought' || e.kind === 'appFounded')) log.marketBuys.push(s.time);
-      if (e.kind === 'unsettled' && e.by === 'default') out.forcedUnsettles++;
-    }
-    rSeries.push(D(s).sectors.steam?.resourceUse ?? 0);
-    for (const k of Object.keys(s.meta.features ?? {}) as FeatureId[]) if (prev.meta.features?.[k] === undefined) out.features[k] ??= s.time;
-    if (out.firstLever === null && Object.values(s.levers).some((l) => l.level > 0)) out.firstLever = s.time;
-    if (prev.time < 30 && s.time >= 30) out.click.at30 = ratio(s);
-    if (out.click.atCondenser === null && (s.upgrades['steam.condenser'] ?? 0) > 0) out.click.atCondenser = ratio(s);
-    if (out.reveal === null && s.flags.revealed) { out.reveal = s.time; out.click.atReveal = ratio(s); out.reboundAtReveal = D(s).sectors.steam?.rebound ?? null; }
-    for (const e of ORDER) {
-      const a = prev.sectors[e], b = s.sectors[e];
-      if (!a?.open && b?.open) out.opened[e] = s.time;
-      if (b?.open && b.crisesFired > (a?.crisesFired ?? 0) && out.crisis === null) { out.crisis = s.time; out.crisisPopLoss = 1 - s.population / prev.population; }
-      if (b && a && b.decadesWithin.length > a.decadesWithin.length && out.decadeAt === null) { out.decadeAt = s.time; out.decadeLean = b.decadesLean[b.decadesLean.length - 1] === true; }
-      if (b?.settled && !a?.settled) out.settledAt ??= s.time;
-    }
-    if (out.steadyAt === null && Object.keys(s.run.steadySectors).length > Object.keys(prev.run.steadySectors).length) out.steadyAt = s.time;
-    // the restraint player's Reckoning (tools/balance.ts: marginal rate, a gated next Industry, waiting for Steady State)
-    if (restraint && opts.stopAt === undefined && Math.floor(s.time) % 10 === 0) {
-      const d = D(s), T = d.hindsightTerms;
-      const earned = T.wellbeing + T.budget + T.unburnt;
-      hist.push([s.time, earned]);
-      const old = hist.find(([t]) => t >= s.time - 600);
-      const avg = earned / (s.time / 60);
-      const marginal = old && s.time - old[0] >= 590 ? (earned - old[1]) / ((s.time - old[0]) / 60) : Infinity;
-      pHist.push([s.time, Object.fromEntries(ORDER.map((e) => [e, s.sectors[e]?.pressure ?? 0]))]);
-      while (pHist.length && pHist[0][0] < s.time - 120) pHist.shift();
-      const coming = ORDER.some((e) => {
-        const es = s.sectors[e], x = d.sectors[e];
-        if (!es?.open || !x || s.run.steadySectors[e] || es.settled || x.clearP === null || es.clearYears > 0 || d.wellbeing < TARGET) return false;
-        const o = pHist[0];
-        const rate = o && s.time - o[0] >= 60 ? (o[1][e] - es.pressure) / (s.time - o[0]) : 0;
-        return es.pressure <= x.clearP || (rate > 0 && (es.pressure - x.clearP) / rate <= 1800);
-      });
-      const steadyNow = Object.values(s.run.steadySectors).filter(Boolean).length;
-      if (!coming || steadyNow > hold.steady) hold.since = coming ? s.time : null;
-      hold.steady = steadyNow;
-      if (coming) hold.since ??= s.time;
-      const sure = ORDER.some((e) => !s.run.steadySectors[e] && !s.sectors[e]?.settled && (s.sectors[e]?.clearYears ?? 0) > 0);
-      const streaking = sure || (coming && s.time - (hold.since ?? s.time) <= 2700);
-      const opening = s.time < 7200 && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
-      const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c) => c.met));
-      const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);
-      if (s.time >= 1800 && marginal < 0.9 * avg && !streaking && !opening) break;
-      if (s.time >= 2400 && gated && (!streaking || steadyNow > 0) && !opening) break;
-      // (M3: a settled Industry counts as held; with every one held there is nothing left to wait for)
-      if (s.time >= 5400 && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e] || s.sectors[e]?.settled)) break;
-    }
-  }
-  const d = D(s);
-  out.seconds = s.time;
-  out.hindsight = d.hindsightTerms.total;
-  out.hpm = out.hindsight / (s.time / 60);
-  out.cause = d.pendingReckoning?.cause ?? 'chosen';
-  out.steady = { ...s.run.steadySectors };
-  out.decades = s.run.budgetDecades;
-  out.fullDecades = s.run.budgetDecades - s.run.leanDecades;
-  out.settledEnd = ORDER.filter((e) => s.sectors[e]?.settled).length;
-  out.commonsLevels = Object.values(s.commons.levels).reduce((a, b) => a + b, 0);
-  out.rAt = (t: number) => rSeries[Math.max(0, Math.min(rSeries.length - 1, Math.round(t) - 1))];
-  out.opening5 = {
-    player: (s.run.opening ?? []).filter((a) => a.t <= 300 && a.by === 'player').map((a) => a.id),
-    market: (s.run.opening ?? []).filter((a) => a.t <= 300 && a.by !== 'player').map((a) => a.id),
-  };
-  return { s, r: out };
-}
-
-/** Consecutive runs (the prestige loop). `firstTwo` plays runs 1–2 in another mode (mixed: efficiency, then budget). */
-function campaign(mode: Mode, runs: number, opts: Opts & { firstTwo?: Mode; untilHours?: number; capsOnly?: boolean } = {}): { runs: Run[]; ends: GameState[] } {
-  let s = model.createState(C, undefined, 1);
-  const out: Run[] = [];
-  const ends: GameState[] = [];
-  let cumS = 0;
-  for (let i = 1; opts.untilHours !== undefined ? cumS < opts.untilHours * 3600 : i <= runs; i++) {
-    const m = i <= 2 && opts.firstTwo ? opts.firstTwo : mode;
-    const { s: end, r } = play(s, m, opts);
-    out.push(r);
-    ends.push(end);
-    cumS += r.seconds;
-    s = model.reckon(end, C);
-    if (m !== 'idle') s = spend(s, mode === 'budget' || mode === 'market' || mode === 'human', opts.capsOnly);
-  }
-  return { runs: out, ends };
-}
-
-const cum = (runs: Run[], k: number) => runs.slice(0, k).reduce((a, r) => a + r.seconds, 0);
-const firstBuy = (r: Run, id: string) => r.log.buys.find((b) => b.id === id)?.t ?? null;
-/** Cumulative hours at the first Steady State of a campaign, or null. */
-const firstSteadyH = (runs: Run[]) => { const i = runs.findIndex((r) => r.steadyAt !== null); return i < 0 ? null : (cum(runs, i) + runs[i].steadyAt!) / 3600; };
-const openedH = (runs: Run[], e: SectorId) => { const i = runs.findIndex((r) => r.opened[e] !== undefined); return i < 0 ? null : (cum(runs, i) + runs[i].opened[e]) / 3600; };
-/** Longest stretch without a player decision in [from, to] hours of the campaign's cumulative active play. */
-function decisionGap(runs: Run[], fromH: number, toH: number): number {
-  const times: number[] = [];
-  runs.forEach((r, i) => { const c = cum(runs, i); for (const t of r.log.decisions) times.push(c + t); });
-  const from = fromH * 3600, to = Math.min(toH * 3600, cum(runs, runs.length));
-  let g = 0, last = from;
-  for (const t of times) { if (t < from) continue; if (t > to) break; g = Math.max(g, t - last); last = t; }
-  return Math.max(g, to - last);
-}
+import type { FeatureId, GameState } from './types';
+import { C, D, ORDER, campaign, cum, decisionGap, firstBuy, firstSteadyH, openedH, play, spend } from './balance.kit';
+import type { Run } from './balance.kit';
 
 /* ---------------- campaigns (computed once) ---------------- */
 
 const EFF = campaign('efficiency', 6);
-/** The competent restraint player: lines, levers, dividends, Settlement and the Commons, until 10 h of play. */
-const BUD = campaign('budget', 0, { settle: true, commons: true, untilHours: 10 });
-const MIX = campaign('budget', 5, { firstTwo: 'efficiency', settle: true, commons: true });
-/** The budget player seating only cap Institutions, for three hours. */
-const capsCampaign = () => campaign('budget', 0, { settle: true, commons: true, untilHours: 3, capsOnly: true }); // (the todo below; lazy)
-const PEAK = campaign('peakdraw', 6);
+/** BAL_LONG=1: the long campaigns (ten hours of budget play, five runs of mixed, six of peakdraw); otherwise four runs
+ *  each, enough for the first Steady State and the Commons, and the long-only tests below are skipped. */
+const LONG = (globalThis as any).process?.env?.BAL_LONG === '1';
+const longTest = LONG ? test : test.skip;
+/** The competent restraint player: lines, levers, dividends, Settlement and the Commons. */
+const BUD = LONG ? campaign('budget', 0, { settle: true, commons: true, untilHours: 10 }) : campaign('budget', 4, { settle: true, commons: true });
+const MIX = campaign('budget', LONG ? 5 : 4, { firstTwo: 'efficiency', settle: true, commons: true });
+/** The budget player seating only cap Institutions, for three hours (long only). */
+const capsCampaign = () => campaign('budget', 0, { settle: true, commons: true, untilHours: 3, capsOnly: true });
+const PEAK = LONG ? campaign('peakdraw', 6) : { runs: [] as Run[], ends: [] as GameState[] };
 /** The plausible human restraint player, four runs (the budget arrives in run 3). */
 const HUM = campaign('human', 4, { settle: true, commons: true });
 const IDLE = campaign('idle', 1, { capS: 3600 });
@@ -599,13 +138,13 @@ describe('M2 exit criteria', () => {
   test('E4: the efficiency player never reaches Steady State (six runs)', () => {
     expect(EFF.runs.some((r) => Object.keys(r.steady).length > 0)).toBe(false);
   });
-  test('E5: drawing at every peak earns at most half the budget player’s Hindsight per minute (runs 3–6)', () => {
+  longTest('E5: drawing at every peak earns at most half the budget player’s Hindsight per minute (runs 3–6)', () => {
     const m = (rs: Run[]) => rs.slice(2, 6).reduce((a, r) => a + r.hpm, 0) / rs.slice(2, 6).length;
     expect(m(PEAK.runs) / m(BUD.runs)).toBeLessThanOrEqual(0.5);
   });
   test('E6: restraint earns at least 1.5× backfire’s Hindsight per minute from run 4, and leads in run 3 (budget from run 3)', () => {
     expect(BUD.runs[2].hpm / EFF.runs[2].hpm).toBeGreaterThanOrEqual(1.3);
-    for (const i of [3, 4]) expect(BUD.runs[i].hpm / EFF.runs[i].hpm).toBeGreaterThanOrEqual(1.5);
+    for (const i of [3, 4]) if (BUD.runs[i]) expect(BUD.runs[i].hpm / EFF.runs[i].hpm).toBeGreaterThanOrEqual(1.5);
   });
   test('E7: backfire earns at least 1.2× restraint in run 2, and more than restraint in run 1 (decision (a))', () => {
     // target 1.2× in both. Run 1 measures 1.09×: with budgets in run 3, restraint in run 1 differs from burning only by
@@ -620,10 +159,10 @@ describe('M2 exit criteria', () => {
     // 260 s so a slide is caught (target 180 s; M3's dispatches address the late-run lull)
     expect(decisionGap(BUD.runs, 0, 1)).toBeLessThanOrEqual(260);
     expect(decisionGap(MIX.runs, 0, 1)).toBeLessThanOrEqual(180);
-    expect(decisionGap(BUD.runs, 1, 10)).toBeLessThanOrEqual(300);
+    expect(decisionGap(BUD.runs, 1, LONG ? 10 : cum(BUD.runs, BUD.runs.length) / 3600)).toBeLessThanOrEqual(300);
     expect(decisionGap(MIX.runs, 1, cum(MIX.runs, MIX.runs.length) / 3600)).toBeLessThanOrEqual(300);
   });
-  test('E9: an 8-hour fastForward from any point of play never ends in a crisis or a collapse, and names the hold', () => {
+  longTest('E9: an 8-hour fastForward from any point of play never ends in a crisis or a collapse, and names the hold', () => {
     // boom, restraint and Market states, early and late (a run's end is a point only where it was chosen)
     const points: GameState[] = [BUD.ends[1], BUD.ends[3], MIX.ends[3]];
     points.push(play(spend(model.reckon(EFF.ends[0], C), false), 'market', { stopAt: 600 }).s);
@@ -638,7 +177,7 @@ describe('M2 exit criteria', () => {
       if (r.simulated < 8 * 3600 - 1) expect(['crisis', 'collapse', 'exhausted', 'cap']).toContain(r.heldBy);
     }
   }, 30_000);
-  test('E9b: an 8-hour absence from a restraint run earns no more Hindsight than that run earns played (offline fix)', () => {
+  longTest('E9b: an 8-hour absence from a restraint run earns no more Hindsight than that run earns played (offline fix)', () => {
     // at the full rate a held run 4 away for 8 h earned about six runs' worth (+4,300); the content's hindsightRate
     // enters Hindsight away at 15%, and a full dividend list forgoes offers instead of compounding option 0
     const rate = C.global.offline?.hindsightRate ?? 1;
@@ -661,7 +200,7 @@ describe('M2 exit criteria', () => {
     if ((globalThis as any).process?.env?.BAL_DEBUG) console.log('E9b', out.join(' · '));
     expect(out.length).toBeGreaterThanOrEqual(3);
   }, 60_000);
-  test('E10: ten hours of budget play open all five Industries and use Settlement', () => {
+  longTest('E10: ten hours of budget play open all five Industries and use Settlement', () => {
     expect(cum(BUD.runs, BUD.runs.length) / 3600).toBeGreaterThanOrEqual(10);
     for (const e of ORDER.slice(1)) expect(`${e} ${openedH(BUD.runs, e) !== null}`).toBe(`${e} true`);
     expect(BUD.runs.some((r) => r.settledAt !== null)).toBe(true);
@@ -708,14 +247,14 @@ describe('the unfolding: one system at a time', () => {
     expect(within(at(BUD, 'budget'), 3, 5, 12)).toEndWith('true');
     for (const f of ['dividendChoice', 'budgetPace', 'clearSkies'] as FeatureId[]) expect(`${f} ${at(BUD, f)?.run}`).toBe(`${f} 3`);
   });
-  test('run 4: the Commons at the Reckoning, Steady State with the first clear sky; Settlement at the Reckoning after it', () => {
+  longTest('run 4: the Commons at the Reckoning, Steady State with the first clear sky; Settlement at the Reckoning after it', () => {
     expect(within(at(BUD, 'commons'), 4, 0, 0)).toEndWith('true');
     expect(at(BUD, 'steadyState')?.run).toBeLessThanOrEqual(4);
     // Settlement at the first Reckoning after the first Steady State, from run 5 (M3: at the Reckoning only)
     const first = BUD.runs.findIndex((r) => r.steadyAt !== null);
     expect(within(at(BUD, 'settlement'), Math.max(first + 2, 5), 0, 0)).toEndWith('true');
   });
-  test('never two systems within five minutes of each other, through hour 10 (efficiency, budget, mixed, human)', () => {
+  longTest('never two systems within five minutes of each other, through hour 10 (efficiency, budget, mixed, human)', () => {
     for (const c of [EFF, BUD, MIX, HUM]) {
       const times: number[] = [];
       c.runs.forEach((r, i) => { if (cum(c.runs, i) < 36000) for (const t of Object.values(r.features)) times.push(cum(c.runs, i) + t!); });
@@ -724,20 +263,20 @@ describe('the unfolding: one system at a time', () => {
     }
   });
   // M3 balance (owner's direction, 19 Nov 2026: "options should be unlocked more slowly"; design/unlock-schedule.md)
-  test('from run 4, at most two arrivals a run: one at the Reckoning, one mid-run (through hour 10, every style)', () => {
+  longTest('from run 4, at most two arrivals a run: one at the Reckoning, one mid-run (through hour 10, every style)', () => {
     for (const [name, c] of Object.entries({ EFF, BUD, MIX, HUM })) c.runs.forEach((r, i) => {
       if (i < 3 || cum(c.runs, i) >= 36000) return;
       const ts = Object.values(r.features) as number[];
       expect(`${name} run ${i + 1}: ${ts.length <= 2 && ts.filter((t) => t > 0).length <= 1 && ts.filter((t) => t === 0).length <= 1}`).toBe(`${name} run ${i + 1}: true`);
     });
   });
-  test('M3 arrivals in their windows: letters in run 2; nothing M3 in run 3; the mechanics mid-run (20–24 min), one run apart', () => {
+  longTest('M3 arrivals in their windows: letters in run 2; nothing M3 in run 3; the mechanics mid-run (20–24 min), one run apart', () => {
     for (const c of [BUD, MIX, HUM]) {
       expect(within(at(c, 'ambient'), 2, 4.9, 6)).toEndWith('true');
       expect(within(at(c, 'dispatches'), 2, 15, 21)).toEndWith('true');
       for (const f of ['archive', 'seams', 'load', 'travel', 'freeAtUse', 'sideEffects', 'survey', 'histories'] as FeatureId[]) expect(`${f} ${c.runs[2]?.features[f] === undefined}`).toBe(`${f} true`);
       let prev = 0;
-      for (const f of ['seams', 'load', 'travel'] as FeatureId[]) {
+      for (const f of ['seams', 'load', 'travel', 'archive'] as FeatureId[]) {
         const x = at(c, f);
         if (!x) break; // a campaign may end first
         expect(`${f} ${x.run > prev && x.run >= 4 && x.min >= 20 && x.min < 24}`).toBe(`${f} true`);
@@ -745,7 +284,7 @@ describe('the unfolding: one system at a time', () => {
       }
       // the seams wait for a first Steady State held (the budget player's run 4)
       if (at(c, 'seams')) expect(at(c, 'seams')!.run).toBeGreaterThan(at(c, 'steadyState')!.run);
-      for (const f of ['archive', 'freeAtUse', 'survey', 'histories', 'settlement'] as FeatureId[]) if (at(c, f)) expect(`${f} ${at(c, f)!.min}`).toBe(`${f} 0`);
+      for (const f of ['freeAtUse', 'survey', 'histories', 'settlement'] as FeatureId[]) if (at(c, f)) expect(`${f} ${at(c, f)!.min}`).toBe(`${f} 0`);
     }
     expect(at(BUD, 'seams')?.run).toBe(4);
     expect(at(BUD, 'load')?.run).toBe(5);
@@ -780,13 +319,13 @@ describe('the arc', () => {
       expect(h!).toBeLessThanOrEqual(1.5);
     }
   });
-  test('Code is reachable by about hour 4–5 of competent (budget) play', () => {
+  longTest('Code is reachable by about hour 4–5 of competent (budget) play', () => {
     const h = openedH(BUD.runs, 'code');
     expect(h).not.toBeNull();
     expect(h!).toBeGreaterThanOrEqual(3.5);
     expect(h!).toBeLessThanOrEqual(5.5);
   });
-  test('first Settlement at 4–6 h', () => {
+  longTest('first Settlement at 4–6 h', () => {
     const i = BUD.runs.findIndex((r) => r.settledAt !== null);
     const h = (cum(BUD.runs, i) + BUD.runs[i].settledAt!) / 3600;
     expect(h).toBeGreaterThanOrEqual(4 * 0.85);
@@ -809,19 +348,13 @@ describe('traps and restraint systems', () => {
   test('idle earns less than half of backfire', () => {
     expect(IDLE.runs[0].hpm).toBeLessThan(0.5 * EFF.runs[0].hpm);
   });
-  // M3 balance: NOT MET, kept visible as a todo. With Steam's clear level at 0.65 of the drawn smoke (needed for the
-  // first ending: a floor-held line settles at about 0.55 of it, so below 0.56 no scripted player ever cleared Steam in
-  // 20 hours), a seated cap alone clears Steam in run 3 (2.5 h). What would restore it: a scripted restraint player that
-  // reaches below its line with water wheels and temperance, and Steam's clear level back under 0.55; or a core rule
-  // judging clear skies against the equilibrium smoke rather than the smoke on the day the line was drawn.
-  test.todo('Steady State needs more than a seated cap: with only cap Institutions seated, none before hour 3 (measured 2.5 h)');
-  test.skip('Steady State needs more than a seated cap (the measurement behind the todo)', () => {
+  longTest('Steady State needs more than a seated cap: with only cap Institutions seated, none before hour 3', () => {
     // the budget player seating only its cap Institutions (no absorption, substitution or wellbeing ones) every run;
     // with its full loadout it reaches Steady State by hour 4 (E3)
     const h = firstSteadyH(capsCampaign().runs);
     expect(h === null || h >= 3).toBe(true);
   });
-  test('a settled Industry is defensible: its defence costs under half the restraint player’s Mandate income', () => {
+  longTest('a settled Industry is defensible: its defence costs under half the restraint player’s Mandate income', () => {
     // a settled Steam whose town grows by a third (population still growing at the target): the defence it costs
     const i = BUD.runs.findIndex((r) => r.settledAt !== null);
     const end = BUD.ends[i];

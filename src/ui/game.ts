@@ -11,7 +11,7 @@ import { showFatal, hideFatal } from './sheets';
 import { lsGet, lsSet, lsDel, download, requestPersist, storageWorks } from './store';
 import { dur, money } from './fmt';
 import { applyPrefs, getPrefs, setPrefs } from './prefs';
-import { installManifest } from './install';
+import { startEdition } from './edition';
 import { installKeys } from './keys';
 import type { BackupInfo } from './sheets';
 import { prof, timed } from './prof';
@@ -171,9 +171,10 @@ function boot(o: GameOpts): void {
       state = next;
       const bought = ui.afterAct(before, next);
       if (bought.length) askPersist();
-      // The tap paints first: derive and patch now; the views (projections, the slow part) follow in their own task
-      // after the frame. A sale changes only capital: its views wait for the next periodic refresh.
-      refresh(false);
+      // The tap paints first: derive and patch what it changed now (a quick update); the views (projections, the slow
+      // part) and the full update follow in their own task after the frame. A sale changes only capital: the next tick
+      // (within 100 ms) brings the rest.
+      refresh(false, true);
       if (name !== 'click') viewsAfterPaint();
       return true;
     },
@@ -208,14 +209,15 @@ function boot(o: GameOpts): void {
     void requestPersist().then((r) => { if (getPrefs().persist !== r) setPrefs({ persist: r }); });
   }
 
-  function refresh(views: boolean): void {
+  function refresh(views: boolean, quick = false): void {
     const nd = guard('derive', () => model.derive(state!, content));
     if (nd) d = nd;
     if (views) refreshViews();
     if (halted) return;
+    // Events are handled at once (sounds and notes belong to the tap); the picture takes them at the next full update.
     const ev = feed.take(state!);
     if (ev.length) timed('ui.events', () => ui.onEvents(ev));
-    timed('ui.update', () => ui.update());
+    timed('ui.update', () => ui.update(quick));
   }
   let lastViews = 0, viewsEvery = VIEWS_EVERY, viewsPending = false;
   /** Refresh the views in a task of their own after the next frame (coalesced), then patch the page again. */
@@ -226,7 +228,10 @@ function boot(o: GameOpts): void {
       viewsPending = false;
       if (halted || !state) return;
       refreshViews();
-      if (!halted) timed('ui.update', () => ui.update());
+      if (halted) return;
+      const ev = feed.take(state!);
+      if (ev.length) timed('ui.events', () => ui.onEvents(ev));
+      timed('ui.update', () => ui.update());
     }, 0));
   }
   function refreshViews(): void {
@@ -335,7 +340,8 @@ function boot(o: GameOpts): void {
   ctx.ledger = ledger;
   mark('rebound-mounted');
   installKeys(ctx, ui);
-  void installManifest();
+  // Offline play and a new edition offered, never forced (src/sw.js; the manifest and icons are files from the build).
+  startEdition((apply) => ui.toast('A new edition of Rebound is ready.', { label: 'Load it', run: apply }), () => save());
 
   /** "Play here instead" (tabs.ts): this tab now keeps the books. Load what the other tab has just saved, count the
    *  time since its save once (as on opening), and carry on; the post-Reckoning screens come back if it was between runs. */

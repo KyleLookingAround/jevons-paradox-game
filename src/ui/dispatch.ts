@@ -37,6 +37,7 @@ function makeLetter(ctx: Ctx, v0: PendingDispatchView): Letter {
   const body = h('div', { class: 'lt-body' }, ...v0.body.split(/\n+/).map((p) => h('p', { text: p })));
   const more = h('button', { class: 'linkish lt-more', type: 'button', 'aria-expanded': 'false', onclick: () => {
     const open = !el.classList.contains('open');
+    if (open) sound('letterOpened', { sector: def.sector });
     cls(el, 'open', open); setAttr(more, 'aria-expanded', String(open)); setText(more, open ? 'Fold the letter' : 'Read the whole letter');
   } }, 'Read the whole letter');
   const arms = v0.arms.map((a, i) => {
@@ -175,10 +176,10 @@ export function buildLetters(ctx: Ctx): LettersComp {
       const d = e.id ? ctx.content.dispatches?.find((x) => x.id === e.id) : undefined;
       const writer = d ? ctx.content.cast?.find((c) => c.id === d.cast) : undefined;
       if (e.kind === 'dispatchArrived') {
-        sound('letter', { sector: e.sector });
+        sound('letter', { sector: e.sector, cast: e.label });
         ctx.toast(`A letter from ${writer?.name ?? 'a correspondent'}.`, { label: 'Read it', run: showLetter });
       } else if (e.kind === 'dispatchAnswered') {
-        sound('answer', { sector: e.sector, strength: e.by === 'player' ? 1 : 0.5 });
+        sound('answer', { sector: e.sector, by: e.by });
         // A letter left to lapse is reported once, quietly, with what was taken.
         if (e.by === 'default' && d) ctx.toast(`${writer?.name ?? 'The'}${writer ? '’s' : ''} letter lapsed: “${d.arms[num(e.n)]?.label ?? ''}” was taken.`);
       }

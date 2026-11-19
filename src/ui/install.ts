@@ -1,9 +1,6 @@
-// Home Screen install: a web app manifest and icons, made in the page.
-//
-// build.ts copies only index.html, app.js and styles.css into dist/, so a manifest file or icon files cannot reach the
-// deployed site without a build change. Instead the icon is drawn here as SVG, rasterised to PNG on a canvas (192, 512
-// and Apple's 180), and the manifest is set from script as a data: URL with an absolute start_url. If rasterising fails
-// the manifest falls back to the SVG icon. Nothing remote is fetched.
+// Home Screen install: the icon's drawing. Since perf pass 2 the manifest and icons are files: build.ts writes
+// dist/manifest.webmanifest, and tools/icons.mjs renders this drawing to public/icons/ (icon.svg, icon-192.png,
+// icon-512.png, apple-touch-icon.png), which index.html links. Nothing here runs in the page any more.
 
 const BG = '#efe6d0', INK = '#2a1f15', RED = '#a3231a', RULE = 'rgba(62,92,140,.28)';
 
@@ -22,56 +19,4 @@ export function iconSvg(): string {
     + `<path d="${arc(0, 0.82)}" fill="none" stroke="${RED}" stroke-width="30"/>${ticks}`
     + `<path d="M${at(0.82, -18)}L${at(0.82, r - 14)}" stroke="${INK}" stroke-width="16" stroke-linecap="round"/>`
     + `<circle cx="${cx}" cy="${cy}" r="24" fill="${INK}"/></svg>`;
-}
-
-export function svgDataUrl(svg: string): string {
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-}
-
-function rasterise(src: string, size: number): Promise<string | null> {
-  return new Promise((resolve) => {
-    try {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const c = document.createElement('canvas');
-          c.width = c.height = size;
-          const g = c.getContext('2d');
-          if (!g) { resolve(null); return; }
-          g.drawImage(img, 0, 0, size, size);
-          resolve(c.toDataURL('image/png'));
-        } catch { resolve(null); }
-      };
-      img.onerror = () => resolve(null);
-      img.src = src;
-    } catch { resolve(null); }
-  });
-}
-
-function setLink(rel: string, href: string, extra: Record<string, string> = {}): void {
-  let l = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
-  if (!l) { l = document.createElement('link'); l.rel = rel; document.head.append(l); }
-  for (const k in extra) l.setAttribute(k, extra[k]);
-  l.href = href;
-}
-
-/** Add the manifest and touch icon. Safe to call once at start-up; failures leave the page as it was. */
-export async function installManifest(): Promise<void> {
-  try {
-    const svg = svgDataUrl(iconSvg());
-    const [p192, p512, p180] = await Promise.all([rasterise(svg, 192), rasterise(svg, 512), rasterise(svg, 180)]);
-    const icons = p192 && p512
-      ? [{ src: p192, sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: p512, sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: p512, sizes: '512x512', type: 'image/png', purpose: 'maskable' }]
-      : [{ src: svg, sizes: 'any', type: 'image/svg+xml', purpose: 'any' }];
-    const start = location.href.split('#')[0].split('?')[0];
-    const manifest = {
-      name: 'Rebound', short_name: 'Rebound', id: start,
-      description: 'An incremental game about Jevons paradox: every efficiency upgrade makes the world burn more.',
-      start_url: start, scope: start.replace(/[^/]*$/, ''), display: 'standalone', orientation: 'any',
-      background_color: BG, theme_color: BG, lang: 'en-GB', icons,
-    };
-    setLink('manifest', 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest)));
-    setLink('apple-touch-icon', p180 ?? svg);
-  } catch { /* no manifest: the game runs regardless */ }
 }
