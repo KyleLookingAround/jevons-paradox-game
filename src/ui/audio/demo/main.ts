@@ -33,9 +33,9 @@ const panel = el('div', { className: 'panel' });
 top.append(host, side);
 // For visitors who arrive from a shared link.
 const about = el('p', { className: 'what' }, 'Generated sound for ', el('a', { href: 'https://kylelookingaround.github.io/jevons-paradox-game/', textContent: 'Rebound' }),
-  ', an incremental game about Jevons paradox. Everything you hear is synthesised in your browser as it plays (no recordings, no samples); turn the sound on, try the controls, or export it for a DAW below.');
+  ', an incremental game about Jevons paradox. Everything you hear is synthesised in your browser as it plays (no recordings, no samples); turn the sound on, try the controls, or export it for a DAW at the bottom of the page.');
 const exportHost = el('div', { className: 'export-host' });
-app.append(about, top, exportHost, panel);
+app.append(about, top, panel, exportHost);
 
 const scene: SceneHandle = createScene(host, { card: false });
 const sound = createSoundscape({ meter: true });
