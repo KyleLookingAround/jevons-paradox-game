@@ -53,6 +53,8 @@ interface LayerRt {
   sour?: number;
   /** M3: the variant the mix chose (variantBy). */
   variant?: number;
+  /** Export: the source id this layer reports to tap.gate / tap.onVoice. */
+  src: string;
 }
 
 interface Graph {
@@ -144,6 +146,18 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let credits: { out: GainNode; oscs: OscillatorNode[]; lfos: OscillatorNode[]; t0: number; stopAt: number; nextBell: number; key: Key; pal: string; rng: Rng } | null = null;
   let endingAmt = 0;            // 0–1, what the mix is told (ramps in with the credits, out after them)
   const sync = !!external;                     // offline/tests: synthesise at once; live: in the worker
+  // Export taps (offline only). Without them nothing below creates a node or changes a value.
+  const tap = external ? opts.tap ?? null : null;
+  const gate = tap?.gate ?? null;
+  let uiGate: GainNode | null = null, uiRevGate: GainNode | null = null;
+  /** Export: a gate (gain = tap.gate(source)) in front of dest, or dest itself when nothing is gated. */
+  function gateTo(source: string, dest: AudioNode): AudioNode {
+    if (!gate || !ctx) return dest;
+    const g = ctx.createGain(); g.gain.value = gate(source); g.connect(dest);
+    return g;
+  }
+  const uiOut = (): AudioNode => uiGate ?? uiBus!;
+  const uiRev = (): AudioNode | null => uiRevGate ?? revIn;
 
   const now = (): number => (opts.clock ? opts.clock() : ctx ? ctx.currentTime : 0);
   const perf = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -197,23 +211,30 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     duck = c.createGain(); duck.gain.value = 1;
     worldBus = c.createGain(); worldBus.gain.value = vol.world ** 2;
     uiBus = c.createGain(); uiBus.gain.value = vol.interface ** 2;
-    worldBus.connect(duck); duck.connect(master); uiBus.connect(master); master.connect(lim); lim.connect(c.destination);
+    worldBus.connect(duck); duck.connect(master); uiBus.connect(master);
+    if (tap?.limiter === false) master.connect(c.destination); else { master.connect(lim); lim.connect(c.destination); }
     if (opts.meter) { meter = c.createAnalyser(); meter.fftSize = 2048; meterBuf = new Float32Array(meter.fftSize); lim.connect(meter); }
     // One shared room: a generated impulse (darkening noise tail), returned through a low-pass that follows the air.
     revIn = c.createGain(); revIn.gain.value = 1;
     revLp = c.createBiquadFilter(); revLp.type = 'lowpass'; revLp.frequency.value = 5000;
-    const revOut = c.createGain(); revOut.gain.value = 0.5;
+    const revOut = c.createGain(); revOut.gain.value = tap?.dry ? 0 : 0.5;
     revLp.connect(revOut); revOut.connect(worldBus);
+    if (gate) { uiGate = gateTo('ui', uiBus) as GainNode; uiRevGate = gateTo('ui', revIn) as GainNode; }
     // The impulse is synthesised off the main thread, then split over REV_SEGS convolvers, each delayed by its offset:
     // the same room, but each buffer is short enough that setting it (which a browser prepares on the main thread)
     // stays well under a long task. Live, one segment is set per idle callback; the room is dry for the moment it takes.
     const segs: { conv: ConvolverNode; at: number }[] = [];
     const rin = revIn, rlp = revLp;
+    // Export only: the segments are summed in pairs (a tree of two-input junctions). Chromium sums a junction's inputs
+    // in an order that can change from render to render, and float addition is not associative, so eight segments into
+    // one node differ by ~1e-9 between identical renders; two inputs commute exactly, so the tree is repeatable.
+    let tree: AudioNode[] | null = null;
+    if (tap) { const mk = (d: AudioNode) => { const n = c.createGain(); n.connect(d); return n; }; const top = mk(rlp); const h = [mk(top), mk(top)]; tree = [mk(h[0]), mk(h[0]), mk(h[1]), mk(h[1])]; }
     const seg = (k: number) => {
       if (segs[k]) return segs[k];
       const conv = c.createConvolver(); conv.normalize = false;
       const dl = c.createDelay(2); dl.delayTime.value = (k * REV_DUR) / REV_SEGS;
-      rin.connect(conv); conv.connect(dl); dl.connect(rlp);
+      rin.connect(conv); conv.connect(dl); dl.connect(tree ? tree[(k * tree.length / REV_SEGS) | 0] : rlp);
       return (segs[k] = { conv, at: k });
     };
     const fill = (b: AudioBuffer) => {
@@ -337,7 +358,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function recipe(name: string, key: Key, v: number, force = false, cb?: (b: AudioBuffer | null) => void): AudioBuffer | null {
     const job: Job = { t: 'recipe', name, key, v, seed };
     if (sync) {
-      if (!force && synthSpent > SYNTH_BUDGET_MS) return peek(job);
+      if (!force && !tap && synthSpent > SYNTH_BUDGET_MS) return peek(job);
       const t0 = perf();
       const b = obtain(job, { sync: true, ctx });
       synthSpent += perf() - t0;
@@ -379,10 +400,12 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     let head: AudioNode = level;
     if (l.lp) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = l.lp; f.Q.value = 0.6; f.connect(level); head = f; }
     level.connect(cut);
-    if (l.kind === 'bed' && l.pan && canPan) { const p = (c as AudioContext).createStereoPanner(); p.pan.value = l.pan; cut.connect(p); p.connect(dest); p.connect(send); }
-    else { cut.connect(dest); cut.connect(send); }
-    send.connect(sendDest);
-    const rt: LayerRt = { def: l, key, input: head, level, cut, send, oscs: [], noises: [], rng: rngFrom(seed ^ hash(salt + ':' + l.id)), next: NaN, step: 0, density: 0, pitch: 1, vary: 0 };
+    const src = salt.startsWith('trace:') ? `${salt}:${l.id}` : l.id;
+    const out = gateTo(src, dest);
+    if (l.kind === 'bed' && l.pan && canPan) { const p = (c as AudioContext).createStereoPanner(); p.pan.value = l.pan; cut.connect(p); p.connect(out); p.connect(send); }
+    else { cut.connect(out); cut.connect(send); }
+    send.connect(gateTo(src, sendDest));
+    const rt: LayerRt = { def: l, key, input: head, level, cut, send, oscs: [], noises: [], rng: rngFrom(seed ^ hash(salt + ':' + l.id)), next: NaN, step: 0, density: 0, pitch: 1, vary: 0, src };
     if (l.kind === 'bed') buildBed(g, rt, l, key);
     return rt;
   }
@@ -623,9 +646,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       f.exponentialRampToValueAtTime(16000, t + 12);
     } catch { /* ignore */ }
     const swell = recipe('fogSwell', g.def.key, 0, true);
-    if (swell) playBuf(swell, g.out, t, 0.22 * (calm() ? 0.7 : 1), 0, null, g.send, 0.5, worldEnds, MAX_WORLD_VOICES + 2);
+    if (swell && playBuf(swell, gateTo('crisis', g.out), t, 0.22 * (calm() ? 0.7 : 1), 0, null, gateTo('crisis', g.send), 0.5, worldEnds, MAX_WORLD_VOICES + 2)) tap?.onVoice?.({ source: 'crisis', at: t, dur: swell.duration, grid: false });
     const bell = recipe(g.def.crisis.recipe, g.def.key, 0, true);
-    if (bell) playBuf(bell, g.out, t + 0.6, g.def.crisis.gain * (calm() ? 0.7 : 1), 0, null, g.send, 0.6, worldEnds, MAX_WORLD_VOICES + 2);
+    if (bell && playBuf(bell, gateTo('crisis', g.out), t + 0.6, g.def.crisis.gain * (calm() ? 0.7 : 1), 0, null, gateTo('crisis', g.send), 0.6, worldEnds, MAX_WORLD_VOICES + 2)) tap?.onVoice?.({ source: 'crisis', at: t + 0.6, dur: bell.duration, grid: false });
   }
 
   function birdsReturn(g: Graph): void {
@@ -649,6 +672,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       g.tempo += (g.tempoTarget - g.tempo) * (1 - Math.exp(-dt / 2));
       g.beat += (dt * g.tempo) / 60;
       g.beatAt = t;
+      tap?.onTick?.({ t, beat: g.beat, tempo: g.tempo, sector: g.sector });
       if (!g.mix) continue;
       for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, horizon);
       if (g.mix.stress > 0.01 && !g.dieAt) blackouts(g, t);
@@ -712,7 +736,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const [p0, p1] = l.pan ?? [0, 0];
     const pan = p0 + (p1 - p0) * rt.rng();
     const sweep = l.sweep ? (rt.rng() < 0.5 ? -1 : 1) : 0;
-    playBuf(b, rt.input, at, vel, pan, sweep ? sweep : null, null, 0, worldEnds, MAX_WORLD_VOICES, rate);
+    const ok = playBuf(b, rt.input, at, vel, pan, sweep ? sweep : null, null, 0, worldEnds, MAX_WORLD_VOICES, rate);
+    if (ok) tap?.onVoice?.({ source: rt.src, at, dur: b.duration / rate, grid: !!l.grid });
     if ((rt.sour ?? 0) > 0.3) playBuf(b, rt.input, at + 0.018, vel * 0.7 * (rt.sour ?? 0), -pan, null, null, 0, worldEnds, MAX_WORLD_VOICES, rate * (1 + 0.035 * (rt.sour ?? 0)));
   }
 
@@ -788,7 +813,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       lastLetter = t;
       if (close) gain *= 0.6;
       const fam = d.cast ? CAST_FAMILY[d.cast] ?? (d.cast in MOTIFS ? d.cast : null) : null;
-      if (fam && !close) after = () => { const mb = recipe(`ui:${pal}:motif.${fam}`, key, 0, true); if (mb) playBuf(mb, uiBus!, now() + 0.01 + MOTIF_AT[pal as keyof typeof MOTIF_AT], gain * 0.8, 0, null, revIn, 0.3, uiEnds, MAX_UI_VOICES + 1); };
+      if (fam && !close) after = () => { const mb = recipe(`ui:${pal}:motif.${fam}`, key, 0, true); if (mb) playBuf(mb, uiOut(), now() + 0.01 + MOTIF_AT[pal as keyof typeof MOTIF_AT], gain * 0.8, 0, null, uiRev(), 0.3, uiEnds, MAX_UI_VOICES + 1); };
     }
     if (kind === 'seam') {
       const dep = Math.max(0, Math.min(1, d.depth ?? 0));
@@ -824,9 +849,10 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (let i = sellEnds.length - 1; i >= 0; i--) if (sellEnds[i] <= t) sellEnds.splice(i, 1);
       if (sellEnds.length >= MAX_SELL_VOICES) return;
     }
+    if (tap?.variant != null && nv > 1) v = Math.abs(Math.round(tap.variant)) % nv;
     const pan = Math.max(-0.6, Math.min(0.6, d.pan ?? 0));
     const go = (b: AudioBuffer, at: number) => {
-      const ok = playBuf(b, uiBus!, at, gain, pan, null, kind === 'sell' || kind === 'cannotAfford' ? null : revIn, 0.25, uiEnds, MAX_UI_VOICES, rate);
+      const ok = playBuf(b, uiOut(), at, gain, pan, null, kind === 'sell' || kind === 'cannotAfford' ? null : uiRev(), 0.25, uiEnds, MAX_UI_VOICES, rate);
       if (ok && kind === 'sell') sellEnds.push(at + b.duration / rate);
       const dk = DUCKS[kind];
       if (ok && dk && duck) {
@@ -855,8 +881,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   }
 
   function sourPair(b: AudioBuffer, at: number, gain: number): void {
-    playBuf(b, uiBus!, at, gain * 0.9, -0.2, null, revIn, 0.3, uiEnds, MAX_UI_VOICES, 0.945);
-    playBuf(b, uiBus!, at + 0.022, gain * 0.7, 0.2, null, revIn, 0.3, uiEnds, MAX_UI_VOICES, 0.97);
+    playBuf(b, uiOut(), at, gain * 0.9, -0.2, null, uiRev(), 0.3, uiEnds, MAX_UI_VOICES, 0.945);
+    playBuf(b, uiOut(), at + 0.022, gain * 0.7, 0.2, null, uiRev(), 0.3, uiEnds, MAX_UI_VOICES, 0.97);
   }
 
   /* ---------------- the first ending's credits ---------------- */
@@ -867,8 +893,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const c = ctx, t = now();
     const out = c.createGain(); out.gain.value = 0;
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.5;
-    lp.connect(out); out.connect(worldBus);
-    const send = c.createGain(); send.gain.value = 0.35; out.connect(send); if (revIn) send.connect(revIn);
+    lp.connect(out); out.connect(gateTo('credits', worldBus));
+    const send = c.createGain(); send.gain.value = 0.35; out.connect(send); if (revIn) send.connect(gateTo('credits', revIn));
     const oscs: OscillatorNode[] = [], lfos: OscillatorNode[] = [];
     const rng = rngFrom(seed ^ 0xe7d);
     // The held chord: tonic, fifth and octave low, the ninth above; each voice breathes on its own slow cycle, so the

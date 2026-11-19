@@ -5,4 +5,4 @@ export { SOUNDSCAPES, registerSoundscape, soundscapeFor, paletteFor } from './de
 export type { SoundscapeDef, LayerDef, BedDef, HitsDef, Drive, Src } from './defs';
 export { KEYS } from './music';
 export { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES } from './types';
-export type { Soundscape, SoundscapeOptions, SoundEventKind, SoundEventDetail, Volumes, SoundscapeStats, Mix, LayerMix } from './types';
+export type { Soundscape, SoundscapeOptions, SoundscapeTap, SoundEventKind, SoundEventDetail, Volumes, SoundscapeStats, Mix, LayerMix } from './types';

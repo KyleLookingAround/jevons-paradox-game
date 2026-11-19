@@ -167,7 +167,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey]];
   // Panels of the feed that only draw (no notes, sounds or moments from their update): while far from the screen they
   // are not patched; one comes up to date as it nears the screen, and all of them before a jump to a card (perf pass 2).
-  const nearOnly = new Set<Comp>([ups, budget, divs, commons, orders, survey]);
+  // (Not the improvements, whose cards other parts of the page find and point at, nor the survey, whose reveal is a
+  // moment of its own.)
+  const nearOnly = new Set<Comp>([budget, divs, commons, orders]);
   const stale = new Set<Comp>();
   for (const c of nearOnly) watchNear(c.el, () => { if (stale.delete(c)) c.update(); });
   function flush(): void { for (const c of stale) c.update(); stale.clear(); }
@@ -408,7 +410,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     if (!quick) timed('ui.lapse', () => lapse.tick());
     for (const [n, c] of comps) {
       if (quick && !quickSet.has(c)) continue;
-      if (nearOnly.has(c) && !isNear(c.el)) { stale.add(c); continue; }
+      // A hidden panel always patches (its update is what may show it; hidden, it is never "near").
+      if (nearOnly.has(c) && !c.el.hidden && !isNear(c.el)) { stale.add(c); continue; }
       stale.delete(c);
       timed('ui.' + n, () => c.update());
     }

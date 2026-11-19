@@ -911,7 +911,7 @@ html[data-look='agentic'] .topbar .num { font-family: var(--f-grot); }
 /* Perf pass 2: panels of the feed off the screen are not styled, laid out or painted (a look change restyles the whole
    page; a long improvements list need not be part of it). They remember their last height, so scrolling does not jump. */
 .feed > .upgrades, .feed > .budget, .feed > .levers, .feed > .commons, .feed > .orders, .feed > .survey, .feed > .divs,
-.feed > .letters, .feed > .run-foot { content-visibility: auto; contain-intrinsic-size: auto 480px; }
+.feed > .run-foot { content-visibility: auto; contain-intrinsic-size: auto 480px; }
 ::view-transition-group(root) { animation-duration: .32s; }
 ::view-transition-old(world) { animation: vt-out .32s ease-in both; }
 ::view-transition-new(world) { animation: vt-in .36s cubic-bezier(.2, .7, .2, 1) both; }

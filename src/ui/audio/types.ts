@@ -100,6 +100,30 @@ export interface SoundscapeOptions {
   seed?: number;
   /** Add an analyser on the output so stats() reports the level (demo/diagnostics; small extra cost). */
   meter?: boolean;
+  /** Export only (offline: honoured only together with `context`): taps for the DAW export. Every field is optional and
+   *  off by default; without `tap` the graph is exactly the game's. With `tap`, offline synthesis is never deferred to
+   *  a later tick (so renders do not depend on how long synthesis took). */
+  tap?: SoundscapeTap;
+}
+
+/** Export taps (see SoundscapeOptions.tap). Sources: a layer id of the Industry's def, 'crisis' (the world's crisis
+ *  moment), 'lever:<kind>', 'watch', 'trace:<sector>:<layer>' (heritage), 'credits' (the ending's bed), 'ui'. */
+export interface SoundscapeTap {
+  /** Gain for each source (normally 0 or 1), read once when the source's nodes are built: a gate is inserted after the
+   *  source, on its dry path and on its reverb send, so soloing changes nothing else (scheduling, voice caps and seeds
+   *  are the same whatever is gated). Without it no gates exist. */
+  gate?: (source: string) => number;
+  /** The shared room's return muted (a dry render). */
+  dry?: boolean;
+  /** false: the master bus goes straight to the output, past the limiter (stems must sum; a limiter is not linear). */
+  limiter?: boolean;
+  /** Every world voice as it is scheduled: its source, start (s, context time), length (s), and whether it is on the
+   *  beat grid (a pulse layer) or an event at a seeded random time. */
+  onVoice?: (v: { source: string; at: number; dur: number; grid: boolean }) => void;
+  /** Every scheduler tick, for each live graph: the time, the beat count and the tempo in use (bpm). */
+  onTick?: (v: { t: number; beat: number; tempo: number; sector: string }) => void;
+  /** Interface sounds with variants (sell 0–5, buy 0–2) play this variant instead of a seeded choice. */
+  variant?: number;
 }
 
 export interface SoundscapeStats {

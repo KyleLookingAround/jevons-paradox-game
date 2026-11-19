@@ -4,7 +4,7 @@ import { createSoundscape } from '../engine';
 import { SOUNDSCAPES, registerSoundscape, type SoundscapeDef, type LayerDef } from '../defs';
 import { demoView, runView, viewOf, preset, type PresetName } from '../views';
 import type { SceneView } from '../../scene/types';
-import type { SoundEventKind, SoundEventDetail } from '../types';
+import type { SoundEventKind, SoundEventDetail, SoundscapeTap } from '../types';
 
 const SR = 48000;
 
@@ -19,13 +19,15 @@ export interface Case {
   acts?: [number, (ss: ReturnType<typeof createSoundscape>) => void][];
   calm?: boolean;
   analyseFrom?: number;
+  /** Export taps (dry, limiter, gates). */
+  tap?: SoundscapeTap;
 }
 
 interface Rendered { l: Float32Array; r: Float32Array; ms: number }
 
 async function renderCase(c: Case): Promise<Rendered> {
   const ctx = new OfflineAudioContext(2, Math.round(c.dur * SR), SR);
-  const ss = createSoundscape({ context: ctx, calm: c.calm ?? false, clock: () => ctx.currentTime });
+  const ss = createSoundscape({ context: ctx, calm: c.calm ?? false, clock: () => ctx.currentTime, ...(c.tap ? { tap: c.tap } : {}) });
   // Every action is attached to a render quantum; one suspend per quantum, all scheduled before rendering.
   const acts = new Map<number, (() => void)[]>();
   const put = (t: number, f: () => void) => { const q = Math.round((t * SR) / 128); const a = acts.get(q); if (a) a.push(f); else acts.set(q, [f]); };
@@ -198,7 +200,26 @@ function soloDef(sector: string, layer: LayerDef): SoundscapeDef {
   return { ...d, layers: [l], trace: [] };
 }
 
+/** FNV-1a over the float bytes of both channels: identical renders give identical hashes. */
+function hashOf(l: Float32Array, r: Float32Array): string {
+  let h = 0x811c9dc5;
+  for (const ch of [l, r]) {
+    const u = new Uint8Array(ch.buffer, ch.byteOffset, ch.byteLength);
+    for (let i = 0; i < u.length; i++) { h ^= u[i]; h = Math.imul(h, 0x01000193); }
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
 const api = {
+  /** Export work: the exact render of a held preset (twice: the first warms the synthesis bank, so the second does
+   *  not depend on how long synthesis took), hashed. Used to prove the live mix is unchanged by additive options. */
+  async hash(sector: string, p: PresetName, dur = 14, events: [number, SoundEventKind][] = [], tap?: SoundscapeTap) {
+    const c: Case = { name: `${sector}-${p}`, dur, tap, view: p ? hold(demoView(sector, p)) : () => null, events: events.map(([t, k]) => [t, k, sector] as [number, SoundEventKind, string]) };
+    await renderCase(c);
+    const out = await renderCase(c);
+    const a = analyse(out.l, out.r, 0);
+    return { hash: hashOf(out.l, out.r), rmsDb: a.rmsDb, peakDb: a.peakDb, l: out.l, r: out.r };
+  },
   async preset(sector: string, p: PresetName, dur = 14, calm = false, img = false) {
     const c: Case = { name: `${sector}-${p}`, dur, view: hold(demoView(sector, p)), calm };
     const out = await renderCase(c);
