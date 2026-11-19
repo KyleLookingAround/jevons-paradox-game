@@ -89,6 +89,8 @@ async function makeStates() {
   out.mid = await page.evaluate(() => {
     const r = window.rebound, m = r.model, c = r.content;
     let s = r.state;
+    // every system unlocked (the unfolding), so the page measured is the page as it was before it: like for like
+    s = { ...s, meta: { ...s.meta, features: Object.fromEntries(Object.keys(c.features || {}).map((k) => [k, 0])) } };
     const founded = () => Object.values(s.sectors.steam.apps).filter((a) => a.founded).length;
     for (let round = 0; round < 80; round++) {
       s = { ...s, capital: s.capital + 500 * Math.pow(1.6, round) };
@@ -109,6 +111,7 @@ async function makeStates() {
   out.late = await page.evaluate(() => {
     const r = window.rebound, m = r.model, c = r.content;
     let s = r.state;
+    s = { ...s, meta: { ...s.meta, features: Object.fromEntries(Object.keys(c.features || {}).map((k) => [k, 0])) } };
     const sectors = { ...s.sectors };
     for (const id of c.sectorOrder) {
       if (sectors[id].open) continue;

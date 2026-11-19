@@ -76,8 +76,8 @@ declare const process: { argv: string[]; exit(code?: number): never };
 
 /* ---------------- arguments ---------------- */
 
-type Strategy = 'efficiency' | 'levers' | 'idle' | 'budget' | 'forks' | 'peakdraw' | 'mixed' | 'market' | 'charter';
-const STRATEGIES: Strategy[] = ['efficiency', 'levers', 'idle', 'budget', 'forks', 'peakdraw', 'mixed', 'market', 'charter'];
+type Strategy = 'efficiency' | 'levers' | 'idle' | 'budget' | 'forks' | 'peakdraw' | 'mixed' | 'market' | 'charter' | 'human';
+const STRATEGIES: Strategy[] = ['efficiency', 'levers', 'idle', 'budget', 'forks', 'peakdraw', 'mixed', 'market', 'charter', 'human'];
 const argv = process.argv.slice(2);
 const flag = (name: string, dflt: string): string => {
   const a = argv.find((x) => x === `--${name}` || x.startsWith(`--${name}=`));
@@ -318,7 +318,7 @@ function raiseLevers(s: GameState, ctx: RunCtx): GameState {
 
 /* ---------------- the budget player ---------------- */
 
-interface BudgetMemo { revealAt: number | null; lastSpare?: number }
+interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number> }
 
 function budgetFoundOk(prev: GameState): (next: GameState, e: SectorId) => string | null {
   return (next, e) => {
@@ -403,6 +403,50 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     if (worst) {
       s = model.setLever(s, C, worst.def.id, worst.level - 1);
       ctx.ev.push({ t: s.time, text: `lever ${worst.def.id} ↓ L${worst.level - 1} (Mandate)` });
+    }
+  }
+  return s;
+}
+
+/* ---------------- the plausible human restraint player (QA, 19 Nov 2026) ---------------- */
+
+/**
+ * Restraint as a person plays it, not as the optimal bot does: before budgets, levers whenever Mandate allows; once the
+ * budget has arrived, the line is drawn HUMAN_DRAW minutes later at whatever the use is then (the middle pace once paces
+ * are offered), the cap's first level is enacted as soon as Mandate allows, and it is tightened only when the panel says
+ * "over budget" and has said so for a minute. Founds everything, buys the cheapest card, leaves the Market on.
+ */
+const HUMAN_DRAW = parseFloat(flag('human-draw', '3')) * 60;
+function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
+  if (!s.flags.revealed) return s;
+  const d0 = model.derive(s, C);
+  if (!d0.features.budget) return raiseLevers(s, ctx);
+  memo.budgetAt ??= s.time;
+  memo.overSince ??= {};
+  for (const e of ORDER) {
+    const es = s.sectors[e];
+    if (!es?.open || es.budget || s.time - Math.max(memo.budgetAt, s.time - es.openFor) < HUMAN_DRAW) continue;
+    const paces = C.sectors[e].steady?.paces ?? C.global.steady?.paces ?? [];
+    const pace = d0.features.budgetPace && paces.length >= 2 ? paces[1].id : undefined;
+    const next = model.drawBudget(s, C, e, pace);
+    if (next !== s) { s = next; ctx.firsts[`budget:${e}`] ??= s.time; ctx.ev.push({ t: s.time, text: `BUDGET ${e} drawn (human) at R ${n(s.sectors[e].budget!.r0)} W ${n(d0.wellbeing)} ${s.sectors[e].budget!.pace}` }); }
+  }
+  const d = model.derive(s, C);
+  const views = model.leverViews(s, C);
+  for (const e of ORDER) {
+    const x = d.sectors[e];
+    if (!x || x.budgetR === null) continue;
+    const cap = views.find((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
+    if (!cap) continue;
+    const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE);
+    if (over) memo.overSince[e] ??= s.time; else delete memo.overSince[e];
+    const prompted = cap.level === 0 || (over && s.time - memo.overSince[e] >= 60);
+    if (!prompted || !cap.canRaise) continue;
+    const next = model.setLever(s, C, cap.def.id, cap.level + 1);
+    if (next !== s) {
+      const w0 = d.wellbeing;
+      s = next; ctx.firsts.firstLever ??= s.time; delete memo.overSince[e];
+      ctx.ev.push({ t: s.time, text: `lever ${cap.def.id} → L${cap.level + 1} (human) W ${n(w0)} R/line ${n(x.resourceUse / x.budgetR)}` });
     }
   }
   return s;
@@ -557,6 +601,8 @@ interface RunReport {
   sectorsOpen: SectorId[];
   /** player purchases and foundings in the run */
   purchases: number;
+  /** what the player and the standing orders bought or founded in the first five minutes (ids, in order) */
+  opening5: { player: string[]; market: string[] };
   /** M2 */
   m2: {
     firstDecadeMin: number | null; firstDecadeLean: boolean | null; firstClearMin: number | null; steadyMin: number | null;
@@ -626,7 +672,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     if (PAYBACK > 0) s = model.setOrders(s, C, { market: { paybackMax: PAYBACK } });
   }
   const seenApps = new Map<string, number>();
-  const restraint = mode === 'budget' || mode === 'levers' || mode === 'market';
+  const restraint = mode === 'budget' || mode === 'levers' || mode === 'market' || mode === 'human';
   let firstDecadeLean: boolean | null = null;
   let settlements = 0;
   let marketBuys = 0;
@@ -662,6 +708,11 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
         // lines, levers, dividends)
         s = marketPlayer(s, ctx, seenApps, budgetFoundOk(s));
         if (tick5) s = holdTheLine(s, ctx, memo);
+      } else if (mode === 'human') {
+        // with the Market on (run 2 onwards), the routine cards are left to it; the player founds and chooses
+        if (model.derive(s, C).orders.market.available && s.meta.orders.market.on) s = marketPlayer(s, ctx, seenApps);
+        else { s = buyUpgrades(s, ctx, s.flags.revealed ? [] : coalQ); s = foundApps(s, ctx); }
+        if (tick5) s = humanStep(s, ctx, memo);
       } else {
         s = buyUpgrades(s, ctx);
         s = foundApps(s, ctx);
@@ -763,6 +814,11 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     }
     for (const e of s.events) if (e.seq > prev.meta.eventSeq && e.kind === 'unsettled' && e.by === 'default') forcedUnsettles++;
     if (OFFLINE_CHECK && Math.floor(s.time / 600) > Math.floor(prev.time / 600)) {
+      if ((globalThis as any).process?.env?.AWAY10) {
+        const g = model.fastForward(s, C, 600);
+        const L = g.lastOffline!.lines;
+        console.log(`  [away 10 min at ${min(s.time)}] lines ${JSON.stringify(L)} lapsed ${g.lastOffline!.lapsed.join(',') || '-'} mandate ${n(s.mandate)}→${n(g.mandate)} net/s ${n(model.derive(s, C).mandatePerSec)}`);
+      }
       const f = model.fastForward(s, C, 8 * 3600);
       const r = f.lastOffline!;
       const pending = !!model.derive(f, C).pendingReckoning;
@@ -774,7 +830,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     // about to pay a decade or a Steady State)
     if (fixedRun <= 0 && FIXED_RUN > 0 && idx >= 3 && s.time >= FIXED_RUN && !pend) { stopReason = `fixed ${min(FIXED_RUN).trim()} min`; break; }
     if (fixedRun > 0 && s.time >= fixedRun) { stopReason = `fixed ${min(fixedRun).trim()} min`; break; }
-    if (fixedRun <= 0 && !(FIXED_RUN > 0 && idx >= 3) && (mode === 'budget' || mode === 'market') && Math.floor(s.time) % 10 === 0) {
+    if (fixedRun <= 0 && !(FIXED_RUN > 0 && idx >= 3) && (mode === 'budget' || mode === 'market' || mode === 'human') && Math.floor(s.time) % 10 === 0) {
       hist.push([s.time, d.hindsightIfReckonNow]);
       const old = hist.find(([t]) => t >= s.time - 600);
       const T = d.hindsightTerms;
@@ -888,6 +944,10 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     click, crisisPopLoss, exitCards: { checked, failing },
     sectors, steadyYearsAll: s.steadyYearsAll, won: s.flags.won, slots: s.meta.slots, loadout: s.meta.loadout,
     peakWellbeing: s.run.peakWellbeing, yearsAtTarget: s.run.yearsAtTarget, sectorsOpen: open(), purchases: bt.length,
+    opening5: {
+      player: (s.run.opening ?? []).filter((a) => a.t <= 300 && a.by === 'player').map((a) => a.id.split('.')[1]),
+      market: (s.run.opening ?? []).filter((a) => a.t <= 300 && a.by !== 'player').map((a) => a.id.split('.')[1]),
+    },
     m2: {
       firstDecadeMin: ctx.firsts.firstDecade !== undefined ? ctx.firsts.firstDecade / 60 : null, firstDecadeLean,
       firstClearMin: ctx.firsts.firstClear !== undefined ? ctx.firsts.firstClear / 60 : null,
@@ -948,11 +1008,12 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
         ` · settled ${M.settlements}/${M.settledAtEnd}${SETTLE ? ` (defence ≤ ${(M.defenceShare * 100).toFixed(0)}% of Mandate, forced unsettles ${M.forcedUnsettles})` : ''} commons ${M.commonsLevels} buys player ${R.purchases} market ${M.marketBuys}${f.firstMarket !== undefined ? ` (first ${f.firstMarket.toFixed(1)})` : ''} charter ${M.charter ?? '-'}` +
         ` · terms W ${T.wellbeing.toFixed(0)} B ${T.budget.toFixed(0)} U ${T.unburnt.toFixed(0)} F ${T.backfire.toFixed(0)} S ${T.sectorsReached.toFixed(0)} St ${T.steady.toFixed(0)} Se ${(T.settled ?? 0).toFixed(0)}` +
         ` · features ${Object.entries(f).filter(([k]) => k.startsWith('feature:')).map(([k, v]) => `${k.slice(8)}@${v.toFixed(1)}`).join(',') || '-'}` +
+        (mode === 'human' ? ` · first 5 min: player ${R.opening5.player.join(' ')} | market ${R.opening5.market.join(' ')}` : '') +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }
     s = model.reckon(r.s, C);
     if (mode !== 'idle') {
-      const sp = spendHindsight(s, mode === 'mixed' || mode === 'charter' ? 'budget' : mode === 'market' ? 'efficiency' : mode);
+      const sp = spendHindsight(s, mode === 'mixed' || mode === 'charter' ? 'budget' : mode === 'market' ? 'efficiency' : mode === 'human' ? 'levers' : mode);
       s = sp.s;
       if (sp.bought.length) log(`  spent Hindsight on: ${sp.bought.join(', ')} (left ${n(s.meta.hindsight)}); loadout ${s.meta.loadout.join(', ') || '—'}`);
     }

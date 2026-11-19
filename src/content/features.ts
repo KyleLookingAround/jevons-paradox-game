@@ -29,9 +29,10 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
     intro: 'Parish registers record more mouths; the vicar orders more pews',
     name: 'People',
   },
-  /* Run 2, five minutes in: the opening has been replayed once by hand. */
+  /* The first Reckoning: the Market buys run 2's routine opening cards itself from the first minute (QA B7: run 2 must
+   * not open as run 1 did), so the player's first decisions are foundings and choices. */
   market: {
-    when: { all: [rk(1), { stat: 'time', op: '>=', value: 300 }] },
+    when: rk(1),
     intro: 'Engine makers now call unasked; routine orders place themselves',
     name: 'The Market',
   },

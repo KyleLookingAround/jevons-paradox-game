@@ -14,7 +14,7 @@ import { computeFlows } from './flows';
 import { headline, withNews } from './headlines';
 import { leverLevelDef, leverNetUpkeep, leverReachable, leverVisible, recycleOptions, recycleOf } from './levers';
 import { featureOn } from './features';
-import { newBudget, pacesOf } from './steady';
+import { budgetROf, isWithin, newBudget, pacesOf } from './steady';
 import { fin } from './util';
 
 /** Largest number of lever levels one setLever call may climb (guards unbounded repeat). */
@@ -64,9 +64,15 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const ev: EvDraft[] = [];
   let sectors = state.sectors;
   let run = state.run;
-  if (!state.sectors[def.sector]?.budget && f && f.R > 0 && featureOn(content, state.meta, 'budget')) {
+  const es0 = state.sectors[def.sector];
+  if (!es0?.budget && f && f.R > 0 && featureOn(content, state.meta, 'budget')) {
     sectors = drawBudgetAt(state, content, def.sector, f.R, fl.wellbeing, items, ev, by);
     if (by === 'player' && run.firstBudgetAt === null) run = { ...run, firstBudgetAt: state.time };
+  } else if (def.kind === 'cap' && cur.level === 0 && es0?.budget && f && f.R > 0) {
+    // QA (B17): a cap enacted over a line the economy has outgrown would cut use to the old line at a stroke; it redraws
+    // the line at today's use instead, at its own pace (the streak is already broken while over the line)
+    const bR = budgetROf(es0, content.sectors[def.sector], content, state.time);
+    if (bR !== null && !isWithin(f.R, bR)) sectors = drawBudgetAt(state, content, def.sector, f.R, fl.wellbeing, items, ev, by, es0.budget.pace);
   }
   const year = calendarYear(state, content);
   items.push(headline(state, content, 'leverEnacted', state.time, { year }, def.sector));

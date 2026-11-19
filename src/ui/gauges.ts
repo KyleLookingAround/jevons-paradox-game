@@ -10,6 +10,7 @@ import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
 import type { GameEvent } from '../types';
 import { reducedMotion, replay } from './dom';
+import { overText } from './panels';
 
 const CX = 60, CY = 60, R = 47;
 const pt = (t: number, r = R): [number, number] => {
@@ -352,7 +353,7 @@ export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
       cls(budTxt, 'ok', !!e.decoupling); cls(budTxt, 'over', false);
     } else {
       const over = bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN;
-      setText(budTxt, `▲ Over budget by ${pct(over, false)}`);
+      setText(budTxt, `▲ ${overText(over, 'Over budget by')}`);
       setAttr(budTxt, 'title', null);
       cls(budTxt, 'ok', false); cls(budTxt, 'over', true);
     }

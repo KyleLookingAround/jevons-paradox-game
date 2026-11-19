@@ -71,6 +71,8 @@ export const global: GlobalParams = {
   demography: { transitionWellbeing: 46 },
   steady: {
     budgetDeclinePerDecade: 0.05,
+    /* QA (B2): a line never falls below half the use it was drawn at (a line left alone for hours stopped at nothing). */
+    budgetFloor: 0.5,
     /* A standing cap draws its line 36 model years (12 minutes) into an industry: across the grown economy. */
     standingDrawYears: 36,
     decadeYears: 10,

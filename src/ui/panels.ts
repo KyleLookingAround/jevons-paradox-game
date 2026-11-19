@@ -307,6 +307,10 @@ export function pacesFor(ctx: Ctx, id: string): PaceDef[] {
   return def?.steady?.paces ?? g?.paces
     ?? [{ id: 'gentle', name: 'Gentle', declinePerDecade: def?.steady?.declinePerDecade ?? g?.budgetDeclinePerDecade ?? 0.05, dividendMul: 1 }];
 }
+/** "Over budget by 25%"; past ninefold, plain words rather than a percentage in the thousands (QA B2). */
+export function overText(over: number, lead: string): string {
+  return Number.isFinite(over) && over > 9 ? 'Far over budget' : `${lead} ${pct(over, false)}`;
+}
 const mulTxt = (m: number) => `×${Number.isInteger(m) ? m : m.toFixed(1)}`;
 
 export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
@@ -432,14 +436,20 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     const has = bR != null;
     const dw = num(e?.decadeWellbeing, num(g?.wellbeingTarget));
     const tgt = num(g?.wellbeingTarget);
+    const W = num(ctx.d?.wellbeing);
     const sdi = e?.standingDrawIn;
     if (!has && sdi != null) setText(status, `A standing cap is in force with no line to hold it to yet. Its line is drawn in ${fmt(Math.ceil(num(sdi)))} years; drawing it, or tightening the cap, draws it now.`);
     else if (!has) setText(status, `No line drawn for ${def?.name ?? 'this Industry'}. Nothing counts towards a decade or Steady State until one is.`);
-    else if (e?.withinBudget) setText(status, e.decoupling ? `Within budget · ${Math.floor(num(e.steadyYears) % dec)} of ${dec} years to the next decade` : `Within budget, but wellbeing is under ${fmt(dw)}: the years do not count.`);
-    else setText(status, `Over budget by ${pct(bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN, false)}`);
+    else if (e?.withinBudget) setText(status, e.decoupling ? `Within budget · ${Math.floor(num(e.steadyYears) % dec)} of ${dec} years to the next decade` : `Within budget, but the years wait on wellbeing: ${fmt(dw)} needed, ${fmt(Math.floor(W))} now.`);
+    else setText(status, overText(bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN, 'Over budget by'));
     cls(status, 'ok', !!e?.decoupling);
     cls(status, 'over', has && !e?.withinBudget);
-    setText(statusSub, has ? (dw < tgt - 1e-9 ? `A decade counts with wellbeing at least ${fmt(dw)}, as on the day the line was drawn.` : `A decade counts with wellbeing at the target, ${fmt(tgt)}.`) : '');
+    // What a decade still needs, in plain figures (QA B1/B28): the drawn level for a decade at all; the target for a full
+    // one (lean against full arrives with clear skies).
+    const full = !!f?.clearSkies && dw < tgt - 1e-9
+      ? (W >= tgt ? ' At the target: this decade counts in full.' : ` It counts in full with wellbeing at ${fmt(tgt)}; it stands at ${fmt(Math.floor(W))}.`)
+      : '';
+    setText(statusSub, has ? (dw < tgt - 1e-9 ? `A decade counts with wellbeing at least ${fmt(dw)}, as on the day the line was drawn.${full}` : `A decade counts with wellbeing at the target, ${fmt(tgt)}.`) : '');
     show(statusSub, has);
     const b = st?.budget;
     const held = b?.heldAt != null;
@@ -471,7 +481,10 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     show(skyCode, noSink);
     setText(skyCode, `Deleted down, not absorbed: nothing takes ${pName.toLowerCase()} away here but deletion.`);
     const cy = Math.floor(num(e?.clearYears));
-    setText(ssTxt, cy >= STEADY_STATE_YEARS ? `Steady State: ${STEADY_STATE_YEARS} years of clear skies served` : `Clear skies: ${cy} of ${STEADY_STATE_YEARS} years to Steady State`);
+    // The Steady streak counts within the line, under a clear sky, at the target: say which is missing (QA B1).
+    const wants = !e?.withinBudget ? 'the line kept' : !e?.clear ? 'a clear sky' : W < tgt ? `wellbeing at ${fmt(tgt)} (now ${fmt(Math.floor(W))})` : '';
+    setText(ssTxt, cy >= STEADY_STATE_YEARS ? `Steady State: ${STEADY_STATE_YEARS} years of clear skies served`
+      : `Clear skies: ${cy} of ${STEADY_STATE_YEARS} years to Steady State${!e?.sinkHeld && wants ? `; waiting on ${wants}` : ''}`);
     setFill(ssFill, cy / STEADY_STATE_YEARS, 100);
     cls(ss, 'on', !!e?.sinkHeld);
     show(ss, !!f?.steadyState);

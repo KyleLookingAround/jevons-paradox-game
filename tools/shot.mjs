@@ -863,14 +863,21 @@ async function realFlow(url) {
       for (const k of ['eff', 'cons', 'reb']) { await page.click(`.dial-${k} .info`); await page.waitForTimeout(200); await page.keyboard.press('Escape'); }
       await page.click('.price-row .info'); await page.waitForTimeout(200); await page.screenshot({ path: `${out}/${T}-price.png` }); await page.keyboard.press('Escape');
     });
-    await step('draw the budget, enact a lever', async () => {
+    await step('the unfolding: the reveal brings no levers or budget; levers arrive later, alone', async () => {
       await closeToasts();
-      await page.locator('.bud-draw').click(); await page.waitForTimeout(200);
-      // M2: the pace choice, then draw at the default (first) pace.
-      await page.click('.pace-box .btn.primary'); await page.waitForTimeout(300);
-      const s = await st(); if (!Object.values(s.sectors).some((x) => x.budget)) throw new Error('no budget drawn');
-      await page.locator('.budget').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/${T}-budget.png` });
+      if (await page.locator('section.budget:not([hidden])').count()) throw new Error('budget panel in run 1');
+      if (await page.locator('section.levers:not([hidden])').count()) throw new Error('levers at the reveal');
+      // Time is advanced through the console handle: the levers wait for five minutes of play and thickening smoke.
+      for (let i = 0; i < 40 && !(await page.evaluate(() => window.rebound.d.features.levers)); i++) {
+        await page.evaluate(() => { const r = window.rebound; r.ctx.state = r.model.tick(r.state, r.content, 20); });
+        await page.waitForTimeout(120);
+      }
+      if (!(await page.evaluate(() => window.rebound.d.features.levers))) throw new Error('levers never arrived');
+      await page.waitForTimeout(600);
+      if (!(await page.locator('.new-mark').count())) throw new Error('no New mark');
+      if (await page.locator('section.budget:not([hidden])').count()) throw new Error('budget panel arrived with the levers');
       await rich(0, 1e4); await page.waitForTimeout(1100);
+      await closeToasts();
       const r = page.locator('.lev-raise:not([aria-disabled="true"]):visible');
       if (!(await r.count())) throw new Error('no lever to raise');
       await r.first().click(); await page.waitForTimeout(1200);
@@ -940,6 +947,8 @@ async function makeLate(page) {
       kept.push(s);
     }
     while (kept.length > 1 && !safe(s)) s = kept.pop();
+    // a late save has met every system (the unfolding)
+    s = { ...s, meta: { ...s.meta, features: Object.fromEntries(Object.keys(c.features || {}).map((k) => [k, 0])) } };
     for (const id of c.sectorOrder) { const n = m.drawBudget(s, c, id); if (n) s = n; }
     for (const v of m.leverViews(s, c).filter((v) => v.visible && v.canRaise).slice(0, 3)) { const n = m.setLever(s, c, v.def.id, 1); if (n) s = n; }
     return m.serialize(s);

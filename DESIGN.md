@@ -63,7 +63,7 @@ effects); **Steady State** is 50 years. Redrawing resets the streak and keeps ea
 line and follow it down.
 
 *From M2:* a decade is judged against the wellbeing on the day the line was drawn (`min(target, w0 × 0.95)`), so the
-first decade comes inside run 1; Steady State additionally needs **clear skies** (pressure down to half what it was
+first decade comes soon after the line; Steady State additionally needs **clear skies** (pressure down to half what it was
 when the line was drawn, and not rising: the sink line, drawn on the sparkline and shown as the sky clearing); a line
 can be drawn Gentle, Firm or Severe; each decade offers a choice of two dividends.
 
@@ -99,14 +99,26 @@ Efficiency-only play (`bun run tools/balance.ts efficiency 1`, 19 Nov 2026):
 | 0:36–4:24 | Another engine works, seven levels (the repeatable growth card) |
 | 1:00 | Cotton mills founded |
 | 5:18 | Separate condenser (−40%). Coal use +150% within two minutes |
-| 8:36 | **The Coal Question**: the reveal. Cards gain their projection lines; the rebound meter wakes; levers and Mandate appear |
+| 8:36 | **The Coal Question**: the reveal. Cards gain their projection lines; the rebound meter wakes. Nothing else |
+| 13:36 | Smoke noticed in Parliament: the first two levers and Mandate |
 | 13:06 | Railways founded (brought within reach by the double-acting engine) |
-| 19:12 | First crisis, The Black Fog: population −8%, Mandate +150 |
+| 19:12 | First crisis, The Black Fog: population −8%, Mandate +150; the population gauge appears |
 | 40:48 | Exhaustion. Efficiency ×14.9, peak coal use ×45.6. Hindsight 72 |
 
-Run 2 opens Light & Current at 10–12 minutes (about 50 minutes in all). The restraint player (`budget`) earns its first
-decade and Steady State in run 3 (24 and 40 minutes; 1.9 h in all) and out-earns backfire 4.6× there. M2 moves the
-first decade into run 1 (about 20 minutes) and Steady State to 3–4 h.
+Run 2 opens with the Market and opens Light & Current at 10–12 minutes (about 50 minutes in all). Budgets arrive in
+run 3 (the unfolding, below); the restraint player earns its first decade about 15 minutes into run 3 and Steady State
+in run 4 (about 3.4 h in all).
+
+## The unfolding
+
+Systems arrive one at a time, each when the player has a reason to want it, never two within five minutes of play,
+each introduced by one headline and marked "New" until seen; what is locked is not shown at all. The schedule, its
+conditions and its reasons are in `design/unlock-schedule.md`; the data in `src/content/features.ts`; the rule in
+`src/types.ts` (`FeatureDef`). In short: run 1 the reveal (meter and card lines only), then two levers and Mandate,
+then the population gauge at the first crisis; run 2 the Hindsight shop and the Market, then more levers and the
+recycling choice; run 3 Charters, then the budget in its simplest form (one pace), then Tighten, the dividend choice,
+the pace and clear skies, each a decade later; run 4 the Commons and Steady State; run 5 Settlement. Once arrived, a
+system stays for good.
 
 ## Industries and Ages
 

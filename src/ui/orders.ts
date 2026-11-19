@@ -104,7 +104,7 @@ export function buildOrders(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void 
           onclick: () => patch({ market: { paybackMax: sec } }) }, short(sec));
       }));
     }
-    setText(mPayTxt, ov.market.on ? `Buys what pays back within ${span(num(ov.market.paybackMax))}: improvements and new uses, one at a time in each Industry.` : 'Off: nothing is bought unless you buy it.');
+    setText(mPayTxt, ov.market.on ? `Buys what pays back within ${span(num(ov.market.paybackMax))}: improvements and new uses, one at a time in each Industry.` : 'Off: nothing is bought unless you buy it. It stays off from run to run until it is switched on again.');
     const sk = open.join(',');
     if (sk !== secKey) {
       secKey = sk;

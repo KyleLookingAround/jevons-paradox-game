@@ -2173,6 +2173,10 @@ export interface ModelApi {
    * lever (M1 balance: from any level) draws the sector's budget at the current R if it has none.
    * M2: the line it draws takes the default pace, w0 = Derived.wellbeing and p0 = the sector's pressure, and sets
    * run.firstBudgetAt if null. Refused for a settled sector's levers. Event 'leverEnacted' on raises.
+   * The unfolding / QA (B17): raising a CAP lever from level 0 while the sector is over its budget line
+   * (R > budgetR × (1 + BUDGET_TOLERANCE)) first redraws the line at the current R, at the line's own pace (as drawBudget
+   * would: w0, p0, streaks reset; decades kept), so a cap never cuts use to a line the economy has outgrown. No line is
+   * drawn by a raise while the 'budget' feature is locked.
    */
   setLever(state: GameState, content: Content, leverId: string, level: number): GameState;
   /** M1: choose where a duty or cap lever's revenue goes. Refused for options the lever does not offer. Free.

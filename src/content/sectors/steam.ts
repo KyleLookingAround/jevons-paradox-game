@@ -146,7 +146,7 @@ const sector: SectorDef = {
       halfPrice: 0.052,
       saturation: 40_000,
       steepness: 4,
-      visibleBelow: 0.1, // unfolding balance: 0.1 (not 0.09), within a decade of the Cornish engine in a rich run 4
+      visibleBelow: 0.09,
       foundCost: 30_000,
     },
   ],

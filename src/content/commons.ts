@@ -40,8 +40,9 @@ export const commons: CommonsDef[] = [
     blurb: 'The Act of 1846 lets a borough build them out of the rates. Hot water for the whole street, heated by the ton.',
     cost: 24_000, mandateCost: 60,
     wellbeing: { max: 1.5, perLevel: 3 },
-    /* Unfolding balance: 55 (not 50), so the Commons add at least 2% to Steam's demand at the run-4 end state. */
-    intensity: { sector: 'steam', perLevel: 55 },
+    /* Unfolding balance: 80 (not 50), so the Commons add at least 2% to Steam's demand at the restraint player's run-4
+     * end state (budgets from run 3 leave a larger Steam economy there). */
+    intensity: { sector: 'steam', perLevel: 80 },
   },
   {
     id: 'commons.park', name: 'People’s park', icon: 'park', sector: 'steam',
@@ -57,7 +58,7 @@ export const commons: CommonsDef[] = [
     cost: 36_000,
     wellbeing: { max: 1, perLevel: 2 },
     /* Lit by gas once Light is open; and what is taught is engines. */
-    intensity: { sector: 'light', perLevel: 6 },
+    intensity: { sector: 'light', perLevel: 7 } /* unfolding balance: Light's projects up a fifth, ≥ 2% of its demand */,
     effects: [{ type: 'etaMul', sector: 'steam', value: 1.03 }],
     requires: { owns: 'steam.condenser', label: 'Own the Separate condenser' },
   },
@@ -68,14 +69,14 @@ export const commons: CommonsDef[] = [
     blurb: 'Mr Ewart’s Act, 1850: the rate may build the room but not buy the books. Readers stay until the gas is turned down, later every year.',
     cost: 60_000, mandateCost: 100,
     wellbeing: { max: 1.5, perLevel: 3 },
-    intensity: { sector: 'light', perLevel: 15 },
+    intensity: { sector: 'light', perLevel: 18 },
   },
   {
     id: 'commons.clock', name: 'Town clock', icon: 'clock', sector: 'light',
     blurb: 'Four faces, gas-lit from behind, on the corporation’s new tower. Everyone knows the hour now, the foreman included.',
     cost: 27_000,
     wellbeing: { max: 0.8, perLevel: 1.6 },
-    intensity: { sector: 'light', perLevel: 8 },
+    intensity: { sector: 'light', perLevel: 10 },
     /* Time discipline: the night shift starts on the stroke. */
     effects: [sat('light', 1.03, 'light.nightShifts')],
   },
@@ -111,7 +112,8 @@ export const commons: CommonsDef[] = [
     blurb: 'Amsterdam, 2009: volunteers, soldering irons and a table of broken things. A mended laptop is a cheap laptop, and the town buys another.',
     cost: 3_000_000,
     wellbeing: { max: 0.5, perLevel: 1 },
-    intensity: { sector: 'compute', perLevel: 50_000 },
+    /* Unfolding balance: 30,000 (not 50,000): under 15% of Compute's demand in the restraint player's run 4. */
+    intensity: { sector: 'compute', perLevel: 30_000 },
     effects: [capCost('compute', 0.98)],
   },
 
