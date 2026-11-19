@@ -102,7 +102,7 @@ const BASE = `
    Sprites (HTML) in a 600×400 px plane scaled to the stage; every animation is transform/opacity on an HTML element
    so it runs on the compositor. Keyframes hold no var(): per-sprite values are inline or Web Animations. */
 .scn-fxl{position:absolute;left:0;top:0;width:600px;height:400px;transform-origin:0 0;transform:scale(var(--k,1));pointer-events:none;overflow:visible}
-.scn-fxl>.fx{position:absolute;width:0;height:0;transform-origin:0 0}
+.scn-fxl>.fx{position:absolute;width:1px;height:1px;transform-origin:0 0}
 .scn .fx{display:none}
 .scn .fx.on{display:block}
 .scn .spr{position:absolute;left:0;top:0;overflow:visible}

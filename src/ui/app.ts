@@ -1,7 +1,7 @@
 // Assembles the page and keeps the layout in step with the state. Holds no game rules.
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, openSectors, lookFor, accentFor, ageOfSector, sectorIds, reckoningOffered } from './ctx';
-import type { GameState, SectorId } from '../types';
+import type { GameEvent, GameState, SectorId } from '../types';
 import { h, setText, show, cls, setAttr } from './dom';
 import { buildTopbar, buildTabs } from './bar';
 import { buildGauges } from './gauges';
@@ -9,12 +9,14 @@ import { buildNews, buildWorld, buildDock } from './world';
 import { buildUpgrades, buildLevers, buildBudget } from './panels';
 import {
   buildSheets, buildToasts, formulaSheet, menuSheet, shopSheet, confirmReckonSheet, pendingSheet, summarySheet, winSheet, lockedSheet,
-  unreadSaveSheet, forkSheet, type MenuHooks, type Sheets,
+  unreadSaveSheet, forkSheet, settleSheet, type MenuHooks, type Sheets,
 } from './sheets';
-import { fmt } from './fmt';
+import { fmt, num, lower } from './fmt';
 import { createAfford, type AffordState } from './afford';
 import { reducedMotion } from './dom';
 import { timed } from './prof';
+import { buildAway } from './away';
+import { sound } from './sound';
 
 export interface UI {
   update(): void;
@@ -39,6 +41,10 @@ export interface UI {
   confirmFork(id: string, onYes: () => void): void;
   /** Run `apply` (which switches the selected Industry) inside one composed page transition where the browser can. */
   composeSwitch(from: SectorId, to: SectorId, apply: () => void): void;
+  /** New GameEvents (events.ts hands over only unseen ones; none after a catch-up). */
+  onEvents(ev: GameEvent[]): void;
+  /** Show the "While you were away" ledger if the current report has not been shown. */
+  awayCheck(): void;
 }
 
 const THEME_COLOUR: Record<string, string> = {
@@ -66,7 +72,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const news = buildNews(ctx);
   const world = buildWorld(ctx);
   const ups = buildUpgrades(ctx);
-  const budget = buildBudget(ctx);
+  const budget = buildBudget(ctx, { confirmSettle: (id, yes) => settleSheet(ctx, sheets, id, yes) });
   const levs = buildLevers(ctx);
 
   const afford = createAfford(ctx);
@@ -80,6 +86,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   let liveKey = '', liveAt = 0, liveTimer = 0;
 
   const onboard = h('p', { class: 'onboard', hidden: true });
+  const away = buildAway(ctx, (t) => { live.textContent = t; });
   const hb = h('b', { class: 'num' });
   const reckonBtn = h('button', { class: 'btn', type: 'button', onclick: () => ui.confirmReckoning() }, 'Call a Reckoning');
   const foot = h('footer', { class: 'run-foot' },
@@ -89,7 +96,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // Improvements sit above the world so that a phone shows the first purchase above the fold.
   // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
   // improvements (the affordable chip by the sell button covers the rest).
-  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, onboard, world.el, news.el, ups.el, budget.el, levs.el, foot);
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, onboard, world.el, news.el, ups.el, budget.el, levs.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, toasts.el, live);
 
   // A crisis is one event: the picture's fog (the scene), the headline (the broadsheet) and the gauges arrive together.
@@ -100,11 +107,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     setTimeout(() => cockpit.classList.remove('m-crisis'), 2400);
   });
 
-  const comps: [string, Comp][] = [['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs]];
+  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs]];
 
   let look = '', accent: string | null | undefined;
-  let knownOpen: Set<SectorId> | null = null;
-  let knownSteady: Set<SectorId> | null = null;
   let wasWon = !!ctx.state.flags?.won;
   let onboardState: 'show' | 'fading' | 'gone' | '' = '';
 
@@ -144,7 +149,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       unreadSaveSheet(sheets, raw, info ? { info, restore: () => hooks.restoreBackup() } : undefined);
     },
     blocking: () => sheets.blocking(),
-    reset() { world.reset(); knownOpen = null; knownSteady = null; wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
+    reset() { world.reset(); wasWon = !!ctx.state.flags?.won; onboardState = ''; liveKey = ''; },
     afterAct: (before, after) => afford.afterAct(before, after),
     afford: afford.state,
     jumpToAffordable,
@@ -152,7 +157,88 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     confirmFork: (id, onYes) => forkSheet(ctx, sheets, id, onYes),
     composeSwitch,
     update,
+    onEvents,
+    awayCheck: () => away.check(),
   };
+
+  /** A brief mark on an element (a class for `ms`); restarts if already running. Never loops, never blocks input. */
+  function pulse(el: Element | null, c: string, ms = 1600): void {
+    if (!el) return;
+    el.classList.remove(c); void (el as HTMLElement).offsetWidth; el.classList.add(c);
+    setTimeout(() => el.classList.remove(c), ms);
+  }
+  const nameOf = (id?: string) => (id ? sectorDef(ctx, id)?.name ?? '' : '');
+  const goThere = (id?: string) => (id && id !== ctx.sector ? { label: 'Go there', run: () => ctx.selectSector(id) } : undefined);
+
+  /** What each event does on the page (the scene gets them through world.ts; the gauges and cards through their own). */
+  function onEvents(ev: GameEvent[]): void {
+    world.queueEvents(ev);
+    gauges.onEvents?.(ev);
+    let automated = 0;
+    for (const e of ev) {
+      const def = e.sector ? sectorDef(ctx, e.sector) : undefined;
+      switch (e.kind) {
+        case 'sectorOpened':
+          if (def) toasts.push(`${def.name}, ${def.years}. ${def.tagline}`, { label: 'Go there', run: () => ctx.selectSector(e.sector!) }, 10000);
+          sound('industryOpened', { sector: e.sector });
+          break;
+        case 'ageBegins': sound('ageBegun', { sector: e.sector }); break;
+        case 'steadyState':
+          toasts.push(`Steady State in ${def?.name ?? 'an Industry'}: fifty years of a decent life inside the line, under a clear sky. The line holds level from here.`, goThere(e.sector), 12000);
+          sound('steady', { sector: e.sector });
+          break;
+        case 'decade': {
+          const waits = (ctx.state.pendingDividends || []).some((p) => p.sector === e.sector);
+          const y = Math.floor(num(e.year) / 10) * 10;
+          toasts.push(`The ${y}s: a decade within the line in ${def?.name ?? 'an Industry'}${e.id === 'lean' ? ', a lean one' : ''}.${waits ? ' A dividend waits.' : ''}`, goThere(e.sector), 7000);
+          sound('decade', { sector: e.sector });
+          break;
+        }
+        case 'clearSkies': toasts.push(`Clear skies over ${def?.name ?? 'an Industry'}: the ${lower(def?.pressure.name ?? 'pressure')} no longer gathers.`, goThere(e.sector), 7000); break;
+        case 'unsettled': if (e.by === 'default') toasts.push(`${def?.name ?? 'An Industry'} is unsettled: its defence could not be paid.`, goThere(e.sector), 10000); break;
+        case 'leverLapsed': {
+          const l = ctx.content.levers?.find((x) => x.id === e.id);
+          toasts.push(`${l?.name ?? 'A lever'} lapses for want of Mandate.`, goThere(e.sector));
+          break;
+        }
+        case 'dividendChosen':
+          if (e.by === 'default') {
+            const dv = ctx.content.dividends?.find((x) => x.id === e.id);
+            toasts.push(`More than eight dividends were waiting: ${nameOf(e.sector)}’s oldest was taken as ${dv?.name ?? 'the first option'}.`);
+          }
+          break;
+        case 'upgradeBought':
+          if (e.by === 'player') {
+            const arm = ctx.content.upgrades?.find((u) => u.id === e.id);
+            const fork = !!(arm?.excludes?.length || ctx.content.upgrades?.some((u) => u.excludes?.includes(e.id ?? '')));
+            sound(fork ? 'fork' : 'buy', { sector: e.sector });
+          } else automated++;
+          break;
+        case 'appFounded': if (e.by === 'player') sound('found', { sector: e.sector }); else if (e.by === 'market') automated++; break;
+        case 'leverEnacted': if (e.by === 'player') sound('lever', { sector: e.sector }); else automated++; break;
+        case 'commonsBuilt': if (e.by === 'treasury') automated++; break;
+        case 'crisis': sound('crisis', { sector: e.sector }); break;
+        case 'reveal': sound('reveal', { sector: e.sector }); break;
+        case 'backfire': backfireBeat(e); break;
+        default: break; // unknown kinds are ignored (the union grows)
+      }
+    }
+    // Standing orders acted: one quiet pulse on the affordable signal (or on Capital when it is hidden).
+    if (automated) pulse(chip.hidden ? topbar.el.querySelector('.tb-cap') : chip, 'm-auto', 1400);
+  }
+
+  /** The first backfire is the game's signature moment: one beat across the dial, the picture, the paper and the sound. */
+  function backfireBeat(e: GameEvent): void {
+    const firstEver = !!ctx.state.run?.firstBackfires?.[e.sector ?? ''];
+    sound('backfire', { sector: e.sector, strength: firstEver ? 1 : 0.6 });
+    if (e.sector !== ctx.sector) {
+      toasts.push(`${nameOf(e.sector)} backfires: thriftier than ever, burning more than ever.`, goThere(e.sector), 9000);
+      return;
+    }
+    pulse(cockpit, 'm-backfire', 2600);
+    news.backfire?.();
+    world.backfire?.();
+  }
 
   // View Transitions (Chrome 111+, Safari 18+): the old screen is held as a picture while the new look, picture and
   // panels are built underneath, then the two cross-fade (the picture slides a little, in the direction of travel).
@@ -169,23 +255,6 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     const open = openSectors(ctx);
     // Keep the selected tab on an open industry.
     if (!open.includes(ctx.sector) && open.length) ctx.sector = open[0];
-    // An industry opened: say so once, with a way there.
-    if (knownOpen) {
-      for (const id of open) if (!knownOpen.has(id)) {
-        const def = sectorDef(ctx, id);
-        if (def) toasts.push(`${def.name}, ${def.years}. ${def.tagline}`, { label: 'Go there', run: () => ctx.selectSector(id) }, 10000);
-      }
-    }
-    knownOpen = new Set(open);
-    // Steady State in an industry: the scene clears its sky; the page says so too, once, with the line now held.
-    const ss = ctx.state.run?.steadySectors || {};
-    if (knownSteady) for (const id of Object.keys(ss)) if (ss[id] && !knownSteady.has(id)) {
-      const def = sectorDef(ctx, id);
-      toasts.push(`Steady State in ${def?.name ?? 'an Industry'}: fifty years of a decent life inside the line. The line holds level from here.`,
-        id !== ctx.sector ? { label: 'Go there', run: () => ctx.selectSector(id) } : undefined, 12000);
-    }
-    knownSteady = new Set(Object.keys(ss).filter((k) => ss[k]));
-
     const lk = lookFor(ctx.content, ctx.sector);
     const ac = accentFor(ctx.content, ctx.sector);
     const html = document.documentElement;

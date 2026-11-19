@@ -27,6 +27,8 @@ export interface SectorFlow {
   pPre: number; permitPart: number; dutyPart: number; ps: number;
   D: number; R: number; sigma: number;
   income: number; dutyRevenue: number; permitRevenue: number; treasuryLevy: number;
+  /** M2: levy revenue routed to 'commons'. */
+  commonsLevy: number;
   capacity: number; usable: number; util: number; unrev: number;
   appD: number[]; appSat: number[];
   reserveGain: number; pressureIn: number; deletionOut: number;
@@ -219,9 +221,11 @@ export function solveSector(
   const income = m * pPre * D;
   const dutyRevenue = Math.max(0, dutyPart) * D;
   const permitRevenue = Math.max(0, permit) * R;
-  let treasury = 0, dividend = 0;
+  let treasury = 0, dividend = 0, commons = 0;
   if (lev.dutyRecycle === 'treasury') treasury += dutyRevenue; else if (lev.dutyRecycle === 'dividend') dividend += dutyRevenue;
+  else if (lev.dutyRecycle === 'commons') commons += dutyRevenue;
   if (lev.capRecycle === 'treasury') treasury += permitRevenue; else if (lev.capRecycle === 'dividend') dividend += permitRevenue;
+  else if (lev.capRecycle === 'commons') commons += permitRevenue;
   const dDiv = ps > 0 ? dividend / ps : 0;
   const intensity = def.pressureIntensity * (1 - lev.libs);
   const pressureIn = (def.pressureSource === 'service' ? D * (1 - sigma) : R) * intensity;
@@ -240,7 +244,7 @@ export function solveSector(
     prBase: fin(prBase), permit: fin(permit), pr: fin(prBase + permit),
     pPre: fin(pPre), permitPart: fin(permitPart), dutyPart: fin(dutyPart), ps: fin(pPre) + fin(permitPart) + fin(dutyPart),
     D: fin(D), R: fin(R), sigma,
-    income: fin(income), dutyRevenue: fin(dutyRevenue), permitRevenue: fin(permitRevenue), treasuryLevy: fin(treasury),
+    income: fin(income), dutyRevenue: fin(dutyRevenue), permitRevenue: fin(permitRevenue), treasuryLevy: fin(treasury), commonsLevy: fin(commons),
     capacity, usable: fin(usable), util: fin(util), unrev,
     appD, appSat, reserveGain: fin(reserveGain), pressureIn: fin(pressureIn), deletionOut: fin(deletionOut),
     wellbeingShare: fin(wb),

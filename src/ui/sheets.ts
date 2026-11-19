@@ -915,6 +915,28 @@ export function forkSheet(ctx: Ctx, sheets: Sheets, id: string, onYes: () => voi
 }
 
 /* ------------------------------------------------------------------ */
+/* The Settle ceremony                                                 */
+/* ------------------------------------------------------------------ */
+
+export function settleSheet(ctx: Ctx, sheets: Sheets, id: SectorId, onYes: () => void): void {
+  const def = sectorDef(ctx, id);
+  if (!def) return;
+  sheets.open('settle', (b, close) => {
+    const yr = Math.floor(num(ctx.d?.year, 1780));
+    const div = (def.settle?.dividend || []).map((e) => effectText(ctx, e)).filter(Boolean);
+    b.append(h('div', { class: 'paper ceremony' },
+      h('div', { class: 'paper-mast' }, h('span', { text: 'By order' }), h('span', { class: 'num', text: String(yr) })),
+      h('h1', { class: 'paper-head', text: `${def.name} settles` }),
+      def.settle?.blurb ? h('p', { class: 'paper-stand', text: def.settle.blurb }) : null,
+      div.length ? h('p', { class: 'cer-div' }, h('span', { class: 'muted', text: 'The settlement pays: ' }), div.join(' · ')) : null,
+      h('p', { class: 'cer-terms', text: 'Its levers are retired. The Industry is held as it stands, and Mandate defends it when the world grows into it.' })),
+      h('div', { class: 'sheet-foot' },
+        h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); onYes(); } }, `Settle ${def.name}`),
+        h('button', { class: 'btn', type: 'button', onclick: close }, 'Not yet')));
+  }, { label: 'Settlement', cls: 'small-sheet settle-sheet' });
+}
+
+/* ------------------------------------------------------------------ */
 /* Fatal panel (a model exception must not leave a dead page)          */
 /* ------------------------------------------------------------------ */
 

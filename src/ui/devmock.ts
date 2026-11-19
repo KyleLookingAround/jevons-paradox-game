@@ -1,15 +1,21 @@
-// Development stand-in for the real model + content (M1 contract). Used with #mock, when the real content is not in
+// Development stand-in for the real model + content (M2 contract, save version 3). Used with #mock, when the real content is not in
 // the M1 shape, and by the mock-only entry (src/ui/mock-main.ts). Crude, but it follows the contract's formulas
 // closely enough that every UI element moves plausibly. It deliberately exercises what the UI must not assume:
 // six industries in three ages, two industries that can open next at once, an unknown theme and an unknown accent,
 // fork pairs, a locked upgrade, levers that tighten past their authored levels, recycling, Know-how trees with
-// branch forks, multi-level and two-seat Institutions, budgets and decades.
+// branch forks, multi-level and two-seat Institutions, budgets and decades; and for M2 paces, decade dividends, lean
+// decades, the sink line, Settlement, the Commons, standing orders, Charters, respec, run history, events and the
+// offline report (with a hold).
 import type {
   Content, ModelApi, GameState, SectorId, SectorDef, SectorState, Derived, SectorDerived, UpgradeView, LeverView,
   MetaState, HeadlineKey, NewsItem, Cond, CondCheck, HindsightTerms, KnowhowView, InstitutionView, LeverLevelDef,
-  LeverDef, EffectDef, ApplicationDef,
+  LeverDef, EffectDef, ApplicationDef, AppState, PaceDef, CommonsDef, CommonsView, EventKind, GameEvent, Actor, OrderId, OrdersState,
+  OfflineReport, RunSummary, UpgradeDef, LeverRecycle,
 } from '../types';
-import { START_YEAR, YEARS_PER_SECOND, STEADY_STATE_YEARS, BUDGET_TOLERANCE, MAX_TICK_SECONDS, CALENDAR_LATE_RATE } from '../types';
+import {
+  START_YEAR, YEARS_PER_SECOND, STEADY_STATE_YEARS, BUDGET_TOLERANCE, MAX_TICK_SECONDS, CALENDAR_LATE_RATE, EVENTS_MAX, PENDING_DIVIDENDS_MAX,
+  OPENING_MAX, RUN_HISTORY_MAX,
+} from '../types';
 
 const app = (id: string, name: string, icon: string, halfPrice: number, saturation: number, steepness: number, visibleBelow: number, foundCost: number, blurb: string): ApplicationDef =>
   ({ id, name, icon, halfPrice, saturation, steepness, visibleBelow, foundCost, blurb });
@@ -23,7 +29,8 @@ const base = {
 const steam: SectorDef = {
   ...base, id: 'steam', name: 'Steam', years: '1780–1870', firstYear: 1780, accent: 'iron',
   tagline: 'Coal, iron, and a great deal of water to be got out of holes.',
-  service: { name: 'Motive power', unit: 'hp' }, resource: { name: 'Coal', unit: 'tons' }, pressure: { name: 'Smoke', crisisName: 'The Black Fog' },
+  service: { name: 'Motive power', unit: 'hp' }, resource: { name: 'Coal', unit: 'tons', unitSingular: 'ton' }, pressure: { name: 'Smoke', crisisName: 'The Black Fog' },
+  settle: { dividend: [{ type: 'mandateAdd', value: 200 }, { type: 'wellbeingAdd', value: 2 }], upkeepPerSpill: 4, blurb: 'The engine houses keep their fires banked; the valley keeps its sky.' },
   applications: [
     { ...app('steam.pump', 'Mine pumping', 'pump', 1.5, 40, 1.5, Infinity, 0, 'Keep the pit dry; reach the deeper seams.'), reserveGainPerService: 0.05 },
     app('steam.mills', 'Cotton mills', 'mill', 0.6, 300, 2, 0.8, 150, 'Spindles by the thousand.'),
@@ -37,7 +44,7 @@ const steam: SectorDef = {
 const iron: SectorDef = {
   ...base, id: 'iron', name: 'Iron & Steel', years: '1790–1900', firstYear: 1790, theme: 'foundry', accent: 'forge',
   tagline: 'Puddled, rolled and riveted into everything.',
-  service: { name: 'Wrought iron', unit: 't' }, resource: { name: 'Coke', unit: 'tons' }, pressure: { name: 'Slag', crisisName: 'The Slag Heaps' },
+  service: { name: 'Wrought iron', unit: 't' }, resource: { name: 'Coke', unit: 'tons', unitSingular: 'ton' }, pressure: { name: 'Slag', crisisName: 'The Slag Heaps' },
   basePrice: 1.5, capCost: 0.08, reserve: 300000,
   unlock: { minReckonings: 1, after: ['steam'], when: { all: [
     { owns: 'steam.condenser', label: 'Own the Separate condenser' },
@@ -50,7 +57,8 @@ const iron: SectorDef = {
 };
 const light: SectorDef = {
   ...base, id: 'light', name: 'Light', years: '1870–1950', firstYear: 1870, theme: 'gaslight', accent: 'gas', tagline: 'Night, abolished.',
-  service: { name: 'Lumens', unit: 'klm' }, resource: { name: 'Town gas', unit: 'therms' }, pressure: { name: 'Soot', crisisName: 'The Black Fog' },
+  service: { name: 'Lumens', unit: 'klm' }, resource: { name: 'Town gas', unit: 'therms', unitSingular: 'therm' },
+  settle: { dividend: [{ type: 'wellbeingAdd', value: 3 }], upkeepPerSpill: 3, blurb: 'The lamps are lit at dusk and put out at eleven, by long custom.' }, pressure: { name: 'Soot', crisisName: 'The Black Fog' },
   basePrice: 2, capCost: 0.1, reserve: 900000, spill: { to: 'steam', rate: 0.4 },
   unlock: { minReckonings: 0, after: ['steam'], when: { all: [
     { owns: 'steam.double', label: 'Own the Double-acting engine' },
@@ -66,7 +74,7 @@ const light: SectorDef = {
 const motion: SectorDef = {
   ...base, id: 'motion', name: 'Motion', years: '1950–2000', firstYear: 1950, accent: 'chrome',
   tagline: 'Everywhere is twenty minutes away, give or take the traffic.',
-  service: { name: 'Vehicle-miles', unit: 'vmi' }, resource: { name: 'Oil', unit: 'bbl' }, pressure: { name: 'Carbon', crisisName: 'The Long Summer' },
+  service: { name: 'Vehicle-miles', unit: 'vmi' }, steady: { paces: [{ id: 'gentle', name: 'Gentle', declinePerDecade: 0.04, dividendMul: 1, blurb: 'The ring road can wait.' }, { id: 'firm', name: 'Firm', declinePerDecade: 0.08, dividendMul: 1.5, blurb: 'One car per household.' }] }, resource: { name: 'Oil', unit: 'bbl' }, pressure: { name: 'Carbon', crisisName: 'The Long Summer' },
   basePrice: 3, capCost: 0.2, reserve: 2e6, spill: { to: 'light', rate: 0.3 },
   unlock: { minReckonings: 2, after: ['light'], when: { all: [{ stat: 'serviceDelivered', sector: 'light', op: '>=', value: 20000, label: '20,000 klm·years of light delivered' }] } },
   applications: [
@@ -92,7 +100,7 @@ const compute: SectorDef = {
 const code: SectorDef = {
   ...base, id: 'code', name: 'Code', years: '2025–', firstYear: 2025, theme: 'agentic', accent: 'diff',
   tagline: 'Software is now cheaper to write than to read.',
-  service: { name: 'Features', unit: 'features' }, resource: { name: 'Attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
+  service: { name: 'Features', unit: 'features', unitSingular: 'feature' }, resource: { name: 'Human attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
   basePrice: 4, capCost: 0.2, reserve: 3e6, resourceKind: 'flow', pressureSource: 'service', drawsOn: { sector: 'compute', perService: 2 },
   unlock: { minReckonings: 4, after: ['compute'], when: { all: [{ owns: 'compute.node', label: 'Own a Die shrink' }] } },
   applications: [
@@ -116,8 +124,8 @@ export const mockContent: Content = {
     { id: 'attention', name: 'The Attention Age', tagline: 'The scarce thing is now you.', yearSpan: [2000, 2100], theme: 'terminal', sectors: ['compute', 'code'] },
   ],
   upgrades: [
-    { id: 'steam.boilers', sector: 'steam', name: 'Better boilers', blurb: 'Rivets, mostly.', kind: 'efficiency', cost: 30, effects: E('steam', 1.5) },
-    { id: 'steam.condenser', sector: 'steam', name: 'Separate condenser', blurb: 'Watt, 1769. Stop cooling the cylinder.', kind: 'efficiency', cost: 400, requires: ['steam.boilers'], effects: E('steam', 1.667) },
+    { id: 'steam.boilers', sector: 'steam', name: 'Better boilers', blurb: 'Rivets, mostly.', kind: 'efficiency', cost: 30, stage: 1, effects: E('steam', 1.5) },
+    { id: 'steam.condenser', sector: 'steam', name: 'Separate condenser', blurb: 'Watt, 1769. Stop cooling the cylinder.', kind: 'efficiency', cost: 400, stage: 2, requires: ['steam.boilers'], effects: E('steam', 1.667) },
     { id: 'steam.bw', sector: 'steam', name: 'Boulton & Watt’s premium', blurb: 'A third of the coal saved, paid to Birmingham for ever.', kind: 'efficiency', cost: 900, requires: ['steam.boilers'], excludes: ['steam.pirate'],
       effects: [...E('steam', 1.6), { type: 'marginAdd', sector: 'steam', value: -0.03 }] },
     { id: 'steam.pirate', sector: 'steam', name: 'Pirate engines', blurb: 'Bull and Hornblower, cheaper and not quite legal.', kind: 'capital', cost: 700, requires: ['steam.boilers'], excludes: ['steam.bw'],
@@ -127,7 +135,7 @@ export const mockContent: Content = {
       effects: [{ type: 'satMul', sector: 'steam', app: 'steam.rail', value: 1.5 }, { type: 'marginAdd', sector: 'steam', value: -0.02 }] },
     { id: 'steam.first', sector: 'steam', name: 'First-class lines', blurb: 'Plush seats, fewer of them.', kind: 'capital', cost: 5000, requires: ['steam.double'], excludes: ['steam.parl'],
       effects: [{ type: 'marginAdd', sector: 'steam', value: 0.04 }, { type: 'satMul', sector: 'steam', app: 'steam.rail', value: 0.8 }] },
-    { id: 'steam.hp', sector: 'steam', name: 'High-pressure steam', blurb: 'Trevithick. Stand well back.', kind: 'efficiency', cost: 20000, requires: ['steam.double'], effects: E('steam', 1.4286) },
+    { id: 'steam.hp', sector: 'steam', name: 'High-pressure steam', blurb: 'Trevithick. Stand well back.', kind: 'efficiency', cost: 20000, stage: 3, requires: ['steam.double'], effects: E('steam', 1.4286) },
     { id: 'steam.turbine', sector: 'steam', name: 'Parsons turbine', blurb: 'Spin, don’t push.', kind: 'efficiency', cost: 60000, locked: true, effects: E('steam', 2) },
     { id: 'steam.coalQuestion', sector: 'steam', name: 'The Coal Question', blurb: 'W. S. Jevons, 1865. An inquiry concerning the progress of the nation.', kind: 'research', cost: 600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }] },
     { id: 'steam.foundry', sector: 'steam', name: 'Ironworks', blurb: 'Cheaper engines, cheaper power.', kind: 'capital', cost: 250, effects: [{ type: 'capCostMul', sector: 'steam', value: 0.7 }] },
@@ -144,7 +152,7 @@ export const mockContent: Content = {
     { id: 'code.fleet', sector: 'code', name: 'Agent fleets', blurb: 'Forty of them, none of them sleeps.', kind: 'efficiency', cost: 90000, requires: ['code.agent'], effects: E('code', 4) },
   ],
   levers: [
-    { id: 'steam.duty', sector: 'steam', kind: 'duty', name: 'Coal duty', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income.', recycle: ['treasury', 'dividend'],
+    { id: 'steam.duty', sector: 'steam', kind: 'duty', name: 'Coal duty', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income.', recycle: ['treasury', 'dividend', 'commons'],
       levels: [L(60, 0.1, 0.3, 'Hold price at 30% of the fall'), L(180, 0.2, 0.6, 'Hold price at 60% of the fall'), L(540, 0.4, 0.9, 'Hold price at 90% of the fall')],
       repeat: { valueStep: 0.03, costGrowth: 1.6, upkeepGrowth: 1.3, label: 'Hold price at {pct}% of the fall' } },
     { id: 'steam.cap', sector: 'steam', kind: 'cap', name: 'Smoke abatement cap', blurb: 'So much and no more.', catch: 'Permits are dear, and smoke finds the gaps.', recycle: ['treasury', 'dividend'],
@@ -182,6 +190,8 @@ export const mockContent: Content = {
     { id: 'in.cap', name: 'Alkali Inspectorate', blurb: 'A cap from the first day, enforced by men in bowler hats.', cost: 120, slots: 2, requires: ['in.stats'], effects: [{ type: 'startLever', lever: 'steam.cap', level: 1 }] },
     { id: 'in.museum', name: 'Mechanics’ Institutes', blurb: 'Reading rooms. Wellbeing without coal.', cost: 40, effects: [{ type: 'wellbeingAdd', value: 3 }] },
     { id: 'in.board', name: 'Board of Trade', blurb: 'Parliament listens a little sooner.', cost: 35, effects: [{ type: 'mandateRateMul', value: 1.3 }] },
+    { id: 'in.civil', name: 'The Civil Service', blurb: 'Permanent secretaries who move the levers you name.', cost: 80, effects: [{ type: 'orderUnlock', order: 'civilService' }] },
+    { id: 'in.treasury', name: 'Treasury rules', blurb: 'A standing order to build what the Commons fund allows.', cost: 140, effects: [{ type: 'orderUnlock', order: 'treasury' }] },
   ],
   achievements: [
     { id: 'firstReckoning', name: 'First Reckoning', blurb: 'Close the books once.' },
@@ -197,35 +207,97 @@ export const mockContent: Content = {
     leverEnacted: ['Act passed'], leverLapsed: ['Act lapses for want of support'], steadySector: ['{sector} holds steady'], steadyAll: ['Steady state'],
     reckoning: ['The books are closed'], efficiency: ['Engines thriftier than ever; collieries report record sales', 'New engine burns half the coal, says inventor'],
     ageBegins: ['{age} begins: the calendar turns'], budgetDrawn: ['A line is drawn under {resource}'], decade: ['Decade {n} within the line'],
-    budgetBroken: ['The line is broken'],
+    budgetBroken: ['The line is broken'], clearSkies: ['{sector}: clear skies over the valley'], settled: ['{sector} settles'], unsettled: ['{sector} unsettled'],
+    commonsBuilt: ['{name} opens to the public'], charter: ['{name} granted for the run'],
   } as Record<HeadlineKey, string[]>,
+  dividends: [
+    { id: 'dv.rates', name: 'A rates rebate', blurb: 'Money back to the parish. Modest, certain.', effects: [{ type: 'capitalAdd', value: 60 }] },
+    { id: 'dv.reading', name: 'Reading rooms', blurb: 'Wellbeing that burns nothing, until someone lights the lamps.', effects: [{ type: 'wellbeingAdd', value: 1.5 }] },
+    { id: 'dv.mandate', name: 'A vote of confidence', blurb: 'Parliament remembers the decade.', effects: [{ type: 'mandateAdd', value: 120 }] },
+    { id: 'dv.seams', name: 'The next seam', blurb: 'A survey finds more coal. More is what it finds.', effects: [{ type: 'reserveAdd', sector: 'steam', value: 0.1 }] },
+  ],
+  commons: [
+    { id: 'cm.baths', name: 'Public baths', blurb: 'Hot water for the town; the boilers want coal.', icon: 'baths', sector: 'steam', cost: 900, costGrowth: 1.8, maxLevel: 3, mandateCost: 20,
+      wellbeing: { max: 6, perLevel: 2 }, intensity: { sector: 'steam', perLevel: 0.4 } },
+    { id: 'cm.park', name: 'A people’s park', blurb: 'Grass, a bandstand, Sunday crowds. Excursion trains fill up.', icon: 'park', sector: 'steam', cost: 2500, maxLevel: 1,
+      wellbeing: { max: 4, perLevel: 3 }, effects: [{ type: 'satMul', sector: 'steam', app: 'steam.rail', value: 1.1 }] },
+    { id: 'cm.library', name: 'Free library', blurb: 'Books for anyone; gaslight to read them by.', icon: 'library', sector: 'light', cost: 4000, costGrowth: 2, maxLevel: 2, mandateCost: 40,
+      wellbeing: { max: 5, perLevel: 2.5 }, intensity: { sector: 'light', perLevel: 0.3 } },
+    { id: 'cm.holiday', name: 'Bank holidays', blurb: 'Four days a year off. The trains to Blackpool are full.', icon: 'holiday', cost: 6000, maxLevel: 1, mandateCost: 80,
+      wellbeing: { max: 3, perLevel: 3 }, effects: [{ type: 'satMul', sector: 'steam', app: 'steam.rail', value: 1.15 }] },
+  ],
+  charters: [
+    { id: 'ch.coalfield', name: 'The Northern Coalfield', blurb: 'Deep seams from the first day. Cheap coal is spent like cheap coal.', sector: 'steam', effects: [{ type: 'reserveAdd', sector: 'steam', value: 0.3 }] },
+    { id: 'ch.mills', name: 'The Mill Charter', blurb: 'Cotton mills founded from the first minute; so is their appetite.', sector: 'steam', effects: [{ type: 'startFounded', app: 'steam.mills' }] },
+    { id: 'ch.board', name: 'A Board of Health', blurb: 'An Institution you do not own, on loan for one run.', effects: [{ type: 'institutionLoan', id: 'in.museum', level: 1 }] },
+  ],
+  knowhowTrees: { steam: { name: 'The engine shop' }, general: { name: 'General' } },
+  recycleText: {
+    treasury: { name: 'To the Treasury', blurb: '10% becomes Mandate; the rest is general taxation.' },
+    dividend: { name: 'As a dividend', blurb: 'Paid back per head: wellbeing up, so more people, and more demand.' },
+    commons: { name: 'To the Commons', blurb: 'A fund only Commons projects can spend. They have rebounds of their own.' },
+  },
   global: {
     startCapital: 10, clickSeconds: 1, clickFlat: 2, popGrowth: 0.0004, subsistence: 8, wellbeingTarget: 28, mandateRate: 0.03, mandateFloor: 12,
-    crisisMandate: 150, crisisPopLoss: 0.08, offlineCapSeconds: 14400,
+    crisisMandate: 150, crisisPopLoss: 0.08,
     hindsight: { perWellbeingYear: 0.02, intensityExponent: 0.5, perBudgetDecade: 6, perUnburnt: 30, perFirstBackfire: 10, perSectorReached: 10, perSteadySector: 150 },
     demography: { transitionWellbeing: 40 },
-    steady: { budgetDeclinePerDecade: 0.05, decadeYears: 10, decadeEffects: [{ type: 'mandateAdd', value: 50 }], firstSteadyEffects: [{ type: 'slotAdd', value: 1 }] },
+    steady: { budgetDeclinePerDecade: 0.05, decadeYears: 10, decadeEffects: [{ type: 'mandateAdd', value: 50 }], firstSteadyEffects: [{ type: 'slotAdd', value: 1 }],
+      paces: [
+        { id: 'gentle', name: 'Gentle', declinePerDecade: 0.05, dividendMul: 1, blurb: 'The dividend as it stands.' },
+        { id: 'firm', name: 'Firm', declinePerDecade: 0.1, dividendMul: 1.6, blurb: 'Harder to hold; it pays better.' },
+        { id: 'severe', name: 'Severe', declinePerDecade: 0.2, dividendMul: 2.5, blurb: 'A cut that bites from the first year.' },
+      ],
+      decadeChoices: [['dv.rates', 'dv.reading'], ['dv.mandate', 'dv.seams']] },
     levy: { mandateShare: 0.1 },
     startingSlots: 2,
+    offline: { capSeconds: 28800, holdBefore: 'crisis' },
+    orders: { marketFromReckoning: 1, marketPaybackMax: 120, paybackChoices: [30, 120, 600], intervalYears: 1 },
+    commons: { fromReckoning: 2, fundShare: 1 },
+    respecRefund: 1,
   },
 };
+
 
 /* ---------------- crude sim ---------------- */
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x, (_k, v) => (v === Infinity ? 1e308 : v)));
 const order = (c: Content): SectorId[] => c.sectorOrder.filter((id) => !!c.sectors[id]);
 const decadeYears = (c: Content) => c.global.steady?.decadeYears ?? 10;
+const newApp = (available: boolean, founded: boolean): AppState => ({ available, founded, satMul: 1, peakD: 0, peakAdoption: 0 });
+const INTERVAL_YEARS = 1;
 
-/** Standing effects in force: owned upgrades × level, know-how × level, seated institutions (each level once), unlocks. */
+function paces(c: Content, id: SectorId): PaceDef[] {
+  const def = c.sectors[id];
+  return def?.steady?.paces ?? c.global.steady?.paces
+    ?? [{ id: 'gentle', name: 'Gentle', declinePerDecade: def?.steady?.declinePerDecade ?? c.global.steady?.budgetDeclinePerDecade ?? 0.05, dividendMul: 1 }];
+}
+function paceOf(c: Content, id: SectorId, pace: string | undefined): PaceDef {
+  const list = paces(c, id);
+  return list.find((p) => p.id === pace) ?? list[0];
+}
+
+/** Standing effects in force: upgrades × level, know-how × level, seated (and loaned) institutions, dividends, Commons, Charter, settlements. */
 function effects(s: GameState, c: Content): EffectDef[] {
   const out: EffectDef[] = [];
   for (const u of c.upgrades) { const n = s.upgrades[u.id] || 0; for (let i = 0; i < n; i++) out.push(...u.effects); }
   for (const k of c.knowhow) { const n = s.meta.knowhow[k.id] || 0; for (let i = 0; i < n; i++) out.push(...k.effects); }
-  for (const id of s.meta.loadout || []) {
-    const d = c.institutions.find((x) => x.id === id); const n = s.meta.institutions[id] || 0;
-    if (!d) continue;
+  const inst = (id: string, n: number) => {
+    const d = c.institutions.find((x) => x.id === id);
+    if (!d) return;
     if (n >= 1) out.push(...d.effects);
     for (let i = 0; i < n - 1; i++) out.push(...(d.nextLevels?.[i]?.effects ?? []));
+  };
+  for (const id of s.meta.loadout || []) inst(id, s.meta.institutions[id] || 0);
+  const ch = s.meta.charter ? (c.charters || []).find((x) => x.id === s.meta.charter) : undefined;
+  if (ch) {
+    out.push(...ch.effects);
+    for (const e of ch.effects) if (e.type === 'institutionLoan' && !(s.meta.loadout || []).includes(e.id)) inst(e.id, e.level);
   }
+  for (const id of order(c)) {
+    for (const dv of s.sectors[id]?.dividends || []) out.push(...((c.dividends || []).find((x) => x.id === dv)?.effects ?? []));
+    if (s.sectors[id]?.settled) out.push(...(c.sectors[id].settle?.dividend ?? []));
+  }
+  for (const p of c.commons || []) { const n = s.commons?.levels?.[p.id] || 0; for (let i = 0; i < n; i++) out.push(...(p.effects ?? [])); }
   return out;
 }
 function unlocked(s: GameState, c: Content, id: string): boolean { return effects(s, c).some((e) => e.type === 'unlock' && e.id === id); }
@@ -246,6 +318,7 @@ function add(s: GameState, c: Content, type: string, sector?: SectorId): number 
   for (const e of effects(s, c)) if (e.type === type && (!sector || (e as { sector?: string }).sector === sector)) a += (e as { value: number }).value;
   return a;
 }
+function orderUnlocked(s: GameState, c: Content, o: OrderId): boolean { return effects(s, c).some((e) => e.type === 'orderUnlock' && e.order === o); }
 function leverLevel(def: LeverDef, level: number): LeverLevelDef | null {
   if (level <= 0) return null;
   const n = def.levels.length;
@@ -280,12 +353,22 @@ function activeLever(s: GameState, c: Content, sector: SectorId, kind: string): 
 }
 function budgetR(s: GameState, c: Content, id: SectorId): number | null {
   const b = s.sectors[id].budget; if (!b) return null;
-  const d = c.sectors[id].steady?.declinePerDecade ?? c.global.steady?.budgetDeclinePerDecade ?? 0.05;
-  return b.r0 * Math.pow(1 - d, ((s.time - b.since) * YEARS_PER_SECOND) / 10);
+  const d = paceOf(c, id, b.pace).declinePerDecade;
+  const t = Math.min(s.time, b.heldAt ?? Infinity);
+  return b.r0 * Math.pow(1 - d, ((t - b.since) * YEARS_PER_SECOND) / 10);
 }
 function etaOf(s: GameState, c: Content, id: SectorId): number {
   const def = c.sectors[id];
   return def.baseEta * mul(s, c, 'etaMul', id) * Math.exp(def.autoEtaRate * s.sectors[id].openFor);
+}
+function commonsWb(c: Content, p: CommonsDef, L: number, yieldMul: number): number {
+  return L > 0 ? p.wellbeing.max * (1 - Math.exp(-L * p.wellbeing.perLevel / p.wellbeing.max)) * yieldMul : 0;
+}
+/** Price-proof demand the Commons add to a sector (L × perLevel × N). */
+function commonsExtra(s: GameState, c: Content, id: SectorId): number {
+  let x = 0;
+  for (const p of c.commons || []) if (p.intensity?.sector === id) x += (s.commons?.levels?.[p.id] || 0) * p.intensity.perLevel * s.population;
+  return x;
 }
 
 interface Calc {
@@ -294,6 +377,12 @@ interface Calc {
 }
 function calc(s: GameState, c: Content, id: SectorId, etaOverride?: number): Calc {
   const def = c.sectors[id], es = s.sectors[id];
+  const st0 = es.settled;
+  if (st0 && etaOverride == null) {
+    const apps: Calc['apps'] = {};
+    for (const a of def.applications) apps[a.id] = { d: st0.appD[a.id] ?? 0, ad: st0.appAdoption[a.id] ?? 0 };
+    return { eta: st0.eta, prBase: 0, permit: 0, cap: 0, margin: 0, sigma: 0, pre: st0.pPre, permitPart: 0, dutyPart: 0, ps: st0.ps, D: st0.D, R: st0.R, apps, income: st0.income, levy: 0 };
+  }
   const eta = etaOverride ?? etaOf(s, c, id);
   const prBase = def.resourceKind === 'flow' ? def.basePrice * 1.2 : def.basePrice * Math.pow(es.reserveMax / Math.max(1, es.reserve), def.alpha);
   const cap = def.capCost * mul(s, c, 'capCostMul', id);
@@ -302,6 +391,7 @@ function calc(s: GameState, c: Content, id: SectorId, etaOverride?: number): Cal
   const duty = activeLever(s, c, id, 'duty');
   const capL = activeLever(s, c, id, 'cap');
   const bR = budgetR(s, c, id);
+  const extra = commonsExtra(s, c, id);
   const solve = (permit: number) => {
     const pre = (1 - sigma) * (prBase / eta + cap) + sigma * 1.5 * cap;
     const permitPart = (1 - sigma) * permit / eta;
@@ -309,7 +399,7 @@ function calc(s: GameState, c: Content, id: SectorId, etaOverride?: number): Cal
     const dutyPart = duty && duty.ref > 0 ? duty.lv.value * Math.max(0, duty.ref - p) : 0;
     const ps = p + dutyPart;
     const apps: Record<string, { d: number; ad: number }> = {};
-    let D = 0;
+    let D = extra;
     for (const a of def.applications) {
       const st = es.apps[a.id];
       const sat = s.population * a.saturation * (st?.satMul ?? 1) * mul(s, c, 'satMul', id, a.id) * mul(s, c, 'satMul', id);
@@ -341,7 +431,11 @@ function wellbeing(s: GameState, c: Content): number {
     w += def.wellbeingWeight * Math.log(1 + k.D / (s.population * def.wellbeingScale));
     w -= def.pressureWellbeingCost * Math.min(1, s.sectors[id].pressure / def.collapseAt);
   }
-  return Math.max(0, w + add(s, c, 'wellbeingAdd'));
+  return Math.max(0, w + add(s, c, 'wellbeingAdd') + commonsWellbeing(s, c));
+}
+function commonsWellbeing(s: GameState, c: Content): number {
+  const ym = mul(s, c, 'commonsYieldMul');
+  return (c.commons || []).reduce((a, p) => a + commonsWb(c, p, s.commons?.levels?.[p.id] || 0, ym), 0);
 }
 function popGrowth(s: GameState, c: Content, w: number): number {
   const g = c.global, m = mul(s, c, 'popGrowthMul');
@@ -351,28 +445,32 @@ function popGrowth(s: GameState, c: Content, w: number): number {
   const shape = wt && wt > g.subsistence ? Math.max(0, 1 - Math.pow(x / (wt - g.subsistence), 2)) : 1;
   return g.popGrowth * m * x * shape * s.population;
 }
-function yearOf(s: GameState, c: Content): number {
+function yearOf(s: GameState, c: Content, back = 0): number {
   let y = -Infinity;
   for (const age of c.ages) {
-    const open = age.sectors.filter((id) => s.sectors[id]?.open);
+    const open = age.sectors.filter((id) => s.sectors[id]?.open && s.sectors[id].openFor - back >= 0);
     if (!open.length) continue;
-    const T = Math.max(...open.map((id) => s.sectors[id].openFor));
+    const T = Math.max(...open.map((id) => s.sectors[id].openFor - back));
     let ay = age.yearSpan[0] + T * YEARS_PER_SECOND;
-    for (const id of open) ay = Math.max(ay, (c.sectors[id].firstYear ?? age.yearSpan[0]) + s.sectors[id].openFor * YEARS_PER_SECOND);
+    for (const id of open) ay = Math.max(ay, (c.sectors[id].firstYear ?? age.yearSpan[0]) + (s.sectors[id].openFor - back) * YEARS_PER_SECOND);
     if (ay > age.yearSpan[1]) ay = age.yearSpan[1] + (ay - age.yearSpan[1]) * CALENDAR_LATE_RATE;
     y = Math.max(y, ay);
   }
-  return Number.isFinite(y) ? y : START_YEAR + s.time * YEARS_PER_SECOND;
+  return Number.isFinite(y) ? y : START_YEAR + (s.time - back) * YEARS_PER_SECOND;
 }
 function ageOf(s: GameState, c: Content): string | null {
   let a: string | null = null;
   for (const age of c.ages) if (age.sectors.some((id) => s.sectors[id]?.open)) a = age.id;
   return a;
 }
+function emit(s: GameState, c: Content, kind: EventKind, f: Partial<GameEvent> = {}): void {
+  s.meta.eventSeq = (s.meta.eventSeq || 0) + 1;
+  s.events = [...(s.events || []), { seq: s.meta.eventSeq, kind, time: s.time, year: Math.floor(yearOf(s, c)), ...f }].slice(-EVENTS_MAX);
+}
 function news(s: GameState, c: Content, key: HeadlineKey, vars: Record<string, string> = {}, sector?: SectorId) {
   const list = c.sectorHeadlines?.[sector ?? '']?.[key] ?? c.headlines[key] ?? ['News'];
   let text = list[Math.floor(s.time * 7 + s.news.length) % list.length];
-  const all: Record<string, string> = { year: String(Math.floor(yearOf(s, c))), sector: sector ? c.sectors[sector]?.name ?? '' : '', resource: sector ? c.sectors[sector]?.resource.name.toLowerCase() ?? '' : '', n: '', ...vars };
+  const all: Record<string, string> = { year: String(Math.floor(yearOf(s, c))), sector: sector ? c.sectors[sector]?.name ?? '' : '', resource: sector ? c.sectors[sector]?.resource.name.toLowerCase() ?? '' : '', n: '', name: '', ...vars };
   for (const k in all) text = text.split('{' + k + '}').join(all[k]);
   const item: NewsItem = { time: s.time, year: Math.floor(yearOf(s, c)), key, text, sector };
   s.news = [item, ...s.news].slice(0, 40);
@@ -381,7 +479,7 @@ function pending(s: GameState, c: Content): Derived['pendingReckoning'] {
   if ((s as unknown as { _forcePending?: boolean })._forcePending) return { cause: 'exhausted', sector: 'steam' };
   for (const id of order(c)) {
     const es = s.sectors[id], def = c.sectors[id];
-    if (!es.open) continue;
+    if (!es.open || es.settled) continue;
     if (def.resourceKind === 'stock' && es.reserve <= 0.002 * es.reserveMax) return { cause: 'exhausted', sector: id };
     if (es.pressure >= def.collapseAt) return { cause: 'collapse', sector: id };
   }
@@ -442,35 +540,128 @@ function openSector(s: GameState, c: Content, id: SectorId, quiet = false): void
   const firstOfAge = c.ages.find((a) => a.sectors.includes(id));
   const ageWasOpen = firstOfAge ? firstOfAge.sectors.some((x) => s.sectors[x]?.open) : true;
   es.open = true; es.openFor = 0;
-  for (const a of c.sectors[id].applications) if (a.visibleBelow === Infinity) es.apps[a.id] = { available: true, founded: a.foundCost === 0, satMul: 1, peakD: 0 };
+  for (const a of c.sectors[id].applications) if (a.visibleBelow === Infinity) es.apps[a.id] = newApp(true, a.foundCost === 0);
+  for (const e of effects(s, c)) if (e.type === 'startFounded' && es.apps[e.app]) es.apps[e.app] = newApp(true, true);
   baseline(s, c, id);
   s.meta.sectorsOpened[id] = true;
   s.steadyYearsAll = 0;
   if (quiet) return;
-  news(s, c, 'sectorOpened', {}, id);
-  if (!ageWasOpen && firstOfAge) news(s, c, 'ageBegins', { age: firstOfAge.name });
+  news(s, c, 'sectorOpened', {}, id); emit(s, c, 'sectorOpened', { sector: id });
+  if (!ageWasOpen && firstOfAge) { news(s, c, 'ageBegins', { age: firstOfAge.name }); emit(s, c, 'ageBegins', { sector: id, id: firstOfAge.id }); }
 }
 function baseline(s: GameState, c: Content, id: SectorId): void {
   const es = s.sectors[id];
   es.etaAtBase = etaOf(s, c, id);
   const k = calc(s, c, id); es.baseR = k.R || 1; es.baseD = k.D || 1; es.basePs = k.ps;
 }
+function drawLine(s: GameState, c: Content, id: SectorId, R: number, pace: string | undefined, w: number): void {
+  const es = s.sectors[id];
+  es.budget = { r0: R, since: s.time, drawnYear: Math.floor(yearOf(s, c)), w0: w, p0: es.pressure, pace: paceOf(c, id, pace).id };
+  es.steadyYears = 0; es.clearYears = Math.min(es.clearYears, es.clearYears >= STEADY_STATE_YEARS ? es.clearYears : 0); es.windowLean = false;
+}
+function clearP(s: GameState, c: Content, id: SectorId): number | null {
+  const b = s.sectors[id].budget, def = c.sectors[id]; if (!b) return null;
+  return Math.min(Math.max(0.5 * b.p0, 0.03 * def.collapseAt), 0.25 * def.collapseAt);
+}
+function absorption(s: GameState, c: Content, id: SectorId): number { return c.sectors[id].absorption + add(s, c, 'absorptionAdd', id); }
+function pressureIn(c: Content, id: SectorId, k: Calc): number { const def = c.sectors[id]; return (def.pressureSource === 'service' ? k.D : k.R) * def.pressureIntensity; }
+function isClear(s: GameState, c: Content, id: SectorId, k: Calc): boolean {
+  const es = s.sectors[id]; if (es.settled) return true;
+  const cp = clearP(s, c, id); if (cp == null) return false;
+  const del = activeLever(s, c, id, 'deletion');
+  const out = del ? del.lv.value * (del.lv.value2 ?? 1) * 40 : 0;
+  return es.pressure <= cp && pressureIn(c, id, k) - out - absorption(s, c, id) * es.pressure <= 1e-6 * c.sectors[id].collapseAt;
+}
+function decadeW(s: GameState, c: Content, id: SectorId): number {
+  const b = s.sectors[id].budget, tgt = c.global.wellbeingTarget;
+  return b ? Math.min(tgt, b.w0 * 0.95) : tgt;
+}
+function decide(s: GameState): void {
+  s.run.decisions = (s.run.decisions || 0) + 1;
+  const k = Math.min(599, Math.floor(s.time * YEARS_PER_SECOND / 10));
+  const arr = [...(s.run.decisionsByDecade || [])]; while (arr.length <= k) arr.push(0); arr[k]++; s.run.decisionsByDecade = arr;
+}
+function automate(s: GameState): void {
+  s.run.automated = (s.run.automated || 0) + 1;
+  const k = Math.min(599, Math.floor(s.time * YEARS_PER_SECOND / 10));
+  const arr = [...(s.run.automatedByDecade || [])]; while (arr.length <= k) arr.push(0); arr[k]++; s.run.automatedByDecade = arr;
+}
+function offerDividend(s: GameState, c: Content, id: SectorId, n: number): void {
+  const list = (c.sectors[id].steady?.decadeChoices ?? c.global.steady?.decadeChoices ?? []).filter((p) => p.every((x) => (c.dividends || []).some((d) => d.id === x)));
+  if (!list.length) return;
+  const pair = list[(n - 1) % list.length];
+  const mulD = paceOf(c, id, s.sectors[id].budget?.pace).dividendMul;
+  s.pendingDividends = [...(s.pendingDividends || []), { sector: id, decade: n, options: [pair[0], pair[1]], mul: mulD }];
+  while (s.pendingDividends.length > PENDING_DIVIDENDS_MAX) {
+    const old = s.pendingDividends[0];
+    resolveDividend(s, c, old.sector, 0, 'default');
+  }
+}
+function resolveDividend(s: GameState, c: Content, sector: SectorId, option: number, by: Actor): boolean {
+  const i = (s.pendingDividends || []).findIndex((p) => p.sector === sector);
+  if (i < 0 || (option !== 0 && option !== 1)) return false;
+  const p = s.pendingDividends[i];
+  s.pendingDividends = s.pendingDividends.filter((_, j) => j !== i);
+  const id = p.options[option];
+  s.sectors[sector].dividends = [...s.sectors[sector].dividends, id];
+  const def = (c.dividends || []).find((d) => d.id === id);
+  for (const e of def?.effects ?? []) {
+    if (e.type === 'mandateAdd') s.mandate += e.value * p.mul;
+    if (e.type === 'capitalAdd') s.capital += e.value * p.mul * Math.max(1, totalIncome(s, c));
+    if (e.type === 'reserveAdd' && s.sectors[e.sector]) { s.sectors[e.sector].reserve += e.value * c.sectors[e.sector].reserve; s.sectors[e.sector].reserveMax += e.value * c.sectors[e.sector].reserve; }
+  }
+  emit(s, c, 'dividendChosen', { sector, id, n: p.decade, by });
+  return true;
+}
+function totalIncome(s: GameState, c: Content): number { let x = 0; for (const id of order(c)) if (s.sectors[id].open) x += calc(s, c, id).income; return x; }
+function stageOf(s: GameState, c: Content, id: SectorId): number | null {
+  const ups = c.upgrades.filter((u) => u.sector === id && u.stage != null);
+  if (!ups.length) return null;
+  return ups.reduce((m, u) => ((s.upgrades[u.id] || 0) >= 1 ? Math.max(m, u.stage ?? 0) : m), 0);
+}
+function applyUpgrade(s: GameState, c: Content, u: UpgradeDef, cost: number, by: Actor): void {
+  const st0 = stageOf(s, c, u.sector);
+  s.capital -= cost; s.upgrades[u.id] = (s.upgrades[u.id] || 0) + 1;
+  for (const e of u.effects) {
+    if (e.type === 'reveal') { s.flags.revealed = true; news(s, c, 'reveal'); emit(s, c, 'reveal', { sector: u.sector }); }
+    if (e.type === 'reserveAdd') { const es = s.sectors[e.sector]; es.reserve += e.value * c.sectors[e.sector].reserve; es.reserveMax += e.value * c.sectors[e.sector].reserve; }
+  }
+  if (u.kind === 'efficiency') news(s, c, 'efficiency', {}, u.sector);
+  if (s.run.opening.length < OPENING_MAX) s.run.opening = [...s.run.opening, { t: s.time, kind: 'upgrade', id: u.id, by }];
+  emit(s, c, 'upgradeBought', { sector: u.sector, id: u.id, n: s.upgrades[u.id], by });
+  const st1 = stageOf(s, c, u.sector);
+  if (st1 != null && st1 > (st0 ?? 0)) emit(s, c, 'stageReached', { sector: u.sector, id: u.id, n: st1 });
+}
 
+/** One step. Returns nothing; mutates the clone. */
 function step(s: GameState, c: Content, dt: number): void {
+  const t0 = s.time;
   s.time += dt;
-  let income = 0, levyMandate = 0;
+  let income = 0, levyMandate = 0, levyCommons = 0;
   const w0 = wellbeing(s, c);
   const share = c.global.levy?.mandateShare ?? 0.1;
+  const tgt = c.global.wellbeingTarget;
   for (const id of order(c)) {
     const es = s.sectors[id], def = c.sectors[id];
     if (!es.open) continue;
     es.openFor += dt;
+    if (es.settled) {
+      s.run.resourceUsed[id] = (s.run.resourceUsed[id] || 0) + es.settled.R * dt;
+      es.serviceDelivered += es.settled.D * dt * YEARS_PER_SECOND;
+      income += es.settled.income;
+      continue;
+    }
     const k = calc(s, c, id);
     es.eta = k.eta;
     for (const a of def.applications) {
       const st = es.apps[a.id];
-      if (!st.available && k.ps <= a.visibleBelow) { st.available = true; if (a.foundCost === 0) st.founded = true; else news(s, c, 'appAvailable', { app: a.name, service: def.service.name.toLowerCase() }, id); }
+      if (!st.available && k.ps <= a.visibleBelow) {
+        st.available = true;
+        if (a.foundCost === 0) st.founded = true;
+        else { news(s, c, 'appAvailable', { app: a.name, service: def.service.name.toLowerCase() }, id); emit(s, c, 'appAvailable', { sector: id, id: a.id }); }
+      }
       st.peakD = Math.max(st.peakD, k.apps[a.id].d);
+      st.peakAdoption = Math.max(st.peakAdoption || 0, k.apps[a.id].ad);
       const suff = activeLever(s, c, id, 'sufficiency');
       const target = suff ? suff.lv.value : 1;
       st.satMul -= (st.satMul - target) * (1 - Math.exp(-(suff?.lv.value2 ?? 0.01) * dt));
@@ -480,10 +671,12 @@ function step(s: GameState, c: Content, dt: number): void {
       const circ = activeLever(s, c, id, 'circularity');
       es.reserve = Math.max(0, es.reserve - k.R * (1 - (circ ? circ.lv.value : 0)) * dt);
     } else es.reserve = def.reserve;
-    const src = def.pressureSource === 'service' ? k.D : k.R;
-    es.pressure = Math.max(0, es.pressure + src * def.pressureIntensity * dt - es.pressure * (def.absorption + add(s, c, 'absorptionAdd', id)) * dt);
+    const del = activeLever(s, c, id, 'deletion');
+    es.pressure = Math.max(0, es.pressure + pressureIn(c, id, k) * dt - es.pressure * absorption(s, c, id) * dt - (del ? del.lv.value * 40 * dt : 0));
+    es.peakPressure = Math.max(es.peakPressure || 0, es.pressure);
     while (es.crisesFired < def.crisisAt.length && es.pressure >= def.crisisAt[es.crisesFired] * def.collapseAt) {
-      es.crisesFired++; s.mandate += c.global.crisisMandate; s.population *= 1 - c.global.crisisPopLoss; news(s, c, 'crisis', { n: String(es.crisesFired) }, id);
+      es.crisesFired++; s.mandate += c.global.crisisMandate; s.population *= 1 - c.global.crisisPopLoss;
+      news(s, c, 'crisis', { n: String(es.crisesFired) }, id); emit(s, c, 'crisis', { sector: id, n: es.crisesFired });
     }
     const prevSmooth = es.smoothR || k.R;
     es.smoothR = prevSmooth + (k.R - prevSmooth) * Math.min(1, dt / 60);
@@ -494,78 +687,200 @@ function step(s: GameState, c: Content, dt: number): void {
     if (!es.backfired && etaFold > 1.001) {
       const shadow = calc(s, c, id, es.etaAtBase).R, prom = shadow / etaFold;
       if (shadow - prom > 1e-9 && (k.R - prom) / (shadow - prom) > 1) {
-        es.backfired = true; news(s, c, 'backfire', {}, id);
+        es.backfired = true; news(s, c, 'backfire', {}, id); emit(s, c, 'backfire', { sector: id });
         if (!s.meta.backfiredSectors[id]) { s.meta.backfiredSectors[id] = true; s.run.firstBackfires[id] = true; }
         s.meta.achievements.backfire = true;
       }
     }
-    if (activeLever(s, c, id, 'cap') && !es.budget && k.R > 0) { es.budget = { r0: k.R, since: s.time, drawnYear: Math.floor(yearOf(s, c)) }; news(s, c, 'budgetDrawn', {}, id); }
-    // Decoupling streak, decades, Steady State.
+    if (activeLever(s, c, id, 'cap') && !es.budget && k.R > 0) { drawLine(s, c, id, k.R, undefined, w0); news(s, c, 'budgetDrawn', {}, id); emit(s, c, 'budgetDrawn', { sector: id, id: es.budget!.pace, by: 'default' }); }
+    // The decade streak (against the drawn wellbeing), decades and dividends.
     const bR = budgetR(s, c, id);
-    const decoupling = bR != null && k.R <= bR * (1 + BUDGET_TOLERANCE) && w0 >= c.global.wellbeingTarget;
+    const within = bR != null && k.R <= bR * (1 + BUDGET_TOLERANCE);
+    const decoupling = within && w0 >= decadeW(s, c, id);
     if (decoupling) {
+      if (w0 < tgt) es.windowLean = true;
       const before = es.steadyYears;
       es.steadyYears += dt * YEARS_PER_SECOND;
       const dy = decadeYears(c);
       if (Math.floor(es.steadyYears / dy) > Math.floor(before / dy)) {
-        es.decadesWithin.push(Math.floor(yearOf(s, c))); s.run.budgetDecades++;
-        for (const e of def.steady?.decadeEffects ?? c.global.steady?.decadeEffects ?? []) if (e.type === 'mandateAdd') s.mandate += e.value;
+        es.decadesWithin.push(Math.floor(yearOf(s, c))); es.decadesLean.push(es.windowLean); s.run.budgetDecades++;
+        if (es.windowLean) s.run.leanDecades++;
+        const mulD = paceOf(c, id, es.budget?.pace).dividendMul;
+        for (const e of def.steady?.decadeEffects ?? c.global.steady?.decadeEffects ?? []) if (e.type === 'mandateAdd') s.mandate += e.value * mulD;
         news(s, c, 'decade', { n: String(es.decadesWithin.length) }, id);
+        emit(s, c, 'decade', { sector: id, n: es.decadesWithin.length, id: es.windowLean ? 'lean' : 'full' });
+        es.windowLean = false;
+        offerDividend(s, c, id, es.decadesWithin.length);
       }
-      if (before < STEADY_STATE_YEARS && es.steadyYears >= STEADY_STATE_YEARS) {
-        s.run.steadySectors[id] = true; s.meta.steadySectors[id] = true; s.meta.achievements.steadyState = true; news(s, c, 'steadySector', {}, id);
-      }
-    } else if (es.steadyYears > 0) {
-      if (es.steadyYears >= decadeYears(c)) news(s, c, 'budgetBroken', {}, id);
-      es.steadyYears = 0;
+    } else {
+      if (es.steadyYears >= decadeYears(c)) { news(s, c, 'budgetBroken', {}, id); emit(s, c, 'budgetBroken', { sector: id }); }
+      es.steadyYears = 0; es.windowLean = false;
     }
+    // The Steady streak (full target, within budget, clear). Mock simplification: once earned it is kept.
+    const clear = isClear(s, c, id, k);
+    if (es.budget && clear && es.budget.clearAt == null) { es.budget.clearAt = s.time; news(s, c, 'clearSkies', {}, id); emit(s, c, 'clearSkies', { sector: id }); }
+    const sinkHeld = within && w0 >= tgt && clear;
+    if (sinkHeld) {
+      const before = es.clearYears;
+      es.clearYears += dt * YEARS_PER_SECOND;
+      if (before < STEADY_STATE_YEARS && es.clearYears >= STEADY_STATE_YEARS) {
+        if (es.budget) es.budget.heldAt = s.time;
+        s.run.steadySectors[id] = true; s.meta.steadySectors[id] = true; s.meta.achievements.steadyState = true;
+        news(s, c, 'steadySector', {}, id); emit(s, c, 'steadyState', { sector: id });
+      }
+    } else if (es.clearYears < STEADY_STATE_YEARS) es.clearYears = 0;
     s.run.resourceUsed[id] = (s.run.resourceUsed[id] || 0) + k.R * dt;
     income += k.income;
     const tre = ['duty', 'cap'].map((kind) => activeLever(s, c, id, kind)).find(Boolean);
-    if (tre && (s.levers[tre.def.id].recycle ?? tre.def.recycle?.[0] ?? 'treasury') === 'treasury') levyMandate += k.levy * share;
+    if (tre) {
+      const r = s.levers[tre.def.id].recycle ?? tre.def.recycle?.[0] ?? 'treasury';
+      if (r === 'treasury') levyMandate += k.levy * share;
+      if (r === 'commons') levyCommons += k.levy;
+    }
   }
-  // Unlocks.
   for (const n of nextSectors(s, c)) if (n.ready) openSector(s, c, n.id);
   s.capital += income * dt;
+  s.commons = { ...s.commons, fund: (s.commons?.fund || 0) + levyCommons * (c.global.commons?.fundShare ?? 1) * dt };
   const w = wellbeing(s, c);
   s.run.peakWellbeing = Math.max(s.run.peakWellbeing, w);
   s.run.wellbeingYears += Math.max(0, w - c.global.subsistence) * dt * YEARS_PER_SECOND;
-  if (w >= c.global.wellbeingTarget) s.run.yearsAtTarget += dt * YEARS_PER_SECOND;
-  let upkeep = 0;
-  for (const l of c.levers) { const ls = s.levers[l.id]; const lv = ls ? leverLevel(l, ls.level) : null; if (lv) upkeep += lv.mandateUpkeep; }
+  if (w >= tgt) s.run.yearsAtTarget += dt * YEARS_PER_SECOND;
+  const upkeep = leverUpkeep(s, c) + settleDefence(s, c);
   if (s.flags.revealed || s.mandate > 0) s.mandate = Math.max(0, s.mandate + (Math.max(0, w - c.global.mandateFloor) * c.global.mandateRate * mul(s, c, 'mandateRateMul') + levyMandate - upkeep) * dt);
   s.population = Math.max(0.01, s.population + popGrowth(s, c, w) * dt);
   s.peakPopulation = Math.max(s.peakPopulation, s.population);
+  s.meta.peakPopulationEver = Math.max(s.meta.peakPopulationEver || 1, s.population);
   const lastT = s.history.length ? s.history[s.history.length - 1].time : -99;
   if (s.time - lastT >= 5) {
     const sectors: GameState['history'][number]['sectors'] = {};
     const budget: Record<SectorId, number> = {};
+    const sink: Record<SectorId, number> = {};
     for (const id of order(c)) if (s.sectors[id].open) {
       const k = calc(s, c, id), es = s.sectors[id];
       sectors[id] = [k.eta / (es.etaAtBase || 1), k.R / (es.baseR || 1)];
       const b = budgetR(s, c, id); if (b != null) budget[id] = b / (es.baseR || 1);
+      const sr = sinkROf(s, c, id, k); if (sr != null) sink[id] = sr / (es.baseR || 1);
     }
-    s.history.push({ time: s.time, sectors, budget, wellbeing: w });
+    s.history.push({ time: s.time, sectors, budget, sink, wellbeing: w });
     if (s.history.length > 240) s.history = s.history.filter((_, i) => i % 2 === 0 || i > 120);
   }
+  // Standing orders, at order ticks.
+  if (Math.floor(s.time * YEARS_PER_SECOND / INTERVAL_YEARS) > Math.floor(t0 * YEARS_PER_SECOND / INTERVAL_YEARS) && !pending(s, c) && s.time > 0) runOrders(s, c);
+}
+function leverUpkeep(s: GameState, c: Content): number {
+  let u = 0;
+  for (const l of c.levers) { const ls = s.levers[l.id]; const lv = ls ? leverLevel(l, ls.level) : null; if (lv) u += lv.mandateUpkeep; }
+  return u;
+}
+function settleExcess(s: GameState, id: SectorId): number {
+  const st = s.sectors[id].settled; if (!st) return 0;
+  return Math.max(0, s.population / Math.max(1e-9, st.N0) - 1);
+}
+function settleDefenceOf(s: GameState, c: Content, id: SectorId): number {
+  const def = c.sectors[id]; if (!s.sectors[id].settled || !def.settle) return 0;
+  return def.settle.upkeepPerSpill * Math.max(0, settleExcess(s, id) - (def.settle.freeExcess ?? 0.05));
+}
+function settleDefence(s: GameState, c: Content): number { return order(c).reduce((a, id) => a + settleDefenceOf(s, c, id), 0); }
+function sinkROf(s: GameState, c: Content, id: SectorId, k: Calc): number | null {
+  const cp = clearP(s, c, id), ab = absorption(s, c, id), pin = pressureIn(c, id, k);
+  if (cp == null || ab <= 0 || pin <= 0 || k.R <= 0 || s.sectors[id].settled) return null;
+  return cp * ab * k.R / pin;
+}
+function runOrders(s: GameState, c: Content): void {
+  const o = s.meta.orders;
+  const inc = totalIncome(s, c);
+  if (o.market.on && marketAvailable(s, c)) {
+    for (const id of order(c)) {
+      const es = s.sectors[id];
+      if (!es.open || es.settled || o.market.sectors[id] === false) continue;
+      const cands = viewsOf(s, c).filter((v) => v.def.sector === id && v.affordable && (v.def.kind === 'efficiency' || v.def.kind === 'capital') && !v.def.excludes?.length);
+      const best = cands.sort((a, b) => a.cost - b.cost)[0];
+      if (best && best.cost <= inc * o.market.paybackMax * 0.5) { applyUpgrade(s, c, best.def, best.cost, 'market'); automate(s); }
+    }
+  }
+  if (o.civilService.on && orderUnlocked(s, c, 'civilService')) {
+    for (const id of order(c)) {
+      const ids = o.civilService.levers[id] || [];
+      const bR = budgetR(s, c, id);
+      if (!ids.length || bR == null || s.sectors[id].settled) continue;
+      if (calc(s, c, id).R > bR * (1 + BUDGET_TOLERANCE)) {
+        const lv = ids.map((x) => c.levers.find((l) => l.id === x)).filter((l): l is LeverDef => !!l)
+          .map((l) => ({ l, nx: leverLevel(l, (s.levers[l.id]?.level || 0) + 1) })).filter((x) => x.nx && s.mandate >= x.nx.mandateCost)
+          .sort((a, b) => a.nx!.mandateCost - b.nx!.mandateCost)[0];
+        if (lv) {
+          s.mandate -= lv.nx!.mandateCost; s.levers[lv.l.id] = { ...s.levers[lv.l.id], level: (s.levers[lv.l.id]?.level || 0) + 1 };
+          emit(s, c, 'leverEnacted', { sector: id, id: lv.l.id, n: s.levers[lv.l.id].level, by: 'civilService' }); automate(s);
+        }
+      }
+    }
+  }
+  if (o.treasury.on && orderUnlocked(s, c, 'treasury') && commonsOpen(s, c)) {
+    const keep = o.treasury.keepSeconds * inc;
+    for (const pid of o.treasury.projects) {
+      const v = commonsViewsOf(s, c).find((x) => x.def.id === pid);
+      if (v && v.visible && !v.maxed && v.cost != null && s.commons.fund + s.capital - keep >= v.cost && s.mandate >= (v.mandateCost ?? 0)) {
+        buildCommons(s, c, v, 'treasury'); automate(s); break;
+      }
+    }
+  }
+}
+function marketAvailable(s: GameState, c: Content): boolean { return s.meta.reckonings >= (c.global.orders?.marketFromReckoning ?? 1) || orderUnlocked(s, c, 'market'); }
+function commonsOpen(s: GameState, c: Content): boolean { return s.meta.reckonings >= (c.global.commons?.fromReckoning ?? 2); }
+function buildCommons(s: GameState, c: Content, v: CommonsView, by: Actor): void {
+  const cost = v.cost ?? 0;
+  const fromFund = Math.min(s.commons.fund, cost);
+  s.commons = { levels: { ...s.commons.levels, [v.def.id]: v.level + 1 }, fund: s.commons.fund - fromFund };
+  s.capital -= cost - fromFund; s.mandate -= v.mandateCost ?? 0;
+  news(s, c, 'commonsBuilt', { name: v.def.name }, v.def.sector);
+  emit(s, c, 'commonsBuilt', { id: v.def.id, n: v.level + 1, sector: v.def.sector, by });
+}
+let viewsOf: (s: GameState, c: Content) => UpgradeView[] = () => [];
+function commonsViewsOf(s: GameState, c: Content): CommonsView[] {
+  const open = commonsOpen(s, c), pend = !!pending(s, c), ym = mul(s, c, 'commonsYieldMul');
+  return (c.commons || []).map((p): CommonsView => {
+    const level = s.commons?.levels?.[p.id] || 0, maxLevel = p.maxLevel ?? 1, maxed = level >= maxLevel;
+    const cost = maxed ? null : p.cost * Math.pow(p.costGrowth ?? 1, level);
+    const mandateCost = maxed ? null : p.mandateCost ?? 0;
+    const visible = open && (!p.sector || !!s.sectors[p.sector]?.open);
+    const affordable = !maxed && (s.commons?.fund || 0) + s.capital >= (cost ?? 0) && s.mandate >= (mandateCost ?? 0);
+    const wb = commonsWb(c, p, level, ym);
+    return {
+      def: p, level, maxLevel, cost, mandateCost, visible, maxed, affordable, canBuy: visible && !maxed && affordable && !pend,
+      wellbeing: wb, nextWellbeing: maxed ? 0 : commonsWb(c, p, level + 1, ym) - wb,
+      intensityNow: p.intensity && s.sectors[p.intensity.sector]?.open ? level * p.intensity.perLevel * s.population : 0,
+    };
+  });
+}
+function freshOrders(c: Content): OrdersState {
+  return { market: { on: true, paybackMax: c.global.orders?.marketPaybackMax ?? 120, sectors: {} }, civilService: { on: false, levers: {} }, treasury: { on: false, keepSeconds: 60, projects: [] } };
 }
 
 export interface MockOpts {
   reveal?: boolean; rich?: boolean; pending?: boolean; won?: boolean; light?: boolean; all?: boolean; budget?: boolean; persist?: boolean;
   smog?: number; sector?: SectorId;
+  /** M2: run 3 with every M2 element live (Commons, orders, dividends, a settled Industry, run history). */
+  m2?: boolean;
+  /** M2: a "While you were away" report on load: held by a crisis, or plain. */
+  away?: 'held' | 'plain';
+  /** M2: between runs, as after a Reckoning: a Charter offer and a respec (with m2). */
+  fresh?: boolean;
+  /** Many affordable things and a late, depleting Industry (rebound well past 1,000%). */
+  late?: boolean;
 }
 
-/** `#mock` or `#mock:rich,reveal,all,budget,pending,won,persist,smog=0.8,sector=compute` (`era=` is accepted too). */
+/** `#mock` or `#mock:rich,reveal,all,budget,pending,won,persist,smog=0.8,sector=compute,m2,away=held,fresh,late`. */
 export function parseMockHash(hash: string): MockOpts | null {
   const m = /^#mock(?::(.*))?$/.exec(hash || '');
   if (!m) return null;
   const o: MockOpts = {};
   for (const part of (m[1] || '').split(',')) {
     const [k, v] = part.split('=');
-    if (k === 'rich' || k === 'reveal' || k === 'pending' || k === 'won' || k === 'light' || k === 'all' || k === 'budget' || k === 'persist') o[k] = true;
+    if (k === 'rich' || k === 'reveal' || k === 'pending' || k === 'won' || k === 'light' || k === 'all' || k === 'budget' || k === 'persist' || k === 'm2' || k === 'fresh' || k === 'late') o[k] = true;
     else if (k === 'smog') o.smog = Number(v) || 0;
+    else if (k === 'away') o.away = v === 'plain' ? 'plain' : 'held';
     else if ((k === 'sector' || k === 'era') && mockContent.sectors[v]) o.sector = v;
   }
+  if (o.m2) { o.all = true; o.budget = true; }
   if (o.all) { o.rich = true; o.reveal = true; }
   if (o.budget) { o.rich = true; o.reveal = true; }
   if (o.sector && o.sector !== 'steam') o.rich = true;
@@ -576,36 +891,68 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
   const freshMeta = (c: Content): MetaState => ({
     hindsight: 0, hindsightEarned: 0, reckonings: 0, knowhow: {}, institutions: {}, achievements: {}, steadySectors: {}, sectorsOpened: {},
     totalSeconds: 0, slots: c.global.startingSlots ?? 2, loadout: [], backfiredSectors: {},
+    charter: null, orders: freshOrders(c), runs: [], eventSeq: 0, knowhowPeak: {}, peakPopulationEver: 1,
   });
   const seatedReveal = (s: GameState, c: Content) => effects(s, c).some((e) => e.type === 'reveal');
   const terms = (s: GameState, c: Content): HindsightTerms => {
     const g = c.global.hindsight;
-    let num = 0, den = 0, unb = 0, open = 0;
+    let num = 0, den = 0, unb = 0, open = 0, settled = 0;
     for (const id of order(c)) {
       const es = s.sectors[id]; if (!es.open) continue;
       open++;
+      if (es.settled) settled++;
       if (es.baseR > 0 && es.openFor > 0) { num += (s.run.resourceUsed[id] || 0) / es.baseR; den += es.openFor; }
       if (c.sectors[id].resourceKind === 'stock') unb += es.reserve / Math.max(1, es.reserveMax);
     }
     const intensity = den > 0 ? num / den : 1;
-    const t = {
+    const t: HindsightTerms = {
       wellbeingYears: s.run.wellbeingYears, intensity,
       wellbeing: g.perWellbeingYear * s.run.wellbeingYears / Math.pow(Math.max(1, intensity), g.intensityExponent),
-      budget: g.perBudgetDecade * s.run.budgetDecades,
+      budget: g.perBudgetDecade * (s.run.budgetDecades - s.run.leanDecades) + (g.perLeanDecade ?? 0) * s.run.leanDecades,
       unburnt: g.perUnburnt * unb * Math.min(1, s.run.yearsAtTarget / STEADY_STATE_YEARS),
       backfire: g.perFirstBackfire * Object.keys(s.run.firstBackfires).length,
       sectorsReached: g.perSectorReached * Math.max(0, open - 1),
       steady: g.perSteadySector * Object.keys(s.run.steadySectors).length,
+      settled: (g.perSettledSector ?? 0) * settled,
       total: 0,
     };
-    t.total = Math.max(1, Math.round(t.wellbeing + t.budget + t.unburnt + t.backfire + t.sectorsReached + t.steady));
+    t.total = Math.max(1, Math.round(t.wellbeing + t.budget + t.unburnt + t.backfire + t.sectorsReached + t.steady + t.settled));
     return t;
   };
   const isFresh = (s: GameState) => s.time === 0 && Object.keys(s.upgrades).length === 0;
   const rebuild = (s0: GameState, c: Content, meta: MetaState): GameState => {
     const s = api.createState(c, meta, s0.seed);
     s.news = s0.news; s.mandate = s0.mandate; s.run.clicks = s0.run.clicks; s.capital = Math.max(s.capital, s0.capital);
+    s.events = s0.events; s.charterOffer = s0.charterOffer; s.lastOffline = s0.lastOffline;
     return s;
+  };
+  const drawOffer = (s: GameState, c: Content, last?: string): string[] => {
+    let e = (c.charters || []).map((x) => x.id);
+    if (last && e.filter((x) => x !== last).length >= 2) e = e.filter((x) => x !== last);
+    if (e.length <= 2) return e;
+    const i = s.seed % e.length, j = (i + 1 + ((s.seed >> 3) % (e.length - 1))) % e.length;
+    return [e[Math.min(i, j)], e[Math.max(i, j)]];
+  };
+  /** Fills meta.runs with a plausible history (newest last). */
+  const fakeRuns = (c: Content, n: number): RunSummary[] => {
+    const out: RunSummary[] = [];
+    const causes: RunSummary['cause'][] = ['exhausted', 'collapse', 'chosen', 'exhausted', 'chosen'];
+    for (let i = 0; i < n; i++) {
+      const seconds = 1500 + i * 640;
+      out.push({
+        cause: causes[i % causes.length], causeSector: causes[i % causes.length] === 'chosen' ? undefined : 'steam', seconds, yearReached: 1850 + i * 18,
+        hindsightGained: 22 + i * 19, peakWellbeing: 24 + i * 3,
+        sectors: {
+          steam: { etaFold: 8 + i * 2, peakRFold: 3.2 - i * 0.4, resourceUsed: 4e5 + i * 5e4, unburnt: 0.05 + i * 0.12, decades: i, leanDecades: Math.max(0, i - 1), peakPressure: 0.95 - i * 0.12,
+            peakAdoption: { 'steam.pump': 0.9, 'steam.mills': 0.7, 'steam.rail': 0.4 + i * 0.05 }, stage: Math.min(3, i + 1), steady: i >= 3, settled: i >= 3 },
+          ...(i >= 1 ? { light: { etaFold: 3 + i, peakRFold: 2.5, resourceUsed: 8e4, unburnt: 0.5, decades: Math.max(0, i - 2), peakPressure: 0.4, stage: 1 } } : {}),
+        },
+        hindsightTerms: { wellbeingYears: 600 + i * 200, intensity: 2.4 - i * 0.3, wellbeing: 8 + i * 3, budget: i * 6, unburnt: 2 + i, backfire: i === 0 ? 10 : 0, sectorsReached: i >= 1 ? 10 : 0, steady: i >= 3 ? 150 : 0, settled: 0, total: 22 + i * 19 },
+        index: i + 1, totalSecondsAtEnd: 1500 * (i + 1) + 300 * i * i, charter: i >= 1 ? c.charters?.[i % (c.charters?.length || 1)]?.id : undefined,
+        decisions: 140 - i * 10, automated: i >= 1 ? 30 + i * 25 : 0, decisionsByDecade: [], automatedByDecade: [], commonsLevels: i >= 2 ? i : 0, peakPopulation: 3 + i,
+      });
+    }
+    return out;
   };
 
   const api: ModelApi = {
@@ -614,18 +961,23 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       for (const id of order(c)) {
         const def = c.sectors[id];
         const apps: SectorState['apps'] = {};
-        for (const a of def.applications) apps[a.id] = { available: false, founded: false, satMul: 1, peakD: 0 };
+        for (const a of def.applications) apps[a.id] = newApp(false, false);
         sectors[id] = {
           open: false, openFor: 0, eta: def.baseEta, etaAtBase: 0, reserve: def.reserve, reserveMax: def.reserve, pressure: 0, crisesFired: 0, apps,
           baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0, peakR: 0, steadyYears: 0, backfired: false, budget: null, serviceDelivered: 0, decadesWithin: [],
+          decadesLean: [], windowLean: false, clearYears: 0, settled: null, settledBefore: false, dividends: [], peakPressure: 0,
         };
       }
       const m = meta ? clone(meta) : freshMeta(c);
       const s: GameState = {
-        version: 2, seed: seed ?? 1, time: 0, capital: c.global.startCapital, mandate: 0, population: 1, peakPopulation: 1, upgrades: {}, levers: {}, sectors,
+        version: 3, seed: seed ?? 1, time: 0, capital: c.global.startCapital, mandate: 0, population: 1, peakPopulation: 1, upgrades: {}, levers: {}, sectors,
         flags: { revealed: false, won: false }, steadyYearsAll: 0, news: [], history: [],
-        run: { peakWellbeing: 0, decoupledYears: 0, resourceUsed: {}, clicks: 0, steadySectors: {}, wellbeingYears: 0, yearsAtTarget: 0, budgetDecades: 0, firstBackfires: {} },
+        run: {
+          peakWellbeing: 0, decoupledYears: 0, resourceUsed: {}, clicks: 0, steadySectors: {}, wellbeingYears: 0, yearsAtTarget: 0, budgetDecades: 0, firstBackfires: {},
+          leanDecades: 0, decisions: 0, decisionsByDecade: [], automated: 0, automatedByDecade: [], opening: [], firstBudgetAt: null,
+        },
         meta: m,
+        pendingDividends: [], commons: { levels: {}, fund: 0 }, events: [], lastOffline: null, charterOffer: [],
       };
       for (const l of c.levers) s.levers[l.id] = { level: 0, ref: 0 };
       s.capital *= mul(s, c, 'startCapitalMul');
@@ -635,9 +987,16 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       openSector(s, c, order(c)[0], true);
       if (!meta && opts.rich) {
         s.capital = 2e5; s.upgrades = { 'steam.boilers': 1, 'steam.condenser': 1 };
-        s.sectors.steam.apps['steam.mills'] = { available: true, founded: true, satMul: 1, peakD: 0 };
-        s.meta = { ...s.meta, hindsight: 420, hindsightEarned: 470, reckonings: 1, knowhow: { 'kh.cornish': 1, 'kh.seed': 1 }, institutions: { 'in.stats': 1, 'in.duty': 1, 'in.museum': 1 },
-          loadout: ['in.duty', 'in.museum'], achievements: { firstReckoning: true, backfire: true }, sectorsOpened: { steam: true, light: true } };
+        s.sectors.steam.apps['steam.mills'] = newApp(true, true);
+        s.meta = { ...s.meta, hindsight: 420, hindsightEarned: 470, reckonings: 1, knowhow: { 'kh.cornish': 1, 'kh.seed': 1 }, knowhowPeak: { 'kh.cornish': 1, 'kh.seed': 1 },
+          institutions: { 'in.stats': 1, 'in.duty': 1, 'in.museum': 1 },
+          loadout: ['in.duty', 'in.museum'], achievements: { firstReckoning: true, backfire: true }, sectorsOpened: { steam: true, light: true }, runs: fakeRuns(c, 1) };
+        if (opts.m2) {
+          s.meta.reckonings = 4; s.meta.slots = 4; s.meta.runs = fakeRuns(c, 4); s.meta.charter = 'ch.coalfield';
+          s.meta.institutions = { ...s.meta.institutions, 'in.civil': 1, 'in.treasury': 1 };
+          s.meta.loadout = ['in.duty', 'in.museum', 'in.civil', 'in.treasury'];
+          s.meta.orders = { market: { on: true, paybackMax: 120, sectors: { iron: false } }, civilService: { on: true, levers: { steam: ['steam.cap'] } }, treasury: { on: false, keepSeconds: 60, projects: ['cm.baths', 'cm.park'] } };
+        }
         if (opts.reveal) { s.upgrades['steam.coalQuestion'] = 1; s.flags.revealed = true; s.mandate = 420; }
         for (let i = 0; i < 300; i++) step(s, c, 1);
         s.sectors.steam.pressure = s.sectors.steam.pressure + c.sectors.steam.collapseAt * 0.45;
@@ -646,24 +1005,73 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         for (const id of extra) {
           if (!s.sectors[id]) continue;
           openSector(s, c, id, id !== 'light');
-          for (const a of c.sectors[id].applications.slice(0, 2)) s.sectors[id].apps[a.id] = { available: true, founded: true, satMul: 1, peakD: 0 };
+          for (const a of c.sectors[id].applications.slice(0, 2)) s.sectors[id].apps[a.id] = newApp(true, true);
           for (const u of c.upgrades) if (u.sector === id && u.kind === 'efficiency' && !u.requires) s.upgrades[u.id] = 1;
           baseline(s, c, id);
           for (const u of c.upgrades) if (u.sector === id && u.kind === 'efficiency' && !u.requires) s.upgrades[u.id] = 1;
         }
         if (opts.budget) {
-          s.sectors.steam.budget = { r0: calc(s, c, 'steam').R * 1.15, since: s.time - 60, drawnYear: Math.floor(yearOf(s, c)) - 3 };
+          const w = wellbeing(s, c);
+          drawLine(s, c, 'steam', calc(s, c, 'steam').R * 1.15, opts.m2 ? 'firm' : undefined, w);
+          s.sectors.steam.budget!.since = s.time - 60; s.sectors.steam.budget!.drawnYear -= 3;
           s.levers['steam.cap'] = { level: 1, ref: 0 };
-          s.sectors.steam.steadyYears = 27; s.sectors.steam.decadesWithin = [1803, 1813]; s.run.budgetDecades = 2;
+          s.sectors.steam.steadyYears = 27; s.sectors.steam.decadesWithin = [1803, 1813]; s.sectors.steam.decadesLean = [true, false]; s.run.budgetDecades = 2; s.run.leanDecades = 1;
+        }
+        if (opts.m2) {
+          // Commons, a settled Industry, Steady State earned in Steam (so Settle is offered), dividends waiting.
+          s.commons = { levels: { 'cm.baths': 1 }, fund: 1400 };
+          if (s.sectors.light.open) {
+            const w = wellbeing(s, c);
+            drawLine(s, c, 'light', calc(s, c, 'light').R, 'gentle', w);
+            s.sectors.light.clearYears = STEADY_STATE_YEARS;
+            const k = calc(s, c, 'light');
+            const appD: Record<string, number> = {}, appAd: Record<string, number> = {};
+            for (const a of c.sectors.light.applications) if (s.sectors.light.apps[a.id].founded) { appD[a.id] = k.apps[a.id].d; appAd[a.id] = k.apps[a.id].ad; }
+            s.sectors.light.settled = { since: s.time - 120, sinceYear: Math.floor(yearOf(s, c, 120)), D: k.D, R: k.R, ps: k.ps, pPre: k.pre, income: k.income, P: s.sectors.light.pressure,
+              eta: k.eta, defect: 1, N0: s.population / 1.18, spillMul0: 1, extraD0: 0, appD, appAdoption: appAd };
+            s.sectors.light.settledBefore = true;
+            for (const l of c.levers) if (l.sector === 'light') s.levers[l.id] = { level: 0, ref: 0 };
+          }
+          s.sectors.steam.clearYears = STEADY_STATE_YEARS;
+          s.sectors.steam.budget!.clearAt = s.time - 30;
+          s.pendingDividends = [
+            { sector: 'steam', decade: 1, options: ['dv.rates', 'dv.reading'], mul: 1.6 },
+            { sector: 'steam', decade: 2, options: ['dv.mandate', 'dv.seams'], mul: 1.6 },
+            { sector: 'iron', decade: 1, options: ['dv.rates', 'dv.reading'], mul: 1 },
+          ];
+          s.run.decisions = 96; s.run.automated = 41;
         }
         for (let i = 0; i < 60; i++) step(s, c, 1);
-        if (opts.smog != null) for (const id of ids) if (s.sectors[id]?.open) s.sectors[id].pressure = c.sectors[id].collapseAt * opts.smog;
-        s.meta.lastRun = {
+        if (opts.smog != null) for (const id of ids) if (s.sectors[id]?.open && !s.sectors[id].settled) s.sectors[id].pressure = c.sectors[id].collapseAt * opts.smog;
+        if (opts.late) {
+          // A depleting Steam late in a run: reserve nearly gone and an efficiency fold far past its shadow.
+          s.sectors.steam.reserve = s.sectors.steam.reserveMax * 0.03;
+          for (const u of c.upgrades) if (u.sector === 'steam' && u.kind === 'efficiency' && !u.excludes) s.upgrades[u.id] = 1;
+          s.population *= 3;
+        }
+        const lr = s.meta.runs[s.meta.runs.length - 1];
+        s.meta.lastRun = lr ?? {
           cause: 'exhausted', causeSector: 'steam', seconds: 2100, yearReached: 1885, hindsightGained: 42, peakWellbeing: 36,
           sectors: { steam: { etaFold: 12, peakRFold: 2.1, resourceUsed: 5.2e5, unburnt: 0.04, decades: 1 }, light: { etaFold: 3, peakRFold: 4.4, resourceUsed: 8e4, unburnt: 0.61, decades: 0 } },
-          hindsightTerms: { wellbeingYears: 820, intensity: 2.4, wellbeing: 10.6, budget: 6, unburnt: 3.1, backfire: 10, sectorsReached: 10, steady: 0, total: 40 },
+          hindsightTerms: { wellbeingYears: 820, intensity: 2.4, wellbeing: 10.6, budget: 6, unburnt: 3.1, backfire: 10, sectorsReached: 10, steady: 0, settled: 0, total: 40 },
         };
+        if (opts.away) {
+          const held = opts.away === 'held';
+          s.lastOffline = {
+            requested: held ? 6 * 3600 + 1200 : 2 * 3600 + 300, simulated: held ? 3 * 3600 + 840 : 2 * 3600 + 300, heldBy: held ? 'crisis' : null, heldSector: held ? 'steam' : undefined,
+            from: s.time - (held ? 13440 : 7500), to: s.time, capital: 1.84e6, mandate: 610, population: 0.42, decades: 3, dividends: 2, crises: 0,
+            marketBuys: 7, civilServiceRaises: 2, treasuryBuys: held ? 1 : 0, lapsed: held ? [] : ['steam.duty'], opened: held ? [] : ['iron'], unsettled: [],
+            lines: held ? { steam: 'held', light: 'settled' } : { steam: 'broken', light: 'settled', iron: 'drawn' }, fromSeq: s.meta.eventSeq, toSeq: s.meta.eventSeq,
+          };
+          if (held) s.sectors.steam.pressure = c.sectors.steam.collapseAt * 0.64;
+        }
       } else if (!meta && opts.reveal) { s.flags.revealed = true; }
+      if (opts.fresh && !meta) {
+        // Between runs: the state reckon() would hand back (fresh, a Charter offer, Know-how to unlearn).
+        const r = api.reckon({ ...s, ...({ _forcePending: false } as object) } as GameState, c);
+        r.meta.hindsight += 200;
+        return r;
+      }
       if (opts.pending && !meta) (s as unknown as { _forcePending: boolean })._forcePending = true;
       if (opts.won && !meta) (s as unknown as { _winAt: number })._winAt = s.time + 3;
       return s;
@@ -673,58 +1081,124 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       const s = clone(s0);
       step(s, c, Math.max(0, Math.min(MAX_TICK_SECONDS, dt)));
       const w = s as unknown as { _winAt?: number };
-      if (w._winAt && s.time >= w._winAt) { s.flags.won = true; delete w._winAt; }
+      if (w._winAt && s.time >= w._winAt) { s.flags.won = true; delete w._winAt; emit(s, c, 'won'); }
       return s;
     },
     fastForward(s0, c, seconds) {
+      const want = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+      if (want <= 0) return s0;
       const s = clone(s0);
-      const total = Math.min(seconds, c.global.offlineCapSeconds);
-      for (let t = 0; t < total; t += 5) { if (pending(s, c)) break; step(s, c, Math.min(5, total - t)); }
-      return s;
+      const cap = c.global.offline?.capSeconds ?? c.global.offlineCapSeconds ?? 14400;
+      const total = Math.min(want, cap);
+      const hold = c.global.offline?.holdBefore ?? 'collapse';
+      const start = clone(s0);
+      let heldBy: OfflineReport['heldBy'] = pending(s, c) ? 'pending' : null, heldSector: SectorId | undefined;
+      let cur = s, t = 0;
+      if (!heldBy) {
+        for (; t < total; t += 5) {
+          const nx = clone(cur);
+          step(nx, c, Math.min(5, total - t));
+          const crisis = order(c).find((id) => nx.sectors[id].crisesFired > cur.sectors[id].crisesFired);
+          const p = pending(nx, c);
+          if ((hold === 'crisis' && crisis) || (hold && p)) { heldBy = p ? (p.cause === 'collapse' ? 'collapse' : 'exhausted') : 'crisis'; heldSector = p?.sector ?? crisis; break; }
+          cur = nx;
+        }
+        if (!heldBy && want > cap) heldBy = 'cap';
+      }
+      const ev = (cur.events || []).filter((e) => e.seq > (start.meta.eventSeq || 0));
+      const lines: OfflineReport['lines'] = {};
+      for (const id of order(c)) {
+        const a = start.sectors[id], b = cur.sectors[id];
+        if (!b.budget && !b.settled) continue;
+        lines[id] = b.settled ? 'settled' : !a.budget ? 'drawn' : ev.some((e) => e.kind === 'budgetBroken' && e.sector === id) || b.steadyYears < a.steadyYears ? 'broken' : 'held';
+      }
+      cur.lastOffline = {
+        requested: want, simulated: Math.min(t, total), heldBy, heldSector, from: start.time, to: cur.time,
+        capital: cur.capital - start.capital, mandate: cur.mandate - start.mandate, population: cur.population - start.population,
+        decades: ev.filter((e) => e.kind === 'decade').length, dividends: (cur.pendingDividends || []).length - (start.pendingDividends || []).length,
+        crises: ev.filter((e) => e.kind === 'crisis').length,
+        marketBuys: ev.filter((e) => e.by === 'market').length, civilServiceRaises: ev.filter((e) => e.by === 'civilService').length,
+        treasuryBuys: ev.filter((e) => e.by === 'treasury').length, lapsed: [], opened: ev.filter((e) => e.kind === 'sectorOpened').map((e) => e.sector!),
+        unsettled: [], lines, fromSeq: start.meta.eventSeq || 0, toSeq: cur.meta.eventSeq || 0,
+      };
+      return cur;
     },
     derive(s, c) {
       const sectors: Derived['sectors'] = {};
       let income = 0, levyM = 0;
       const w = wellbeing(s, c);
       const pend = pending(s, c);
+      const tgt = c.global.wellbeingTarget;
       for (const id of order(c)) {
         const es = s.sectors[id], def = c.sectors[id];
         if (!es.open) continue;
         const k = calc(s, c, id);
+        const settled = !!es.settled;
         const etaFold = k.eta / (es.etaAtBase || k.eta || 1), baseR = es.baseR || k.R || 1;
-        const shadowR = calc(s, c, id, es.etaAtBase || k.eta).R;
-        const promisedR = shadowR / etaFold;
-        const rebound = etaFold > 1.001 && shadowR > 0 && shadowR - promisedR > 1e-9 * shadowR ? (k.R - promisedR) / (shadowR - promisedR) : null;
+        const shadowR = settled ? k.R : calc(s, c, id, es.etaAtBase || k.eta).R;
+        const promisedR = settled ? k.R : shadowR / etaFold;
+        let rebound = !settled && etaFold > 1.001 && shadowR > 0 && shadowR - promisedR > 1e-9 * shadowR ? (k.R - promisedR) / (shadowR - promisedR) : null;
+        if (opts.late && id === 'steam' && rebound != null) rebound = Math.max(rebound, 13.7);
         const apps: SectorDerived['apps'] = {};
         for (const a of def.applications) {
           const st = es.apps[a.id];
-          apps[a.id] = { available: st.available, founded: st.founded, demand: k.apps[a.id].d, adoption: k.apps[a.id].ad, canFound: st.available && !st.founded && s.capital >= a.foundCost && !pend };
+          apps[a.id] = { available: st.available, founded: st.founded, demand: k.apps[a.id].d, adoption: k.apps[a.id].ad, canFound: !settled && st.available && !st.founded && s.capital >= a.foundCost && !pend };
         }
-        const bR = budgetR(s, c, id);
+        const bR = settled ? null : budgetR(s, c, id);
         const within = bR != null && k.R <= bR * (1 + BUDGET_TOLERANCE);
+        const clear = isClear(s, c, id, k);
+        const dW = decadeW(s, c, id);
+        const capOn = !!activeLever(s, c, id, 'cap');
+        const sinkHeld = !settled && within && w >= tgt && clear && !pend;
         sectors[id] = {
           eta: k.eta, etaFold, resourcePrice: k.prBase + k.permit, resourcePriceBase: k.prBase, permitPrice: k.permit, capCost: k.cap, margin: k.margin,
           substitutedShare: k.sigma, preLevyPrice: k.pre, permitPart: k.permitPart, dutyPart: k.dutyPart, servicePrice: k.ps, demand: k.D, resourceUse: k.R,
           rFold: k.R / baseR, shadowR, promisedR, rebound, frontierFold: shadowR / baseR, income: k.income, levyRevenue: k.levy,
           reserveFraction: def.resourceKind === 'flow' ? 0.4 : es.reserveMax > 0 ? es.reserve / es.reserveMax : 1,
-          secondsLeft: def.resourceKind === 'stock' && k.R > 0 ? es.reserve / k.R : Infinity,
+          secondsLeft: def.resourceKind === 'stock' && k.R > 0 && !settled ? es.reserve / k.R : Infinity,
           pressureFraction: es.pressure / def.collapseAt, nextCrisisFraction: def.crisisAt[es.crisesFired] ?? null, trendR: es.trendR,
-          budgetR: bR, withinBudget: within, decoupling: within && w >= c.global.wellbeingTarget && !pend, steadyYears: es.steadyYears,
+          budgetR: bR, withinBudget: within, decoupling: settled ? w >= tgt : within && w >= dW && !pend, steadyYears: es.steadyYears,
           budgetDecades: es.decadesWithin.length, wellbeingShare: 0, apps,
+          decadeWellbeing: dW, leanDecades: es.decadesLean.filter(Boolean).length, pace: es.budget ? paceOf(c, id, es.budget.pace).id : null,
+          clearP: clearP(s, c, id), clear, sinkR: sinkROf(s, c, id, k), clearYears: es.clearYears, sinkHeld, settled,
+          canSettle: !settled && !!def.settle && s.flags.revealed && !pend && es.clearYears >= STEADY_STATE_YEARS && !!es.budget,
+          settleExcess: settleExcess(s, id), settleDefence: settleDefenceOf(s, c, id), stage: stageOf(s, c, id),
+          standingDrawIn: capOn && !es.budget ? Math.max(0, (def.steady?.standingDrawYears ?? c.global.steady?.standingDrawYears ?? 0) - es.openFor * YEARS_PER_SECOND) : null,
         };
         income += k.income;
         const tre = ['duty', 'cap'].map((kind) => activeLever(s, c, id, kind)).find(Boolean);
         if (tre && (s.levers[tre.def.id].recycle ?? tre.def.recycle?.[0] ?? 'treasury') === 'treasury') levyM += k.levy * (c.global.levy?.mandateShare ?? 0.1);
       }
-      let upkeep = 0;
-      for (const l of c.levers) { const ls = s.levers[l.id]; const lv = ls ? leverLevel(l, ls.level) : null; if (lv) upkeep += lv.mandateUpkeep; }
+      const upkeep = leverUpkeep(s, c) + settleDefence(s, c);
       const t = terms(s, c);
       const used = (s.meta.loadout || []).reduce((n, id) => n + (c.institutions.find((x) => x.id === id)?.slots ?? 1), 0);
+      const fresh = isFresh(s);
+      const o = s.meta.orders ?? freshOrders(c);
+      const openIds = order(c).filter((id) => s.sectors[id].open);
+      const refundByTree: Record<string, number> = {};
+      for (const k of c.knowhow) {
+        const lv = s.meta.knowhow[k.id] || 0; if (!lv) continue;
+        let r = 0; for (let l = 0; l < lv; l++) r += k.cost * Math.pow(k.costGrowth, l);
+        const tr = k.tree ?? 'general'; refundByTree[tr] = (refundByTree[tr] ?? 0) + r * (c.global.respecRefund ?? 1);
+      }
+      const refund = Object.values(refundByTree).reduce((a, x) => a + x, 0);
       return {
         year: yearOf(s, c), age: ageOf(s, c), wellbeing: w, incomePerSec: income, clickValue: pend ? 0 : c.global.clickFlat + c.global.clickSeconds * income,
         mandatePerSec: s.flags.revealed || s.mandate > 0 ? Math.max(0, w - c.global.mandateFloor) * c.global.mandateRate * mul(s, c, 'mandateRateMul') + levyM - upkeep : 0,
         populationGrowthPerSec: popGrowth(s, c, w), pendingReckoning: pend, hindsightIfReckonNow: t.total, hindsightTerms: t, sectors,
-        nextSectors: nextSectors(s, c), freshRun: isFresh(s), slots: { total: s.meta.slots, used },
+        nextSectors: nextSectors(s, c), freshRun: fresh, slots: { total: s.meta.slots, used },
+        populationRef: Math.max(1, s.peakPopulation, s.meta.peakPopulationEver || 1),
+        offlineCapSeconds: (c.global.offline?.capSeconds ?? c.global.offlineCapSeconds ?? 14400) + effects(s, c).reduce((a, e) => a + (e.type === 'offlineCapAdd' ? e.seconds : 0), 0),
+        charterOffer: fresh ? s.charterOffer || [] : [], charter: s.meta.charter ?? null,
+        commons: { available: commonsOpen(s, c), fund: s.commons?.fund || 0, wellbeing: commonsWellbeing(s, c) },
+        orders: {
+          market: { available: marketAvailable(s, c), on: o.market.on, paybackMax: o.market.paybackMax, paybackChoices: c.global.orders?.paybackChoices ?? [30, 120, 600],
+            sectors: Object.fromEntries(openIds.map((id) => [id, o.market.sectors[id] !== false])) },
+          civilService: { available: orderUnlocked(s, c, 'civilService'), on: o.civilService.on, levers: o.civilService.levers },
+          treasury: { available: orderUnlocked(s, c, 'treasury'), on: o.treasury.on, keepSeconds: o.treasury.keepSeconds, projects: o.treasury.projects },
+          nextTickIn: (INTERVAL_YEARS / YEARS_PER_SECOND) - (s.time % (INTERVAL_YEARS / YEARS_PER_SECOND)),
+        },
+        respec: { allowed: fresh && refund > 0, refund, refundByTree },
       };
     },
     click(s0, c) {
@@ -738,55 +1212,109 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       const v = api.upgradeViews(s0, c).find((u) => u.def.id === id);
       if (!v || !v.visible || !v.affordable || v.maxed || v.excludedBy || pending(s0, c)) return s0;
       const s = clone(s0);
-      s.capital -= v.cost; s.upgrades[id] = (s.upgrades[id] || 0) + 1;
-      for (const e of v.def.effects) {
-        if (e.type === 'reveal') { s.flags.revealed = true; news(s, c, 'reveal'); }
-        if (e.type === 'reserveAdd') { const es = s.sectors[e.sector]; es.reserve += e.value * c.sectors[e.sector].reserve; es.reserveMax += e.value * c.sectors[e.sector].reserve; }
-      }
-      if (v.def.kind === 'efficiency') news(s, c, 'efficiency', {}, v.def.sector);
+      applyUpgrade(s, c, v.def, v.cost, 'player'); decide(s);
       return s;
     },
     foundApp(s0, c, appId) {
       for (const id of order(c)) {
         const a = c.sectors[id].applications.find((x) => x.id === appId);
         const st = a && s0.sectors[id].apps[appId];
-        if (a && st && st.available && !st.founded && s0.capital >= a.foundCost) {
-          const s = clone(s0); s.capital -= a.foundCost; s.sectors[id].apps[appId].founded = true; news(s, c, 'appFounded', { app: a.name }, id); return s;
+        if (a && st && st.available && !st.founded && s0.capital >= a.foundCost && !s0.sectors[id].settled) {
+          const s = clone(s0); s.capital -= a.foundCost; s.sectors[id].apps[appId].founded = true; news(s, c, 'appFounded', { app: a.name }, id);
+          if (s.run.opening.length < OPENING_MAX) s.run.opening = [...s.run.opening, { t: s.time, kind: 'found', id: appId, by: 'player' }];
+          emit(s, c, 'appFounded', { sector: id, id: appId, by: 'player' }); decide(s);
+          return s;
         }
       }
       return s0;
     },
     setLever(s0, c, id, level) {
       const def = c.levers.find((l) => l.id === id), cur = s0.levers[id]?.level ?? 0;
-      if (!def || level < 0 || level > leverMax(def) || level === cur) return s0;
+      if (!def || level < 0 || level > leverMax(def) || level === cur || s0.sectors[def.sector]?.settled) return s0;
       const s = clone(s0);
       if (level > cur) {
         if (level !== cur + 1) return s0;
         const cost = leverLevel(def, level)!.mandateCost;
         if (s.mandate < cost) return s0;
         s.mandate -= cost;
-        if (cur === 0) {
-          s.levers[id] = { ...s.levers[id], level, ref: calc(s, c, def.sector).ps };
-          const es = s.sectors[def.sector];
-          if (!es.budget) { es.budget = { r0: calc(s0, c, def.sector).R, since: s.time, drawnYear: Math.floor(yearOf(s, c)) }; news(s, c, 'budgetDrawn', {}, def.sector); }
+        if (cur === 0) s.levers[id] = { ...s.levers[id], level, ref: calc(s, c, def.sector).ps };
+        const es = s.sectors[def.sector];
+        if (!es.budget) {
+          drawLine(s, c, def.sector, calc(s0, c, def.sector).R, undefined, wellbeing(s0, c));
+          news(s, c, 'budgetDrawn', {}, def.sector); emit(s, c, 'budgetDrawn', { sector: def.sector, id: es.budget!.pace, by: 'player' });
+          if (s.run.firstBudgetAt == null) s.run.firstBudgetAt = s.time;
         }
         news(s, c, 'leverEnacted', {}, def.sector);
+        emit(s, c, 'leverEnacted', { sector: def.sector, id, n: level, by: 'player' });
       }
       s.levers[id] = { ...(s.levers[id] || { ref: 0 }), level };
+      decide(s);
       return s;
     },
     setLeverRecycle(s0, c, id, option) {
       const def = c.levers.find((l) => l.id === id);
       if (!def || !(def.kind === 'duty' || def.kind === 'cap') || !(def.recycle ?? ['treasury']).includes(option)) return s0;
-      const s = clone(s0); s.levers[id] = { ...s.levers[id], recycle: option }; return s;
+      if (option === 'commons' && !commonsOpen(s0, c)) return s0;
+      if ((s0.levers[id]?.recycle ?? def.recycle?.[0] ?? 'treasury') === option) return s0;
+      const s = clone(s0); s.levers[id] = { ...s.levers[id], recycle: option }; decide(s); return s;
     },
-    drawBudget(s0, c, sector) {
-      if (!s0.flags.revealed || !s0.sectors[sector]?.open || pending(s0, c)) return s0;
+    drawBudget(s0, c, sector, pace) {
+      if (!s0.flags.revealed || !s0.sectors[sector]?.open || pending(s0, c) || s0.sectors[sector].settled) return s0;
+      if (pace != null && !paces(c, sector).some((p) => p.id === pace)) return s0;
       const R = calc(s0, c, sector).R; if (!(R > 0)) return s0;
       const s = clone(s0);
-      s.sectors[sector].budget = { r0: R, since: s.time, drawnYear: Math.floor(yearOf(s, c)) };
-      s.sectors[sector].steadyYears = 0;
-      news(s, c, 'budgetDrawn', {}, sector);
+      drawLine(s, c, sector, R, pace, wellbeing(s0, c));
+      s.sectors[sector].clearYears = 0;
+      news(s, c, 'budgetDrawn', {}, sector); emit(s, c, 'budgetDrawn', { sector, id: s.sectors[sector].budget!.pace, by: 'player' });
+      if (s.run.firstBudgetAt == null) s.run.firstBudgetAt = s.time;
+      decide(s);
+      return s;
+    },
+    chooseDecadeDividend(s0, c, sector, option) {
+      if (pending(s0, c)) return s0;
+      const s = clone(s0);
+      if (!resolveDividend(s, c, sector, option, 'player')) return s0;
+      decide(s);
+      return s;
+    },
+    settle(s0, c, sector) {
+      const d = api.derive(s0, c).sectors[sector];
+      if (!d?.canSettle) return s0;
+      const s = clone(s0), es = s.sectors[sector], k = calc(s, c, sector);
+      const appD: Record<string, number> = {}, appAd: Record<string, number> = {};
+      for (const a of c.sectors[sector].applications) if (es.apps[a.id].founded) { appD[a.id] = k.apps[a.id].d; appAd[a.id] = k.apps[a.id].ad; }
+      es.settled = { since: s.time, sinceYear: Math.floor(yearOf(s, c)), D: k.D, R: k.R, ps: k.ps, pPre: k.pre, income: k.income, P: es.pressure, eta: k.eta, defect: 1,
+        N0: s.population, spillMul0: 1, extraD0: commonsExtra(s, c, sector), appD, appAdoption: appAd };
+      for (const l of c.levers) if (l.sector === sector) s.levers[l.id] = { ...s.levers[l.id], level: 0, ref: 0 };
+      if (!es.settledBefore) for (const e of c.sectors[sector].settle?.dividend ?? []) if (e.type === 'mandateAdd') s.mandate += e.value;
+      es.settledBefore = true;
+      news(s, c, 'settled', {}, sector); emit(s, c, 'settled', { sector, by: 'player' }); decide(s);
+      return s;
+    },
+    unsettle(s0, c, sector) {
+      if (!s0.sectors[sector]?.settled || pending(s0, c)) return s0;
+      const s = clone(s0), es = s.sectors[sector];
+      es.settled = null; es.steadyYears = 0; es.clearYears = 0; es.windowLean = false;
+      news(s, c, 'unsettled', {}, sector); emit(s, c, 'unsettled', { sector, by: 'player' }); decide(s);
+      return s;
+    },
+    buyCommons(s0, c, id) {
+      const v = commonsViewsOf(s0, c).find((x) => x.def.id === id);
+      if (!v || !v.canBuy) return s0;
+      const s = clone(s0); buildCommons(s, c, v, 'player'); decide(s); return s;
+    },
+    setOrders(s0, c, patch) {
+      const o = s0.meta.orders ?? freshOrders(c);
+      const n: OrdersState = {
+        market: { ...o.market, ...(patch.market ?? {}), sectors: { ...o.market.sectors, ...(patch.market?.sectors ?? {}) } },
+        civilService: { ...o.civilService, ...(patch.civilService ?? {}), levers: { ...o.civilService.levers, ...(patch.civilService?.levers ?? {}) } },
+        treasury: { ...o.treasury, ...(patch.treasury ?? {}) },
+      };
+      n.market.paybackMax = Math.min(86400, Math.max(1, n.market.paybackMax));
+      n.treasury.keepSeconds = Math.min(86400, Math.max(0, n.treasury.keepSeconds));
+      if (JSON.stringify(n) === JSON.stringify(o)) return s0;
+      const s = clone(s0); s.meta.orders = n;
+      if (!isFresh(s0)) decide(s);
       return s;
     },
     reckon(s0, c) {
@@ -794,27 +1322,39 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       const t = terms(s0, c);
       const meta = clone(s0.meta);
       meta.hindsight += t.total; meta.hindsightEarned += t.total; meta.reckonings++; meta.achievements.firstReckoning = true; meta.totalSeconds += s0.time;
-      const sectors: NonNullable<MetaState['lastRun']>['sectors'] = {};
+      const sectors: RunSummary['sectors'] = {};
       for (const id of order(c)) if (s0.sectors[id].open) {
         const es = s0.sectors[id];
+        const peakAdoption: Record<string, number> = {};
+        for (const a of c.sectors[id].applications) if (es.apps[a.id].founded) peakAdoption[a.id] = es.apps[a.id].peakAdoption;
         sectors[id] = {
           etaFold: etaOf(s0, c, id) / (es.etaAtBase || 1), peakRFold: es.peakR / (es.baseR || 1), resourceUsed: s0.run.resourceUsed[id] || 0,
           unburnt: c.sectors[id].resourceKind === 'stock' ? es.reserve / Math.max(1, es.reserveMax) : undefined, decades: es.decadesWithin.length,
+          leanDecades: es.decadesLean.filter(Boolean).length, peakPressure: es.peakPressure / c.sectors[id].collapseAt, peakAdoption,
+          stage: stageOf(s0, c, id) ?? 0, steady: !!s0.run.steadySectors[id], settled: !!es.settled,
         };
       }
-      meta.lastRun = {
+      const summary: RunSummary = {
         cause: p?.cause ?? 'chosen', causeSector: p?.sector, seconds: s0.time, yearReached: Math.floor(yearOf(s0, c)), hindsightGained: t.total,
-        peakWellbeing: s0.run.peakWellbeing, sectors, hindsightTerms: t,
+        peakWellbeing: s0.run.peakWellbeing, sectors, hindsightTerms: t, index: meta.reckonings, totalSecondsAtEnd: meta.totalSeconds,
+        charter: s0.meta.charter ?? undefined, decisions: s0.run.decisions, automated: s0.run.automated, decisionsByDecade: s0.run.decisionsByDecade,
+        automatedByDecade: s0.run.automatedByDecade, commonsLevels: Object.values(s0.commons.levels).reduce((a, x) => a + x, 0), peakPopulation: s0.peakPopulation,
       };
+      meta.runs = [...(meta.runs || []), summary].slice(-RUN_HISTORY_MAX);
+      meta.lastRun = summary;
+      meta.charter = null;
       const s = api.createState(c, meta, s0.seed + 1);
+      s.charterOffer = drawOffer(s, c, summary.charter);
+      s.events = [];
       news(s, c, 'reckoning');
+      emit(s, c, 'reckoning', { id: summary.cause, sector: summary.causeSector });
       return s;
     },
     buyKnowhow(s0, c, id) {
       const v = api.knowhowViews(s0, c).find((x) => x.def.id === id);
       if (!v || !v.canBuy || v.cost == null) return s0;
       const meta = clone(s0.meta); meta.hindsight -= v.cost; meta.knowhow[id] = v.level + 1;
-      for (const e of v.def.effects) if (e.type === 'slotAdd') meta.slots += e.value;
+      if (v.level + 1 > (meta.knowhowPeak[id] || 0)) { for (const e of v.def.effects) if (e.type === 'slotAdd') meta.slots += e.value; meta.knowhowPeak[id] = v.level + 1; }
       return rebuild(s0, c, meta);
     },
     buyInstitution(s0, c, id) {
@@ -830,13 +1370,36 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       const meta = clone(s0.meta); meta.loadout = [...ids];
       return rebuild(s0, c, meta);
     },
+    chooseCharter(s0, c, id) {
+      if (!isFresh(s0) || (id != null && !(s0.charterOffer || []).includes(id)) || (s0.meta.charter ?? null) === id) return s0;
+      const meta = clone(s0.meta); meta.charter = id;
+      const s = rebuild(s0, c, meta);
+      const ch = (c.charters || []).find((x) => x.id === id);
+      if (ch) { news(s, c, 'charter', { name: ch.name }, ch.sector); emit(s, c, 'charterChosen', { id: ch.id }); }
+      return s;
+    },
+    respecKnowhow(s0, c, tree) {
+      const d = api.derive(s0, c);
+      if (!d.freshRun) return s0;
+      const meta = clone(s0.meta);
+      let refund = 0;
+      for (const k of c.knowhow) {
+        if (tree != null && (k.tree ?? 'general') !== tree) continue;
+        const lv = meta.knowhow[k.id] || 0; if (!lv) continue;
+        for (let l = 0; l < lv; l++) refund += k.cost * Math.pow(k.costGrowth, l) * (c.global.respecRefund ?? 1);
+        delete meta.knowhow[k.id];
+      }
+      if (refund <= 0) return s0;
+      meta.hindsight += refund;
+      return rebuild(s0, c, meta);
+    },
     upgradeViews(s, c) {
       const revealed = s.flags.revealed;
       return c.upgrades.map((u): UpgradeView => {
         const level = s.upgrades[u.id] || 0;
         const cost = u.cost * Math.pow(u.costGrowth || 1, level);
         const maxed = u.repeatable ? level >= (u.maxLevel ?? Infinity) : level >= 1;
-        const visible = !!s.sectors[u.sector]?.open && (u.requires || []).every((r) => s.upgrades[r]) && (!u.locked || unlocked(s, c, u.id));
+        const visible = !!s.sectors[u.sector]?.open && !s.sectors[u.sector]?.settled && (u.requires || []).every((r) => s.upgrades[r]) && (!u.locked || unlocked(s, c, u.id));
         const excl = c.upgrades.find((o) => (s.upgrades[o.id] || 0) >= 1 && o.id !== u.id && ((o.excludes || []).includes(u.id) || (u.excludes || []).includes(o.id)));
         const excludedBy = excl ? excl.id : null;
         let promised: number | null = null, decade: number | null = null;
@@ -852,7 +1415,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
             const st = s.sectors[u.sector].apps[a.id];
             if (st.available || !Number.isFinite(a.visibleBelow)) continue;
             if (after.ps * 0.85 <= a.visibleBelow && before.ps * 0.85 > a.visibleBelow) {
-              const tt = clone(t); tt.sectors[u.sector].apps[a.id] = { available: true, founded: true, satMul: 1, peakD: 0 };
+              const tt = clone(t); tt.sectors[u.sector].apps[a.id] = newApp(true, true);
               const withApp = calc(tt, c, u.sector).R;
               reach.push({ appId: a.id, projectedChange: after.R > 0 ? withApp / after.R - 1 : 0 });
             }
@@ -866,19 +1429,25 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       });
     },
     leverViews(s, c) {
+      const open = commonsOpen(s, c);
       return c.levers.map((l): LeverView => {
         const level = s.levers[l.id]?.level ?? 0;
         const max = leverMax(l);
         const next = level < max ? leverLevel(l, level + 1) : null;
         const free = effects(s, c).filter((e) => e.type === 'startLever' && e.lever === l.id).reduce((m, e) => Math.max(m, (e as { level: number }).level), 0);
         const cost = next ? (level + 1 <= free ? 0 : next.mandateCost) : null;
-        const visible = (s.flags.revealed || free > 0) && !!s.sectors[l.sector]?.open && (!l.locked || unlocked(s, c, l.id));
+        const visible = (s.flags.revealed || free > 0) && !!s.sectors[l.sector]?.open && !s.sectors[l.sector]?.settled && (!l.locked || unlocked(s, c, l.id));
         const cur = leverLevel(l, level);
         const levy = l.kind === 'duty' || l.kind === 'cap';
+        const options: LeverRecycle[] = levy ? (l.recycle ?? ['treasury']) : [];
+        const txt = c.recycleText || {};
         return {
           def: l, level, maxLevel: max, current: cur, next, visible, nextCost: cost, canRaise: visible && cost != null && s.mandate >= cost,
           upkeep: cur && level > free ? cur.mandateUpkeep : 0,
-          recycleOptions: levy ? (l.recycle ?? ['treasury']) : [], recycle: levy ? (s.levers[l.id]?.recycle ?? l.recycle?.[0] ?? 'treasury') : null,
+          recycleOptions: options, recycle: levy ? (s.levers[l.id]?.recycle ?? l.recycle?.[0] ?? 'treasury') : null,
+          recycleChoices: options.map((o) => ({
+            option: o, name: txt[o]?.name ?? o.charAt(0).toUpperCase() + o.slice(1), blurb: l.recycleBlurb?.[o] ?? txt[o]?.blurb ?? '', available: o !== 'commons' || open,
+          })),
         };
       });
     },
@@ -912,15 +1481,18 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
         };
       });
     },
+    commonsViews(s, c) { return commonsViewsOf(s, c); },
+    yearAt(s, c, time) { return yearOf(s, c, s.time - Math.max(0, time)); },
     hindsightOnReckon(s, c) { return terms(s, c).total; },
     serialize(s) { return JSON.stringify(s, (_k, v) => (v === Infinity ? 1e308 : v)); },
     deserialize(text, c) {
       try {
         const s = JSON.parse(text) as GameState;
-        if (!s || typeof s !== 'object' || !s.sectors || !s.meta || (s.version ?? 1) > 2) return null;
+        if (!s || typeof s !== 'object' || !s.sectors || !s.meta || (s.version ?? 1) > 3) return null;
         void c; return s;
       } catch { return null; }
     },
   };
+  viewsOf = (s, c) => api.upgradeViews(s, c);
   return api;
 }

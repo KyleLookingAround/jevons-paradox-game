@@ -1,25 +1,33 @@
 /**
  * The step: advance one state by dt (every open sector, then population, Mandate and lapses, unlocks, the win, run
- * stats, achievements), and tick / fastForward built on it. Hot path. It is the integration point for the per-step
- * rules of the other modules (decades and Steady State, crises, backfire, standing-cap draws).
+ * stats, achievements), and tick built on it (fastForward is in offline.ts). Hot path. It is the integration point for
+ * the per-step rules of the other modules: decades and Steady State (steady.ts), crises, backfire, standing-cap draws,
+ * dividend offers (dividends.ts), forced unsettles (settlement.ts), events (events.ts) and, last, the standing orders
+ * (orders.ts).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { YEARS_PER_SECOND, STEADY_STATE_YEARS, EXHAUSTED_BELOW, MAX_TICK_SECONDS } from '../types';
-import type { AppState, Content, GameState, LeverDef, MetaState, NewsItem, RunStats, SectorId, SectorState } from '../types';
-import { SUFFICIENCY_RECOVERY_RATE, TREND_TAU, POP_MIN, HISTORY_EVERY, FAST_FORWARD_STEP } from './constants';
+import type { AppState, Content, GameState, LeverDef, MetaState, NewsItem, PendingDividend, RunStats, SectorId, SectorState } from '../types';
+import { SUFFICIENCY_RECOVERY_RATE, TREND_TAU, POP_MIN, HISTORY_EVERY } from './constants';
 import { calendarYear } from './calendar';
+import { commonsCfg } from './commons';
 import { evalCond } from './conditions';
 import { idx } from './contentIndex';
-import { modsOf, etaAt, fireOneOffs } from './effects';
+import { appendDividend, decadeOffer } from './dividends';
+import { modsOf, etaAt, fireOneOffs, absorptionOf } from './effects';
 import type { OneOffs } from './effects';
-import { computeFlows, instruments } from './flows';
+import { pushEvents } from './events';
+import type { EvDraft } from './events';
+import { computeFlows, instruments, steadyView } from './flows';
 import { headline, withNews } from './headlines';
 import type { HeadlineCtx } from './headlines';
 import { sectorLevers, NO_LEVERS, leverNetUpkeep } from './levers';
+import { runOrders } from './orders';
 import { popGrowthRate } from './population';
 import { jevonsSet } from './purchases';
+import { unsettleAs } from './settlement';
 import { freshSector, snapshotBase, historySample, pushHistory } from './state';
-import { steadyCfg, decadeEffectsOf, budgetROf, standingDrawYearsOf, isWithin } from './steady';
+import { steadyCfg, decadeEffectsOf, standingDrawYearsOf, newBudget, paceOf } from './steady';
 import { canOpen } from './unlocks';
 import { fin, clamp } from './util';
 
@@ -39,10 +47,12 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   const time = state.time + dt;
   const dy = dt * YEARS_PER_SECOND;
   const W = fl.wellbeing;
+  const target = g.wellbeingTarget;
   const year = calendarYear(state, content);
   const hc: HeadlineCtx = { year };
   const secondTick = !lite && (dt >= 1 || Math.floor(time) !== Math.floor(state.time));
   const items: NewsItem[] = [];
+  const ev: EvDraft[] = [];
   let ach = state.meta.achievements;
   const grant = (id: string) => { if (!ach[id]) ach = { ...ach, [id]: true }; };
   let runSteady = state.run.steadySectors;
@@ -50,13 +60,16 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let backfiredSectors = state.meta.backfiredSectors;
   let firstBackfires = state.run.firstBackfires;
   let budgetDecades = state.run.budgetDecades;
+  let leanDecades = state.run.leanDecades ?? 0;
   const one: OneOffs = { capital: 0, mandate: 0, slots: 0 };
   const reserveAdds: { sector: SectorId; value: number }[] = [];
+  const offers: PendingDividend[] = [];
   let revealNow = false;
   const resourceUsed = { ...state.run.resourceUsed };
   let crisisCount = 0;
   let anyDecoupling = false;
-  let allDecoupling = true;
+  let anyOpen = false;
+  let allSink = W >= target;
   let levers = state.levers;
   const sectors = { ...state.sectors };
   const tmp = { ...state, time };
@@ -65,8 +78,18 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     const es0 = state.sectors[s];
     const f = fl.sectors[s];
     if (!es0?.open || !f) continue;
+    anyOpen = true;
+    if (es0.settled) {
+      // M2: a settled sector is frozen; only its clock and its burn move.
+      const st = es0.settled;
+      resourceUsed[s] = (resourceUsed[s] ?? 0) + st.R * dt;
+      sectors[s] = { ...es0, openFor: es0.openFor + dt, serviceDelivered: (es0.serviceDelivered ?? 0) + st.D * dy };
+      if (W >= target) anyDecoupling = true;
+      continue;
+    }
     const def = content.sectors[s];
     const lev = levs[s] ?? NO_LEVERS;
+    const sv = steadyView(state, content, fl, s);
     let es: SectorState = { ...es0 };
     es.openFor = es0.openFor + dt;
     es.eta = etaAt(def, mods, es.openFor);
@@ -74,11 +97,14 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     // applications
     const apps: Record<string, AppState> = { ...es0.apps };
     def.applications.forEach((a, i) => {
-      const st = apps[a.id] ?? { available: false, founded: false, satMul: 1, peakD: 0 };
+      const st = apps[a.id] ?? { available: false, founded: false, satMul: 1, peakD: 0, peakAdoption: 0 };
       const d = f.appD[i];
       let changed = !apps[a.id];
       const ns = { ...st };
       if (d > ns.peakD) { ns.peakD = d; changed = true; }
+      const sat = f.appSat[i];
+      const adoption = sat > 0 ? clamp(d / sat, 0, 1) : 0;
+      if (adoption > (ns.peakAdoption ?? 0)) { ns.peakAdoption = adoption; changed = true; }
       const target = lev.sufTarget;
       if (ns.satMul > target + 1e-12) {
         ns.satMul = Math.max(target, ns.satMul - (ns.satMul - target) * (1 - Math.exp(-lev.sufRate * dt)));
@@ -89,10 +115,14 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       }
       if (!ns.available && f.ps <= a.visibleBelow) {
         ns.available = true; changed = true;
-        if (a.foundCost <= 0) {
+        if (a.foundCost <= 0 || ns.founded) {
           ns.founded = true;
           items.push(headline(tmp, content, 'appFounded', time, { ...hc, app: a.name }, s));
-        } else items.push(headline(tmp, content, 'appAvailable', time, { ...hc, app: a.name }, s));
+          ev.push({ kind: 'appFounded', sector: s, id: a.id, by: 'default' });
+        } else {
+          items.push(headline(tmp, content, 'appAvailable', time, { ...hc, app: a.name }, s));
+          ev.push({ kind: 'appAvailable', sector: s, id: a.id });
+        }
       }
       if (changed) apps[a.id] = ns;
     });
@@ -102,7 +132,10 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     if (def.resourceKind === 'stock') {
       es.reserve = Math.max(0, es0.reserve - f.R * (1 - lev.circ) * dt + f.reserveGain * dt);
       es.reserveMax = es0.reserveMax + f.reserveGain * dt;
-      if (es.reserve <= EXHAUSTED_BELOW * es.reserveMax) items.push(headline(tmp, content, 'exhausted', time, hc, s));
+      if (es.reserve <= EXHAUSTED_BELOW * es.reserveMax) {
+        items.push(headline(tmp, content, 'exhausted', time, hc, s));
+        ev.push({ kind: 'exhausted', sector: s });
+      }
     } else {
       es.reserve = es.reserveMax = f.capacity;
     }
@@ -110,14 +143,19 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     es.serviceDelivered = (es0.serviceDelivered ?? 0) + f.D * dy;
 
     // pressure
-    const absorption = Math.max(0, def.absorption + (mods.absorptionAdd[s] ?? 0));
+    const absorption = absorptionOf(def, mods);
     es.pressure = Math.max(0, fin(es0.pressure * Math.exp(-absorption * dt) + (f.pressureIn - f.deletionOut) * dt));
     while (es.crisesFired < def.crisisAt.length && def.collapseAt > 0 && es.pressure >= def.crisisAt[es.crisesFired] * def.collapseAt) {
       es.crisesFired++;
       crisisCount++;
       items.push(headline(tmp, content, 'crisis', time, { ...hc, n: es.crisesFired }, s));
+      ev.push({ kind: 'crisis', sector: s, n: es.crisesFired });
     }
-    if (def.collapseAt > 0 && es.pressure >= def.collapseAt) items.push(headline(tmp, content, 'collapse', time, hc, s));
+    if (def.collapseAt > 0 && es.pressure >= def.collapseAt) {
+      items.push(headline(tmp, content, 'collapse', time, hc, s));
+      ev.push({ kind: 'collapse', sector: s });
+    }
+    if (es.pressure > (es0.peakPressure ?? 0)) es.peakPressure = es.pressure;
 
     // baseline, trend, peaks
     if (es.baseR <= 0) {
@@ -137,6 +175,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       if (rb !== null && rb > 1) {
         es.backfired = true;
         items.push(headline(tmp, content, 'backfire', time, hc, s));
+        ev.push({ kind: 'backfire', sector: s });
         grant('backfire');
         if (!backfiredSectors[s]) {
           backfiredSectors = { ...backfiredSectors, [s]: true };
@@ -150,35 +189,67 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
       if (effs.length && effs.every((u) => (state.upgrades[u.id] ?? 0) > 0)) grant('jevonsWasRight');
     }
 
-    // budget auto-draw for an active cap
+    // budget auto-draw for an active cap (M2: the default pace, the line's own day)
     if (Number.isFinite(lev.capFrac) && !es0.budget && f.D > 0 && f.R > 0
       && es0.openFor * YEARS_PER_SECOND >= standingDrawYearsOf(def, content) - 1e-9) {
-      es.budget = { r0: f.R, since: state.time, drawnYear: Math.floor(year) };
+      es.budget = newBudget(content, s, f.R, state.time, year, W, es0.pressure);
       items.push(headline(tmp, content, 'budgetDrawn', time, hc, s));
+      ev.push({ kind: 'budgetDrawn', sector: s, id: es.budget.pace, by: 'default' });
     }
 
-    // decoupling streak, decades, Steady State
-    const decoupling = isWithin(f.R, budgetROf(es0, def, content, state.time)) && W >= g.wellbeingTarget;
-    if (decoupling) {
+    // the decade streak (M2: against the line's own day), decades, dividend offers
+    if (sv.decoupling) {
       anyDecoupling = true;
       const before = es0.steadyYears;
       const after = before + dy;
       es.steadyYears = after;
+      let lean = (es0.windowLean ?? false) || W < target;
+      es.windowLean = lean;
       const DY = sc.decadeYears;
       const crossed = Math.floor(after / DY + 1e-9) - Math.floor(before / DY + 1e-9);
       if (crossed > 0) {
         const effs = decadeEffectsOf(content, s);
+        const mul = paceOf(content, s, es0.budget?.pace).dividendMul;
         for (let k = 0; k < crossed; k++) {
           es.decadesWithin = [...es.decadesWithin, Math.floor(year)];
+          es.decadesLean = [...(es.decadesLean ?? []), lean];
           budgetDecades++;
-          fireOneOffs(effs, 1, fl.income, one);
+          if (lean) leanDecades++;
+          const o1: OneOffs = { capital: 0, mandate: 0, slots: 0 };
+          fireOneOffs(effs, 1, fl.income, o1);
+          one.capital += o1.capital * mul; one.mandate += o1.mandate * mul; one.slots += o1.slots;
           for (const ef of effs) {
             if (ef.type === 'reserveAdd') reserveAdds.push({ sector: ef.sector, value: ef.value });
             else if (ef.type === 'reveal') revealNow = true;
           }
-          items.push(headline(tmp, content, 'decade', time, { ...hc, n: es.decadesWithin.length }, s));
+          const n = es.decadesWithin.length;
+          items.push(headline(tmp, content, 'decade', time, { ...hc, n }, s));
+          ev.push({ kind: 'decade', sector: s, n, id: lean ? 'lean' : 'full' });
+          const offer = decadeOffer(content, s, n, mul);
+          if (offer) offers.push(offer);
+          lean = W < target;
+          es.windowLean = false;
         }
       }
+    } else {
+      if (es0.steadyYears >= sc.decadeYears - 1e-9) {
+        items.push(headline(tmp, content, 'budgetBroken', time, hc, s));
+        ev.push({ kind: 'budgetBroken', sector: s });
+      }
+      es.steadyYears = 0;
+      es.windowLean = false;
+    }
+
+    // the Steady streak (M2: within budget, at target, clear skies), clear skies, Steady State
+    if (es0.budget && sv.clear && es0.budget.clearAt === undefined && es.budget === es0.budget) {
+      es.budget = { ...es0.budget, clearAt: state.time };
+      items.push(headline(tmp, content, 'clearSkies', time, hc, s));
+      ev.push({ kind: 'clearSkies', sector: s });
+    }
+    if (sv.sinkHeld && sv.decoupling) {
+      const before = es0.clearYears ?? 0;
+      const after = before + dy;
+      es.clearYears = after;
       if (before < STEADY_STATE_YEARS && after >= STEADY_STATE_YEARS) {
         // M1 balance: Steady State earned on this line holds it level from now on.
         if (es.budget && es.budget.heldAt === undefined) es.budget = { ...es.budget, heldAt: state.time };
@@ -186,19 +257,18 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
           runSteady = { ...runSteady, [s]: true };
           grant('steadyState');
           items.push(headline(tmp, content, 'steadySector', time, hc, s));
+          ev.push({ kind: 'steadyState', sector: s });
         }
         if (!metaSteady[s]) {
           metaSteady = { ...metaSteady, [s]: true };
           fireOneOffs(sc.first, 1, fl.income, one);
         }
       }
-    } else {
-      if (es0.steadyYears >= sc.decadeYears - 1e-9) items.push(headline(tmp, content, 'budgetBroken', time, hc, s));
-      es.steadyYears = 0;
-      allDecoupling = false;
-    }
+    } else es.clearYears = 0;
+    if (!(sv.withinBudget && sv.clear)) allSink = false;
+
     // degrowth by accident
-    if (state.population < 0.6 * state.peakPopulation && es.trendR < 0 && W < g.wellbeingTarget) grant('degrowthByAccident');
+    if (state.population < 0.6 * state.peakPopulation && es.trendR < 0 && W < target) grant('degrowthByAccident');
     // duty ref snapshots (standing levers, or enacted before demand existed)
     if (f.D > 0) {
       for (const ld of ix.leversBySector[s] ?? []) {
@@ -219,7 +289,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   for (const ra of reserveAdds) {
     const d = content.sectors[ra.sector];
     const es = sectors[ra.sector];
-    if (d && es?.open && d.resourceKind === 'stock') {
+    if (d && es?.open && !es.settled && d.resourceKind === 'stock') {
       const a = ra.value * d.reserve;
       sectors[ra.sector] = { ...es, reserve: es.reserve + a, reserveMax: es.reserveMax + a };
     }
@@ -231,11 +301,11 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   if (crisisCount) population *= Math.pow(1 - g.crisisPopLoss, crisisCount);
   population = Math.max(POP_MIN, fin(population, POP_MIN));
 
-  // mandate & lapse
+  // mandate & lapse (M2: settlement defences count as upkeep; once no lever upkeep is left, the largest defence unsettles)
   let mandate = state.mandate + (fl.mandateGain - fl.upkeep) * dt + crisisCount * g.crisisMandate + one.mandate;
+  const unsettleList: SectorId[] = [];
   if (mandate <= 0) {
     mandate = 0;
-    // Drop the costliest-upkeep lever one level, repeatedly, until upkeep is covered (independent of tick length).
     let upkeep = fl.upkeep;
     for (let guard = 0; upkeep > fl.mandateGain + 1e-12 && guard < 1000; guard++) {
       let worst: LeverDef | null = null, worstUp = 0;
@@ -245,13 +315,24 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
         const up = leverNetUpkeep(ld, ls.level, mods.startLevers[ld.id] ?? 0);
         if (up > worstUp) { worstUp = up; worst = ld; }
       }
-      if (!worst) break;
+      if (!worst) {
+        let ws: SectorId | null = null, wd = 0;
+        for (const s of ix.ids) {
+          const d = fl.settled[s];
+          if (d && d.defence > wd && !unsettleList.includes(s)) { wd = d.defence; ws = s; }
+        }
+        if (ws === null) break;
+        unsettleList.push(ws);
+        upkeep -= wd;
+        continue;
+      }
       const ls = levers[worst.id];
       if (levers === state.levers) levers = { ...levers };
       const lvl = ls.level - 1;
       levers[worst.id] = { ...ls, level: lvl, ref: lvl > 0 ? ls.ref : 0 };
       upkeep += leverNetUpkeep(worst, lvl, mods.startLevers[worst.id] ?? 0) - worstUp;
       items.push(headline(tmp, content, 'leverLapsed', time, hc, worst.sector));
+      ev.push({ kind: 'leverLapsed', sector: worst.sector, id: worst.id, n: lvl, by: 'default' });
     }
   }
   mandate = fin(mandate);
@@ -269,19 +350,25 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     opened.push(s);
     if (!sectorsOpened[s]) sectorsOpened = { ...sectorsOpened, [s]: true };
     items.push(headline(tmp, content, 'sectorOpened', time, hc, s));
-    if (ageNew) items.push(headline(tmp, content, 'ageBegins', time, hc, s));
+    ev.push({ kind: 'sectorOpened', sector: s });
+    if (ageNew) {
+      items.push(headline(tmp, content, 'ageBegins', time, hc, s));
+      ev.push({ kind: 'ageBegins', sector: s, id: age!.id });
+    }
+    for (const a of def.applications) if (mods.startFounded.has(a.id)) ev.push({ kind: 'appFounded', sector: s, id: a.id, by: 'default' });
   }
 
-  // Steady State across the board
+  // Steady State across the board (M2: every open sector settled or within budget and clear, at the target)
   const allOpen = ix.ids.every((s) => sectors[s]?.open);
   let steadyYearsAll = state.steadyYearsAll;
   let flags = state.flags;
   if (revealNow && !flags.revealed) flags = { ...flags, revealed: true };
-  if (allDecoupling && anyDecoupling && opened.length === 0) {
+  if (allSink && anyOpen && opened.length === 0) {
     steadyYearsAll += dy;
     if (allOpen && steadyYearsAll >= STEADY_STATE_YEARS && !flags.won) {
       flags = { ...flags, won: true };
       items.push(headline(tmp, content, 'steadyAll', time, hc));
+      ev.push({ kind: 'won' });
     }
   } else steadyYearsAll = 0;
 
@@ -297,10 +384,12 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     resourceUsed,
     steadySectors: runSteady,
     wellbeingYears: (state.run.wellbeingYears ?? 0) + Math.max(0, W - g.subsistence) * dy,
-    yearsAtTarget: (state.run.yearsAtTarget ?? 0) + (W >= g.wellbeingTarget ? dy : 0),
+    yearsAtTarget: (state.run.yearsAtTarget ?? 0) + (W >= target ? dy : 0),
     budgetDecades,
+    leanDecades,
     firstBackfires,
   };
+  const evs = pushEvents(state.events ?? [], state.meta.eventSeq ?? 0, ev, time, year);
   const meta: MetaState = {
     ...state.meta,
     totalSeconds: state.meta.totalSeconds + dt,
@@ -309,12 +398,16 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     steadySectors: metaSteady,
     backfiredSectors,
     slots: state.meta.slots + one.slots,
+    eventSeq: evs.seq,
+    peakPopulationEver: Math.max(state.meta.peakPopulationEver ?? 1, population),
   };
+  const commonsIn = fl.commonsLevy > 0 ? commonsCfg(content).fundShare * fl.commonsLevy * dt : 0;
 
   let next: GameState = {
     ...state, time, capital: fin(state.capital + fl.income * dt + one.capital), mandate, population,
     peakPopulation: Math.max(state.peakPopulation, population), sectors, levers, flags, steadyYearsAll, run, meta,
-    news: withNews(state.news, items),
+    news: withNews(state.news, items), events: evs.events,
+    commons: commonsIn > 0 ? { ...state.commons, fund: fin(state.commons.fund + commonsIn) } : state.commons,
   };
   // A newly opened sector records its baseline now, before the player can buy anything for it.
   if (opened.length) {
@@ -326,9 +419,12 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
     next = { ...next, sectors: s2 };
   }
+  for (const s of unsettleList) next = unsettleAs(next, content, s, 'default', time);
+  for (const o of offers) next = appendDividend(next, content, o, fl.income);
   if (!lite && Math.floor(time / HISTORY_EVERY) > Math.floor(state.time / HISTORY_EVERY)) {
     next = { ...next, history: pushHistory(state.history, historySample(next, content, computeFlows(next, content))) };
   }
+  next = runOrders(state, next, content, lite);
   return next;
 }
 
@@ -336,20 +432,6 @@ export function tick(state: GameState, content: Content, dt: number): GameState 
   if (!(dt > 0) || Number.isNaN(dt)) return state;
   const total = Math.min(dt, MAX_TICK_SECONDS);
   const n = Math.ceil(total);
-  const h = total / n;
-  let s = state;
-  for (let i = 0; i < n; i++) {
-    const t = step(s, content, h);
-    if (t === s) break;
-    s = t;
-  }
-  return s;
-}
-
-export function fastForward(state: GameState, content: Content, seconds: number): GameState {
-  const total = Math.min(Math.max(0, fin(seconds)), content.global.offlineCapSeconds ?? 14400);
-  if (!(total > 0)) return state;
-  const n = Math.ceil(total / FAST_FORWARD_STEP);
   const h = total / n;
   let s = state;
   for (let i = 0; i < n; i++) {

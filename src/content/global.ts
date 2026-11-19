@@ -3,7 +3,24 @@
  * Steady State knobs, levy, seats.
  * Content is data (see README.md): every number and word here is read by the core and the UI; no game rules.
  */
-import type { GlobalParams } from '../types';
+import type { GlobalParams, PaceDef } from '../types';
+import { DECADE_PAIRS } from './helpers';
+
+/* ------------------------------------------------------------------ */
+/* PACES (M2)                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The pace of a budget line. A steeper line falls faster towards the sink line and pays a larger one-off dividend
+ * (dividendMul scales mandateAdd and capitalAdd of the decade's base and of the chosen dividend; standing effects are
+ * not scaled). Severe's ×2.5 makes its one-offs worth having, not decisive: a Severe decade is much harder to earn.
+ * The first pace is the default for lines the player did not draw by hand.
+ */
+export const PACES: PaceDef[] = [
+  { id: 'gentle', name: 'Gentle', declinePerDecade: 0.05, dividendMul: 1, blurb: 'Five per cent a decade. The dividend as it stands.' },
+  { id: 'firm', name: 'Firm', declinePerDecade: 0.1, dividendMul: 1.6, blurb: '10 per cent a decade. A larger dividend, and a line that bites sooner.' },
+  { id: 'severe', name: 'Severe', declinePerDecade: 0.2, dividendMul: 2.5, blurb: 'A fifth a decade. The dividend more than doubles, if the decade is ever earned.' },
+];
 
 /* ------------------------------------------------------------------ */
 /* GLOBAL                                                              */
@@ -30,8 +47,13 @@ export const global: GlobalParams = {
     perFirstBackfire: 30,
     perSectorReached: 10,
     perSteadySector: 60,
+    /* M2: a lean decade (judged against the drawn wellbeing) pays its dividend and no Hindsight (decision (a)). */
+    perLeanDecade: 0,
+    /* M2 placeholder, about half of perSteadySector: settled at the Reckoning. The balance lane tunes it. */
+    perSettledSector: 30,
   },
-  offlineCapSeconds: 4 * 60 * 60,
+  /* M2: a night from the start (8 h), never crossing a crisis unseen; Institutions add offline steps (prestige.ts). */
+  offline: { capSeconds: 8 * 3600, holdBefore: 'crisis' },
   /* Growth peaks at W ≈ 29.9 and stops at 46; the wellbeing target (34) sits below the transition. */
   demography: { transitionWellbeing: 46 },
   steady: {
@@ -46,7 +68,27 @@ export const global: GlobalParams = {
       { type: 'wellbeingAdd', value: 0.3 },
     ],
     firstSteadyEffects: [{ type: 'slotAdd', value: 1 }],
+    /* M2: a decade is judged against the line's own day: nobody worse off than when it was drawn (less 5%). */
+    decadeWellbeing: 'drawn',
+    drawnSlack: 0.05,
+    /*
+     * M2: clear skies at half the pressure the line was drawn under, between 3% and 25% of collapse (the ceiling sits
+     * below every first crisis, 0.3–0.4). Halving the pressure means roughly halving R at fixed absorption: a held cap
+     * alone does not get there (Industries override; balance tunes).
+     */
+    clearBelow: 0.5,
+    clearFloor: 0.03,
+    clearCeiling: 0.25,
+    paces: PACES,
+    /* The global sequence; every Industry interleaves its own pairs with it (helpers.ts decadeSequence). */
+    decadeChoices: DECADE_PAIRS,
   },
   levy: { mandateShare: 0.003 },
   startingSlots: 2,
+  /* M2: the Market from run 2 (on by default; payback within two minutes), an order tick every model year (20 s). */
+  orders: { marketFromReckoning: 1, marketPaybackMax: 120, paybackChoices: [30, 120, 600], intervalYears: 1 },
+  /* M2: the Commons from run 3; all levy money routed to them reaches the fund. */
+  commons: { fromReckoning: 2, fundShare: 1 },
+  /* M2: a free Know-how respec between runs (decision (h)). */
+  respecRefund: 1,
 };

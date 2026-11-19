@@ -4,7 +4,7 @@
  */
 import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
 import {
-  eta, capCost, margin, reserve, sat, chain, fork, lever, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST, SUFF_LABEL,
+  eta, capCost, margin, reserve, absorb, sat, chain, fork, lever, withStages, decadeSequence, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST, SUFF_LABEL,
   CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
@@ -27,7 +27,7 @@ const sector: SectorDef = {
   firstYear: 1780,
   tagline: 'One engine, one flooded pit, and a great deal of coal nobody is counting.',
   service: { name: 'Motive power', unit: 'hp' },
-  resource: { name: 'Coal', unit: 'tons' },
+  resource: { name: 'Coal', unit: 'tons', unitSingular: 'ton' },
   pressure: { name: 'Smoke', crisisName: 'The Black Fog' },
   accent: 'iron',
 
@@ -51,6 +51,32 @@ const sector: SectorDef = {
 
   wellbeingWeight: 12,
   wellbeingScale: 70,
+
+  /*
+   * M2: clear skies at the global half of the drawn pressure (0.5 × p0, between 3% and 25% of collapse). With
+   * absorption 0.008 a held line alone takes about thirteen Gentle decades to halve R; slack recovery stretches the coal
+   * but not the air, so it is water wheels, temperance and the absorption Institutions that reach the sink.
+   */
+  steady: {
+    clearBelow: 0.5,
+    decadeChoices: decadeSequence([
+      ['div.steam.pitheadBaths', 'div.steam.dividendInCoal'],
+      ['div.steam.smokeFund', 'div.steam.engineBounty'],
+      ['div.steam.sabbath', 'div.steam.cheapTickets'],
+    ]),
+  },
+
+  /*
+   * M2: Settlement. Standing while settled: Mandate a tenth easier and a point of wellbeing; once a run on the first
+   * settlement, a purse of Mandate for the next Industry. Defence: 0.2 Mandate/s per unit of excess (a 30% larger
+   * town than on the day settled costs 0.05/s, against a restraint player's 0.3–0.5/s).
+   */
+  settle: {
+    dividend: [{ type: 'mandateRateMul', value: 1.1 }, { type: 'wellbeingAdd', value: 1 }, { type: 'mandateAdd', value: 300 }],
+    upkeepPerSpill: 0.2,
+    freeExcess: 0.05,
+    blurb: 'The engines turn at a rate the sky can take. The Gazette now prints the tonnage once a year, on page six.',
+  },
 
   applications: [
     {
@@ -128,7 +154,8 @@ const sector: SectorDef = {
 /* ------------------------------------------------------------------ */
 
 /* ---- Steam: chain to ×13; forks add up to ×2 more (max ≈ ×27, min ≈ ×19) ---- */
-const steamUpgrades: UpgradeDef[] = [
+/* M2 stages (the scene's machines): Watt's condenser 1, high-pressure steam 2, the turbine hall 3. */
+const steamUpgrades: UpgradeDef[] = withStages([
   ...chain('steam', [180, 1_000, 2_200, 4_400, 14_000, 28_000, 56_000], [
     {
       id: 'steam.boilers', name: 'Better boilers', fold: 1.5,
@@ -238,6 +265,27 @@ const steamUpgrades: UpgradeDef[] = [
     },
   ),
 
+  /*
+   * Fork 5 (M2): locked; only a Charter (charter.smokeInquiry) unlocks it. Burn the smoke, or blow the fire harder.
+   * Neither is bought by the Market (it never buys a card with `excludes`).
+   */
+  ...fork(
+    {
+      id: 'steam.smokeFurnace', sector: 'steam', kind: 'efficiency', locked: true,
+      name: 'Smoke-consuming furnace',
+      blurb: 'A second draught of air over the fire, so the furnace burns its own smoke. A little thriftier, and the washing stays white.',
+      cost: 4_500, requires: ['steam.doubleActing'],
+      effects: [eta('steam', 1.05), absorb('steam', 0.0015)],
+    },
+    {
+      id: 'steam.forcedDraught', sector: 'steam', kind: 'efficiency', locked: true,
+      name: 'Forced draught',
+      blurb: 'A fan under the grate and the fire roars. More steam from every boiler, and the boiler makers take orders for larger ones.',
+      cost: 4_500, requires: ['steam.doubleActing'],
+      effects: [eta('steam', 1.15), sat('steam', 1.05)],
+    },
+  ),
+
   {
     /* The growth card (genre audit rec. 2): cheap, repeatable, and itself a rebound: cheaper engines, more engines. */
     id: 'steam.anotherEngine', sector: 'steam', kind: 'capital',
@@ -270,7 +318,7 @@ const steamUpgrades: UpgradeDef[] = [
     blurb: 'Mr Jevons, 1865: an inquiry into the probable exhaustion of our coal-mines. Chapter VII asks whether thriftier engines will save them.',
     cost: 1_600, requires: ['steam.condenser'], effects: [{ type: 'reveal' }],
   },
-];
+], { 'steam.condenser': 1, 'steam.highPressure': 2, 'steam.turbine': 3 });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -284,6 +332,7 @@ const steamLevers: LeverDef[] = [
     blurb: 'A duty on every ton, raised as the engines improve, so that power stays dear. London has taxed coal for centuries.',
     catch: `Cheaper engines no longer mean cheaper power. Nor more income. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 100, upkeep: 0.05, label: DUTY_LABEL, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Spent on baths and libraries instead, heated and lit by coal, and full every evening.' },
   }),
   lever({
     id: 'steam.cap', sector: 'steam', kind: 'cap',
@@ -292,6 +341,7 @@ const steamLevers: LeverDef[] = [
     catch: `Set it far below demand and the furnaces move just outside the borough. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 120, upkeep: 0.06, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Permit money for the town’s Commons. The new park raises the rents round it, as parks do.' },
   }),
   lever({
     id: 'steam.sufficiency', sector: 'steam', kind: 'sufficiency',
@@ -419,7 +469,7 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'More coal burned than allowed; the Treasury “disappointed”',
   ],
   steadySector: [
-    'Fifty years on the line: Steam settles, and the valley breathes',
+    'Fifty years on the line: Steam steadies, and the valley breathes',
     'The engines turn, the coal lasts, and the smoke has thinned',
     'Half a century of steady coal; the Gazette runs short of news',
   ],
@@ -427,6 +477,22 @@ const steamHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Commission on the coal trade sits; the minutes run to volumes',
     'The valley’s accounts read aloud, from the first engine on',
     'Inquiry into coal finds that everyone was thrifty',
+  ],
+  /* M2 */
+  clearSkies: [
+    'Blue sky over the valley; colliers stop on the way home to look',
+    'Washing hung out white, taken in white; laundresses astonished',
+    'The smoke thins to what the wind can carry; the hills reappear',
+  ],
+  settled: [
+    'Steam settled: so many tons a year, and not a ton more',
+    'Coal trade agrees to stay the size it is; the Exchange is very quiet',
+    'Engines held at a rate the sky can take; engine makers sulk',
+  ],
+  unsettled: [
+    'Coal settlement lapses; every pit in the valley lights up again',
+    'The town has outgrown its coal agreement; the agreement goes',
+    'Steam unsettled; owners order three more engines by return',
   ],
 };
 

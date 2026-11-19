@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const args = process.argv.slice(2);
 const perf = args.includes('--perf');
+const sw = args.includes('--switch');
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7);
 const inds = args.filter((a) => !a.startsWith('--'));
 const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron'];
@@ -30,7 +31,33 @@ async function page(w, h) {
   return p;
 }
 
-if (!perf) {
+if (sw) {
+  // Industry switch cost and style/layout per second while animating, at 4× CPU throttle on a phone profile.
+  const p = await page(390, 844);
+  const cdp = await p.context().newCDPSession(p);
+  await p.goto(url);
+  await p.waitForFunction(() => !!window.__scene);
+  await cdp.send('Performance.enable');
+  const ids = list.filter((x) => x !== 'iron');
+  const rows = [];
+  const metric = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+  for (let pass = 0; pass < 2; pass++) {
+    for (const ind of ids) {
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      const ms = await p.evaluate((i) => new Promise((ok) => { const a = performance.now(); window.__scene.preset('crisis', i); const b = performance.now(); requestAnimationFrame(() => setTimeout(() => ok([b - a, performance.now() - a]))); }), ind);
+      await p.waitForTimeout(1500);
+      const m0 = await metric();
+      await p.waitForTimeout(5000);
+      const m1 = await metric();
+      const per = (k) => +(((m1[k] - m0[k]) * 1000) / 5).toFixed(1);
+      rows.push({ pass: pass ? 'revisit' : 'first', ind, update: +ms[0].toFixed(0), toPaint: +ms[1].toFixed(0), styleMsPerS: per('RecalcStyleDuration'), layoutMsPerS: per('LayoutDuration'), scriptMsPerS: per('ScriptDuration'), nodes: m1.Nodes });
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    }
+  }
+  console.table(rows);
+  const mem = await p.evaluate(() => (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e5) / 10 + ' MB' : 'n/a'));
+  console.log('heap', mem, 'DOM nodes in document', await p.evaluate(() => document.getElementsByTagName('*').length));
+} else if (!perf) {
   for (const ind of list) {
     if (only !== 'desk') {
       const p = await page(390, 900);

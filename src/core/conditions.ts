@@ -5,7 +5,7 @@
 import type { Cond, CondCheck, Content, GameState, SectorId, StatKey } from '../types';
 import { calendarYear } from './calendar';
 import { idx } from './contentIndex';
-import { computeFlows, instruments, reserveFractionOf } from './flows';
+import { computeFlows, instruments, reserveFractionOf, steadyView } from './flows';
 import { budgetROf, isWithin } from './steady';
 import { clamp, isObj } from './util';
 
@@ -26,6 +26,12 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
     case 'reckonings': return state.meta.reckonings;
     case 'steadyYearsAll': return state.steadyYearsAll;
     case 'clicks': return state.run.clicks;
+    case 'decisions': return state.run.decisions ?? 0;
+    case 'automated': return state.run.automated ?? 0;
+    case 'commonsLevels': { let n = 0; for (const k in state.commons?.levels ?? {}) n += state.commons.levels[k] ?? 0; return n; }
+    case 'sectorsSettled': return idx(content).ids.filter((x) => state.sectors[x]?.open && state.sectors[x].settled).length;
+    case 'leanDecades': if (cond.sector === undefined) return state.run.leanDecades ?? 0; break;
+    case 'fullDecades': if (cond.sector === undefined) return Math.max(0, state.run.budgetDecades - (state.run.leanDecades ?? 0)); break;
     case 'adoption': case 'appDemand': {
       const loc = cond.app ? idx(content).apps.get(cond.app) : undefined;
       const f = loc ? fl.sectors[loc.sector] : undefined;
@@ -57,6 +63,11 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
     case 'budgetDecades': return es.decadesWithin.length;
     case 'withinBudget': return isWithin(f.R, budgetROf(es, def, content, state.time)) ? 1 : 0;
     case 'appsFounded': return def.applications.filter((a) => es.apps[a.id]?.founded).length;
+    case 'settled': return es.settled ? 1 : 0;
+    case 'clear': return steadyView(state, content, fl, s).clear ? 1 : 0;
+    case 'clearYears': return es.clearYears ?? 0;
+    case 'leanDecades': return (es.decadesLean ?? []).filter((x) => x).length;
+    case 'fullDecades': return es.decadesWithin.length - (es.decadesLean ?? []).filter((x) => x).length;
     default: return null;
   }
 }
@@ -70,6 +81,10 @@ function ownsId(state: GameState, content: Content, id: string): boolean {
   if (ix.institutions.has(id)) return (state.meta.institutions[id] ?? 0) >= 1;
   if (ix.knowhow.has(id)) return (state.meta.knowhow[id] ?? 0) >= 1;
   if (ix.achievements.has(id)) return state.meta.achievements[id] === true;
+  if (ix.commons.has(id)) return (state.commons?.levels?.[id] ?? 0) >= 1;
+  if (ix.charters.has(id)) return state.meta.charter === id;
+  if (ix.dividends.has(id)) return ix.ids.some((s) => (state.sectors[s]?.dividends ?? []).includes(id));
+  if (ix.pos.has(id)) return state.meta.sectorsOpened?.[id] === true;
   return false;
 }
 
@@ -107,6 +122,9 @@ const STAT_WORDS: Record<StatKey, string> = {
   serviceDelivered: 'service delivered', reserveFraction: 'reserve left', pressureFraction: 'pressure',
   crises: 'crises', steadyYears: 'years within budget', budgetDecades: 'decades within budget',
   withinBudget: 'within budget', appsFounded: 'applications founded', adoption: 'adoption', appDemand: 'demand',
+  decisions: 'decisions', automated: 'actions by standing orders', commonsLevels: 'Commons built',
+  sectorsSettled: 'industries settled', leanDecades: 'lean decades', fullDecades: 'full decades', settled: 'settled',
+  clear: 'clear skies', clearYears: 'years of clear skies',
 };
 const OP_SYM: Record<string, string> = { '<': '<', '<=': '≤', '>': '>', '>=': '≥' };
 export function fmtNum(x: number): string {

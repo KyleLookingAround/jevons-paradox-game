@@ -4,7 +4,7 @@
  */
 import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
 import {
-  eta, capCost, margin, reserve, sat, half, chain, fork, ladder, lever, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST,
+  eta, capCost, margin, reserve, sat, half, chain, fork, ladder, lever, withStages, decadeSequence, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST,
   SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, GREEN_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
@@ -20,7 +20,7 @@ const sector: SectorDef = {
   firstYear: 1870,
   tagline: 'The night is abolished by order of the gas company.',
   service: { name: 'Light', unit: 'klm·h' },
-  resource: { name: 'Town gas & current', unit: 'therms' },
+  resource: { name: 'Town gas & current', unit: 'therms', unitSingular: 'therm' },
   pressure: { name: 'Fog', crisisName: 'The Pea-Souper' },
   accent: 'gas',
   theme: 'gaslight',
@@ -45,6 +45,30 @@ const sector: SectorDef = {
 
   wellbeingWeight: 2.5,
   wellbeingScale: 500,
+
+  /*
+   * M2: clear skies at the global half of the drawn pressure. Light's fog is Steam's smoke by another route (the gas is
+   * cooked from coal), so the sink comes from hydro, lights out and the gasworks' rebuild, not the allowance alone.
+   */
+  steady: {
+    clearBelow: 0.5,
+    decadeChoices: decadeSequence([
+      ['div.light.earlyClosing', 'div.light.lateOpening'],
+      ['div.light.fogWardens', 'div.light.meterRebate'],
+    ]),
+  },
+
+  /*
+   * M2: Settlement. Standing while settled: the Commons yield a tenth more (a settled gas company lights the library at
+   * cost) and most of a point of wellbeing; once a run, a purse of capital. Defence 0.25 Mandate/s per unit of excess:
+   * the lit Commons (the library, the clock) add their own demand to a settled Light, so building them costs defence.
+   */
+  settle: {
+    dividend: [{ type: 'commonsYieldMul', value: 1.1 }, { type: 'wellbeingAdd', value: 0.8 }, { type: 'capitalAdd', value: 120 }],
+    upkeepPerSpill: 0.25,
+    freeExcess: 0.05,
+    blurb: 'The Board fixes the lamps at what the town needs and not a candle more. The lamplighter keeps his round.',
+  },
 
   spill: { to: 'steam', rate: 0.4 },
   unlock: {
@@ -121,7 +145,8 @@ const sector: SectorDef = {
 /* ------------------------------------------------------------------ */
 
 /* ---- Light: chain to ×32 ---- */
-const lightUpgrades: UpgradeDef[] = [
+/* M2 stages (the scene's lamps): the incandescent mantle 1, the carbon filament 2, the fluorescent tube 3. */
+const lightUpgrades: UpgradeDef[] = withStages([
   ...chain('light', ladder(2_500, 2.3, 6), [
     {
       id: 'light.batswing', name: 'Batswing burner', fold: 1.6,
@@ -210,7 +235,7 @@ const lightUpgrades: UpgradeDef[] = [
     cost: 30_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('light', 0.25)],
   },
-];
+], { 'light.mantle': 1, 'light.carbon': 2, 'light.fluorescent': 3 });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -224,6 +249,7 @@ const lightLevers: LeverDef[] = [
     blurb: 'A municipal rate on every therm, raised as the lamps improve.',
     catch: `The streets stay dimmer than they could. The ratepayers notice. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 160, upkeep: 0.08, label: DUTY_LABEL, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Spent on a reading room instead, lit until ten every night, and busier than the public house.' },
   }),
   lever({
     id: 'light.cap', sector: 'light', kind: 'cap',
@@ -232,6 +258,7 @@ const lightLevers: LeverDef[] = [
     catch: `Drafted from the gas companies’ own forecasts, it will not bite until it is tightened. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 170, upkeep: 0.08, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Permit money for the Commons. The new library is lit, the park has lamps, and the lamps want gas.' },
   }),
   lever({
     id: 'light.sufficiency', sector: 'light', kind: 'sufficiency',
@@ -345,6 +372,22 @@ const lightHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   reckoning: [
     'An inquiry into the lighting of the city sits through the night',
     'The gas companies’ books opened to the public, briefly',
+  ],
+  /* M2 */
+  clearSkies: [
+    'The fog lifts; stars seen over the gasworks',
+    'A clear night: lamplighters report they can see one another',
+    'Fog season passes without a pea-souper; the Board congratulated',
+  ],
+  settled: [
+    'Light settled: the Board fixes the lamps at what the town needs',
+    'Gas company content to stay the size it is; shareholders less so',
+    'The lamps burn as before, and no more lamps are built',
+  ],
+  unsettled: [
+    'Lighting settlement ends; every shop window ablaze by Friday',
+    'The town outgrows its gas allowance; the holder fills again',
+    'Light unsettled; the late shift back by popular demand',
   ],
 };
 

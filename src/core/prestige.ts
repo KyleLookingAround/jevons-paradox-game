@@ -2,19 +2,22 @@
  * Between runs: the Reckoning, Know-how, Institutions and the loadout (actions and views).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { Content, GameState, InstitutionDef, InstitutionView, KnowhowDef, KnowhowView, MetaState, RunSummary } from '../types';
+import { RUN_HISTORY_MAX } from '../types';
+import type { Content, GameState, InstitutionDef, InstitutionView, KnowhowDef, KnowhowView, MetaState, OpeningRecord, RunSummary } from '../types';
 import { calendarYear } from './calendar';
+import { drawOffer } from './charters';
 import { idx } from './contentIndex';
 import { fireOneOffs, institutionMax, isSeated } from './effects';
 import type { OneOffs } from './effects';
+import { emit } from './events';
 import { computeFlows } from './flows';
 import { headline, withNews } from './headlines';
 import { hindsightTerms } from './hindsight';
-import { createState } from './state';
-import { clamp } from './util';
+import { stageOf } from './purchases';
+import { createState, isFreshRun, withMeta } from './state';
+import { clamp, fin } from './util';
 
-export const isFreshRun = (state: GameState): boolean =>
-  state.time === 0 && !Object.values(state.upgrades).some((l) => (l ?? 0) > 0);
+export { isFreshRun } from './state';
 
 export function slotsUsed(meta: MetaState, content: Content): number {
   const ix = idx(content);
@@ -36,40 +39,55 @@ export function reckon(state: GameState, content: Content): GameState {
     const es = state.sectors[s];
     const f = fl.sectors[s];
     if (!es?.open || !f) continue;
+    const def = content.sectors[s];
+    const peakAdoption: Record<string, number> = {};
+    for (const a of def.applications) if (es.apps[a.id]?.founded) peakAdoption[a.id] = es.apps[a.id].peakAdoption ?? 0;
     summary[s] = {
       etaFold: f.etaFold, peakRFold: es.baseR > 0 ? es.peakR / es.baseR : 1, resourceUsed: state.run.resourceUsed[s] ?? 0,
       decades: es.decadesWithin.length,
+      leanDecades: (es.decadesLean ?? []).filter((x) => x).length,
+      peakPressure: def.collapseAt > 0 ? fin((es.peakPressure ?? 0) / def.collapseAt) : 0,
+      peakAdoption, stage: stageOf(state, content, s) ?? 0, steady: !!state.run.steadySectors[s], settled: !!es.settled,
     };
-    if (content.sectors[s].resourceKind === 'stock') summary[s].unburnt = es.reserveMax > 0 ? clamp(es.reserve / es.reserveMax, 0, 1) : 0;
+    if (def.resourceKind === 'stock') summary[s].unburnt = es.reserveMax > 0 ? clamp(es.reserve / es.reserveMax, 0, 1) : 0;
   }
+  const charter = state.meta.charter ?? null;
+  let commonsLevels = 0;
+  for (const k in state.commons?.levels ?? {}) commonsLevels += state.commons.levels[k] ?? 0;
+  const run = state.run;
+  const lastRun: RunSummary = {
+    cause, seconds: state.time, yearReached: Math.floor(calendarYear(state, content)), hindsightGained: hs,
+    peakWellbeing: run.peakWellbeing, sectors: summary, hindsightTerms: terms,
+    ...(fl.pending?.sector ? { causeSector: fl.pending.sector } : {}),
+    index: state.meta.reckonings + 1, totalSecondsAtEnd: state.meta.totalSeconds,
+    ...(charter !== null ? { charter } : {}),
+    decisions: run.decisions ?? 0, automated: run.automated ?? 0,
+    decisionsByDecade: (run.decisionsByDecade ?? []).slice(), automatedByDecade: (run.automatedByDecade ?? []).slice(),
+    commonsLevels, peakPopulation: state.peakPopulation,
+  };
+  const opening: OpeningRecord = {
+    actions: (run.opening ?? []).slice(), firstBudgetAt: run.firstBudgetAt ?? null, seconds: state.time,
+    ...(charter !== null ? { charter } : {}),
+  };
+  const runs = [...(state.meta.runs ?? []), lastRun];
   const meta: MetaState = {
     ...state.meta,
     hindsight: state.meta.hindsight + hs,
     hindsightEarned: state.meta.hindsightEarned + hs,
     reckonings: state.meta.reckonings + 1,
     achievements: { ...state.meta.achievements, firstReckoning: true },
-    lastRun: {
-      cause, seconds: state.time, yearReached: Math.floor(calendarYear(state, content)), hindsightGained: hs,
-      peakWellbeing: state.run.peakWellbeing, sectors: summary, hindsightTerms: terms,
-      ...(fl.pending?.sector ? { causeSector: fl.pending.sector } : {}),
-    },
+    lastRun,
+    runs: runs.length > RUN_HISTORY_MAX ? runs.slice(runs.length - RUN_HISTORY_MAX) : runs,
+    opening,
+    ...(state.meta.firstOpening ? {} : { firstOpening: opening }),
+    charter: null,
   };
   const nextSeed = (Math.imul(state.seed >>> 0, 1103515245) + 12345) >>> 0;
-  const s = createState(content, meta, nextSeed);
-  return { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, { year: calendarYear(s, content) }, fl.pending?.sector)]) };
-}
-
-/**
- * Hindsight is spent only while the run is untouched (Derived.freshRun). Start-of-run effects live in state, so the
- * run is rebuilt from the new meta, keeping its news, Mandate, clicks and any capital clicked in the meantime.
- */
-function withMeta(state: GameState, content: Content, meta: MetaState): GameState {
-  const before = createState(content, state.meta, state.seed);
-  const fresh = createState(content, meta, state.seed);
-  return {
-    ...fresh, capital: fresh.capital + Math.max(0, state.capital - before.capital), mandate: state.mandate,
-    run: { ...fresh.run, clicks: state.run.clicks }, news: state.news,
-  };
+  const s0 = createState(content, meta, nextSeed);
+  const s = { ...s0, charterOffer: drawOffer(s0, content, charter ?? undefined) };
+  const year = calendarYear(s, content);
+  const out = { ...s, news: withNews(s.news, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector)]) };
+  return emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }], 0, year);
 }
 
 function knowhowGate(meta: MetaState, content: Content, def: KnowhowDef): { req: boolean; excludedBy: string | null } {
@@ -98,11 +116,14 @@ export function buyKnowhow(state: GameState, content: Content, id: string): Game
   if (!gate.req || gate.excludedBy) return state;
   const cost = knowhowCost(def, lvl);
   if (!(state.meta.hindsight >= cost)) return state;
+  // M2: one-offs fire only the first time this level is ever owned (knowhowPeak), so respec and re-buy grants nothing twice
+  const peak = state.meta.knowhowPeak?.[id] ?? 0;
+  const fires = lvl + 1 > peak;
   const one: OneOffs = { capital: 0, mandate: 0, slots: 0 };
-  fireOneOffs(def.effects, 1, computeFlows(state, content).income, one);
+  if (fires) fireOneOffs(def.effects, 1, computeFlows(state, content).income, one);
   const s = withMeta(state, content, {
     ...state.meta, hindsight: state.meta.hindsight - cost, knowhow: { ...state.meta.knowhow, [id]: lvl + 1 },
-    slots: state.meta.slots + one.slots,
+    slots: state.meta.slots + one.slots, knowhowPeak: { ...(state.meta.knowhowPeak ?? {}), [id]: Math.max(peak, lvl + 1) },
   });
   if (!one.capital && !one.mandate) return s;
   const inc = computeFlows(s, content).income;
@@ -173,4 +194,34 @@ export function institutionViews(state: GameState, content: Content): Institutio
       canSeat: level >= 1 && !seated && free >= slots && fresh,
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* M2: the respec                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Hindsight a respec would refund, per tree id (trees with nothing owned are absent). */
+export function respecRefunds(state: GameState, content: Content): Record<string, number> {
+  const mul = clamp(fin(content.global?.respecRefund ?? 1, 1), 0, 1);
+  const out: Record<string, number> = {};
+  for (const def of content.knowhow ?? []) {
+    const lvl = state.meta.knowhow[def.id] ?? 0;
+    if (lvl <= 0) continue;
+    let paid = 0;
+    for (let l = 0; l < lvl; l++) paid += knowhowCost(def, l);
+    const t = def.tree ?? 'general';
+    out[t] = (out[t] ?? 0) + mul * paid;
+  }
+  return out;
+}
+
+export function respecKnowhow(state: GameState, content: Content, tree?: string): GameState {
+  if (!isFreshRun(state)) return state;
+  const refunds = respecRefunds(state, content);
+  const scope = (content.knowhow ?? []).filter((d) => (state.meta.knowhow[d.id] ?? 0) > 0 && (tree === undefined || (d.tree ?? 'general') === tree));
+  if (!scope.length) return state;
+  const refund = tree === undefined ? Object.values(refunds).reduce((a, b) => a + b, 0) : refunds[tree] ?? 0;
+  const knowhow = { ...state.meta.knowhow };
+  for (const d of scope) delete knowhow[d.id];
+  return withMeta(state, content, { ...state.meta, knowhow, hindsight: fin(state.meta.hindsight + refund) });
 }

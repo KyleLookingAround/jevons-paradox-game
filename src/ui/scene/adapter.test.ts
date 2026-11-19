@@ -1,6 +1,6 @@
 // @ts-ignore bun:test types are not in the project tsconfig (types: [])
 import { describe, expect, test } from 'bun:test';
-import { sceneViewFrom, machineStage } from './adapter';
+import { sceneViewFrom, machineStage, sceneEvents } from './adapter';
 import type { Content, GameState, Derived } from '../../types';
 
 const content = {
@@ -65,5 +65,81 @@ describe('sceneViewFrom', () => {
     expect(machineStage(4, 7, 1, false)).toBe(2);
     expect(machineStage(7, 7, 1, false)).toBe(3);
     expect(machineStage(0, 5, 70, true)).toBe(3);
+  });
+
+  describe('M2 fields', () => {
+    const c2 = {
+      ...(content as object),
+      sectors: { steam: { ...(content as any).sectors.steam, collapseAt: 100 }, light: { id: 'light', name: 'Light', applications: [] } },
+      commons: [
+        { id: 'baths', name: 'Public baths', icon: 'baths', sector: 'steam' },
+        { id: 'lib', name: 'Free library', icon: 'library', sector: 'light' },
+        { id: 'park', name: 'The park', icon: 'park', sector: 'steam' },
+      ],
+      charters: [{ id: 'north', name: 'North', sector: 'steam', landmark: 'pithead-baths', effects: [] }],
+    } as unknown as Content;
+    const st = (x: object = {}) => ({ capital: 0, population: 50, upgrades: {}, levers: {}, sectors: { steam: { apps: {}, crisesFired: 0 } }, run: { steadySectors: {} }, ...x }) as unknown as GameState;
+    const dv = (sd: object = {}, x: object = {}) => ({ year: 1820, pendingReckoning: null, populationRef: 200, sectors: { steam: { pressureFraction: 0.5, apps: {}, ...sd } }, ...x }) as unknown as Derived;
+
+    test('stage: the contract wins, clamped; null falls back to the share owned', () => {
+      expect(sceneViewFrom(c2, st({ upgrades: { u1: 1 } }), dv({ stage: 7 }), 'steam').stage).toBe(3);
+      expect(sceneViewFrom(c2, st({ upgrades: { u1: 1 } }), dv({ stage: 0 }), 'steam').stage).toBe(0);
+      expect(sceneViewFrom(c2, st({ upgrades: { u1: 1 } }), dv({ stage: null }), 'steam').stage).toBe(2);
+    });
+
+    test('popFraction against populationRef', () => {
+      expect(sceneViewFrom(c2, st({ population: 200 }), dv(), 'steam').popFraction).toBeCloseTo(1);
+      const half = sceneViewFrom(c2, st({ population: 100 }), dv(), 'steam').popFraction;
+      expect(half).toBeGreaterThan(0.5); expect(half).toBeLessThan(1);
+      expect(sceneViewFrom(c2, st({ population: 400 }), dv(), 'steam').popFraction).toBe(1);
+      // No reference (an M1 Derived): the M1 log curve.
+      expect(sceneViewFrom(c2, st({ population: 12 }), dv({}, { populationRef: undefined }), 'steam').popFraction).toBeCloseTo(1);
+    });
+
+    test('clear skies, clear progress, pressure to clear, settled', () => {
+      const v = sceneViewFrom(c2, st({ sectors: { steam: { apps: {}, settled: { sinceYear: 1841.7 } } } }), dv({ clear: true, clearP: 20, clearYears: 25, settled: true, pressureFraction: 0.6 }), 'steam');
+      expect(v.clear).toBe(true);
+      expect(v.clearProgress).toBeCloseTo(25 / 50);
+      expect(v.pressureToClear).toBeCloseTo((0.6 - 0.2) / 0.8);
+      expect(v.settled).toBe(true);
+      expect(v.settledYear).toBe(1841);
+      expect(sceneViewFrom(c2, st(), dv({ clearP: 20, pressureFraction: 0.1 }), 'steam').pressureToClear).toBe(0);
+      expect(sceneViewFrom(c2, st(), dv({ clearP: null, pressureFraction: 0.4 }), 'steam').pressureToClear).toBeCloseTo(0.4);
+    });
+
+    test('commons filtered by sector and level; the charter landmark', () => {
+      const v = sceneViewFrom(c2, st({ commons: { levels: { baths: 2, lib: 1, park: 0 }, fund: 0 }, meta: { charter: 'north' } }), dv(), 'steam');
+      expect(v.commons).toEqual([{ id: 'baths', icon: 'baths', level: 2, name: 'Public baths' }]);
+      expect(v.landmark).toBe('pithead-baths');
+      const l = sceneViewFrom(c2, st({ commons: { levels: { baths: 2, lib: 1 }, fund: 0 }, meta: { charter: 'north' } }), dv(), 'light');
+      expect(l.commons?.map((x) => x.id)).toEqual(['lib']);
+      expect(l.landmark).toBeNull();
+    });
+
+    test('events filtered by sector, sector-less ones kept when they matter, in seq order', () => {
+      const evs = [
+        { seq: 9, kind: 'crisis', sector: 'steam', n: 1, time: 0, year: 0 },
+        { seq: 7, kind: 'appFounded', sector: 'steam', id: 'steam.mills', by: 'market', time: 0, year: 0 },
+        { seq: 8, kind: 'crisis', sector: 'light', n: 1, time: 0, year: 0 },
+        { seq: 10, kind: 'reckoning', id: 'collapse', time: 0, year: 0 },
+        { seq: 11, kind: 'charterChosen', id: 'north', time: 0, year: 0 },
+      ] as any;
+      const v = sceneViewFrom(c2, st(), dv(), 'steam', evs);
+      expect(v.events?.map((e) => e.seq)).toEqual([7, 9, 10, 11]);
+      expect(v.events?.[0]).toEqual({ seq: 7, kind: 'appFounded', sector: 'steam', id: 'steam.mills', by: 'market' });
+      expect(sceneEvents(null, 'steam')).toEqual([]);
+      expect(sceneViewFrom(c2, st(), dv(), 'steam').events).toEqual([]);
+    });
+
+    test('an M1 state and Derived give the M1 picture', () => {
+      const v = sceneViewFrom(content, { capital: 0, population: 4, upgrades: {}, levers: {}, sectors: { steam: { apps: {} } }, run: { steadySectors: {} } } as unknown as GameState,
+        { year: 1800, pendingReckoning: null, sectors: { steam: { pressureFraction: 0.3, apps: {} } } } as unknown as Derived, 'steam');
+      expect(v.clear).toBe(false);
+      expect(v.settled).toBe(false);
+      expect(v.commons).toEqual([]);
+      expect(v.landmark).toBeNull();
+      expect(v.pressureToClear).toBeCloseTo(0.3);
+      expect(v.popFraction).toBeCloseTo(Math.log(4) / Math.log(12));
+    });
   });
 });

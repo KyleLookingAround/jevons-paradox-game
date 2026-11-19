@@ -5,7 +5,7 @@
 import type { AchievementDef, Cond, SectorId } from '../types';
 
 /* ------------------------------------------------------------------ */
-/* ACHIEVEMENTS: 5 built in + 20 with conditions                       */
+/* ACHIEVEMENTS: 5 built in + 20 with conditions (M1) + 18 (M2)       */
 /* ------------------------------------------------------------------ */
 
 const SECTOR_NAMES: Record<string, string> = {
@@ -24,6 +24,19 @@ const decadeIn = (sector: SectorId, name: string, blurb: string): AchievementDef
   id: `ach.decade.${sector}`, name, blurb,
   when: { stat: 'budgetDecades', sector, op: '>=', value: 1 },
 });
+
+const clearIn = (sector: SectorId, name: string, blurb: string): AchievementDef => ({
+  id: `ach.clear.${sector}`, name, blurb,
+  when: { stat: 'clear', sector, op: '>=', value: 1 },
+});
+
+/** Steady State this run: the Steady streak (clearYears) has served fifty years (it holds while settled). */
+const steadyNow = (sector: SectorId): Cond => ({ stat: 'clearYears', sector, op: '>=', value: 50 });
+const ALL_SECTORS: SectorId[] = ['steam', 'light', 'motion', 'compute', 'code'];
+/** Steady State in any two Industries at once. */
+const anyTwoSteady: Cond = {
+  any: ALL_SECTORS.flatMap((a, i) => ALL_SECTORS.slice(i + 1).map((b): Cond => ({ all: [steadyNow(a), steadyNow(b)] }))),
+};
 
 export const achievements: AchievementDef[] = [
   /* Built in (granted by the core's own rules). */
@@ -121,5 +134,94 @@ export const achievements: AchievementDef[] = [
         { stat: 'rFold', sector: 'steam', op: '<=', value: 1 },
       ],
     },
+  },
+
+  /* ---- M2: decades, clear skies, Settlement, the Commons, the orders, Charters ---- */
+  {
+    id: 'ach.leanDecade', name: 'A Lean Decade',
+    blurb: 'Held a line for ten years with nobody worse off than on the day it was drawn.',
+    when: { stat: 'leanDecades', op: '>=', value: 1 },
+  },
+  {
+    id: 'ach.fullDecade', name: 'A Full Decade',
+    blurb: 'Ten years inside a budget line with wellbeing at the target throughout.',
+    when: { stat: 'fullDecades', op: '>=', value: 1 },
+  },
+  clearIn('steam', 'Clear Skies over the Valley', 'Steam’s smoke down to half what it was when the line was drawn, and falling.'),
+  clearIn('light', 'The Fog Lifts', 'Light’s fog thinned to what the air can carry off, with the lamps still lit.'),
+  clearIn('motion', 'The Ring Road Breathes', 'Motion’s exhaust down to the sink line, and the motorways still open.'),
+  clearIn('compute', 'A Cooler Summer', 'Compute’s carbon brought down to what the sinks can take, while the chips kept doubling.'),
+  clearIn('code', 'Deleted Down', 'Code’s stock deleted below its clear level, faster than anything shipped. Nothing else does it.'),
+  {
+    id: 'ach.twoSteady', name: 'Two Industries Steady',
+    blurb: 'Steady State in two Industries at once, in a single run.',
+    when: anyTwoSteady,
+  },
+  {
+    id: 'ach.firstSettled', name: 'Settled',
+    blurb: 'Froze an Industry at a rate the sky can take, and agreed to defend it.',
+    when: { stat: 'sectorsSettled', op: '>=', value: 1 },
+  },
+  {
+    id: 'ach.threeSettled', name: 'Three Settled at Once',
+    blurb: 'Three Industries settled at the same time, each defended against the other two.',
+    when: { stat: 'sectorsSettled', op: '>=', value: 3 },
+  },
+  {
+    id: 'ach.tenCommons', name: 'A Town to Be Proud Of',
+    blurb: 'Ten levels of Commons in one run: baths, books, parks and plots, each lit or heated by something.',
+    when: { stat: 'commonsLevels', op: '>=', value: 10 },
+  },
+  {
+    id: 'ach.commonsEach', name: 'Something for Everyone',
+    blurb: 'A Commons project under Steam and another under Light, in the same run.',
+    when: {
+      all: [
+        { any: [{ owns: 'commons.baths' }, { owns: 'commons.park' }, { owns: 'commons.institute' }], label: 'A Commons project under Steam' },
+        { any: [{ owns: 'commons.library' }, { owns: 'commons.clock' }, { owns: 'commons.allotments' }], label: 'A Commons project under Light' },
+      ],
+    },
+  },
+  {
+    id: 'ach.marketIdle', name: 'Nothing Bought for You',
+    blurb: 'Half an hour of a later run with the Market making no purchase at all. Every card was a decision.',
+    when: {
+      all: [
+        { stat: 'reckonings', op: '>=', value: 1 },
+        { stat: 'time', op: '>=', value: 1_800 },
+        { stat: 'automated', op: '<=', value: 0 },
+      ],
+    },
+  },
+  {
+    id: 'ach.fiveHundred', name: 'Five Hundred Decisions',
+    blurb: 'Five hundred things decided by hand in a single run. The clerks have started a second ledger.',
+    when: { stat: 'decisions', op: '>=', value: 500 },
+  },
+  {
+    id: 'ach.enough', name: 'Enough', hidden: true,
+    blurb: 'Steady State in an Industry with fewer than a hundred decisions made all run.',
+    when: { all: [{ stat: 'decisions', op: '<', value: 100 }, { any: ALL_SECTORS.map(steadyNow) }] },
+  },
+  {
+    id: 'ach.charter.cotton', name: 'Looms Before Engines',
+    blurb: 'Under the Cotton Towns charter, watched Steam’s savings be eaten entirely by the mills that were waiting.',
+    when: { all: [{ owns: 'charter.cottonTowns' }, { stat: 'rebound', sector: 'steam', op: '>', value: 1 }] },
+  },
+  {
+    id: 'ach.charter.coalfield', name: 'Deep and Unburnt',
+    blurb: 'Under the Northern Coalfield charter, forty minutes in with three quarters of the coal still in the ground.',
+    when: {
+      all: [
+        { owns: 'charter.northernCoalfield' },
+        { stat: 'time', op: '>=', value: 2_400 },
+        { stat: 'reserveFraction', sector: 'steam', op: '>', value: 0.75 },
+      ],
+    },
+  },
+  {
+    id: 'ach.charter.garden', name: 'The Garden Kept',
+    blurb: 'Under the Garden Parish charter, brought Steam to clear skies.',
+    when: { all: [{ owns: 'charter.gardenParish' }, { stat: 'clear', sector: 'steam', op: '>=', value: 1 }] },
   },
 ];

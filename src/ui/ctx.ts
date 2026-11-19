@@ -1,6 +1,6 @@
 // Shared UI context: the one mutable place the UI reads game data from.
 import type {
-  AgeDef, Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorDef, SectorDerived, SectorId, UpgradeView,
+  AgeDef, CommonsView, Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorDef, SectorDerived, SectorId, UpgradeView,
 } from '../types';
 
 import type { AffordState } from './afford';
@@ -17,6 +17,8 @@ export interface Ctx {
   levs: LeverView[];
   khs: KnowhowView[];
   insts: InstitutionView[];
+  /** M2: the Commons panel's views (refreshed with the other views). */
+  cms: CommonsView[];
   /** Selected industry tab. Always an open sector (falls back to the first open). */
   sector: SectorId;
   /** Run a ModelApi action. Returns true if the model accepted it (new reference). */

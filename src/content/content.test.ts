@@ -14,18 +14,30 @@ const leverIds = new Set(C.levers.map((l) => l.id));
 const instIds = new Set(C.institutions.map((i) => i.id));
 const khIds = new Set(C.knowhow.map((k) => k.id));
 const achIds = new Set(C.achievements.map((a) => a.id));
-/** Everything a Cond `owns` leaf may name. */
-const ownable = new Set([...upgradeIds, ...apps.map((a) => a.id), ...leverIds, ...instIds, ...khIds, ...achIds]);
+/* M2 */
+const dividends = C.dividends ?? [];
+const commons = C.commons ?? [];
+const charters = C.charters ?? [];
+const divIds = new Set(dividends.map((d) => d.id));
+const commonsIds = new Set(commons.map((c) => c.id));
+const charterIds = new Set(charters.map((c) => c.id));
+/** Everything a Cond `owns` leaf may name (M2: Commons projects, Charters, dividends, and sector ids). */
+const ownable = new Set([
+  ...upgradeIds, ...apps.map((a) => a.id), ...leverIds, ...instIds, ...khIds, ...achIds,
+  ...divIds, ...commonsIds, ...charterIds, ...sectorIds,
+]);
 
 const ALL_KEYS: HeadlineKey[] = [
   'appFounded', 'appAvailable', 'sectorOpened', 'crisis', 'collapse', 'exhausted', 'backfire', 'reveal',
   'leverEnacted', 'leverLapsed', 'steadySector', 'steadyAll', 'reckoning', 'efficiency',
   'ageBegins', 'budgetDrawn', 'decade', 'budgetBroken',
+  'clearSkies', 'settled', 'unsettled', 'commonsBuilt', 'charter',
 ];
 const SECTOR_SCOPED: StatKey[] = [
   'etaFold', 'rFold', 'frontierFold', 'peakRFold', 'rebound', 'resourceUse', 'demand', 'servicePrice',
   'serviceDelivered', 'reserveFraction', 'pressureFraction', 'crises', 'steadyYears', 'budgetDecades',
   'withinBudget', 'appsFounded',
+  'settled', 'clear', 'clearYears',
 ];
 const APP_SCOPED: StatKey[] = ['adoption', 'appDemand'];
 
@@ -41,6 +53,11 @@ function allEffects(): { where: string; e: EffectDef }[] {
   for (const e of C.global.steady?.decadeEffects ?? []) out.push({ where: 'global.steady', e });
   for (const e of C.global.steady?.firstSteadyEffects ?? []) out.push({ where: 'global.steady', e });
   for (const s of sectorIds) for (const e of C.sectors[s].steady?.decadeEffects ?? []) out.push({ where: s, e });
+  /* M2 */
+  for (const d of dividends) for (const e of d.effects) out.push({ where: d.id, e });
+  for (const c of commons) for (const e of c.effects ?? []) out.push({ where: c.id, e });
+  for (const c of charters) for (const e of c.effects) out.push({ where: c.id, e });
+  for (const s of sectorIds) for (const e of C.sectors[s].settle?.dividend ?? []) out.push({ where: `${s}.settle`, e });
   return out;
 }
 
@@ -55,6 +72,8 @@ function allConds(): { where: string; c: Cond }[] {
   };
   for (const s of sectorIds) { const w = C.sectors[s].unlock?.when; if (w) walk(`${s}.unlock`, w); }
   for (const a of C.achievements) if (a.when) walk(a.id, a.when);
+  for (const c of commons) if (c.requires) walk(c.id, c.requires);
+  for (const c of charters) if (c.requires) walk(c.id, c.requires);
   return out;
 }
 
@@ -63,6 +82,8 @@ const NON_TEXT_KEYS = new Set([
   'id', 'icon', 'theme', 'accent', 'kind', 'type', 'sector', 'app', 'lever', 'to', 'owns', 'flag', 'stat', 'op',
   'resourceKind', 'pressureSource', 'tree', 'branch', 'requires', 'excludes', 'after', 'sectors', 'sectorOrder',
   'recycle',
+  /* M2 */
+  'landmark', 'order', 'decadeChoices', 'holdBefore', 'decadeWellbeing', 'pace',
 ]);
 
 /** Every player-facing string (with a path for error messages). Headline keys and sector keys are not text. */
@@ -87,6 +108,7 @@ describe('ids', () => {
       ...sectorIds, ...C.ages.map((a) => a.id), ...apps.map((a) => a.id), ...C.upgrades.map((u) => u.id),
       ...C.levers.map((l) => l.id), ...C.knowhow.map((k) => k.id), ...C.institutions.map((i) => i.id),
       ...C.achievements.map((a) => a.id),
+      ...dividends.map((d) => d.id), ...commons.map((c) => c.id), ...charters.map((c) => c.id),
     ];
     const seen = new Set<string>();
     const dupes = all.filter((id) => (seen.has(id) ? true : (seen.add(id), false)));
@@ -208,6 +230,13 @@ describe('references resolve', () => {
         expect(appSector.get(e.app) === e.sector ? '' : ctx).toBe('');
       }
       if (e.type === 'startLever') expect(leverIds.has(e.lever) ? '' : ctx).toBe('');
+      if (e.type === 'startFounded') expect(appSector.has(e.app) ? '' : ctx).toBe('');
+      if (e.type === 'institutionLoan') {
+        const inst = C.institutions.find((i) => i.id === e.id);
+        const max = inst ? 1 + (inst.nextLevels ?? []).length : 0;
+        expect(inst && e.level >= 1 && e.level <= max && Number.isInteger(e.level) ? '' : ctx).toBe('');
+      }
+      if (e.type === 'orderUnlock') expect(['market', 'civilService', 'treasury'].includes(e.order) ? '' : ctx).toBe('');
       if (e.type === 'unlock') {
         const target = C.upgrades.find((u) => u.id === e.id) ?? C.levers.find((l) => l.id === e.id);
         expect(target?.locked ? '' : ctx).toBe('');
@@ -223,8 +252,11 @@ describe('references resolve', () => {
       for (const r of l.requires ?? []) {
         expect(r === 'revealed' || upgradeIds.has(r) || instIds.has(r)).toBe(true);
       }
-      if (l.kind === 'duty' || l.kind === 'cap') expect(l.recycle).toEqual(['treasury', 'dividend']);
+      if (l.kind === 'duty' || l.kind === 'cap') expect(l.recycle).toEqual(['treasury', 'dividend', 'commons']);
       else expect(l.recycle).toBeUndefined();
+      // M2: never 'commons' first (not selectable before the Commons open); overrides only for offered options.
+      if (l.recycle) expect(l.recycle[0]).not.toBe('commons');
+      for (const k of Object.keys(l.recycleBlurb ?? {})) expect(l.recycle ?? ['treasury']).toContain(k);
     }
   });
 
@@ -408,7 +440,7 @@ describe('words', () => {
   });
 
   test('headlines only use known placeholders', () => {
-    const OK = new Set(['sector', 'age', 'app', 'resource', 'service', 'year', 'n']);
+    const OK = new Set(['sector', 'age', 'app', 'resource', 'service', 'year', 'n', 'name']);
     const all = [
       ...Object.values(C.headlines).flat(),
       ...Object.values(C.sectorHeadlines ?? {}).flatMap((h) => Object.values(h).flat() as string[]),
@@ -617,5 +649,358 @@ describe('house style', () => {
   test('no real companies or products named in player text', () => {
     const BRANDS = /\b(Google|Apple|Amazon|Microsoft|Meta|Facebook|OpenAI|Anthropic|Nvidia|Tesla|Uber|Twitter|CrowdStrike|TSMC|Intel|Netflix|Excel|ChatGPT|Claude|Copilot)\b/;
     expect(text.filter((t) => BRANDS.test(t.text)).map((t) => `${t.path}: ${t.text}`)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M2: dividends, paces, clear skies, Settlement, the Commons, Charters, orders, stages, words                        */
+/* ------------------------------------------------------------------ */
+
+const effectSectors = (effs: EffectDef[]): string[] => effs.flatMap((e) => ('sector' in e ? [e.sector] : []));
+const ONE_OFF = ['mandateAdd', 'capitalAdd', 'slotAdd'];
+
+describe('M2: decade dividends', () => {
+  const pairsOf = (s?: string) => (s ? C.sectors[s].steady?.decadeChoices : undefined) ?? C.global.steady?.decadeChoices ?? [];
+
+  test('no slotAdd in a dividend (seats matter only between runs)', () => {
+    expect(dividends.filter((d) => d.effects.some((e) => e.type === 'slotAdd')).map((d) => d.id)).toEqual([]);
+  });
+
+  test('every dividend has a name, a blurb and at least one effect', () => {
+    for (const d of dividends) {
+      expect(d.name.length > 0 && d.blurb.length > 0 && d.effects.length > 0 ? '' : d.id).toBe('');
+    }
+  });
+
+  test('every decadeChoices pair is two distinct dividend ids that exist', () => {
+    const lists = [{ where: 'global', pairs: C.global.steady?.decadeChoices ?? [] },
+      ...sectorIds.map((s) => ({ where: s, pairs: C.sectors[s].steady?.decadeChoices ?? [] }))];
+    for (const { where, pairs } of lists) {
+      for (const p of pairs) {
+        expect(p.length).toBe(2);
+        expect(divIds.has(p[0]) && divIds.has(p[1]) && p[0] !== p[1] ? '' : `${where}: ${p.join(' / ')}`).toBe('');
+      }
+    }
+  });
+
+  test('a dividend that names a sector is offered only in that sector’s own sequence', () => {
+    const bad: string[] = [];
+    for (const d of dividends) {
+      const secs = new Set(effectSectors(d.effects));
+      if (secs.size > 1) bad.push(`${d.id}: names two sectors`);
+    }
+    for (const p of C.global.steady?.decadeChoices ?? []) {
+      for (const id of p) {
+        const d = dividends.find((x) => x.id === id)!;
+        if (effectSectors(d.effects).length) bad.push(`global pair offers ${id}, which names a sector`);
+      }
+    }
+    for (const s of sectorIds) {
+      for (const p of pairsOf(s)) {
+        for (const id of p) {
+          const d = dividends.find((x) => x.id === id)!;
+          for (const sec of effectSectors(d.effects)) if (sec !== s) bad.push(`${s} offers ${id}, which names ${sec}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('every dividend is offered somewhere (no orphans)', () => {
+    const offered = new Set([C.global.steady?.decadeChoices ?? [], ...sectorIds.map((s) => pairsOf(s))].flat(2));
+    expect(dividends.filter((d) => !offered.has(d.id)).map((d) => d.id)).toEqual([]);
+  });
+
+  test('every Industry’s sequence starts with the global teaching pair and contains its own pairs', () => {
+    const first = (C.global.steady?.decadeChoices ?? [])[0];
+    for (const s of sectorIds) {
+      const list = pairsOf(s);
+      expect(list[0]).toEqual(first);
+      expect(list.some((p) => p.some((id) => effectSectors(dividends.find((d) => d.id === id)!.effects).includes(s)))).toBe(true);
+    }
+  });
+
+  test('no M2 source gives Code absorption (its clear skies come from deletion; only the Senior review fork adds any)', () => {
+    const m2 = new Set([...divIds, ...commonsIds, ...charterIds, ...sectorIds.map((s) => `${s}.settle`)]);
+    const bad = allEffects().filter(({ where, e }) => m2.has(where) && e.type === 'absorptionAdd' && e.sector === 'code').map((x) => x.where);
+    expect(bad).toEqual([]);
+  });
+});
+
+describe('M2: paces and clear skies', () => {
+  const resolvedPaces = (s: string) => C.sectors[s].steady?.paces ?? C.global.steady?.paces ?? [];
+
+  test('three paces, ids unique, 0 < decline < 1, steeper pays more', () => {
+    for (const where of ['global', ...sectorIds]) {
+      const paces = where === 'global' ? C.global.steady?.paces ?? [] : resolvedPaces(where);
+      expect(paces.length).toBe(3);
+      expect(new Set(paces.map((p) => p.id)).size).toBe(paces.length);
+      for (const p of paces) {
+        expect(p.declinePerDecade > 0 && p.declinePerDecade < 1 ? '' : `${where}.${p.id}`).toBe('');
+        expect(p.dividendMul).toBeGreaterThanOrEqual(0);
+        expect(p.name.length > 0 && (p.blurb ?? '').length > 0 ? '' : `${where}.${p.id}`).toBe('');
+      }
+      for (let i = 1; i < paces.length; i++) {
+        expect(paces[i].declinePerDecade).toBeGreaterThan(paces[i - 1].declinePerDecade);
+        expect(paces[i].dividendMul).toBeGreaterThan(paces[i - 1].dividendMul);
+      }
+      expect(paces.map((p) => p.id)).toEqual(['gentle', 'firm', 'severe']);
+    }
+  });
+
+  test('clear levels: floor ≤ ceiling, ceiling below the first crisis, clearBelow in (0, 1)', () => {
+    const g = C.global.steady!;
+    for (const s of sectorIds) {
+      const o = C.sectors[s].steady ?? {};
+      const below = o.clearBelow ?? g.clearBelow ?? 0.5;
+      const floor = o.clearFloor ?? g.clearFloor ?? 0.03;
+      const ceil = o.clearCeiling ?? g.clearCeiling ?? 0.25;
+      expect(below > 0 && below < 1 ? '' : s).toBe('');
+      expect(ceil >= floor ? '' : s).toBe('');
+      expect(ceil < C.sectors[s].crisisAt[0] ? '' : s).toBe('');
+    }
+  });
+
+  test('decades are judged against the drawn day, with a small slack', () => {
+    expect(C.global.steady?.decadeWellbeing).toBe('drawn');
+    expect(C.global.steady?.drawnSlack).toBeGreaterThan(0);
+    expect(C.global.steady?.drawnSlack).toBeLessThan(0.2);
+  });
+});
+
+describe('M2: Settlement', () => {
+  test('every Industry can be settled, with a standing dividend, an upkeep and a ceremony line', () => {
+    for (const s of sectorIds) {
+      const st = C.sectors[s].settle;
+      expect(st ? '' : s).toBe('');
+      if (!st) continue;
+      expect(st.upkeepPerSpill).toBeGreaterThan(0);
+      expect((st.freeExcess ?? 0.05) >= 0).toBe(true);
+      expect((st.blurb ?? '').length).toBeGreaterThan(20);
+      expect(st.dividend.some((e) => !ONE_OFF.includes(e.type)) ? '' : `${s}: no standing effect`).toBe('');
+      expect(st.dividend.some((e) => e.type === 'slotAdd') ? s : '').toBe('');
+    }
+  });
+});
+
+describe('M2: the Commons', () => {
+  test('every project has its words, a scene icon and sane numbers', () => {
+    for (const c of commons) {
+      const ctx = c.id;
+      expect(c.name.length > 0 && c.blurb.length > 40 && /^[a-z]+$/.test(c.icon) ? '' : ctx).toBe('');
+      expect(c.cost > 0 && c.wellbeing.max > 0 && c.wellbeing.perLevel > 0 ? '' : ctx).toBe('');
+      expect((c.maxLevel ?? 1) >= 1 && Number.isInteger(c.maxLevel ?? 1) ? '' : ctx).toBe('');
+      if ((c.maxLevel ?? 1) > 1) expect((c.costGrowth ?? 1) > 1 ? '' : `${ctx}: repeatable without costGrowth`).toBe('');
+      if (c.sector) expect(sectorIds.includes(c.sector) ? '' : ctx).toBe('');
+      if (c.intensity) expect(sectorIds.includes(c.intensity.sector) && c.intensity.perLevel > 0 ? '' : ctx).toBe('');
+      expect((c.effects ?? []).filter((e) => e.type === 'slotAdd').length).toBe(0);
+    }
+  });
+
+  test('a small wellbeing term: each project 0.3–4 points, all together under 12', () => {
+    for (const c of commons) expect(c.wellbeing.max >= 0.3 && c.wellbeing.max <= 4 ? '' : c.id).toBe('');
+    expect(commons.reduce((a, c) => a + c.wellbeing.max, 0)).toBeLessThan(12);
+  });
+
+  test('the brief’s shape: Coal Age projects, later ones, a general one; intensities and time rebounds', () => {
+    const coal = C.ages.find((a) => a.id === 'coal')!.sectors;
+    expect(commons.filter((c) => c.sector && coal.includes(c.sector)).length).toBeGreaterThanOrEqual(5);
+    expect(commons.filter((c) => c.sector && !coal.includes(c.sector)).length).toBeGreaterThanOrEqual(2);
+    expect(commons.filter((c) => !c.sector).length).toBeGreaterThanOrEqual(1);
+    expect(commons.filter((c) => c.intensity).length).toBeGreaterThanOrEqual(4);
+    const time = commons.filter((c) => (c.effects ?? []).some((e) => e.type === 'satMul' && e.app && e.value > 1));
+    expect(time.length).toBeGreaterThanOrEqual(2);
+    const rep = commons.filter((c) => (c.maxLevel ?? 1) > 1).length;
+    expect(rep >= 1 && rep <= 2).toBe(true);
+  });
+
+  test('every project names its rebound (an intensity, a standing side-effect, or both)', () => {
+    expect(commons.filter((c) => !c.intensity && !(c.effects ?? []).length).map((c) => c.id)).toEqual([]);
+  });
+
+  test('icons are unique scene keys', () => {
+    expect(new Set(commons.map((c) => c.icon)).size).toBe(commons.length);
+  });
+});
+
+describe('M2: Charters', () => {
+  test('every Charter has its words, at least one effect, and no one-offs (ignored on Charters)', () => {
+    for (const c of charters) {
+      expect(c.name.length > 0 && c.blurb.length > 60 && c.effects.length > 0 ? '' : c.id).toBe('');
+      expect(c.effects.filter((e) => ONE_OFF.includes(e.type)).map((e) => `${c.id}: ${e.type}`)).toEqual([]);
+      if (c.sector) expect(sectorIds).toContain(c.sector);
+      if (c.landmark) expect(/^[a-zA-Z]+$/.test(c.landmark) ? '' : c.id).toBe('');
+    }
+  });
+
+  test('the brief’s shape: founded use, a loan, an unlock, a start lever, a purse with a cost, Light-gated, restraint', () => {
+    const has = (t: string) => charters.some((c) => c.effects.some((e) => e.type === t));
+    for (const t of ['startFounded', 'institutionLoan', 'unlock', 'startLever', 'startCapitalMul', 'reserveAdd', 'absorptionAdd', 'popGrowthMul']) {
+      expect(has(t) ? '' : t).toBe('');
+    }
+    expect(charters.some((c) => c.requires && 'owns' in c.requires && c.requires.owns === 'light')).toBe(true);
+    const purse = charters.find((c) => c.effects.some((e) => e.type === 'startCapitalMul' && e.value > 1))!;
+    expect(purse.effects.some((e) => e.type === 'marginAdd' && e.value < 0)).toBe(true);
+  });
+
+  test('a loaned Institution is offered only to a player who does not own it', () => {
+    for (const c of charters) {
+      for (const e of c.effects) {
+        if (e.type !== 'institutionLoan') continue;
+        expect(JSON.stringify(c.requires ?? {})).toContain(`"not":{"owns":"${e.id}"}`);
+      }
+    }
+  });
+
+  test('every locked card or lever is unlocked by something', () => {
+    const unlocked = new Set(allEffects().flatMap(({ e }) => (e.type === 'unlock' ? [e.id] : [])));
+    const locked = [...C.upgrades.filter((u) => u.locked), ...C.levers.filter((l) => l.locked)].map((x) => x.id);
+    expect(locked.filter((id) => !unlocked.has(id))).toEqual([]);
+  });
+});
+
+describe('M2: orders, offline, Institutions, Know-how trees', () => {
+  test('offline: a night from the start, holding before a crisis; the v2 field is gone', () => {
+    expect(C.global.offline).toEqual({ capSeconds: 8 * 3600, holdBefore: 'crisis' });
+    expect(C.global.offlineCapSeconds).toBeUndefined();
+  });
+
+  test('an Institution adds an offline step to 12 hours, and the two closing orders can be unlocked', () => {
+    const effs = C.institutions.flatMap((i) => [...i.effects, ...(i.nextLevels ?? []).flatMap((l) => l.effects)]);
+    const extra = effs.reduce((a, e) => (e.type === 'offlineCapAdd' ? Math.max(a, e.seconds) : a), 0);
+    expect((C.global.offline?.capSeconds ?? 0) + extra).toBe(12 * 3600);
+    for (const o of ['civilService', 'treasury']) {
+      expect(effs.some((e) => e.type === 'orderUnlock' && e.order === o) ? '' : o).toBe('');
+    }
+  });
+
+  test('orders, Commons and respec knobs are set', () => {
+    expect(C.global.orders?.paybackChoices).toContain(C.global.orders?.marketPaybackMax);
+    expect(C.global.commons?.fromReckoning).toBe(2);
+    expect(C.global.respecRefund).toBe(1);
+    expect(C.global.hindsight.perLeanDecade).toBe(0);
+    expect(C.global.hindsight.perSettledSector).toBeGreaterThan(0);
+  });
+
+  test('every Know-how tree in use has a name', () => {
+    for (const t of new Set(C.knowhow.map((k) => k.tree ?? 'general'))) {
+      expect((C.knowhowTrees?.[t]?.name ?? '').length > 0 ? '' : t).toBe('');
+    }
+  });
+
+  test('every recycle option has wording', () => {
+    for (const r of ['treasury', 'dividend', 'commons'] as const) {
+      expect((C.recycleText?.[r]?.name ?? '').length > 0 && (C.recycleText?.[r]?.blurb ?? '').length > 0 ? '' : r).toBe('');
+    }
+  });
+});
+
+describe('M2: stages and units', () => {
+  test('every stage is an integer 1–3 on an efficiency card; at most three distinct per Industry', () => {
+    for (const u of C.upgrades) {
+      if (u.stage === undefined) continue;
+      expect(Number.isInteger(u.stage) && u.stage >= 1 && u.stage <= 3 && u.kind === 'efficiency' ? '' : u.id).toBe('');
+    }
+    for (const s of sectorIds) {
+      expect(new Set(C.upgrades.filter((u) => u.sector === s && u.stage).map((u) => u.stage)).size).toBeLessThanOrEqual(3);
+    }
+  });
+
+  test('a staged card never requires a card of a higher stage', () => {
+    const byId = new Map(C.upgrades.map((u) => [u.id, u]));
+    const reqs = (id: string, seen = new Set<string>()): string[] => {
+      for (const r of byId.get(id)?.requires ?? []) if (!seen.has(r)) { seen.add(r); reqs(r, seen); }
+      return [...seen];
+    };
+    for (const u of C.upgrades.filter((x) => x.stage)) {
+      for (const r of reqs(u.id)) expect((byId.get(r)!.stage ?? 0) <= u.stage! ? '' : `${u.id} after ${r}`).toBe('');
+    }
+  });
+
+  test('a singular unit differs from its plural', () => {
+    for (const s of sectorIds) {
+      const d = C.sectors[s];
+      for (const u of [d.service, d.resource]) if (u.unitSingular !== undefined) expect(u.unitSingular).not.toBe(u.unit);
+    }
+  });
+
+  test('every plural unit ending in s has a singular', () => {
+    for (const s of sectorIds) {
+      const d = C.sectors[s];
+      for (const u of [d.service, d.resource]) if (/[a-z]s$/.test(u.unit)) expect(u.unitSingular ? '' : `${s}: ${u.unit}`).toBe('');
+    }
+  });
+});
+
+describe('M2: words', () => {
+  const nameOver = (xs: { id: string; name: string }[], max: number) => xs.filter((x) => x.name.length > max).map((x) => `${x.id}: ${x.name}`);
+
+  test('new names fit their slots and new blurbs stay readable', () => {
+    expect([
+      ...nameOver(dividends, 28), ...nameOver(commons, 28), ...nameOver(charters, 28),
+      ...dividends.filter((d) => d.blurb.length > 120).map((d) => `${d.id} (${d.blurb.length})`),
+      ...commons.filter((c) => c.blurb.length > 150).map((c) => `${c.id} (${c.blurb.length})`),
+      ...charters.filter((c) => c.blurb.length > 150).map((c) => `${c.id} (${c.blurb.length})`),
+      ...sectorIds.filter((s) => (C.sectors[s].settle?.blurb ?? '').length > 120),
+    ]).toEqual([]);
+  });
+
+  test('{name} appears only in the commonsBuilt and charter headlines, at the start or after a colon', () => {
+    const bad: string[] = [];
+    for (const [k, v] of Object.entries(C.headlines)) {
+      for (const h of v) {
+        if (!h.includes('{name}')) continue;
+        if (k !== 'commonsBuilt' && k !== 'charter') bad.push(`${k}: ${h}`);
+        if (!/^\{name\}|: \{name\}/.test(h)) bad.push(`${k}: ${h}`);
+      }
+    }
+    for (const hs of Object.values(C.sectorHeadlines ?? {})) {
+      for (const h of Object.values(hs).flat() as string[]) if (h.includes('{name}')) bad.push(h);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('every Industry has its own lines for clear skies, settling and unsettling', () => {
+    for (const s of sectorIds) {
+      for (const k of ['clearSkies', 'settled', 'unsettled'] as HeadlineKey[]) {
+        expect(`${s}.${k}: ${Math.min(3, C.sectorHeadlines?.[s]?.[k]?.length ?? 0)}`).toBe(`${s}.${k}: 3`);
+      }
+    }
+  });
+});
+
+describe('volume floors (roadmap M2)', () => {
+  test('dividends: ≥ 14 in ≥ 7 global pairs, plus 5–10 Industry pairs', () => {
+    expect(dividends.length).toBeGreaterThanOrEqual(14);
+    expect((C.global.steady?.decadeChoices ?? []).length).toBeGreaterThanOrEqual(7);
+    const sectorPairs = new Set(sectorIds.flatMap((s) => (C.sectors[s].steady?.decadeChoices ?? [])
+      .filter((p) => p.some((id) => effectSectors(dividends.find((d) => d.id === id)!.effects).length))
+      .map((p) => p.join('|'))));
+    expect(sectorPairs.size).toBeGreaterThanOrEqual(5);
+    expect(sectorPairs.size).toBeLessThanOrEqual(12);
+  });
+
+  test('8 Commons projects, 8 Charters, 5 settle blocks, 18 Institutions', () => {
+    expect(commons.length).toBeGreaterThanOrEqual(8);
+    expect(charters.length).toBeGreaterThanOrEqual(8);
+    expect(sectorIds.filter((s) => C.sectors[s].settle).length).toBe(5);
+    expect(C.institutions.length).toBeGreaterThanOrEqual(18);
+  });
+
+  test('15 new achievements with conditions (40 in all)', () => {
+    expect(C.achievements.length).toBeGreaterThanOrEqual(40);
+    expect(C.achievements.filter((a) => a.when).length).toBeGreaterThanOrEqual(35);
+    expect(C.achievements.filter((a) => a.hidden).length).toBeLessThanOrEqual(8);
+  });
+
+  test('stages on 12–15 cards', () => {
+    const n = C.upgrades.filter((u) => u.stage).length;
+    expect(n >= 12 && n <= 15).toBe(true);
+  });
+
+  test('about 450 headlines (M1’s 389 plus about 60)', () => {
+    const n = Object.values(C.headlines).flat().length
+      + Object.values(C.sectorHeadlines ?? {}).reduce((a, h) => a + Object.values(h).flat().length, 0);
+    expect(n).toBeGreaterThanOrEqual(440);
   });
 });

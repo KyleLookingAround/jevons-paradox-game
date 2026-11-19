@@ -4,7 +4,7 @@
  */
 import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
 import {
-  eta, capCost, margin, absorb, sat, half, chain, fork, ladder, lever, RECYCLE, CAP_LABEL, CAP_FIRST, SUFF_LABEL,
+  eta, capCost, margin, absorb, sat, half, chain, fork, ladder, lever, withStages, decadeSequence, RECYCLE, CAP_LABEL, CAP_FIRST, SUFF_LABEL,
   CAP_VALUES, CAP_LEAK, SUFF_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
@@ -19,8 +19,8 @@ const sector: SectorDef = {
   years: '2025–',
   firstYear: 2025,
   tagline: 'Software is now free to write. Reading it remains a personal matter.',
-  service: { name: 'Features', unit: 'features' },
-  resource: { name: 'Human attention', unit: 'hours' },
+  service: { name: 'Features', unit: 'features', unitSingular: 'feature' },
+  resource: { name: 'Human attention', unit: 'hours', unitSingular: 'hour' },
   pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
   accent: 'diff',
   theme: 'agentic',
@@ -47,6 +47,33 @@ const sector: SectorDef = {
 
   wellbeingWeight: 4,
   wellbeingScale: 100_000,
+
+  /*
+   * M2: Code has absorption 0, so its sinkR is null and its clear skies come only from deletion: the code stock must be
+   * deleted down to the clear level and deletion must at least match what ships. clearBelow stays at the global half
+   * (written here so nobody removes it thinking it does nothing). The ceiling is 0.2 of collapse, not 0.25: Code's
+   * first crisis comes at 0.3. No dividend here may add absorption.
+   */
+  steady: {
+    clearBelow: 0.5,
+    clearCeiling: 0.2,
+    decadeChoices: decadeSequence([
+      ['div.code.featureFreeze', 'div.code.shipIt'],
+      ['div.code.refactoringWeek', 'div.code.hackathon'],
+    ]),
+  },
+
+  /*
+   * M2: Settlement. Standing while settled: a point of wellbeing (nobody is paged at night) and an easier Mandate; once
+   * a run, a purse of Mandate. Defence 0.35 Mandate/s per unit of excess, the dearest of the five: every new user
+   * expects the features everyone else has.
+   */
+  settle: {
+    dividend: [{ type: 'wellbeingAdd', value: 1 }, { type: 'mandateRateMul', value: 1.05 }, { type: 'mandateAdd', value: 300 }],
+    upkeepPerSpill: 0.35,
+    freeExcess: 0.05,
+    blurb: 'Released v1.0. Changed: nothing, on purpose. Known issue: none we intend to fix.',
+  },
 
   drawsOn: { sector: 'compute', perService: 0.5 },
   /*
@@ -127,7 +154,8 @@ const sector: SectorDef = {
 /* ------------------------------------------------------------------ */
 
 /* ---- Code: chain to ×480 ---- */
-const codeUpgrades: UpgradeDef[] = [
+/* M2 stages (the scene's agents): the chat assistant 1, the coding agent 2, agent fleets 3 (autocomplete is the caret). */
+const codeUpgrades: UpgradeDef[] = withStages([
   ...chain('code', ladder(1_500_000, 7, 4), [
     {
       id: 'code.autocomplete', name: 'Autocomplete', fold: 3,
@@ -189,7 +217,7 @@ const codeUpgrades: UpgradeDef[] = [
     blurb: 'Every wheel already invented, free, and kept turning by one unpaid volunteer.',
     cost: 6_000_000, requires: ['code.autocomplete'], effects: [capCost('code', 0.6)],
   },
-];
+], { 'code.chat': 1, 'code.agent': 2, 'code.fleets': 3 });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -234,6 +262,7 @@ const codeLevers: LeverDef[] = [
     catch: `Every rival is lifting its limits. Customers notice whose are lower. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 550, upkeep: 0.25, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Spent on the Commons: a repair café for old laptops, which go on to run a great many more agents.' },
   }),
 ];
 
@@ -320,6 +349,22 @@ const codeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   reckoning: [
     'Postmortem: blameless, and apparently causeless',
     'Released: a retrospective; action items carried over',
+  ],
+  /* M2 */
+  clearSkies: [
+    'Fixed: code stock below the clear threshold for the first time',
+    'Removed: more lines than were added this quarter',
+    'Changed: the pager rota is now mostly a formality',
+  ],
+  settled: [
+    'Deprecated: the roadmap. Code is settled',
+    'Changed: feature freeze made permanent; Code settled',
+    'Known issue: none. Code settled at current scope',
+  ],
+  unsettled: [
+    'Added: everything on the backlog. Code unsettled',
+    'Changed: feature freeze lifted; the agents resume',
+    'Known issue: settlement lapsed; scope creep restored',
   ],
 };
 

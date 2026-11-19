@@ -122,6 +122,8 @@ interface LeverSpec {
   labels?: Record<number, string>;
   repeat?: Partial<LeverDef['repeat'] & object>;
   recycle?: LeverRecycle[];
+  /** M2: per-option wording for this lever's recycle choices (LeverDef.recycleBlurb). */
+  recycleBlurb?: Partial<Record<LeverRecycle, string>>;
   requires?: string[];
 }
 
@@ -147,12 +149,55 @@ export function lever(s: LeverSpec): LeverDef {
     repeat: { ...REPEAT[s.kind], label: s.label, ...s.repeat },
   };
   if (s.recycle) def.recycle = s.recycle;
+  if (s.recycleBlurb) def.recycleBlurb = s.recycleBlurb;
   if (s.requires) def.requires = s.requires;
   return def;
 }
 
-/** Duty and cap levers offer both recycle options; treasury first (the v1 behaviour). */
-export const RECYCLE: LeverRecycle[] = ['treasury', 'dividend'];
+/**
+ * Duty and cap levers offer every recycle option; treasury first (the v1 behaviour, and never 'commons' first: the
+ * Commons are not selectable before they open, from run 3).
+ */
+export const RECYCLE: LeverRecycle[] = ['treasury', 'dividend', 'commons'];
+
+/* ------------------------------------------------------------------ */
+/* STAGES AND DECADE CHOICES (M2)                                      */
+/* ------------------------------------------------------------------ */
+
+/** Set UpgradeDef.stage on the named cards (the scene's machine generation, 1–3). Unknown ids are an error. */
+export function withStages(upgrades: UpgradeDef[], stages: Record<string, number>): UpgradeDef[] {
+  for (const id of Object.keys(stages)) {
+    if (!upgrades.some((u) => u.id === id)) throw new Error(`withStages: no upgrade ${id}`);
+  }
+  return upgrades.map((u) => (stages[u.id] ? { ...u, stage: stages[u.id] } : u));
+}
+
+/**
+ * The global sequence of decade dividend pairs (ids into dividends.ts), in the order they are offered: the first pair
+ * teaches the choice (Mandate or capital, both now), later pairs are sharper (standing against now, restraint against
+ * its rebound). Option 0 of every pair is the modest one: it is what an unanswered offer resolves to.
+ */
+export const DECADE_PAIRS: [string, string][] = [
+  ['div.voteOfThanks', 'div.shareholders'],
+  ['div.standingOrders', 'div.windfall'],
+  ['div.holiday', 'div.commonsEndowment'],
+  ['div.laterMarriage', 'div.feast'],
+  ['div.sinkingFund', 'div.patentOffice'],
+  ['div.gardenCity', 'div.buildingBoom'],
+  ['div.civicPurse', 'div.remitRates'],
+  ['div.quietYears', 'div.jubilee'],
+];
+
+/**
+ * An Industry's own decade sequence. The contract resolves a sector's decadeChoices INSTEAD of the global list (it
+ * cannot add to it), so each Industry interleaves its own pairs with the global sequence: the global teaching pair
+ * first, its own first pair second, its second pair fifth, then the rest of the global pairs.
+ */
+export function decadeSequence(own: [string, string][]): [string, string][] {
+  const [a, b] = own;
+  const g = DECADE_PAIRS;
+  return [g[0], ...(a ? [a] : []), g[1], g[2], ...(b ? [b] : []), ...g.slice(3), ...own.slice(2)];
+}
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */

@@ -19,6 +19,8 @@ const FALLBACK: Record<HeadlineKey, string> = {
   steadyAll: 'A steady state, at last', reckoning: 'The Reckoning', efficiency: 'Engines thriftier than ever',
   ageBegins: '{age} begins', budgetDrawn: 'A budget for {resource}', decade: 'A decade within budget for {sector}',
   budgetBroken: '{sector} breaks its budget',
+  clearSkies: 'Clear skies over {sector}', settled: '{sector} settles', unsettled: '{sector} unsettled',
+  commonsBuilt: '{name} opens', charter: 'A charter: {name}',
 };
 
 /** Common-noun placeholders: lower-cased mid-sentence (see Content.headlines). */
@@ -42,7 +44,7 @@ export function substitute(text: string, values: Record<string, string>): string
   });
 }
 
-export interface HeadlineCtx { year: number; app?: string; n?: number }
+export interface HeadlineCtx { year: number; app?: string; n?: number; name?: string }
 export function headline(state: GameState, content: Content, key: HeadlineKey, time: number, ctx: HeadlineCtx, sector?: SectorId): NewsItem {
   const own = sector ? content.sectorHeadlines?.[sector]?.[key] : undefined;
   const variants = own && own.length ? own : content.headlines?.[key];
@@ -54,7 +56,7 @@ export function headline(state: GameState, content: Content, key: HeadlineKey, t
   text = substitute(text, {
     sector: def?.name ?? '', era: def?.name ?? '', age: age?.name ?? '', app: ctx.app ?? '',
     resource: def?.resource.name ?? '', service: def?.service.name ?? '', year: String(year),
-    n: ctx.n !== undefined ? String(ctx.n) : '',
+    n: ctx.n !== undefined ? String(ctx.n) : '', name: ctx.name ?? '',
   });
   const item: NewsItem = { time, year, key, text };
   if (sector) item.sector = sector;

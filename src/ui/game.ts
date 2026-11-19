@@ -1,6 +1,6 @@
 // Rebound: the game loop, persistence and the wiring between the model and the UI.
 // Wall-clock time lives only here; the model only ever sees dt.
-import type { Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorId, UpgradeView } from '../types';
+import type { CommonsView, Content, Derived, GameState, InstitutionView, KnowhowView, LeverView, ModelApi, SectorId, UpgradeView } from '../types';
 import { MAX_TICK_SECONDS } from '../types';
 import type * as Devmock from './devmock';
 import type { Ctx } from './ctx';
@@ -14,6 +14,7 @@ import { installManifest } from './install';
 import { installKeys } from './keys';
 import type { BackupInfo } from './sheets';
 import { prof, timed } from './prof';
+import { createEventFeed } from './events';
 
 const SAVE_KEY = 'rebound.save.v1';          // kept from v1: deserialize migrates
 const AT_KEY = 'rebound.save.v1.at';
@@ -120,11 +121,15 @@ function boot(o: GameOpts): void {
   if (!state) return; // fatal panel already up
 
   mark('rebound-state');
+  // Events already in the save are history: the page reacts only to what happens from here on.
+  const feed = createEventFeed();
+  feed.resetTo(state);
   let d: Derived = guard('derive', () => model.derive(state!, content)) ?? emptyDerived();
   let ups: UpgradeView[] = [];
   let levs: LeverView[] = [];
   let khs: KnowhowView[] = [];
   let insts: InstitutionView[] = [];
+  let cms: CommonsView[] = [];
 
   const storedTab = lsGet(TAB_KEY);
   const firstOpen = sectorIds(content).find((id) => state!.sectors?.[id]?.open) ?? sectorIds(content)[0] ?? '';
@@ -147,6 +152,8 @@ function boot(o: GameOpts): void {
     set khs(v: KnowhowView[]) { khs = v; },
     get insts() { return insts; },
     set insts(v: InstitutionView[]) { insts = v; },
+    get cms() { return cms; },
+    set cms(v: CommonsView[]) { cms = v; },
     sector: initial,
     act(name, f) {
       if (halted) return false;
@@ -196,7 +203,10 @@ function boot(o: GameOpts): void {
     const nd = guard('derive', () => model.derive(state!, content));
     if (nd) d = nd;
     if (views) refreshViews();
-    if (!halted) timed('ui.update', () => ui.update());
+    if (halted) return;
+    const ev = feed.take(state!);
+    if (ev.length) timed('ui.events', () => ui.onEvents(ev));
+    timed('ui.update', () => ui.update());
   }
   let lastViews = 0, viewsEvery = VIEWS_EVERY, viewsPending = false;
   /** Refresh the views in a task of their own after the next frame (coalesced), then patch the page again. */
@@ -222,6 +232,11 @@ function boot(o: GameOpts): void {
     if (k) khs = k;
     const i = guard('institutionViews', () => model.institutionViews(state!, content));
     if (i) insts = i;
+    // The Commons views only matter once the Commons are open; until then they are not asked for.
+    if (d.commons?.available && typeof model.commonsViews === 'function') {
+      const cv = guard('commonsViews', () => model.commonsViews(state!, content));
+      if (cv) cms = cv;
+    } else cms = [];
     // The periodic refresh backs off when the views are slow (late game, slow phone), to keep within VIEWS_SHARE.
     const cost = performance.now() - t0;
     viewsEvery = Math.min(VIEWS_MAX_EVERY, Math.max(VIEWS_EVERY, cost / VIEWS_SHARE));
@@ -229,6 +244,7 @@ function boot(o: GameOpts): void {
 
   function replace(s: GameState): void {
     state = s;
+    feed.resetTo(s);
     ui.reset();
     refresh(true);
     save();
@@ -302,11 +318,14 @@ function boot(o: GameOpts): void {
     const s = guard('fastForward', () => model.fastForward(before, content, seconds));
     if (!s) return;
     state = s;
+    // The catch-up's events are summarised by the ledger (lastOffline), not played one by one.
+    feed.skip(s);
     refresh(false);
     viewsAfterPaint();
+    if (s.lastOffline) { ui.awayCheck(); return; }
     if (note && seconds > 60) {
       const gained = (s.capital ?? 0) - (before.capital ?? 0);
-      const capped = Math.min(seconds, content.global?.offlineCapSeconds ?? seconds);
+      const capped = Math.min(seconds, d.offlineCapSeconds || content.global?.offline?.capSeconds || content.global?.offlineCapSeconds || seconds);
       ui.toast(`While you were away (${dur(seconds)}${capped < seconds ? `; ${dur(capped)} counted` : ''}): ${gained >= 0 ? '+\u2060' : ''}${money(gained)}.`);
     }
   }
@@ -362,10 +381,16 @@ function boot(o: GameOpts): void {
 }
 
 function emptyDerived(): Derived {
-  const t = { wellbeingYears: 0, intensity: 1, wellbeing: 0, budget: 0, unburnt: 0, backfire: 0, sectorsReached: 0, steady: 0, total: 0 };
+  const t = { wellbeingYears: 0, intensity: 1, wellbeing: 0, budget: 0, unburnt: 0, backfire: 0, sectorsReached: 0, steady: 0, settled: 0, total: 0 };
   return {
     year: 1780, age: null, wellbeing: 0, incomePerSec: 0, clickValue: 0, mandatePerSec: 0, populationGrowthPerSec: 0, pendingReckoning: null,
     hindsightIfReckonNow: 0, hindsightTerms: t, sectors: {}, nextSectors: [], freshRun: false, slots: { total: 0, used: 0 },
+    populationRef: 1, offlineCapSeconds: 0, charterOffer: [], charter: null, commons: { available: false, fund: 0, wellbeing: 0 },
+    orders: {
+      market: { available: false, on: false, paybackMax: 120, paybackChoices: [], sectors: {} },
+      civilService: { available: false, on: false, levers: {} }, treasury: { available: false, on: false, keepSeconds: 0, projects: [] }, nextTickIn: 0,
+    },
+    respec: { allowed: false, refund: 0, refundByTree: {} },
   };
 }
 

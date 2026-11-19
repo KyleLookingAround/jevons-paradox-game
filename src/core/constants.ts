@@ -41,6 +41,33 @@ export const HISTORY_EVERY = 5;
 export const HISTORY_MAX = 240;
 export const NEWS_MAX = 40;
 export const FAST_FORWARD_STEP = 5;
-/** Projection horizon (s) and step (s): PROJECTION_YEARS model years at dt = 5. */
+/** Projection horizon (s) and step (s): PROJECTION_YEARS model years at dt = 10 (M2 performance fix; M1 used 5). */
 export const PROJECTION_SECONDS = PROJECTION_YEARS / YEARS_PER_SECOND;
 export const PROJECTION_DT = 5;
+/** M2: the projection cache's time bucket (s): a card's lines are recomputed at most once per bucket while nothing
+ *  structural changes. */
+export const PROJECTION_BUCKET = 20;
+
+/* --- M2 defaults (the contract's documented defaults, named once) --- */
+/** SteadyParams.drawnSlack, clearBelow, clearFloor, clearCeiling defaults. */
+export const DEFAULT_DRAWN_SLACK = 0.05;
+export const DEFAULT_CLEAR_BELOW = 0.5;
+export const DEFAULT_CLEAR_FLOOR = 0.03;
+export const DEFAULT_CLEAR_CEILING = 0.25;
+/** SectorDef.settle.freeExcess default. */
+export const DEFAULT_FREE_EXCESS = 0.05;
+/** Offline cap when neither GlobalParams.offline nor offlineCapSeconds is given (4 h). */
+export const DEFAULT_OFFLINE_CAP = 14400;
+/** GlobalParams.orders defaults. */
+export const DEFAULT_MARKET_FROM_RECKONING = 1;
+export const DEFAULT_MARKET_PAYBACK = 120;
+export const DEFAULT_PAYBACK_CHOICES = [30, 120, 600];
+export const DEFAULT_ORDER_INTERVAL_YEARS = 1;
+/** setOrders clamps paybackMax and keepSeconds to these ranges (s). */
+export const PAYBACK_MIN = 1;
+export const ORDER_SECONDS_MAX = 86400;
+/** Default Treasury rules reserve, seconds of income. */
+export const DEFAULT_KEEP_SECONDS = 60;
+/** GlobalParams.commons defaults. */
+export const DEFAULT_COMMONS_FROM_RECKONING = 2;
+export const DEFAULT_COMMONS_FUND_SHARE = 1;

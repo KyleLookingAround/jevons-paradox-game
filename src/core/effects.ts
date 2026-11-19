@@ -3,7 +3,7 @@
  * flow capacity from them, and the one-off effects fired at the moment they are granted.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { Content, EffectDef, GameState, InstitutionDef, MetaState, SectorDef } from '../types';
+import type { Content, EffectDef, GameState, InstitutionDef, MetaState, OrderId, SectorDef } from '../types';
 import { idx } from './contentIndex';
 import { decadeEffectsOf } from './steady';
 import { fin } from './util';
@@ -35,6 +35,14 @@ export interface Mods {
   wellbeingAdd: number;
   startLevers: Record<string, number>;
   unlocked: Set<string>;
+  /* M2 */
+  offlineCapAdd: number;
+  orderUnlock: Set<OrderId>;
+  commonsYieldMul: number;
+  /** Applications founded at run start (or when their sector opens) by a standing startFounded effect. */
+  startFounded: Set<string>;
+  /** Institution id → level loaned by an institutionLoan in force (the higher of loan and seat applies). */
+  loans: Record<string, number>;
 }
 
 function emptyMods(): Mods {
@@ -42,6 +50,7 @@ function emptyMods(): Mods {
     etaMul: {}, capMul: {}, marginAdd: {}, reserveAdd: {}, absorptionAdd: {}, satMulSector: {}, satMulApp: {},
     halfMulSector: {}, halfMulApp: {}, reveal: false, startCapitalMul: 1, mandateRateMul: 1, costMul: 1,
     popGrowthMul: 1, wellbeingAdd: 0, startLevers: {}, unlocked: new Set(),
+    offlineCapAdd: 0, orderUnlock: new Set(), commonsYieldMul: 1, startFounded: new Set(), loans: {},
   };
 }
 
@@ -67,6 +76,11 @@ function applyEffect(m: Mods, ef: EffectDef, times: number): void {
     case 'popGrowthMul': m.popGrowthMul *= Math.pow(ef.value, times); break;
     case 'wellbeingAdd': m.wellbeingAdd += ef.value * times; break;
     case 'unlock': m.unlocked.add(ef.id); break;
+    case 'startFounded': m.startFounded.add(ef.app); break;
+    case 'institutionLoan': m.loans[ef.id] = Math.max(m.loans[ef.id] ?? 0, Math.floor(fin(ef.level))); break;
+    case 'offlineCapAdd': m.offlineCapAdd += fin(ef.seconds) * times; break;
+    case 'orderUnlock': m.orderUnlock.add(ef.order); break;
+    case 'commonsYieldMul': m.commonsYieldMul *= Math.pow(ef.value, times); break;
     default: break;
   }
 }
@@ -81,11 +95,31 @@ export const institutionMax = (def: InstitutionDef): number => 1 + (def.nextLeve
 export const isSeated = (meta: MetaState, id: string): boolean =>
   (meta.institutions?.[id] ?? 0) >= 1 && (meta.loadout ?? []).includes(id);
 
-const modsCache = new WeakMap<object, { kh: object; inst: object; loadout: object; dkey: string; content: Content; mods: Mods }>();
-export function computeMods(upgrades: Record<string, number>, meta: MetaState, content: Content, decades: Record<string, number>, dkey: string): Mods {
+/** M2: run-state sources of standing effects beyond upgrades (see modsOf). */
+export interface ModSources {
+  /** sector → decades earned this run. */
+  decades: Record<string, number>;
+  /** Dividend ids chosen this run (each entry once). */
+  dividends: string[];
+  /** Commons project id → level. */
+  commons: Record<string, number>;
+  /** Sectors settled now (their settle.dividend is in force). */
+  settled: string[];
+}
+export const NO_SOURCES: ModSources = { decades: {}, dividends: [], commons: {}, settled: [] };
+
+const modsCache = new WeakMap<object, { kh: object; inst: object; loadout: object; charter: string | null; key: string; content: Content; mods: Mods }>();
+/**
+ * Standing effects of: upgrades owned (× level), know-how (× level), the Charter in force (once), decades (× earned),
+ * dividends chosen (once each), Commons projects (× level), settled sectors' settle.dividend (once), and the seated
+ * institutions, each at the higher of its seated level and any institutionLoan level (loans named by institutions
+ * themselves are ignored). `key` must change whenever `src` does.
+ */
+export function computeMods(upgrades: Record<string, number>, meta: MetaState, content: Content, src: ModSources, key: string): Mods {
+  const charter = meta.charter ?? null;
   const hit = modsCache.get(upgrades);
-  if (hit && hit.kh === meta.knowhow && hit.inst === meta.institutions && hit.loadout === meta.loadout && hit.dkey === dkey
-    && hit.content === content) return hit.mods;
+  if (hit && hit.kh === meta.knowhow && hit.inst === meta.institutions && hit.loadout === meta.loadout && hit.key === key
+    && hit.charter === charter && hit.content === content) return hit.mods;
   const ix = idx(content);
   const m = emptyMods();
   for (const id in upgrades) {
@@ -98,27 +132,68 @@ export function computeMods(upgrades: Record<string, number>, meta: MetaState, c
     const lvl = meta.knowhow[id] ?? 0;
     if (k && lvl > 0) for (const ef of k.effects) applyEffect(m, ef, lvl);
   }
-  for (const id of meta.loadout ?? []) {
-    const i = ix.institutions.get(id);
-    const lvl = Math.min(meta.institutions?.[id] ?? 0, i ? institutionMax(i) : 0);
-    if (i && lvl > 0) for (const ef of institutionEffects(i, lvl)) applyEffect(m, ef, 1);
+  if (charter !== null) {
+    const c = ix.charters.get(charter);
+    if (c) for (const ef of c.effects) applyEffect(m, ef, 1);
   }
-  for (const s in decades) {
-    const n = decades[s];
+  for (const s in src.decades) {
+    const n = src.decades[s];
     if (n > 0) for (const ef of decadeEffectsOf(content, s)) applyEffect(m, ef, n);
   }
-  modsCache.set(upgrades, { kh: meta.knowhow, inst: meta.institutions, loadout: meta.loadout, dkey, content, mods: m });
+  for (const id of src.dividends) {
+    const d = ix.dividends.get(id);
+    if (d) for (const ef of d.effects) applyEffect(m, ef, 1);
+  }
+  for (const id in src.commons) {
+    const c = ix.commons.get(id);
+    const lvl = src.commons[id] ?? 0;
+    if (c && lvl > 0) for (const ef of c.effects ?? []) applyEffect(m, ef, lvl);
+  }
+  for (const s of src.settled) for (const ef of content.sectors[s]?.settle?.dividend ?? []) applyEffect(m, ef, 1);
+  // institutions: seated level, raised to any loan in force (loans gathered above; an institution's own loans ignored)
+  const loans = { ...m.loans };
+  const levels = new Map<string, number>();
+  for (const id of meta.loadout ?? []) {
+    const i = ix.institutions.get(id);
+    if (i) levels.set(id, Math.min(meta.institutions?.[id] ?? 0, institutionMax(i)));
+  }
+  for (const id in loans) {
+    const i = ix.institutions.get(id);
+    if (i) levels.set(id, Math.max(levels.get(id) ?? 0, Math.min(loans[id], institutionMax(i))));
+  }
+  for (const i of content.institutions ?? []) {
+    const lvl = levels.get(i.id) ?? 0;
+    if (lvl > 0) for (const ef of institutionEffects(i, lvl)) if (ef.type !== 'institutionLoan') applyEffect(m, ef, 1);
+  }
+  m.loans = loans;
+  modsCache.set(upgrades, { kh: meta.knowhow, inst: meta.institutions, loadout: meta.loadout, charter, key, content, mods: m });
   return m;
 }
+
+const stateMods = new WeakMap<GameState, { content: Content; mods: Mods }>();
 export function modsOf(s: GameState, c: Content): Mods {
-  const decades: Record<string, number> = {};
-  let dkey = '';
+  const hit = stateMods.get(s);
+  if (hit && hit.content === c) return hit.mods;
+  const src: ModSources = { decades: {}, dividends: [], commons: {}, settled: [] };
+  let key = '';
   for (const id of idx(c).ids) {
-    const n = s.sectors[id]?.decadesWithin?.length ?? 0;
-    if (n > 0) { decades[id] = n; dkey += `${id}:${n},`; }
+    const es = s.sectors[id];
+    if (!es) continue;
+    const n = es.decadesWithin?.length ?? 0;
+    if (n > 0) { src.decades[id] = n; key += `${id}:${n},`; }
+    const dv = es.dividends;
+    if (dv && dv.length) { for (const d of dv) src.dividends.push(d); key += `${id}v${dv.join('+')},`; }
+    if (es.settled && es.open) { src.settled.push(id); key += `${id}S,`; }
   }
-  return computeMods(s.upgrades, s.meta, c, decades, dkey);
+  const lv = s.commons?.levels;
+  if (lv) for (const k in lv) if (lv[k] > 0) { src.commons[k] = lv[k]; key += `c${k}:${lv[k]},`; }
+  const mods = computeMods(s.upgrades, s.meta, c, src, key);
+  stateMods.set(s, { content: c, mods });
+  return mods;
 }
+/** Institution seated, or loaned by an institutionLoan in force (LeverDef.requires). */
+export const isSeatedOrLoaned = (meta: MetaState, mods: Mods, id: string): boolean => isSeated(meta, id) || (mods.loans[id] ?? 0) >= 1;
+export const absorptionOf = (def: SectorDef, mods: Mods): number => Math.max(0, def.absorption + (mods.absorptionAdd[def.id] ?? 0));
 
 function staticEta(def: SectorDef, mods: Mods): number {
   return def.baseEta * (mods.etaMul[def.id] ?? 1);

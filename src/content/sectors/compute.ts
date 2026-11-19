@@ -4,7 +4,7 @@
  */
 import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
 import {
-  eta, capCost, margin, reserve, absorb, sat, half, chain, fork, ladder, lever, RECYCLE, DUTY_LABEL, CAP_LABEL,
+  eta, capCost, margin, reserve, absorb, sat, half, chain, fork, ladder, lever, withStages, decadeSequence, RECYCLE, DUTY_LABEL, CAP_LABEL,
   CAP_FIRST, SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
@@ -44,6 +44,37 @@ const sector: SectorDef = {
 
   wellbeingWeight: 4.5,
   wellbeingScale: 150_000,
+
+  /*
+   * M2: Compute is the one Industry whose paces differ. Its η rises on its own (autoEtaRate), so demand climbs into any
+   * line drawn across it whatever the player buys: every pace here is harder to hold than it reads. The lines fall a
+   * little less and pay a little more. Clear skies at 0.6 of the drawn pressure, not 0.5: carbon's absorption (0.005)
+   * is the slowest of the five, and halving it would ask for a line held for longer than the Industry has been open.
+   */
+  steady: {
+    clearBelow: 0.6,
+    paces: [
+      { id: 'gentle', name: 'Gentle', declinePerDecade: 0.04, dividendMul: 1.2, blurb: 'Four per cent a decade, against chips that double on their own. A little extra for holding it.' },
+      { id: 'firm', name: 'Firm', declinePerDecade: 0.08, dividendMul: 1.8, blurb: 'Eight per cent a decade. The racks keep getting faster; the dividend keeps pace.' },
+      { id: 'severe', name: 'Severe', declinePerDecade: 0.15, dividendMul: 2.8, blurb: '15 per cent a decade, against the chip makers. Handsomely paid, and rarely earned.' },
+    ],
+    decadeChoices: decadeSequence([
+      ['div.compute.sobrietyWeek', 'div.compute.freeTier'],
+      ['div.compute.peatBogs', 'div.compute.chipSubsidy'],
+    ]),
+  },
+
+  /*
+   * M2: Settlement. Standing while settled: an easier Mandate and a little wellbeing (the grid operator stops sending
+   * warnings); once a run, a purse of capital. Defence 0.3 Mandate/s per unit of excess: Code draws on a settled
+   * Compute, so every feature shipped after the settlement adds to its excess.
+   */
+  settle: {
+    dividend: [{ type: 'mandateRateMul', value: 1.08 }, { type: 'wellbeingAdd', value: 0.6 }, { type: 'capitalAdd', value: 150 }],
+    upkeepPerSpill: 0.3,
+    freeExcess: 0.05,
+    blurb: 'info: capacity frozen at current allocation. The chillers hum at the same pitch all year.',
+  },
 
   spill: { to: 'motion', rate: 0.4 },
   unlock: {
@@ -120,7 +151,8 @@ const sector: SectorDef = {
 /* ------------------------------------------------------------------ */
 
 /* ---- Compute: bought ×21.6 on top of the automatic halving ---- */
-const computeUpgrades: UpgradeDef[] = [
+/* M2 stages (the scene's data halls): virtualisation 1, the hyperscale hall 2, GPU racks 3. */
+const computeUpgrades: UpgradeDef[] = withStages([
   ...chain('compute', ladder(80_000, 3, 5), [
     {
       id: 'compute.multicore', name: 'Multi-core chips', fold: 1.5,
@@ -193,7 +225,7 @@ const computeUpgrades: UpgradeDef[] = [
     cost: 2_000_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('compute', 0.25)],
   },
-];
+], { 'compute.virtualisation': 1, 'compute.hyperscale': 2, 'compute.gpu': 3 });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -208,6 +240,7 @@ const computeLevers: LeverDef[] = [
     catch: `Too tight and the server farms reappear in a friendlier jurisdiction. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 400, upkeep: 0.2, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Allocation money for the Commons. The library’s new terminals are, of course, plugged in.' },
   }),
   lever({
     id: 'compute.sufficiency', sector: 'compute', kind: 'sufficiency',
@@ -238,6 +271,7 @@ const computeLevers: LeverDef[] = [
     blurb: 'A price per ton on the power behind every calculation.',
     catch: `The calculations get cheaper faster than any minister dares raise it. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 380, upkeep: 0.2, label: DUTY_LABEL, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Spent on the Commons: a repair café, a library with free terminals, and a great deal of streaming.' },
   }),
 ];
 
@@ -328,6 +362,22 @@ const computeHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   reckoning: [
     'info: post-incident review opened; scope “everything”',
     'info: root cause analysis complete; root cause: demand',
+  ],
+  /* M2 */
+  clearSkies: [
+    'info: carbon below clear threshold; heat dome risk nominal',
+    'info: grid carbon falling for the first time on record',
+    'info: sinks absorbing at rate; chiller load normal',
+  ],
+  settled: [
+    'info: capacity frozen at allocation; autoscaling disabled',
+    'info: Compute settled; no new halls scheduled',
+    'notice: data centre build programme suspended indefinitely',
+  ],
+  unsettled: [
+    'warn: allocation lapsed; autoscaling re-enabled',
+    'warn: Compute unsettled; backlog draining into new racks',
+    'error: settlement defence unpaid; capacity limits removed',
   ],
 };
 

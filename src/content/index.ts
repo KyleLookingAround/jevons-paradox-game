@@ -12,15 +12,19 @@
 import type { Content } from '../types';
 import { achievements } from './achievements';
 import { ages } from './ages';
+import { charters } from './charters';
+import { commons } from './commons';
 import { global } from './global';
 import type { SectorContent } from './helpers';
+import { dividends } from './dividends';
 import { headlines } from './news/fallback';
-import { institutions, knowhow } from './prestige';
+import { institutions, knowhow, knowhowTrees } from './prestige';
 import { code } from './sectors/code';
 import { compute } from './sectors/compute';
 import { light } from './sectors/light';
 import { motion } from './sectors/motion';
 import { steam } from './sectors/steam';
+import { recycleText } from './words';
 
 export { sig2, ladder } from './helpers';
 
@@ -42,4 +46,10 @@ export const content: Content = {
   headlines,
   sectorHeadlines: Object.fromEntries(SECTORS.filter((s) => s.headlines).map((s) => [s.def.id, s.headlines!])),
   global,
+  /* M2 */
+  dividends,
+  commons,
+  charters,
+  knowhowTrees,
+  recycleText,
 };

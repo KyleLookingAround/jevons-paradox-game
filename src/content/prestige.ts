@@ -116,7 +116,7 @@ export const knowhow: KnowhowDef[] = [
     effects: [eta('code', 1.15), sat('code', 1.05)],
   },
   {
-    id: 'kh.civilService', name: 'Civil service examinations', tree: 'general', tier: 3, branch: 'general-3',
+    id: 'kh.civilService', name: 'Appointment by open competition', tree: 'general', tier: 3, branch: 'general-3',
     blurb: 'Appointment on merit, not on patronage. One more Institution may take a seat, for good.',
     cost: 400, costGrowth: 1, maxLevel: 1,
     effects: [{ type: 'slotAdd', value: 1 }],
@@ -129,8 +129,20 @@ export const knowhow: KnowhowDef[] = [
   },
 ];
 
+/** M2: display names of the Know-how trees (Content.knowhowTrees); every tree in use is named (the lint checks). */
+export const knowhowTrees: Record<string, { name: string; blurb?: string }> = {
+  steam: {
+    name: 'Engine wrights',
+    blurb: 'Schools of engineering and the coal trade. Every node starts Steam faster, and the pits empty sooner.',
+  },
+  general: {
+    name: 'The professions',
+    blurb: 'Lecture halls, purses and the habits of government, for every Industry and for the runs themselves.',
+  },
+};
+
 /* ------------------------------------------------------------------ */
-/* INSTITUTIONS (slow): 14, with levels and seats                      */
+/* INSTITUTIONS (slow): 18, with levels and seats                      */
 /* ------------------------------------------------------------------ */
 
 /** Levels 2 and 3 cost 2.5× and 6× level 1 by default. */
@@ -261,6 +273,27 @@ export const institutions: InstitutionDef[] = [
         label: 'Every duty starts at level 3',
       },
     ]),
+  },
+  /*
+   * M2: the closing automations. The Civil Service (long-game hour 5) holds a line with the levers the player hands it;
+   * its second level is the first offline step (8 h → 12 h by about hour 5). Treasury rules (hour 10) spend on the
+   * Commons by a priority list. Both cost a seat, which is their real price.
+   */
+  {
+    id: 'inst.civilService', name: 'The Civil Service',
+    blurb: 'Permanent officials who hold a line with the levers you give them, raise one when it is crossed, and ask for nothing.',
+    cost: 120, effects: [{ type: 'orderUnlock', order: 'civilService' }],
+    nextLevels: levels(120, [
+      { effects: [{ type: 'offlineCapAdd', seconds: 4 * 3600 }], label: 'A night duty officer: the board keeps 12 hours while you are away' },
+    ], [2.5]),
+  },
+  {
+    id: 'inst.treasuryRules', name: 'Treasury rules',
+    blurb: 'A standing rule that surplus money goes to the Commons, in an order agreed in advance. The minister need not be consulted.',
+    cost: 280, requires: ['inst.civilService'], effects: [{ type: 'orderUnlock', order: 'treasury' }],
+    nextLevels: levels(280, [
+      { effects: [{ type: 'commonsYieldMul', value: 1.1 }], label: 'Value for money: every Commons project yields a tenth more' },
+    ], [2.5]),
   },
   leverInstitution({
     id: 'inst.gridCode', name: 'Grid connection code',

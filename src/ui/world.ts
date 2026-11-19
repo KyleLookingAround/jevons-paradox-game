@@ -1,13 +1,14 @@
 // The world strip: broadsheet, the illustrated scene of the selected industry, and the big sell button.
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, sd, lookFor, openSectors, ageOfSector } from './ctx';
-import type { SectorDef, SectorId } from '../types';
+import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride } from './dom';
 import { fmt, money, fmtPrice, pct, num, clamp, lower, perUnit } from './fmt';
 import { infoBtn } from './gauges';
 import { createScene, sceneViewFrom, type SceneView } from './scene';
 import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
+import { soundUpdate, soundSector, sound } from './sound';
 
 /* ------------------------------------------------------------------ */
 /* Broadsheet                                                          */
@@ -21,7 +22,7 @@ const MASTHEAD: Record<string, string> = {
   agentic: 'CHANGELOG.md',
 };
 
-export function buildNews(ctx: Ctx): Comp {
+export function buildNews(ctx: Ctx): Comp & { backfire(): void } {
   const mast = h('span', { class: 'mast' });
   const yr = h('span', { class: 'news-yr num' });
   const txt = h('span', { class: 'news-txt' });
@@ -32,6 +33,7 @@ export function buildNews(ctx: Ctx): Comp {
   const list = h('ol', { class: 'news-list', hidden: true });
   const el = h('section', { class: 'news', 'aria-label': 'Broadsheet' }, head, list);
   let open = false, lastKey = '\u0000', listKey = '';
+  let backfireUntil = -1;
 
   function toggle(): void {
     open = !open;
@@ -54,8 +56,10 @@ export function buildNews(ctx: Ctx): Comp {
     cls(el, 'lead-age', !!age);
     // A crisis takes the lead as a late extra, in the same update as the picture's fog and the gauges' alarm.
     const crisis = !age && !!top && (top.key === 'crisis' || top.key === 'collapse' || top.key === 'exhausted') && now - num(top.time) < 30;
-    cls(el, 'lead-crisis', crisis);
-    setText(kicker, crisis ? 'Late extra' : 'A new Age');
+    // The first backfire takes the lead as its own late extra (see app.ts backfireBeat).
+    const bf = !age && !crisis && now <= backfireUntil && !!top && top.key === 'backfire';
+    cls(el, 'lead-crisis', crisis || bf);
+    setText(kicker, crisis ? 'Late extra' : bf ? 'Backfire' : 'A new Age');
     setText(more, news.length > 1 ? (open ? 'Fold' : `${news.length} items`) : '');
     const k = top ? `${top.time}|${top.text}` : '';
     if (k !== lastKey) {
@@ -66,6 +70,7 @@ export function buildNews(ctx: Ctx): Comp {
       if (fresh && !reducedMotion()) {
         txt.classList.remove('fresh'); void txt.offsetWidth; txt.classList.add('fresh');
       }
+      if (fresh) sound('headline', { sector: top?.sector });
     }
     if (open && listKey !== ctx.sector + k + news.length) {
       listKey = ctx.sector + k + news.length;
@@ -74,7 +79,8 @@ export function buildNews(ctx: Ctx): Comp {
       list.replaceChildren(...(items.length ? items : [h('li', { class: 'muted', text: 'No back issues.' })]));
     }
   }
-  return { el, update };
+  function backfire(): void { backfireUntil = num(ctx.state.time) + 30; update(); }
+  return { el, update, backfire };
 }
 
 /* ------------------------------------------------------------------ */
@@ -92,6 +98,8 @@ export interface WorldRendererOpts {
 }
 export interface WorldRenderer {
   update(view: SceneView): void;
+  /** Draw the eye to a place or a lever in the picture, if the scene offers it (a requested hook; optional). */
+  highlight(what: { app: string } | { lever: string }): void;
   setSector(id: SectorId): void;
   select(appId: string | null): void;
   setReducedMotion(on: boolean | null): void;
@@ -108,8 +116,10 @@ export function createWorldRenderer(host: HTMLElement, opts: WorldRendererOpts):
     reducedMotion: motionOverride() ?? undefined,
     detail: getPrefs().detail,
   });
+  const sc = scene as typeof scene & { highlight?(w: { app: string } | { lever: string }): void };
   return {
     update: (v) => scene.update(v),
+    highlight: (w) => { try { sc.highlight?.(w); } catch { /* optional hook */ } },
     setSector: (id) => scene.setSector(id),
     select: (id) => scene.select(id),
     setReducedMotion: (on) => scene.setReducedMotion(on),
@@ -129,11 +139,17 @@ function pressureWords(def: SectorDef, pf: number): string {
 }
 
 export interface WorldComp extends Comp {
+  /** New events for the scene (passed with the next view) and for the moments on the frame. */
+  queueEvents(ev: GameEvent[]): void;
+  /** The first-backfire beat on the picture. */
+  backfire(): void;
   /** Scroll target for an application, with the scene's card opened on it. */
   focusApp(appId: string): HTMLElement;
   /** Bring the picture into view (and select a place in it, if given), with a brief mark on the frame. */
   showPlace(appId: string | null): void;
   reset(): void;
+  /** The last view given to the scene (the time-lapse samples it). */
+  lastView(): SceneView | null;
 }
 
 /** Improvement cards (views of this Industry) that concern a place: they bring it within reach or change its appetite. */
@@ -144,6 +160,10 @@ function cardsFor(ctx: Ctx, appId: string): string[] {
 }
 
 /** A title card over the picture: a new Industry first visited, a new Age begun. Composited fade; gone in ~3 s. */
+/** sceneViewFrom with the M2 fifth argument (events newer than the last call), typed loosely so that this file builds
+ *  against the scene before and after its lane adds the parameter. */
+const viewFrom = sceneViewFrom as unknown as (...a: unknown[]) => SceneView;
+
 function titleCard(host: HTMLElement, kicker: string, name: string, sub: string): void {
   host.querySelector('.world-title')?.remove();
   const card = h('div', { class: 'world-title', 'aria-hidden': 'true' },
@@ -184,8 +204,9 @@ export function buildWorld(ctx: Ctx): WorldComp {
     scrollToEl(first, 12);
     document.querySelectorAll<HTMLElement>('.upgrades .up.concerns').forEach((c) => { c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1800); });
   }
-  // What the picture last showed for this Industry: an evolution of the machines, a crisis or a lever is a moment.
-  let seen: { sector: string; stage: number; crises: number; levers: number } | null = null;
+  // Events not yet handed to the scene (cleared each time a view is built), and the moments they make on the frame.
+  let sceneEvents: GameEvent[] = [];
+  let lastView: SceneView | null = null;
   const visited = new Set<SectorId>();
   let ageKey: string | null = null;
   let sector = '';
@@ -205,7 +226,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
     if (sector === '') for (const id of openSectors(ctx)) visited.add(id);
     if (def.id !== sector) {
       const first = sector !== '' && !visited.has(def.id);
-      sector = def.id; renderer.setSector(def.id); selected = null; markHand();
+      sector = def.id; renderer.setSector(def.id); soundSector(def.id); selected = null; markHand();
       visited.add(def.id);
       // A first visit to an Industry opened this session is an event: its name over the picture.
       if (first) titleCard(frame, ageOfSector(ctx.content, def.id)?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
@@ -215,15 +236,12 @@ export function buildWorld(ctx: Ctx): WorldComp {
     const dt = getPrefs().detail;
     if (dt !== detail) { detail = dt; renderer.setDetail(dt); }
     if (armed) {
-      const view = timed('scene.view', () => sceneViewFrom(ctx.content, ctx.state, ctx.d, def.id));
+      const evs = sceneEvents;
+      sceneEvents = [];
+      const view = timed('scene.view', () => viewFrom(ctx.content, ctx.state, ctx.d, def.id, evs));
+      lastView = view;
       timed('scene.update', () => renderer.update(view));
-      const lv = (view.levers || []).length;
-      if (seen && seen.sector === def.id) {
-        if (view.stage > seen.stage) moment('stage', 'The machines are rebuilt', 'See them');
-        if (view.crises > seen.crises) moment('crisis');
-        else if (lv > seen.levers) moment('lever', 'The lever shows in the world', 'See it');
-      }
-      seen = { sector: def.id, stage: view.stage, crises: view.crises, levers: lv };
+      soundUpdate(view);
     } else if (!arming) {
       arming = true;
       requestAnimationFrame(() => setTimeout(() => { armed = true; update(); }, 0));
@@ -272,8 +290,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
    * `rebound:moment` to pulse the gauges with a crisis). If the picture is scrolled out of sight, a note offers a way
    * back to it, so the moment is not missed.
    */
-  function moment(kind: 'stage' | 'crisis' | 'lever', note?: string, action?: string): void {
-    frame.classList.remove('m-stage', 'm-crisis', 'm-lever'); void frame.offsetWidth; frame.classList.add('m-' + kind);
+  function moment(kind: 'stage' | 'crisis' | 'lever' | 'found' | 'backfire', note?: string, action?: string): void {
+    frame.classList.remove('m-stage', 'm-crisis', 'm-lever', 'm-found', 'm-backfire'); void frame.offsetWidth; frame.classList.add('m-' + kind);
     setTimeout(() => frame.classList.remove('m-' + kind), 2400);
     document.dispatchEvent(new CustomEvent('rebound:moment', { detail: kind }));
     if (note && action && !inView()) ctx.toast(`${note}.`, { label: action, run: () => showPlace(null) });
@@ -303,7 +321,34 @@ export function buildWorld(ctx: Ctx): WorldComp {
     setTimeout(() => frame.classList.remove('flash'), 1800);
   }
   function jump(appId: string): void { showPlace(appId); }
-  return { el, update, focusApp, showPlace, reset() { known.clear(); seen = null; } };
+  /** A small lettered banner over the picture (a founding): composited fade, gone in ~2.5 s. */
+  function banner(kicker: string, name: string): void {
+    frame.querySelector('.world-banner')?.remove();
+    const b = h('div', { class: 'world-banner', 'aria-hidden': 'true' }, h('span', { class: 'wb-k', text: kicker }), h('span', { class: 'wb-n', text: name }));
+    frame.append(b);
+    setTimeout(() => b.remove(), reducedMotion() ? 2000 : 2600);
+  }
+  function queueEvents(ev: GameEvent[]): void {
+    sceneEvents = sceneEvents.concat(ev).slice(-50);
+    for (const e of ev) {
+      if (e.sector !== ctx.sector) continue;
+      if (e.kind === 'stageReached') moment('stage', 'The machines are rebuilt', 'See them');
+      else if (e.kind === 'crisis') moment('crisis');
+      else if (e.kind === 'leverEnacted' && e.by === 'player' && e.n === 1) { moment('lever', 'The lever shows in the world', 'See it'); if (e.id) renderer.highlight({ lever: e.id }); }
+      else if (e.kind === 'appFounded' && e.by === 'player' && e.id) {
+        const a = sectorDef(ctx)?.applications.find((x) => x.id === e.id);
+        moment('found', a ? `${a.name} founded` : undefined, 'See it');
+        renderer.highlight({ app: e.id });
+        if (a) banner(`Founded, ${Math.floor(num(e.year))}`, a.name);
+      }
+    }
+  }
+  return {
+    el, update, focusApp, showPlace, queueEvents,
+    backfire: () => moment('backfire'),
+    reset() { known.clear(); sceneEvents = []; },
+    lastView: () => lastView,
+  };
 }
 
 /* ------------------------------------------------------------------ */

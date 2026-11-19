@@ -6,7 +6,7 @@
 import type { Content, GameState, LeverDef, LeverKind, LeverLevelDef, LeverRecycle, LeverState } from '../types';
 import { DEFAULT_MANDATE_SHARE } from './constants';
 import { idx } from './contentIndex';
-import { isSeated } from './effects';
+import { isSeatedOrLoaned } from './effects';
 import type { Mods } from './effects';
 import { fin, clamp } from './util';
 
@@ -143,7 +143,8 @@ export const mandateShareOf = (content: Content): number => fin(content.global?.
 
 
 export function leverVisible(state: GameState, content: Content, def: LeverDef, mods: Mods): boolean {
-  if (!state.sectors[def.sector]?.open) return false;
+  const es = state.sectors[def.sector];
+  if (!es?.open || es.settled) return false;
   if (def.locked && !mods.unlocked.has(def.id)) return false;
   const inst = (mods.startLevers[def.id] ?? 0) > 0;
   if (!state.flags.revealed && !inst) return false;
@@ -151,6 +152,6 @@ export function leverVisible(state: GameState, content: Content, def: LeverDef, 
   return (def.requires ?? []).every((r) =>
     r === 'revealed' ? state.flags.revealed
       : ix.upgrades.has(r) ? (state.upgrades[r] ?? 0) > 0
-        : ix.institutions.has(r) ? isSeated(state.meta, r)
+        : ix.institutions.has(r) ? isSeatedOrLoaned(state.meta, mods, r)
           : true);
 }

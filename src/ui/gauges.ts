@@ -8,6 +8,8 @@ import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
 import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, perUnit } from './fmt';
 import { UI_ICONS } from './icons';
 import { YEARS_PER_SECOND } from '../types';
+import type { GameEvent } from '../types';
+import { reducedMotion } from './dom';
 
 const CX = 60, CY = 60, R = 47;
 const pt = (t: number, r = R): [number, number] => {
@@ -81,10 +83,13 @@ function capActive(ctx: Ctx): boolean {
   return (ctx.levs || []).some((v) => v?.def?.sector === ctx.sector && v.def.kind === 'cap' && num(v.level) > 0);
 }
 
-export function buildGauges(ctx: Ctx): Comp {
+/** The rebound dial's readable ceiling: past it the figure is honest but unreadable ("1.37k%"), so the dial says so. */
+const REBOUND_SHOWN_MAX = 10;
+
+export function buildGauges(ctx: Ctx): Comp & { onEvents(ev: GameEvent[]): void } {
   const eff = dial(ctx, 'eff', 'Efficiency', 'eff');
   const cons = dial(ctx, 'cons', 'Consumption', 'cons',
-    `<g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g>`);
+    `<g class="d-was"><line x1="${CX}" y1="${CY - R + 2}" x2="${CX}" y2="${CY - R + 12}"/></g><g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g>`);
   const reb = dial(ctx, 'reb', 'Rebound', 'rebound');
   // Static rebound scale: 0..250%, the 100% line marked; everything past it is the backfire zone.
   {
@@ -119,12 +124,13 @@ export function buildGauges(ctx: Ctx): Comp {
   // Twin sparkline over the run: R emphasised, η quieter, "promised" (1/η) dashed, the budget line long-dashed.
   const spark = svg(`<svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
     <line class="sp-base" x1="0" x2="200" y1="20" y2="20"/>
-    <polyline class="sp-bud" points=""/><polyline class="sp-prom" points=""/><polyline class="sp-eta" points=""/><polyline class="sp-r" points=""/></svg>`);
+    <polyline class="sp-sink" points=""/><polyline class="sp-bud" points=""/><polyline class="sp-prom" points=""/><polyline class="sp-eta" points=""/><polyline class="sp-r" points=""/></svg>`);
   const kBud = h('span', { class: 'k-bud', text: 'budget', hidden: true });
+  const kSink = h('span', { class: 'k-sink', text: 'the sink', hidden: true });
   const kProm = h('span', { class: 'k-prom', text: 'promised', hidden: true });
   const sparkWrap = h('div', { class: 'spark-wrap' }, spark,
     h('div', { class: 'spark-key', 'aria-hidden': 'true' },
-      h('span', { class: 'k-r', text: 'use' }), h('span', { class: 'k-eta', text: 'efficiency' }), kProm, kBud));
+      h('span', { class: 'k-r', text: 'use' }), h('span', { class: 'k-eta', text: 'efficiency' }), kProm, kBud, kSink));
 
   // The resource's name may be cut short on a narrow phone (it is in the title); its figures never are.
   const resLbl = h('span', { class: 'res-lbl', 'data-clip': 'ok' });
@@ -156,6 +162,20 @@ export function buildGauges(ctx: Ctx): Comp {
 
   let scaleKey = '';
   let sparkKey = '';
+  let lastTv = { cons: 0.5 };
+  let swingTimer = 0;
+
+  /** A purchase in this Industry: the needles swing slowly while the player watches; the old consumption reading is
+   *  left as a faint mark for a few seconds; the promised needle jumps to what the card promised. Never blocks input. */
+  function onEvents(ev: GameEvent[]): void {
+    const mine = ev.find((e) => e.sector === ctx.sector && e.by === 'player' && (e.kind === 'upgradeBought' || e.kind === 'appFounded'));
+    if (!mine || reducedMotion()) return;
+    const was = cons.svgEl.querySelector('.d-was') as SVGElement | null;
+    rot(was, lastTv.cons);
+    cls(el, 'swing', false); void el.offsetWidth; cls(el, 'swing', true);
+    clearTimeout(swingTimer);
+    swingTimer = window.setTimeout(() => cls(el, 'swing', false), 3200);
+  }
 
   function update(): void {
     const e = sd(ctx), def = sectorDef(ctx, ctx.sector);
@@ -203,6 +223,7 @@ export function buildGauges(ctx: Ctx): Comp {
     setAttr(sweep, 'd', arc(0.5, tv(rF)));
     cls(sweep, 'down', rF < 1);
     rot(cons.svgEl.querySelector('.d-needle'), tv(rF));
+    lastTv = { cons: tv(rF) };
     rot(cons.svgEl.querySelector('.d-ghost'), tv(1 / etaF));
     show(cons.svgEl.querySelector('.d-ghost') as SVGElement | null, etaF > 1.001);
     setText(cons.val, fold(rF));
@@ -228,8 +249,12 @@ export function buildGauges(ctx: Ctx): Comp {
     else if (!has) { setText(reb.val, '—'); setText(reb.sub, 'no promise yet'); }
     else {
       // The figure is the reading; the word under it says what it means. Short enough for a third of a 360 px phone.
-      setText(reb.val, pct(rv, false));
-      setText(reb.sub, rv > 1 ? '▲ backfire' : rv > 0 ? 'of savings eaten' : 'savings kept');
+      // Past REBOUND_SHOWN_MAX (1,000%) the measured figure stays in the title and the formula sheet; the dial reads
+      // "well past" rather than "1.37k%".
+      const past = rv > REBOUND_SHOWN_MAX;
+      setText(reb.val, past ? '>1,000%' : pct(rv, false));
+      setText(reb.sub, past ? '▲ well past backfire' : rv > 1 ? '▲ backfire' : rv > 0 ? 'of savings eaten' : 'savings kept');
+      setAttr(reb.box, 'title', past ? `Rebound ${pct(rv, false)}: the extra use is many times what efficiency saved` : null);
     }
 
     // Sparkline (only when history moved)
@@ -238,20 +263,21 @@ export function buildGauges(ctx: Ctx): Comp {
     const id = ctx.sector;
     const bRnow = e?.budgetR;
     const budNow = bRnow != null && num(e?.resourceUse) > 0 ? bRnow * rF / num(e?.resourceUse) : null;
-    const k = `${id}|${hist.length}|${last?.time ?? 0}|${etaF.toFixed(3)}|${rF.toFixed(3)}|${budNow?.toFixed(3) ?? ''}`;
+    const sinkNow = e?.sinkR != null && num(e?.resourceUse) > 0 ? e.sinkR * rF / num(e?.resourceUse) : null;
+    const k = `${id}|${hist.length}|${last?.time ?? 0}|${etaF.toFixed(3)}|${rF.toFixed(3)}|${budNow?.toFixed(3) ?? ''}|${sinkNow?.toFixed(3) ?? ''}`;
     if (k !== sparkKey) {
       sparkKey = k;
-      const pts: [number, number, number, number | null][] = [];
+      const pts: [number, number, number, number | null, number | null][] = [];
+      const pos = (x: number | null | undefined) => (x != null && Number.isFinite(x) && x > 0 ? x : null);
       for (const smp of hist) {
         const v = smp?.sectors?.[id];
-        const b = smp?.budget?.[id];
-        if (v && Number.isFinite(v[0]) && Number.isFinite(v[1]) && v[0] > 0 && v[1] > 0) pts.push([num(smp.time), v[0], v[1], b != null && Number.isFinite(b) && b > 0 ? b : null]);
+        if (v && Number.isFinite(v[0]) && Number.isFinite(v[1]) && v[0] > 0 && v[1] > 0) pts.push([num(smp.time), v[0], v[1], pos(smp?.budget?.[id]), pos(smp?.sink?.[id])]);
       }
-      if (e) pts.push([num(ctx.state.time), etaF, rF, budNow != null && budNow > 0 ? budNow : null]);
+      if (e) pts.push([num(ctx.state.time), etaF, rF, pos(budNow), pos(sinkNow)]);
       if (pts.length >= 2) {
         const t0 = pts[0][0], tN = pts[pts.length - 1][0], span = Math.max(1e-6, tN - t0);
         let mn = 0, mx = 0;
-        for (const [, a, b, bu] of pts) for (const v of [a, b, 1 / a, bu ?? 1]) { const l = Math.log(v); if (l < mn) mn = l; if (l > mx) mx = l; }
+        for (const [, a, b, bu, sk] of pts) for (const v of [a, b, 1 / a, bu ?? 1, sk ?? 1]) { const l = Math.log(v); if (l < mn) mn = l; if (l > mx) mx = l; }
         if (mx - mn < 0.4) { const m2 = (mx + mn) / 2; mn = m2 - 0.2; mx = m2 + 0.2; }
         const y = (v: number) => (37 - ((Math.log(v) - mn) / (mx - mn)) * 34).toFixed(1);
         const x = (t: number) => (((t - t0) / span) * 200).toFixed(1);
@@ -265,11 +291,16 @@ export function buildGauges(ctx: Ctx): Comp {
         setAttr(spark.querySelector('.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
         show(kBud, bud.length >= 2);
         setText(kBud, ctx.state.sectors?.[id]?.budget?.heldAt != null ? 'budget, held' : 'budget');
+        // The sink line: the use at which the sky clears and stays clear (SectorDerived.sinkR, sampled in history).
+        const sink = pts.filter((p) => p[4] != null);
+        setAttr(spark.querySelector('.sp-sink'), 'points', sink.length >= 2 ? sink.map((p) => `${x(p[0])},${y(p[4] as number)}`).join(' ') : '');
+        show(kSink, sink.length >= 2);
         const by = y(1);
         setAttr(spark.querySelector('.sp-base'), 'y1', by); setAttr(spark.querySelector('.sp-base'), 'y2', by);
       } else {
-        for (const c of ['.sp-r', '.sp-eta', '.sp-prom', '.sp-bud']) setAttr(spark.querySelector(c), 'points', '');
+        for (const c of ['.sp-r', '.sp-eta', '.sp-prom', '.sp-bud', '.sp-sink']) setAttr(spark.querySelector(c), 'points', '');
         show(kBud, false);
+        show(kSink, false);
         show(kProm, false);
       }
     }
@@ -306,14 +337,19 @@ export function buildGauges(ctx: Ctx): Comp {
     // Budget readout
     const bR = e?.budgetR;
     const dec = num(g?.steady?.decadeYears, 10) || 10;
-    if (bR == null) {
+    if (e?.settled) {
+      setText(budTxt, '✓ Settled');
+      setAttr(budTxt, 'title', null);
+      cls(budTxt, 'ok', true); cls(budTxt, 'over', false);
+    } else if (bR == null) {
       setText(budTxt, revealed ? 'No budget drawn' : '');
       cls(budTxt, 'ok', false); cls(budTxt, 'over', false);
     } else if (e?.withinBudget) {
       // Compact, to keep the pinned header to one note line; the Budget panel below has the full sentence.
       const into = Math.floor(num(e.steadyYears) % dec);
-      setText(budTxt, e.decoupling ? `✓ Within budget · ${into} of ${dec} years` : '✓ Within budget · wellbeing short');
-      setAttr(budTxt, 'title', e.decoupling ? `Within budget: ${into} of ${dec} years to the next decade` : 'Within budget, but wellbeing is below the target: the years do not count');
+      const dw = num(e.decadeWellbeing);
+      setText(budTxt, e.decoupling ? `✓ Within budget · ${into} of ${dec} years` : `✓ Within budget · wellbeing under ${fmt(dw)}`);
+      setAttr(budTxt, 'title', e.decoupling ? `Within budget: ${into} of ${dec} years to the next decade, with wellbeing at least ${fmt(dw)}` : `Within budget, but wellbeing is under ${fmt(dw)}, the day the line was drawn: the years do not count`);
       cls(budTxt, 'ok', !!e.decoupling); cls(budTxt, 'over', false);
     } else {
       const over = bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN;
@@ -331,5 +367,5 @@ export function buildGauges(ctx: Ctx): Comp {
     setText(capTxt, `The cap sets the ${lower(resName)}; the savings became service.`);
     show(note, !!(budTxt.textContent || growTxt.textContent));
   }
-  return { el, update };
+  return { el, update, onEvents };
 }

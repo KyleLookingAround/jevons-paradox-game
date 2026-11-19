@@ -4,7 +4,7 @@
  */
 import type { HeadlineKey, LeverDef, SectorDef, UpgradeDef } from '../../types';
 import {
-  eta, capCost, margin, reserve, sat, half, chain, fork, ladder, lever, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST,
+  eta, capCost, margin, reserve, sat, half, chain, fork, ladder, lever, withStages, decadeSequence, RECYCLE, DUTY_LABEL, CAP_LABEL, CAP_FIRST,
   SUFF_LABEL, CAP_VALUES, CAP_LEAK, DUTY_VALUES, SUFF_VALUES, SHARE_VALUES, GREEN_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
@@ -20,7 +20,7 @@ const sector: SectorDef = {
   firstYear: 1950,
   tagline: 'Distance has been repealed. Please mind the bypass.',
   service: { name: 'Vehicle-miles', unit: 'veh·mi' },
-  resource: { name: 'Oil', unit: 'barrels' },
+  resource: { name: 'Oil', unit: 'barrels', unitSingular: 'barrel' },
   pressure: { name: 'Exhaust', crisisName: 'The Summer Smog' },
   accent: 'chrome',
 
@@ -44,6 +44,30 @@ const sector: SectorDef = {
 
   wellbeingWeight: 6.5,
   wellbeingScale: 1000,
+
+  /*
+   * M2: clear skies at the global half of the drawn pressure. Motion's lock-in holds demand at a share of its peak, so
+   * a line drawn after the suburbs are built is hard to halve: rail and walking distance, before the motorway, reach it.
+   */
+  steady: {
+    clearBelow: 0.5,
+    decadeChoices: decadeSequence([
+      ['div.motion.carFreeSundays', 'div.motion.roadFund'],
+      ['div.motion.treePlanting', 'div.motion.motorShow'],
+    ]),
+  },
+
+  /*
+   * M2: Settlement. Standing while settled: quieter streets (wellbeing) and an easier Mandate; once a run, a purse of
+   * Mandate. Defence 0.3 Mandate/s per unit of excess: the suburbs keep filling, and a settled Motion feels every new
+   * household.
+   */
+  settle: {
+    dividend: [{ type: 'wellbeingAdd', value: 1.2 }, { type: 'mandateRateMul', value: 1.05 }, { type: 'mandateAdd', value: 250 }],
+    upkeepPerSpill: 0.3,
+    freeExcess: 0.05,
+    blurb: 'The ring road is finished and stays finished. The Motorist runs a feature on the scenic route.',
+  },
 
   spill: { to: 'light', rate: 0.3 },
   unlock: {
@@ -125,7 +149,8 @@ const sector: SectorDef = {
 /* ------------------------------------------------------------------ */
 
 /* ---- Motion: chain to ×8.2 ---- */
-const motionUpgrades: UpgradeDef[] = [
+/* M2 stages (the scene's cars): fuel injection 1, wind-tunnel bodywork 2, the hybrid 3. */
+const motionUpgrades: UpgradeDef[] = withStages([
   ...chain('motion', ladder(12_000, 2.4, 5), [
     {
       id: 'motion.radial', name: 'Radial tyres', fold: 1.3,
@@ -204,7 +229,7 @@ const motionUpgrades: UpgradeDef[] = [
     cost: 250_000, repeatable: true, costGrowth: 2.2, maxLevel: 6,
     effects: [reserve('motion', 0.25)],
   },
-];
+], { 'motion.injection': 1, 'motion.aero': 2, 'motion.hybrid': 3 });
 
 /* ------------------------------------------------------------------ */
 /* LEVERS                                                              */
@@ -218,6 +243,7 @@ const motionLevers: LeverDef[] = [
     blurb: 'Petrol duty that rises faster than engines improve. Briefly popular with nobody.',
     catch: `Every efficient engine still costs as much to run. Hauliers blockade the refineries. ${DIVIDEND}`,
     values: DUTY_VALUES, cost: 250, upkeep: 0.12, label: DUTY_LABEL, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Spent on the Commons instead: a bus pass, a shorter week, and a fortnight in the sun with the time.' },
   }),
   lever({
     id: 'motion.cap', sector: 'motion', kind: 'cap',
@@ -226,6 +252,7 @@ const motionLevers: LeverDef[] = [
     catch: `Squeeze too hard and the barrels arrive by other routes. ${DIVIDEND}`,
     values: CAP_VALUES, value2: CAP_LEAK, cost: 280, upkeep: 0.14, label: CAP_LABEL, labels: CAP_FIRST,
     repeat: { value2Step: 0.5 }, recycle: RECYCLE,
+    recycleBlurb: { commons: 'Quota money for the Commons. The buses run on oil too, only rather less of it per head.' },
   }),
   lever({
     id: 'motion.sufficiency', sector: 'motion', kind: 'sufficiency',
@@ -344,6 +371,22 @@ const motionHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   reckoning: [
     'Public inquiry into the motorway age opens in a draughty hall',
     'The Motorist reviews the century: “mixed, but fast”',
+  ],
+  /* M2 */
+  clearSkies: [
+    'A summer without a smog warning; this paper runs a scenic route',
+    'Clear air over the ring road; joggers return to the verges',
+    'Exhaust down to the sink line; the Minister is listening, to birds',
+  ],
+  settled: [
+    'Motion settled: no new roads, and the old ones mended',
+    'Traffic to stay as it is, by agreement; the motor show is muted',
+    'The bypass is finished; nobody is building the next one',
+  ],
+  unsettled: [
+    'Road settlement lapses; the new estate gets its relief road',
+    'Motion unsettled; traffic returns to fill the space, as it does',
+    'The suburbs have outgrown the settlement; the motorway widens',
   ],
 };
 

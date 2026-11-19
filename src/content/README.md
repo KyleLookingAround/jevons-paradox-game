@@ -12,12 +12,17 @@ a value or an order (M2).
 | `helpers.ts` | `SectorContent` (one Industry's bundle); number series (`ladder`, `sig2`, `chain`), effect builders (`eta`, `sat`, …), `fork`, `lever`, and the shared lever tables (values, labels, the dividend catch). |
 | `sectors/<id>.ts` | One Industry: its `SectorDef` with applications and unlock, its upgrades, its levers and its own headlines (`Content.sectorHeadlines[id]`). Exports `<id>: SectorContent`. |
 | `ages.ts` | The Ages: calendar spans, themes, which Industries belong to each. |
-| `prestige.ts` | Know-how trees and Institutions. M2 adds Charters here. |
+| `prestige.ts` | Know-how trees (and their display names, `knowhowTrees`) and Institutions. |
+| `charters.ts` | M2: the Charters, in content order (the order the deterministic draw indexes: append, never reorder). |
+| `commons.ts` | M2: the Commons projects, in display order. |
+| `dividends.ts` | M2: every decade dividend, flat. The global pair sequence is `DECADE_PAIRS` in `helpers.ts`; each Industry's own sequence is its `steady.decadeChoices`, built with `decadeSequence`. |
+| `words.ts` | M2: words that belong to no other module (the recycle options' wording, `recycleText`). |
 | `achievements.ts` | Achievements, in display order (the five built in first). |
 | `news/fallback.ts` | The fallback headlines (`Content.headlines`), fit for any Industry. |
-| `global.ts` | `GlobalParams`: start, click, population, Mandate, crises, Hindsight weights, offline cap, Steady State, levy, seats. |
+| `global.ts` | `GlobalParams`: start, click, population, Mandate, crises, Hindsight weights, offline, Steady State (paces, clear skies, decade choices), levy, seats, orders, Commons, respec. |
 
-Dependencies point one way: `index.ts` → every other module → `helpers.ts` → `src/types.ts`. Modules never import
+Dependencies point one way: `index.ts` → every other module → `helpers.ts` → `src/types.ts`. (Ids crossing modules,
+such as dividend ids in an Industry's decade pairs, are plain strings; the lint resolves them.) Modules never import
 each other otherwise, and nothing here imports `src/core/`.
 
 ## Order matters
@@ -33,10 +38,13 @@ achievements and Know-how are shown in content order, and headline variants are 
   in `index.ts` at its place in the order, and to its Age in `ages.ts`. Ids are unique across the whole game.
 - **Industry numbers, cards, levers, Industry-specific headlines**: that Industry's file only (one agent per Industry
   is safe).
-- **Know-how, Institutions, Charters, Articles, Measures**: `prestige.ts`.
+- **Know-how, Institutions, Articles, Measures**: `prestige.ts`; **Charters**: `charters.ts`.
 - **Text**: fallback headlines in `news/`; M3's dispatches in `dispatches/` and Archive notes in `archive/`, each
   imported by `index.ts`.
-- **M2's Commons projects**: a new `commons.ts`, imported by `index.ts`.
+- **M2's Commons projects**: `commons.ts`; **decade dividends**: `dividends.ts` (a dividend that names a sector goes in that
+  Industry's own `steady.decadeChoices`, never the global sequence; the lint checks).
+- **An Industry's M2 data** (unit singulars, `steady` overrides and decade pairs, `settle`, card `stage`s, recycle
+  wording per lever): that Industry's file.
 - **A global knob**: `global.ts`.
 
 Keep every comment that explains a number next to the number. The lint (`content.test.ts`) checks ids, references,
