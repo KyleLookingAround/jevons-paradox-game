@@ -910,7 +910,7 @@ html[data-look='agentic'] .topbar .num { font-family: var(--f-grot); }
 .world-mount { view-transition-name: world; }
 /* Perf pass 2: panels of the feed off the screen are not styled, laid out or painted (a look change restyles the whole
    page; a long improvements list need not be part of it). They remember their last height, so scrolling does not jump. */
-.feed > .upgrades, .feed > .budget, .feed > .levers, .feed > .commons, .feed > .orders, .feed > .survey, .feed > .divs,
+.feed > .upgrades, .feed > .budget, .feed > .levers, .feed > .commons, .feed > .orders, .feed > .divs,
 .feed > .run-foot { content-visibility: auto; contain-intrinsic-size: auto 480px; }
 ::view-transition-group(root) { animation-duration: .32s; }
 ::view-transition-old(world) { animation: vt-out .32s ease-in both; }

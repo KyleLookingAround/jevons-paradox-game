@@ -8,7 +8,12 @@ Read before changing anything: `DESIGN.md` (the game), `src/types.ts` (the contr
 
 ## Commands
 
-- `bun run build.ts` — build to `dist/` (`--single` for one inlined file)
+- `bun run build.ts` — build to `dist/`: hashed main script and stylesheet, lazy parts (`scene`, `audio`, `archive`),
+  `sw.js`, the manifest, `build.json` (`--single` for one inlined file; `--check` fails over the size budgets, as CI
+  does; `REBOUND_SW=off` emits the service worker's kill switch). See `docs/adr/ADR-2026-11-19-split-build-lazy-parts-service-worker.md`.
+- `node tools/perf.mjs [fresh,mid,late] [4,6] [--tabs] [--soak=N]` — the real page's performance at 390×844 with CPU
+  throttled; `--check` runs the budgets (exit 1 if one fails); `--load` times a cold and a warm load over slow 4G;
+  `--dist=DIR` measures another build. Copy `dist/` elsewhere first if you will build while it runs.
 - `bun test` — tests
 - `tsc -p .` (or `bunx tsc -p .`) — typecheck
 - `bun run tools/balance.ts <strategy> [runs]` — headless balancer (`--summary` for one line per run)
@@ -42,7 +47,8 @@ Know-how respec; a living illustrated scene per Industry in its Age's art style,
 | `src/balance.test.ts` | Pacing targets and exit criteria as tests (about 50 s). |
 | `tools/balance.ts` | Headless balancer: `efficiency`, `budget`, `levers`, `forks`, `peakdraw`, `mixed`, `market`, `charter`, `idle`; `--summary`, `--fixture`, `--offline-check`. |
 | `src/ui/` | The page. `src/ui/scene/` is the world scene engine and `src/ui/audio/` the sound engine (each with its own README or notes; both driven by the same `SceneView`). |
-| `tools/shot.mjs`, `tools/perf.mjs` | Playwright screenshots and scripted flows; performance measurement. Run `shot.mjs` modes one at a time (`scenes`, `flow`, `checks`, `audit`, `m2`, `real`, `realplay`, `looks`, `first`); `all` in one go has run the container out of memory. |
+| `tools/shot.mjs`, `tools/perf.mjs` | Playwright screenshots and scripted flows; performance measurement. Run `shot.mjs` modes one at a time (`scenes`, `flow`, `checks`, `audit`, `m2`, `m3`, `real`, `realplay`, `looks`, `first`); `all` in one go has run the container out of memory. |
+| Performance (perf pass 2) | Budgets: first paint ≤ 240 KB gz (`build.ts --check`, in CI); core per-call costs (`src/core/perf.budget.test.ts`, in `bun test`); frames, taps, tab switch, DOM, heap, load (`tools/perf.mjs --check`, by hand). Rules that keep it so: no per-frame `requestAnimationFrame` loop (the game loop is a 10 Hz timer: a rAF loop makes Blink restyle every animated element every vsync); no CSS animation or transition inside the scene's SVG (main thread, repaints the band); no custom property set on a scene root that many nodes inherit; never insert a `<style>` per update; bars and needles ease only for jumps (`dom.ts snapSmall`); lazy parts are self-contained and called through `src/ui/chunks.ts` handles. |
 | `design/` | `long-game.md` (four Ages, twelve Industries, three layers), `roadmap.md` (M3–M9), `paradigm-shifts.md`, `genre-audit.md`, `visual-direction.md`, `sound-direction.md`, `style-guide.md`, `research/` (sourced dossiers). |
 
 The game is to be a very long one with a lot of content: three endings (about 15–17 h, 50 h and 100 h) and a post-game.

@@ -6,6 +6,11 @@
 //     --tabs         also time each Industry tab in the late state (4×)
 //     --soak=N       N minutes of scripted play in the late state at 1×: heap and listeners per minute (leaks)
 //     --label=X      write the results to design/scratch/perf-X.json
+//     --dist=DIR     measure another build (copy dist/ aside if you will rebuild while this runs)
+//     --check        budgets: sizes, then fresh and late at 4× with generous margins, and a network load; exit 1 on a miss
+//     --load         network load timings over http (under /jevons-paradox-game/), slow 4G, cold and warm (service worker)
+// Frames are measured from a trace (main-thread tasks that run the rendering lifecycle), not by a rAF probe: a callback
+// every vsync would itself force a main-thread frame every vsync (the old probe is kept, labelled, unless --no-trace).
 // Opens dist/index.html at 390×844 (DPR 3, touch). Web fonts are blocked (no network here) except in the "slow fonts"
 // load check, which holds the font stylesheet for 1.5 s to see whether it blocks first paint.
 // States are made once through the console handle (window.rebound) and loaded as a save, so load timing includes them.
@@ -366,6 +371,19 @@ async function measureState(name, save, rate) {
     buySel = await pick();
     r.buyIn = buySel.one ? 'switched' : undefined;
   }
+  if (!buySel.one && !buySel.rep) {
+    // Everything bought (the late state): take back the last improvement bought here (a level of a repeatable one if
+    // there is one), so there is something to buy.
+    const ok = await page.evaluate(() => {
+      const R = window.rebound; const fork = (x) => x.excludes?.length || R.content.upgrades.some((y) => y.excludes?.includes(x.id));
+      const mine = R.content.upgrades.filter((x) => x.sector === R.ctx.sector && (R.state.upgrades[x.id] ?? 0) > 0 && !fork(x));
+      const u = mine.find((x) => x.repeatable) ?? mine[mine.length - 1];
+      if (!u) return false;
+      const ups = { ...R.state.upgrades, [u.id]: R.state.upgrades[u.id] - 1 }; if (!ups[u.id]) delete ups[u.id];
+      R.ctx.state = { ...R.state, upgrades: ups, capital: R.state.capital + 1e15 }; R.ctx.refreshAll(); return true;
+    });
+    if (ok) { await page.waitForTimeout(500); buySel = await pick(); r.buyIn = 'a level taken back'; }
+  }
 
   if (buySel.one) {
     await page.locator(buySel.one).scrollIntoViewIfNeeded();
@@ -438,7 +456,9 @@ async function soak(save, minutes) {
   for (let min = 1; min <= minutes; min++) {
     for (let s = 0; s < 6; s++) {
       await page.evaluate((i) => window.rebound.ctx.selectSector(i), ids[(min * 6 + s) % ids.length]);
-      for (let k = 0; k < 5; k++) { await page.locator('.sell').click().catch(() => {}); await page.waitForTimeout(150); }
+      // Clicks by script (a sheet over the page would make a real click wait 30 s), sheets closed each round.
+      for (let k = 0; k < 5; k++) { await page.evaluate(() => document.querySelector('.sell')?.click()); await page.waitForTimeout(150); }
+      await page.keyboard.press('Escape').catch(() => {});
       await page.evaluate(() => { const b = document.querySelector('.up .buy:not([aria-disabled])'); if (b && !b.closest('.fork')) b.click(); document.querySelectorAll('.toast-x').forEach((x) => x.click()); });
       await page.waitForTimeout(8500);
     }
@@ -481,7 +501,7 @@ for (const st of STATES) {
     const L = (x) => (x ? `p50 ${f0(x.p50)} p95 ${f0(x.p95)} max ${f0(x.max)} ms (handler p50 ${f1(x.procP50)}, max ${f1(x.procMax)}; n ${x.n})` : '—');
     console.log(`  tap→paint Sell: ${L(r.sellTap)}`);
     console.log(`  Sell 8/s: ${L(r.sellBurst)}; frames p95 ${f1(r.sellBurstFrames.p95)} max ${f0(r.sellBurstFrames.max)}; long tasks ${r.sellBurstLt.length} (max ${f0(Math.max(0, ...r.sellBurstLt))})`);
-    console.log(`  tap→paint Buy: ${L(r.buyTap)}${r.buyIn ? ' (in another Industry: all bought here)' : ''}; repeatable ×3: ${L(r.buyRepTap)}`);
+    console.log(`  tap→paint Buy: ${L(r.buyTap)}${r.buyIn ? ` (${r.buyIn})` : ''}; repeatable ×3: ${L(r.buyRepTap)}`);
     if (r.holdFrames) console.log(`  hold Buy 3 s: bought ${r.holdBought}; frames p95 ${f1(r.holdFrames.p95)} max ${f0(r.holdFrames.max)}; long tasks ${r.holdLt.length} (max ${f0(Math.max(0, ...r.holdLt))})`);
     if (r.tabSwitch) console.log(`  tab switch to paint: p50 ${f0(r.tabSwitch.p50)} max ${f0(r.tabSwitch.max)} ms; long tasks [${r.tabSwitch.lt.map(f0).join(' ')}]`);
     console.log(`  memory: heap ${f1(r.mem0.heapMB)} → ${f1(r.mem1.heapMB)} MB, DOM ${r.mem0.domNodes} → ${r.mem1.domNodes} elements, listeners ${r.mem0.listeners} → ${r.mem1.listeners}`);

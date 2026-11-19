@@ -1,3 +1,4 @@
+// @ts-nocheck: a Bun build script (node:fs, Bun, import.meta.dir), outside the browser tsconfig; the audio test imports it.
 // Regenerates src/ui/audio/worker-src.ts: the synthesis worker (src/ui/audio/worker.ts and the pure recipes it imports)
 // bundled and minified into one string, which the engine starts as a Blob worker. Run after changing recipes, synth,
 // music or jobs:  bun run tools/audio-worker.ts   (audio.test.ts fails while the string is stale).

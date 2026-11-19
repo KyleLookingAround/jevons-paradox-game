@@ -159,6 +159,27 @@ its props in `props/<id>.ts`, and set `look: '<id>'` on the layouts drawn in it.
   the jitter); `--perf --m3` and `--switch --m3` measure the M3 busiest state. `--m3` strips: `#strip=<id>&m3`;
   spots: `#spots`; stills: `#stills=<id>`.
 
+## Performance (perf pass 2: the real page)
+
+The demo measured the scene alone; on the real page it was most of the page's cost. What it was and what changed:
+
+- **The host's rAF loop.** A `requestAnimationFrame` callback every vsync gives the page a main-thread frame every vsync,
+  and Blink restyles every element under a running animation in every such frame, composited or not (the 30 smoke
+  puffs, wheels, movers). The game loop is now a 10 Hz timer (src/ui/game.ts); the scene's own one-shot rAFs are fine.
+  A host must not run a per-frame rAF loop over this scene.
+- **No animation or transition inside the SVG.** The survey flag's flutter (`scn-flag`, on an SVG path) ran on the main
+  thread and repainted its band every frame on every Industry with a staked plot: removed (the flag stands still).
+  The reserve's drawings (`.rx .ry .dx .rsun .sx`) take `--res`/`--dep` on themselves, not on the world (a custom
+  property on the world restyles every node of it), and a step of a fiftieth lands at once (`.tsnap`); a jump still glides.
+- **`--smk-a`** is set on the sprite layers, not the bands (whose every drawing inherited it).
+- **Spots in the page** are drawn without `standalone` (which inlines the whole scene stylesheet into the SVG): inserted
+  into the document, that was a stylesheet change that restyled the entire page at every new headline. The page has the
+  scene's CSS already; `standalone` is for an `<img>` or a saved file.
+- The engine is a lazy part of the page (src/ui/lazy/scene.ts, loaded by src/ui/chunks.ts after the first paint); the
+  pure adapter is imported directly.
+- Proof the pictures are unchanged: before/after screenshots of all five Industries at early, late and crisis, phone and
+  desk, motion reduced and time stopped, pixel-diffed (max channel difference ≤ 2 in all 30).
+
 ## Why SVG (and not canvas)
 
 - **Every place is a real control.** Tap targets are HTML buttons laid over the picture, with labels; the art itself

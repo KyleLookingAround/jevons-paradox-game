@@ -23,6 +23,7 @@ const html = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rebound — soundscape demo</title>
+<meta name="description" content="Generated sound for Rebound, an incremental game about Jevons paradox: synthesised in the browser, exportable as WAV loops, stems and one-shots for a DAW.">
 <style>
 ${tokens}
 *,*::before,*::after{box-sizing:border-box}
@@ -46,6 +47,26 @@ body{background:var(--bg-img,none),var(--bg-solid,#efe6d0);color:var(--ink,#2a1f
 .btns{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
 button,select{font:inherit;color:inherit;background:var(--surface,#fff);border:1px solid var(--rule-2,#888);padding:5px 8px;border-radius:var(--btn-radius,2px)}
 button.play{background:var(--ink,#222);color:var(--bg-solid,#fff)}
+button:disabled{opacity:.5}
+.what{margin:0 0 12px;font-size:15px;line-height:1.45;max-width:72ch}
+.what a{color:inherit}
+.export-host{margin-top:14px}
+.export{font-size:13px}
+.export .xintro{margin:0 0 8px;max-width:80ch;line-height:1.4}
+.xgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2px 16px}
+.xrow{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px;align-items:center;padding:3px 0}
+.xl{color:var(--muted,#6f5f4a);font-size:12px;letter-spacing:.04em}
+.xc{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.xc select{max-width:100%}
+.xnote{color:var(--muted,#6f5f4a);font-size:12px}
+.xbtns{margin-top:10px}
+.xquick{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px;align-items:center;margin-top:6px}
+.xquick select{max-width:100%}
+.xrun{display:flex;gap:8px;align-items:center;margin-top:8px}
+.xprog{flex:1;min-width:0;height:12px}
+.xstatus{font:12px/1.4 ui-monospace,monospace;margin-top:4px;overflow-wrap:anywhere}
+select{max-width:100%}
+@media (max-width:520px){#app{padding:12px 16px 48px}.row{grid-template-columns:96px minmax(0,1fr) 34px}.app strong{min-width:0;display:block}.xgrid{grid-template-columns:1fr}.xrow,.xquick{grid-template-columns:1fr;gap:2px}.panel{grid-template-columns:1fr}}
 </style>
 </head>
 <body>

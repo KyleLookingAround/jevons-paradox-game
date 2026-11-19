@@ -250,7 +250,45 @@ Mostly data, like a scene layout:
    itself. Call `sound.destroy()` only on teardown.
 7. Nothing throws: without Web Audio, `stats().state` is `'unavailable'` and every call is a no-op.
 
+## Exporting for a DAW (the demo page)
+
+The demo (`bun run tools/audio-demo.ts` → `dist/audio-demo.html`, published from `public/audio-demo/index.html`) has an
+"Export for a DAW" panel (`src/ui/audio/export/`). It renders offline through the real engine and downloads 48 kHz
+stereo WAV (24-bit PCM by default, or 32-bit float; WAVE_FORMAT_EXTENSIBLE) in one store-only ZIP with a README:
+loops of a held state (seamless where it can be, see below), stems of the same passage plus the full mix they sum to
+and an optional dry set, every interface and event sound per Age trimmed to length, and the demo's whole runs.
+
+**Engine support (additive, off by default).** `SoundscapeOptions.tap`, honoured only with `context`: per-source gates
+(stems), `dry` (the room's return muted), `limiter: false`, a voice log and a beat-clock log, a forced variant for sell
+and buy. `LIMITER` (the master limiter's settings) is exported. Without `tap`, no node is added and no value changes.
+With `tap`, renders are made repeatable: Chromium sums a junction of three or more inputs in an order that follows node
+addresses and delivers `ended` asynchronously, so identical renders of the game graph differ by up to ~2e-4 (−74 dBFS);
+with taps every junction is a ladder of two-input gains (`inlet()`), the reverb's eight segments sum as a tree, voices
+are disconnected at scheduler ticks, synthesis is never deferred, and the limiter is applied as a second pass (the same
+node, the same settings) because the in-graph one did not repeat. The tap path differs from the game's path by
+summation order only (−114 dB in a test). `tools/audio-proof.ts` renders the committed engine and the working copy under
+the same neutral patches (every connection through its own rung, no `ended` disconnects, limiter as unity gain) and
+compares them byte for byte.
+
+**Seamless loops.** A whole number of four-beat bars at the state's tempo, starting on a bar line of the engine's beat
+clock, with a 2 s equal-power crossfade from just past the end into the head (a test checks every pulse pattern and
+beat-locked LFO repeats within a bar). Called seamless only if no event (a non-grid voice of 1 s or more) sounds across
+either crossfade window; the start is searched over 40 s of bar lines. Otherwise it is named `loop-xfade` and the README
+says what crossed. Light with a load curve is never called seamless (its day moves). "Beds only" and "beds and pulse"
+loops are always clean.
+
+**Levels.** Loops, runs and one-shots go through the game's limiter, which in Web Audio adds about +6 dB make-up gain;
+stems and their mix are taken before it (so they sum) and sit about 6 dB lower. The room's return is about 30 dB under
+the direct sound.
+
+Verification: `tools/audio-export-check.cjs` (drives the panel in headless Chromium; long tasks, timer lag, memory,
+cancel) and `tools/audio-export-check.py` (ZIP and WAV validity, clipping, silence, stems sum, seam measurements,
+`--compare` for repeatability).
+
 ## Not verified (cannot be, here)
+
+- **DAW export**: no DAW has opened these files (only `unzip`, Python's `zipfile` and `wave`, and ffprobe); nobody has
+  listened to a loop's seam or a stem.
 
 - **M3**: nobody has heard the post, the motifs, the watch or the ending; whether a letter a minute wears over an hour,
   whether the motifs are recognisable on a phone speaker, whether the Proprietor's Day is funny: unjudged. The

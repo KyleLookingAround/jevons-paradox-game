@@ -8,6 +8,7 @@ import { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES, type SoundEventKind, type Sound
 import { MOTIFS } from '../recipes';
 import { DEMO_INDUSTRIES, preset, viewOf, runParams, PRESET_NAMES, type DemoParams, type PresetName } from '../views';
 import { soundscapeFor } from '../defs';
+import { exportPanel } from '../export/panel';
 
 const LEVERS = ['duty', 'cap', 'sufficiency', 'substitution', 'circularity', 'greenSpending', 'deletion', 'reviewGate', 'sharedLibs'];
 const EARLIER = ['steam', 'light', 'motion', 'compute'];
@@ -30,7 +31,11 @@ const host = el('div', { className: 'scene-host' });
 const side = el('div', { className: 'side' });
 const panel = el('div', { className: 'panel' });
 top.append(host, side);
-app.append(top, panel);
+// For visitors who arrive from a shared link.
+const about = el('p', { className: 'what' }, 'Generated sound for ', el('a', { href: 'https://kylelookingaround.github.io/jevons-paradox-game/', textContent: 'Rebound' }),
+  ', an incremental game about Jevons paradox. Everything you hear is synthesised in your browser as it plays (no recordings, no samples); turn the sound on, try the controls, or export it for a DAW below.');
+const exportHost = el('div', { className: 'export-host' });
+app.append(about, top, exportHost, panel);
 
 const scene: SceneHandle = createScene(host, { card: false });
 const sound = createSoundscape({ meter: true });
@@ -57,7 +62,11 @@ function withM3(v: SceneView): SceneView {
   return o;
 }
 const view = (): SceneView => withM3(viewOf(sector, p));
+let exportRefresh: ReturnType<typeof setTimeout> | null = null;
 function render(): void {
+  // The export panel's estimates follow the controls (debounced: it lays out every export it offers).
+  if (exportRefresh) clearTimeout(exportRefresh);
+  exportRefresh = setTimeout(() => { exportRefresh = null; xp?.refresh(); }, 400);
   document.documentElement.dataset.era = view().look;
   document.documentElement.dataset.theme = view().look;
   const v = view();
@@ -291,6 +300,8 @@ function fire(k: SoundEventKind): void {
   if (k === 'reckoning') { p.reckoning = 'collapse'; syncers.forEach((f) => f()); render(); }
 }
 
+const xp: ReturnType<typeof exportPanel> | null = exportPanel(() => ({ sector, view: view() }));
+exportHost.append(xp.el);
 buildPanel();
 render();
 meterLoop();

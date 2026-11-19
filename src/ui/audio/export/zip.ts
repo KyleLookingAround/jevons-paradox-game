@@ -33,7 +33,11 @@ export function dosDateTime(y: number, mo: number, d: number, h = 0, mi = 0, s =
 }
 const STAMP = dosDateTime(2026, 11, 19, 12, 0, 0);
 
-export type Sink = (part: Uint8Array) => void | Promise<void>;
+/** A piece of the archive: bytes, or a Blob already holding bytes (large files are handed over in Blob pieces so the
+ *  page never holds them twice). */
+export type Part = Uint8Array | Blob;
+export type Sink = (part: Part) => void | Promise<void>;
+const sizeOfPart = (p: Part) => (p instanceof Uint8Array ? p.length : p.size);
 
 interface Entry { name: Uint8Array; crc: number; size: number; offset: number }
 
@@ -57,14 +61,19 @@ export class ZipWriter {
     return n;
   }
 
-  private async put(b: Uint8Array): Promise<void> { this.offset += b.length; await this.sink(b); }
+  private async put(b: Part): Promise<void> { this.offset += sizeOfPart(b); await this.sink(b); }
 
-  /** Add one file, given as parts (e.g. a WAV header then its samples in slices) and its CRC-32 over all of them. */
-  async addParts(name: string, parts: Uint8Array[], crc?: number): Promise<void> {
+  /** Add one file, given as parts (e.g. a WAV header then its samples in slices) and its CRC-32 over all of them
+   *  (required when any part is a Blob; computed here otherwise). */
+  async addParts(name: string, parts: Part[], crc?: number): Promise<void> {
     if (this.closed) throw new Error('zip closed');
     let size = 0;
-    for (const p of parts) size += p.length;
-    if (crc === undefined) { let c = crc32Init(); for (const p of parts) c = crc32Update(c, p); crc = crc32Final(c); }
+    for (const p of parts) size += sizeOfPart(p);
+    if (crc === undefined) {
+      let c = crc32Init();
+      for (const p of parts) { if (!(p instanceof Uint8Array)) throw new Error('crc needed for Blob parts'); c = crc32Update(c, p); }
+      crc = crc32Final(c);
+    }
     const nm = utf8(name);
     if (this.entries.length >= 0xffff) throw new Error('too many files for a ZIP without ZIP64');
     if (this.offset + 30 + nm.length + size + 46 * (this.entries.length + 1) + 22 > MAX) throw new Error('archive would pass 4 GiB: export less at once');
@@ -80,7 +89,7 @@ export class ZipWriter {
     h.set(nm, 30);
     this.entries.push({ name: nm, crc: crc >>> 0, size, offset: this.offset });
     await this.put(h);
-    for (const p of parts) if (p.length) await this.put(p);
+    for (const p of parts) if (sizeOfPart(p)) await this.put(p);
   }
 
   async add(name: string, data: Uint8Array): Promise<void> { await this.addParts(name, [data]); }

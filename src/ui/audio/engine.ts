@@ -28,6 +28,11 @@ const SYNTH_BUDGET_MS = 6;       // offline only: most JS synthesis per tick (la
 
 type Ctx = BaseAudioContext;
 
+/** The master limiter's settings (a DynamicsCompressorNode). Exported for the DAW export, which renders past the
+ *  limiter (tap.limiter false, so the render repeats exactly) and then applies the same node, so set, as a second
+ *  pass over the same signal. */
+export const LIMITER = { threshold: -14, knee: 8, ratio: 10, attack: 0.004, release: 0.3 } as const;
+
 interface LayerRt {
   def: LayerDef;
   key: Key;
@@ -150,10 +155,31 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   const tap = external ? opts.tap ?? null : null;
   const gate = tap?.gate ?? null;
   let uiGate: GainNode | null = null, uiRevGate: GainNode | null = null;
+  // Export only: repeatable sums. Chromium adds a junction's inputs in an order that can change from render to render
+  // (it follows a hash of node addresses), and float addition is not associative, so a node fed by three or more
+  // sounding inputs differs by rounding (up to ~1e-4 after the filters and the limiter) between identical renders.
+  // With taps, every junction becomes a ladder of gain nodes with two inputs each (one input, and the next rung), which
+  // commute exactly: the same sum, in a fixed order. A voice's rung is reused once the voice has ended (a finished
+  // source sends exact zeros, which change no sum), so a ladder is as long as the most voices sounding at once.
+  // Without taps, inlet() returns the node itself and the graph is the game's.
+  const spent: [number, () => void][] = [];   // export: finished voices to disconnect at the next tick after they end
+  const ladders = new WeakMap<AudioNode, { node: GainNode; until: number }[]>();
+  function inlet(dest: AudioNode, from = -Infinity, until = Infinity): AudioNode {
+    if (!tap || !ctx) return dest;
+    let rungs = ladders.get(dest);
+    if (!rungs) { rungs = []; ladders.set(dest, rungs); }
+    for (const r of rungs) if (r.until <= from) { r.until = until; return r.node; }
+    const n = ctx.createGain();
+    n.connect(rungs.length ? rungs[rungs.length - 1].node : dest);
+    rungs.push({ node: n, until });
+    return n;
+  }
   /** Export: a gate (gain = tap.gate(source)) in front of dest, or dest itself when nothing is gated. */
   function gateTo(source: string, dest: AudioNode): AudioNode {
-    if (!gate || !ctx) return dest;
-    const g = ctx.createGain(); g.gain.value = gate(source); g.connect(dest);
+    if (!tap || !ctx) return dest;
+    const d = inlet(dest);
+    if (!gate) return d;
+    const g = ctx.createGain(); g.gain.value = gate(source); g.connect(d);
     return g;
   }
   const uiOut = (): AudioNode => uiGate ?? uiBus!;
@@ -206,7 +232,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const c = ctx!;
     canPan = typeof (c as AudioContext).createStereoPanner === 'function';
     const lim = c.createDynamicsCompressor();
-    lim.threshold.value = -14; lim.knee.value = 8; lim.ratio.value = 10; lim.attack.value = 0.004; lim.release.value = 0.3;
+    lim.threshold.value = LIMITER.threshold; lim.knee.value = LIMITER.knee; lim.ratio.value = LIMITER.ratio; lim.attack.value = LIMITER.attack; lim.release.value = LIMITER.release;
     master = c.createGain(); master.gain.value = 0;
     duck = c.createGain(); duck.gain.value = 1;
     worldBus = c.createGain(); worldBus.gain.value = vol.world ** 2;
@@ -218,7 +244,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     revIn = c.createGain(); revIn.gain.value = 1;
     revLp = c.createBiquadFilter(); revLp.type = 'lowpass'; revLp.frequency.value = 5000;
     const revOut = c.createGain(); revOut.gain.value = tap?.dry ? 0 : 0.5;
-    revLp.connect(revOut); revOut.connect(worldBus);
+    revLp.connect(revOut); revOut.connect(inlet(worldBus));
     if (gate) { uiGate = gateTo('ui', uiBus) as GainNode; uiRevGate = gateTo('ui', revIn) as GainNode; }
     // The impulse is synthesised off the main thread, then split over REV_SEGS convolvers, each delayed by its offset:
     // the same room, but each buffer is short enough that setting it (which a browser prepares on the main thread)
@@ -380,8 +406,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     // Nothing useful below 60 Hz on a phone, and rumble under a podcast is mud.
     const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 60; hp.Q.value = 0.6;
     const send = c.createGain(); send.gain.value = def.air.reverb;
-    air.connect(hp); hp.connect(thick); thick.connect(fog); fog.connect(world); world.connect(out); out.connect(worldBus!);
-    send.connect(revIn!);
+    air.connect(hp); hp.connect(thick); thick.connect(fog); fog.connect(world); world.connect(out); out.connect(inlet(worldBus!));
+    send.connect(inlet(revIn!));
     const g: Graph = {
       def, sector, out, world, air, thick, fog, send, layers: [], byId: new Map(), traces: new Map(), levers: new Map(),
       rng: rngFrom(seed ^ hash(sector)), tempo: def.tempo[0], tempoTarget: def.tempo[0], beat: 0, beatAt: now(), mix: null, dieAt: 0, blackoutNext: 0, dayAt: NaN,
@@ -438,7 +464,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
             // Arriving into a bed that may already be up: fade in rather than step in (no click).
             const fg = c.createGain(); fg.gain.value = 0; fg.gain.setTargetAtTime(1, st, 0.25); n.connect(fg); n = fg;
           }
-          n.connect(dest);
+          n.connect(inlet(dest));
           s.start(st, (rt.rng() * 0.4 + i * 0.5) * b.duration);
           rt.noises.push(s);
         });
@@ -461,7 +487,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     function addOsc(f: number, wave: OscillatorType, gn: number, det: number): void {
       const o = c.createOscillator(); o.type = wave; o.frequency.value = f; o.detune.value = det;
       const og = c.createGain(); og.gain.value = gn;
-      o.connect(og); og.connect(into);
+      o.connect(og); og.connect(inlet(into));
       o.start(t);
       rt.oscs.push({ node: o, f });
     }
@@ -596,7 +622,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         const c = ctx!;
         const gain = c.createGain(); gain.gain.value = 0;
         const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.5;
-        gain.connect(lp); lp.connect(g.air);
+        gain.connect(lp); lp.connect(inlet(g.air));
         const layers = def.trace.map((id) => def.layers.find((x) => x.id === id)).filter((x): x is LayerDef => !!x)
           .map((l) => { const rt = buildLayer(g, l, def.key, gain, g.send, `trace:${sid}`); rt.traceOf = sid; return rt; });
         tr = { gain, lp, layers };
@@ -678,6 +704,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       if (g.mix.stress > 0.01 && !g.dieAt) blackouts(g, t);
     }
     if (credits) creditsTick(t, horizon);
+    if (spent.length) { for (let i = spent.length - 1; i >= 0; i--) if (spent[i][0] <= t) { spent[i][1](); spent.splice(i, 1); } }
     // Offline: prewarm at most one recipe per tick, and only if nothing was synthesised for a hit this tick. (Live, the
     // whole list went to the worker when the graph was built.)
     if (sync && synthSpent === 0 && warm.length) { const [n, k, v] = warm.shift()!; recipe(n, k, v, true); }
@@ -782,11 +809,15 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         else p.pan.value = Math.max(-1, Math.min(1, pan));
         gn.connect(p); tail = p;
       }
-      tail.connect(dest);
+      const until = at + dur + 0.05;
+      tail.connect(inlet(dest, at, until));
       let sg: GainNode | null = null;
-      if (sendTo && sendAmt > 0) { sg = c.createGain(); sg.gain.value = sendAmt; tail.connect(sg); sg.connect(sendTo); }
+      if (sendTo && sendAmt > 0) { sg = c.createGain(); sg.gain.value = sendAmt; tail.connect(sg); sg.connect(inlet(sendTo, at, until)); }
       s.start(at);
-      s.onended = () => { try { s.disconnect(); gn.disconnect(); tail.disconnect(); sg?.disconnect(); } catch { /* ignore */ } };
+      const off = () => { try { s.disconnect(); gn.disconnect(); tail.disconnect(); sg?.disconnect(); } catch { /* ignore */ } };
+      // Export: the voice is let go at a scheduler tick after it ends (a fixed point in the render), not when the
+      // 'ended' event happens to reach this thread, so the graph changes at the same moment in every render.
+      if (tap) spent.push([until, off]); else s.onended = off;
       ends.push(at + dur);
       return true;
     } catch { return false; }
@@ -906,7 +937,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       const l = c.createOscillator(); l.frequency.value = 0.045 + 0.02 * i + 0.01 * rng();
       const ld = c.createGain(); ld.gain.value = gn * 0.28;
       l.connect(ld); ld.connect(vg.gain);
-      o.connect(vg); vg.connect(lp);
+      o.connect(vg); vg.connect(inlet(lp));
       o.start(t); l.start(t + rng() * 2);
       oscs.push(o); lfos.push(l);
     });

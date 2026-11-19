@@ -184,6 +184,9 @@ export function peek(job: Job): AudioBuffer | null {
   return b ?? null;
 }
 
+/** Export: let go of buffers pinned for an export (they become ordinary least-recently-used entries again). */
+export function unpin(jobs: Job[]): void { for (const j of jobs) pinned.delete(jobId(j)); trim(); }
+
 /** Queued and not yet ready. */
 export function pending(): number { return waiting.size; }
 export function bankSamples(): number { return samples; }
