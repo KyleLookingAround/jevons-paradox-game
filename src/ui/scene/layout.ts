@@ -69,6 +69,9 @@ export interface MoverDef {
   from?: number;
   band?: Band;
   w?: number;
+  /** Depth (a y in viewBox units) at which it is drawn among the scenery: things nearer than this hide it. Default:
+   *  the nearer end of its track. */
+  z?: number;
 }
 
 /**
@@ -103,6 +106,8 @@ export interface PlotDef {
   site?: [number, number, number, number];
   /** Density curve exponent: count = n × density^curve (default 0.6, so early growth shows). */
   curve?: number;
+  /** Slots stay in the picture when off and fade (a light going out) instead of vanishing. */
+  fade?: boolean;
 }
 
 export type Band = 'far' | 'mid' | 'near';

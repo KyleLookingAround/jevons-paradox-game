@@ -39,6 +39,16 @@ export const ctower: Prop = (a, o) => {
   const top = -g.h - g.crown;
   if (g.ant) { s += L(0, top, 0, top - 16, 'k'); o.fx('blink', 0, top - 16, 1, C(0, 0, 1.3, 'redl')); }
   if (g.strip) s += neon(`M${f(-g.w / 2 + 0.8)} ${f(-g.h + 6)}V-10`, g.strip);
+  // Rim light from the neon below, and roof plant (tanks, a billboard frame) on some.
+  s += P(`M${f(g.w / 2 - 0.4)} ${f(-g.h)}V0`, 'rim');
+  if (!g.crown && a.v > 0.5) s += R(-g.w / 4, -g.h - 6, 7, 6, 'mt') + R(2, -g.h - 4, 5, 4, 'mt');
+  // Its reflection on the wet street below (a.h = distance down to the kerb): the strip broken into ripples.
+  if (a.h > 0 && g.strip) {
+    let d = '';
+    for (let k = 0; k < 9; k++) { const y = a.h + 2 + k * 3.6 + (k % 2) * 0.8, w = 1.4 + k * 0.5; d += `M${f(-g.w / 2 + 0.8 - w / 2)} ${f(y)}h${f(w)}`; }
+    s += P(d, `rp ${g.strip}`);
+  }
+  if (a.h > 0) s += R(-g.w / 2 + 2, a.h + 1, g.w - 4, 16, 'rfb');
   return s;
 };
 
@@ -214,7 +224,71 @@ export const solarC: Prop = () => {
   return P(d, 'solc') + P('M-18 -4.5h40', 'nt nc');
 };
 
+/* ------------------------------------------------------------------ */
+/* Human attention: the few lit windows with somebody in them          */
+/* ------------------------------------------------------------------ */
+/** Window size for the vignettes (viewBox units); the dark frames in the backdrop use the same. */
+export const VW = 40, VH = 24;
+const SIL = 'sil';
+
+/** One warm window, drawn at its bottom centre: an interior lamp-lit in amber with a person in it. v picks who. */
+export const vignette: Prop = (a) => {
+  const w = VW, h = VH, x0 = -w / 2, k = Math.floor(a.v * 6) % 6;
+  // spill of warm light down the facade and a halo, then the room
+  let s = P(`M${f(x0 + 2)} 1L${f(x0 - 6)} 22H${f(w / 2 + 6)}L${f(w / 2 - 2)} 1Z`, 'vspill') + R(x0 - 3, -h - 3, w + 6, h + 6, 'vhalo') +
+    R(x0, -h, w, h, '', `fill="${a.u('vwarm')}"`);
+  const body = (x: number, y: number) => C(x, y - 9.5, 2.6, SIL) + P(`M${f(x - 4)} ${f(y)}Q${f(x - 4.5)} ${f(y - 7)} ${f(x)} ${f(y - 7)}Q${f(x + 4.5)} ${f(y - 7)} ${f(x + 4)} ${f(y)}Z`, SIL);
+  switch (k) {
+    case 0: // at a desk under an anglepoise, the cat on the sill
+      s += P(`M${f(x0 + 13)} -10l3 -7l5 3`, 'vk') + P(`M${f(x0 + 19)} -15l5 2l-3 4z`, SIL) + P(`M${f(x0 + 21)} -12L${f(x0 + 14)} -5H${f(x0 + 30)}Z`, 'vcone') +
+        body(4, -5) + P(`M${f(x0 + 8)} -5H${f(w / 2 - 4)}V-3.6H${f(x0 + 8)}Z`, SIL) + R(x0 + 10, -9, 7, 4, 'vscr') +
+        // the cat, outside on the sill
+        P(`M${f(w / 2 - 9)} 0c0 -3 1 -5.5 3 -6l.4 -2.4 1.4 1.6 1.4 -1.6 .4 2.4c2 .5 2.6 3 2.6 6zM${f(w / 2 - 2)} 0q3 0 3 -3`, SIL);
+      break;
+    case 1: // reading in an armchair, a plant on the sill
+      s += P(`M${f(x0 + 6)} 0V-9q0 -3 3 -3h3v-3q0 -2 2 -2h6q2 0 2 2v6h2q2 0 2 2V0Z`, SIL) + C(x0 + 15, -18, 2.6, SIL) + P(`M${f(x0 + 18)} -13l5 -2v4z`, 'vbook') +
+        R(w / 2 - 12, -h + 2, 1, 6, SIL) + C(w / 2 - 11.5, -h + 9, 3, 'vlamp') +
+        P(`M${f(w / 2 - 6)} 0v-3M${f(w / 2 - 6)} -3q-4 -3 -5 -8M${f(w / 2 - 6)} -3q3 -4 6 -7M${f(w / 2 - 6)} -4q0 -5 2 -9`, 'vleaf') + R(w / 2 - 8.5, -3, 5, 3, SIL);
+      break;
+    case 2: // two at a kitchen table under a hanging lamp
+      s += L(0, -h, 0, -h + 6, 'vk') + P('M-4 -18h8l-2 -2.6h-4z', SIL) + C(0, -16.6, 3.4, 'vlamp') +
+        body(-10, -4) + body(10, -4) + R(-7, -5, 14, 1.6, SIL) + P('M-2 -5v-3h3v3', SIL);
+      break;
+    case 3: // somebody playing the guitar on the end of a bed
+      s += R(x0 + 3, -4, w - 6, 4, SIL) + body(-2, -4) + P('M-8 -6a3.4 3 0 1 1 6 1l9 -6 1 1.4 -9 6a3.4 3 0 1 1 -7 -2.4z', 'vgtr') +
+        P(`M${f(w / 2 - 7)} ${f(-h + 4)}h4v6h-4z`, 'vpic');
+      break;
+    case 4: // looking out, a hand on the glass, the curtain drawn back
+      s += P(`M${f(x0)} ${f(-h)}h7q-3 10 2 ${f(h)}h-9z`, 'vcur') + body(4, 0) + P('M7.5 -10l4 -6 1 .6 -3.6 6z', SIL) + C(12.2, -16.4, 1.6, SIL);
+      break;
+    default: // a child drawing at the table, a parent leaning over
+      s += R(x0 + 6, -6, w - 12, 1.6, SIL) + C(-6, -10, 2.2, SIL) + P('M-10 -4q0 -5 4 -5t4 5z', SIL) +
+        C(6, -16, 2.6, SIL) + P('M2 -4q-1 -9 4 -10q5 0 6 4l-6 2z', SIL) + R(-3, -7, 5, 1.2, 'vpaper');
+  }
+  // window bars and sill over the room
+  return s + P(`M${f(x0)} ${f(-h * 0.42)}H${f(w / 2)}M0 ${f(-h)}V0`, 'vbar') + R(x0 - 2, 0, w + 4, 2, 'vsill');
+};
+
+/** Somebody walking in the rain under an umbrella (a mover on the pavement). */
+export const walker: Prop = (a) => {
+  const c: Neon = NEONS[Math.floor(a.v * 9) % 4];
+  const leg = a.v < 0.5 ? 'M-1.5 0l1.5 -6l1.6 6' : 'M-2 0l2 -6l1 6';
+  return P(leg, 'wlk') + R(-2, -12, 4, 7, 'wlb') + C(0, -13.6, 1.6, 'wlb') + L(0, -12, 0, -18, 'wlk') +
+    P('M-8 -17.5Q0 -25 8 -17.5Z', `umb ${c}`) + P('M-8 -17.5Q0 -25 8 -17.5', `nt ${c}`, 'stroke-width=".9"') +
+    R(-2, 1, 4, 5, `rfl ${c}`, 'opacity=".25"');
+};
+
+/** The elevated train: a long lit carriage set (a mover on the viaduct). */
+export const elTrain: Prop = (a) => {
+  let wins = '';
+  for (let x = -40; x < 38; x += 5.4) wins += `M${f(x)} -7.6h3.4v3h-3.4z`;
+  const warm = a.v < 0.5;
+  return P('M-46 -1V-8Q-46 -11 -42 -11H40Q46 -11 48 -5L49 -1Z', 'trn') + P(wins, warm ? 'warm' : 'cold') +
+    P('M-46 -2.2H49', 'nt nc') + C(47, -5, 1, 'cyl') + R(-30, -1, 4, 1.4, 'mt') + R(20, -1, 4, 1.4, 'mt');
+};
+
 export const CYBERPUNK: Record<string, Prop> = {
+  vignette, walker, elTrain,
   ctower, ctowerCold, ctowerWarm, workshop, kiosk, blade, oldTower, scaffoldC, glassFloor, cfloor, towerCraneC, drone, hoarding,
   skycar, clutterC, cables, demolition, gateC, libraryC, gardenC, tollC, permitC, solarC,
   // aliases so icon lookups land here

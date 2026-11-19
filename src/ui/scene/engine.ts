@@ -94,15 +94,19 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   const sky0 = div('scn-sky'), sky1 = div('scn-sky smog'), sky2 = div('scn-sky fresh');
   const glow = div('scn-glow');
   const skySvg = svgEl('scn-l');
-  const st: Record<Band, SVGSVGElement> = { far: svgEl('scn-l band-far'), mid: svgEl('scn-l band-mid'), near: svgEl('scn-l band-near') };
-  const fx: Record<Band, SVGSVGElement> = { far: svgEl('scn-l fx-far'), mid: svgEl('scn-l fx-mid'), near: svgEl('scn-l fx-near') };
+  // Each depth band is a wrapper holding alternating static and fx SVGs: static₀ · fx₀ · static₁ · fx₁ … The bands are
+  // split at the depth of each mover track, so a train passes behind the buildings nearer than its line and in front
+  // of those further away, while static layers still never repaint for motion.
+  const bw: Record<Band, HTMLDivElement> = { far: div('scn-bw bw-far'), mid: div('scn-bw bw-mid'), near: div('scn-bw bw-near') };
+  let st: Record<Band, SVGSVGElement[]> = { far: [], mid: [], near: [] };
+  let fx: Record<Band, SVGSVGElement[]> = { far: [], mid: [], near: [] };
   const mist1 = div('scn-hz mist'), mist2 = div('scn-hz mist m2');
   const hz1 = div('scn-hz smog h1'), hz2 = div('scn-hz smog h2'), hz3 = div('scn-hz smog h3');
   const fog = div('scn-fog');
   const noiseSvg = svgEl('scn-l scn-noise');
   const extraLayer = div('scn-extra');
   const plateSvg = svgEl('scn-l scn-plate');
-  world.append(defs, sky0, sky1, sky2, glow, skySvg, st.far, fx.far, mist1, hz1, st.mid, fx.mid, mist2, hz2, st.near, fx.near, hz3, extraLayer, noiseSvg, fog, plateSvg);
+  world.append(defs, sky0, sky1, sky2, glow, skySvg, bw.far, mist1, hz1, bw.mid, mist2, hz2, bw.near, hz3, extraLayer, noiseSvg, fog, plateSvg);
   const places = div('scn-places');
   const banner = div('scn-banner');
   banner.setAttribute('aria-hidden', 'true');
@@ -246,7 +250,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return `<g class="fx ${e.kind}" data-k="${key}" transform="translate(${f(gx)} ${f(gy)}) scale(${sc})"><g>${e.markup ?? ''}</g></g>`;
   }
 
-  function moverMarkup(l: Layout, look: string, m: MoverDef, i: number, key: string, stageN: number, seedStr: string): { html: string; band: Band; dur: number; phase: number } {
+  function moverMarkup(l: Layout, look: string, m: MoverDef, i: number, key: string, stageN: number, seedStr: string): { html: string; band: Band; dur: number; phase: number; z: number } {
     const s = m.s ?? depthScale(l, m.y0);
     const flip = m.x1 < m.x0;
     const seed = hash(seedStr);
@@ -260,7 +264,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const band = m.band ?? bandOf(l, m.y0);
     const html = `<g class="fx mv" data-k="${key}" style="--x0:${f(m.x0)}px;--y0:${f(m.y0)}px;--x1:${f(m.x1)}px;--y1:${f(m.y1)}px;--sx:${sx}px;--sy:${sy}px">` +
       `<g transform="scale(${flip ? -s : s} ${s})">${inner}</g></g>`;
-    return { html, band, dur: m.dur, phase };
+    return { html, band, dur: m.dur, phase, z: moverZ(m) };
   }
 
   function build(v: SceneView): void {
@@ -282,7 +286,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     extraLayer.innerHTML = style?.layers ?? '';
     noiseSvg.innerHTML = style?.noise ?? '';
     const items: Item[] = [];
-    const fxBand: Record<Band, string[]> = { far: [], mid: [], near: [] };
+    const fxBand: Record<Band, { z: number; html: string }[]> = { far: [], mid: [], near: [] };
     const stageN = clamp(Math.round(v.stage), 0, 3);
     const bctx = {
       u: (x: string) => `url(#${id}${x})`,
@@ -292,7 +296,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     };
     let bd: ReturnType<Layout['backdrop']> = {};
     try { bd = l.backdrop(bctx); } catch (e) { console.warn('scene backdrop', e); }
-    for (const e of bd.fx ?? []) fxBand[e.band].push(fxMarkup({ kind: e.kind, x: 0, y: 0, size: e.size ?? 1, markup: e.markup }, e.x, e.y, 1, 'bd'));
+    for (const e of bd.fx ?? []) fxBand[e.band].push({ z: -1e6, html: fxMarkup({ kind: e.kind, x: 0, y: 0, size: e.size ?? 1, markup: e.markup }, e.x, e.y, 1, 'bd') });
 
     // Assign apps to plots: by icon, then id; unknown icons get a spare rectangle with a generic works.
     const appPlots = l.plots.filter((p) => (p.driver ?? 'app') === 'app');
@@ -356,7 +360,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       } else {
         def.slots.forEach((sl, i) => {
           const key = `${idx}:${i}`;
-          const it = renderSlot(l, look, sl, key, 'sl0', stageN, `${seedBase}:${i}`);
+          const it = renderSlot(l, look, sl, key, def.fade ? 'sl0 fd' : 'sl0', stageN, `${seedBase}:${i}`);
           it.ord = uid++;
           baseOrd.set(key, it.ord);
           items.push(it);
@@ -367,7 +371,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         for (let i = 0; i < m.n; i++) {
           const key = `${idx}:m${mi}.${i}`;
           const mm = moverMarkup(l, look, m, i, key, stageN, `${seedBase}:m${mi}:${i}`);
-          fxBand[mm.band].push(mm.html);
+          fxBand[mm.band].push({ z: mm.z, html: mm.html });
           rt.moverDefs.push({ el: null as unknown as Element, dur: mm.dur, phase: mm.phase });
           (rt as PlotRt & { mkeys?: string[] }).mkeys = [...((rt as PlotRt & { mkeys?: string[] }).mkeys ?? []), key];
         }
@@ -392,22 +396,42 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     (l.steadyMovers ?? []).forEach((m, mi) => {
       for (let i = 0; i < m.n; i++) {
         const mm = moverMarkup(l, look, m, i, `st:${mi}.${i}`, stageN, `${l.id}:st:${mi}:${i}`);
-        fxBand[mm.band].push(mm.html.replace('class="fx mv"', 'class="fx mv stdy"'));
+        fxBand[mm.band].push({ z: mm.z, html: mm.html.replace('class="fx mv"', 'class="fx mv stdy"') });
       }
     });
 
     // Paint: per band, backdrop first, then items by depth (y), then the cut-away.
     for (const b of BANDS) {
       const its = items.filter((x) => x.band === b).sort((p, q) => p.y - q.y || p.ord - q.ord);
-      const html = (bd[b] ?? '') + its.map((x) => x.html).join('') + (b === 'near' ? bd.cut ?? '' : '');
-      st[b].innerHTML = html;
-      fx[b].innerHTML = fxBand[b].join('') + its.map((x) => x.fx.join('')).join('');
+      // Split depths: one per distinct mover track in this band (clustered, at most four).
+      const zs = [...new Set(fxBand[b].filter((e) => e.z > -1e5).map((e) => Math.round(e.z)))].sort((p, q) => p - q);
+      const splits: number[] = [];
+      for (const z of zs) if (!splits.length || z - splits[splits.length - 1] > 6) splits.push(z); else splits[splits.length - 1] = z;
+      while (splits.length > 4) splits.splice(1, 1);
+      const layerOf = (y: number) => { let i = 0; while (i < splits.length && y > splits[i]) i++; return i; };
+      const n = splits.length + 1;
+      const sh: string[] = Array(n).fill(''), fh: string[] = Array(n).fill('');
+      sh[0] = bd[b] ?? '';
+      for (const it of its) { const k = layerOf(it.y); sh[k] += it.html; fh[k] += it.fx.join(''); }
+      if (b === 'near') sh[n - 1] += bd.cut ?? '';
+      // A mover at depth z draws after every item at y ≤ z: in fx layer i where splits[i] ≥ z.
+      for (const e of fxBand[b]) { const k = e.z <= -1e5 ? 0 : Math.min(n - 1, layerOf(e.z)); fh[k] = e.html + fh[k]; }
+      st[b] = []; fx[b] = [];
+      const kids: SVGSVGElement[] = [];
+      for (let i = 0; i < n; i++) {
+        const s = svgEl(`scn-l band-${b}`), x = svgEl(`scn-l fx-${b}`);
+        s.innerHTML = sh[i]; x.innerHTML = fh[i];
+        st[b].push(s); fx[b].push(x);
+        kids.push(s);
+        if (fh[i]) kids.push(x);
+      }
+      bw[b].replaceChildren(...kids);
     }
     skySvg.innerHTML = bd.sky ?? '';
 
     // Index elements by key.
     elsByKey = new Map();
-    for (const svg of [st.far, st.mid, st.near, fx.far, fx.mid, fx.near]) {
+    for (const svg of [...st.far, ...st.mid, ...st.near, ...fx.far, ...fx.mid, ...fx.near]) {
       svg.querySelectorAll('[data-k]').forEach((el) => {
         const k = (el as Element).getAttribute('data-k') as string;
         const arr = elsByKey.get(k);
@@ -415,7 +439,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       });
     }
     smokeEls = [];
-    for (const b of BANDS) fx[b].querySelectorAll('.smk').forEach((el) => smokeEls.push({ el, key: el.getAttribute('data-k') ?? '', size: parseFloat(el.getAttribute('data-sz') ?? '1') }));
+    for (const b of BANDS) for (const lay of fx[b]) lay.querySelectorAll('.smk').forEach((el) => smokeEls.push({ el, key: el.getAttribute('data-k') ?? '', size: parseFloat(el.getAttribute('data-sz') ?? '1') }));
     smokeEls.sort((p, q) => q.size - p.size);
     restraintEls = new Map();
     elsByKey.forEach((els, k) => { if (k.startsWith('r:')) restraintEls.set(k.slice(2), els); });
@@ -508,12 +532,12 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     setVarOn(skySvg, '--pf2', q20(pfv));
     setVarOn(skySvg, '--light', q20(clamp(lightMean, 0, 1)));
     const smk = (Math.round((0.22 + 0.3 * Math.min(1, pf) + 0.12 * v.pace) * 10) / 10).toFixed(1);
-    for (const b of BANDS) setVarOn(fx[b], '--smk-a', smk);
+    for (const b of BANDS) setVarOn(bw[b], '--smk-a', smk);
     const rs = { setProperty: setVar };
-    setVarOn(st.near, '--pfc', q20(Math.min(1, pf)));
+    setVarOn(bw.near, '--pfc', q20(Math.min(1, pf)));
     rs.setProperty('--res', q(clamp(v.reserveFraction, 0.02, 1)));
     rs.setProperty('--dep', q(1 - clamp(v.reserveFraction, 0, 1)));
-    setVarOn(st.near, '--light', q20(clamp(lightMean, 0, 1)));
+    setVarOn(bw.near, '--light', q20(clamp(lightMean, 0, 1)));
     const wash = style?.wash?.(Math.round(pfv * 10) / 10, Math.round(clear * 5) / 5) ?? null;
     if (wash) { rs.setProperty('--s-wash', wash[0]); rs.setProperty('--s-water', wash[1]); }
     const lamp = LAMP[clamp(Math.round(v.stage), 0, 3)];
@@ -523,6 +547,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     root.classList.toggle('steady', !!v.steady);
     root.classList.toggle('decoupling', !!v.decoupling);
     root.classList.toggle('halt', !!v.reckoning);
+    // A city under strain (pressure near collapse, not yet clearing): styles may stage blackouts, failing signs.
+    root.classList.toggle('stress', pf >= 0.8 && !v.steady && clear < 0.3);
 
     const now = Date.now(); // UI-side timers only (the scene holds no game rules)
     // Crisis moment.
@@ -771,6 +797,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     destroy,
   };
 }
+
+/** Depth at which a mover is drawn among the static scenery: its own z, else the nearer end of its track. */
+function moverZ(m: MoverDef): number { return m.z ?? Math.max(m.y0, m.y1); }
 
 const LAMP: [string, string][] = [
   ['#e9a24a', '233,162,74'],   // tallow and oil: dim orange

@@ -39,6 +39,11 @@ export const cyberpunk: ArtStyle = {
       `<path d="M2 30V4H18V30M8 30V12H40V30M28 0V12M44 30V18H24" fill="none" stroke="#24203a" stroke-width="2.4"/>` +
       `<path d="M2 30V4H18V30M8 30V12H40V30" fill="none" stroke="#3a3452" stroke-width=".6"/>` +
       `<circle cx="18" cy="16" r="1.6" fill="#a0562a"/><circle cx="40" cy="22" r="1.2" fill="#ff4fd8" opacity=".6"/></pattern>`;
+    // Haze between the tower rows, the city's glow on the cloud base, the wet street's sheen, a lamplit room.
+    d += `<linearGradient id="${p}cbhz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a1a5c" stop-opacity="0"/><stop offset=".75" stop-color="#5a1f66" stop-opacity=".42"/><stop offset="1" stop-color="#6a2470" stop-opacity=".5"/></linearGradient>` +
+      `<radialGradient id="${p}cbcg" cx=".5" cy="1" r=".8" fx=".5" fy="1"><stop offset="0" stop-color="#ff4fd8" stop-opacity=".34"/><stop offset=".5" stop-color="#9a2a9a" stop-opacity=".16"/><stop offset="1" stop-color="#3b1150" stop-opacity="0"/></radialGradient>` +
+      `<linearGradient id="${p}cbwg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a2a7a" stop-opacity=".38"/><stop offset=".4" stop-color="#3a1a4a" stop-opacity=".16"/><stop offset="1" stop-color="#09080f" stop-opacity="0"/></linearGradient>` +
+      `<linearGradient id="${p}vwarm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe2a0"/><stop offset=".6" stop-color="#ffb85a"/><stop offset="1" stop-color="#e57f2e"/></linearGradient>`;
     return d + glowDefs(p, '#3ef2ff');
   },
   props: CYBERPUNK,
@@ -103,6 +108,37 @@ export const cyberpunk: ArtStyle = {
 .scn.live[data-look=cyberpunk] .blink>g{animation:cb-flick 2.6s steps(1,end) infinite}
 @keyframes cb-flick{0%{opacity:1}43%{opacity:.25}46%{opacity:1}71%{opacity:.4}73%{opacity:1}}
 .scn[data-look=cyberpunk].steady .blink>g{animation:none}
+.scn .cbarc{fill:#2a1842}.scn .cbfar0{fill:#1d1233}.scn .cbwin0{fill:#a77fd0;opacity:.35}
+.scn .beam{fill:rgba(160,200,255,.05)}
+.scn .pier{fill:#0d0b19;stroke:#2b2450;stroke-width:.5px}.scn .deck{fill:#120f22;stroke:#2b2450;stroke-width:.6px}.scn .trn{fill:#1d1934;stroke:#4a4373;stroke-width:.6px}
+.scn .rim{fill:none;stroke:rgba(255,79,216,.35);stroke-width:1px}
+.scn .rp{fill:none;stroke-width:1.2px;opacity:.5}.scn .rp.nm{stroke:#ff4fd8}.scn .rp.nc{stroke:#3ef2ff}.scn .rp.na{stroke:#ffb347}.scn .rp.nv{stroke:#9d7dff}
+.scn .rfb{fill:#8f8cff;opacity:.05}
+.scn .oldb{fill:#1b1530;stroke:#2f2752;stroke-width:.6px}.scn .oldb2{fill:#130f24}.scn .oldl{fill:#2a2348}.scn .oldw{fill:#09080f;stroke:#2f2752;stroke-width:.6px}
+.scn .sil{fill:#2a1305;stroke:none}.scn .vk{fill:none;stroke:#2a1305;stroke-width:1.1px}
+.scn .vspill{fill:#ffb347;opacity:.13}.scn .vhalo{fill:#ffb347;opacity:.22}
+.scn .vcone{fill:#fff4c8;opacity:.75}.scn .vscr{fill:#9fe8ff;opacity:.85}.scn .vbook{fill:#fff4d8}.scn .vlamp{fill:#fff6d0}
+.scn .vleaf{fill:none;stroke:#2a3a12;stroke-width:1.3px}.scn .vgtr{fill:#5a2a0a}.scn .vpic{fill:#c76a2a}.scn .vcur{fill:#b4501e;opacity:.85}.scn .vpaper{fill:#fff8e8}
+.scn .vbar{fill:none;stroke:#3a1d0a;stroke-width:1px}.scn .vsill{fill:#2f2752}
+.scn .wlk{fill:none;stroke:#0d0b16;stroke-width:1.2px}.scn .wlb{fill:#0d0b16}
+.scn .umb{fill-opacity:.35}.scn .umb.nm{fill:#ff4fd8}.scn .umb.nc{fill:#3ef2ff}.scn .umb.na{fill:#ffb347}.scn .umb.nv{fill:#9d7dff}
+.scn .pud{fill:#ff6fe0;opacity:.09}.scn .lpool{fill:#3ef2ff;opacity:.13}
+.scn .emg{display:none}.scn .emr{fill:#ff2a3a}.scn .emp{fill:#ff2a3a;opacity:.1}
+.scn[data-look=cyberpunk].stress .emg,.scn[data-look=cyberpunk].halt .emg{display:inline}
+.scn.live[data-look=cyberpunk].stress .emg{animation:cb-emg 1.8s steps(2,jump-none) infinite}
+@keyframes cb-emg{50%{opacity:.35}}
+/* Under strain the grid sheds load: towers' machine light goes out block by block, in turn; signs fail. */
+.scn.live[data-look=cyberpunk].stress .band-mid .ov{animation:cb-shed 12s steps(1,end) infinite}
+.scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(3n+1){animation-delay:-4s}
+.scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(3n+2){animation-delay:-8s}
+@keyframes cb-shed{0%{opacity:1}30%{opacity:.06}52%{opacity:1}}
+.scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(5n){opacity:.06}
+.scn[data-look=cyberpunk].stress .band-near .sg.nv,.scn[data-look=cyberpunk].stress .band-near .nt.nv{fill:#3a3450;stroke:#39334f}
+.scn[data-look=cyberpunk].stress .nh.nv{opacity:0}
+/* A Reckoning here is a blackout: the machine light gone, neon dead, only the emergency red and any warm room. */
+.scn[data-look=cyberpunk].halt .scn-world{filter:saturate(.55) brightness(.85)}
+.scn[data-look=cyberpunk].halt .ov,.scn[data-look=cyberpunk].halt .cbwin,.scn[data-look=cyberpunk].halt .cbwin2,.scn[data-look=cyberpunk].halt .cbwin3{opacity:.05}
+.scn[data-look=cyberpunk].halt .nh{opacity:0}.scn[data-look=cyberpunk].halt .nt{stroke:#3a3356}.scn[data-look=cyberpunk].halt .sg{fill:#3a3450}
 .scn[data-look=cyberpunk] .delgap{display:inline}.scn[data-look=cyberpunk].lv-deletion .delgap{display:none}
 .scn[data-look=cyberpunk] .delstars{display:none}.scn[data-look=cyberpunk].lv-deletion .delstars{display:inline}
 `,

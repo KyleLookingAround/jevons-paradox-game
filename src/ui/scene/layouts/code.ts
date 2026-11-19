@@ -10,6 +10,7 @@
 import type { Layout, Slot } from '../layout';
 import { scatter, row, weave } from '../layout';
 import { P, R, C, L, f, rng, hash } from '../svg';
+import { sign, neon, VW, VH } from '../props/cyberpunk';
 
 const STREET = 334;
 const AG = [524, 568];
@@ -20,34 +21,64 @@ for (let j = 0; j < 17; j++) for (let t = 0; t < AG.length; t++) {
 }
 const GLASS: Slot[] = Array.from({ length: 11 }, (_, j): Slot => ({ p: 'glassFloor', x: 466, y: 318 - j * 12, s: 1, band: 'mid' }));
 
-function skyline(): { html: string; fx: { kind: 'blink'; x: number; y: number; band: 'far'; markup: string }[] } {
+// The old human city along the street: five buildings, always there, whose upper rooms hold the warm vignettes.
+interface Bld { x0: number; x1: number; top: number }
+const OLD: Bld[] = [{ x0: -2, x1: 58, top: 205 }, { x0: 58, x1: 112, top: 238 }, { x0: 112, x1: 172, top: 205 }, { x0: 172, x1: 232, top: 238 }, { x0: 232, x1: 264, top: 272 }];
+/** Storey windows' bottom y (storey 1 is above the shops). */
+const SY = [301, 269, 237];
+/** Warm windows, in the order they go dark last-first: index 0 is the last light left on. */
+const VIG: Slot[] = [
+  { p: 'vignette', x: 142, y: SY[1], v: 0.02 }, { p: 'vignette', x: 29, y: SY[2], v: 0.2 }, { p: 'vignette', x: 202, y: SY[0], v: 0.38 },
+  { p: 'vignette', x: 85, y: SY[1], v: 0.55 }, { p: 'vignette', x: 29, y: SY[0], v: 0.7 }, { p: 'vignette', x: 202, y: SY[1], v: 0.88 },
+].map((s) => ({ ...s, s: 1, band: 'near' as const }));
+
+function skyline(): { far: string; mid: string; fx: { kind: 'blink'; x: number; y: number; band: 'far'; markup: string }[] } {
   const r = rng(hash('cb-skyline'));
-  let a = '', b = '', gap = '', w1 = '', w2 = '', w3 = '';
   const fx: { kind: 'blink'; x: number; y: number; band: 'far'; markup: string }[] = [];
+  // 1. The arcology: one enormous stepped tower far off, for height.
+  let arc = 'M262 256V120H272V70H282V34H300V18H304V34H322V70H332V120H342V256Z', aw = '';
+  for (let y = 40; y < 250; y += 7) for (let x = 266; x < 340; x += 6) if (r() < 0.16 && (y > 120 || (x > 272 && x < 332)) && (y > 70 || (x > 282 && x < 322))) aw += `M${x} ${y}h1.6v2h-1.6z`;
+  fx.push({ kind: 'blink', x: 302, y: 16, band: 'far', markup: C(0, 0, 1.6, 'redl') }, { kind: 'blink', x: 272, y: 68, band: 'far', markup: C(0, 0, 1.2, 'redl') });
+  // 2. The far row: tall, thin, pale with distance.
+  let a0 = '', aw0 = '';
   let x = -6;
   while (x < 606) {
-    const w = 10 + r() * 22, h = 50 + r() * 150, top = 256 - h;
-    const d = `M${f(x)} 256V${f(top)}H${f(x + w)}V256Z` + (r() < 0.3 ? `M${f(x + w / 2 - 1)} ${f(top)}V${f(top - 10 - r() * 14)}h2V${f(top)}Z` : '');
-    if (x > 250 && x < 360) gap += d; else if (r() < 0.5) a += d; else b += d;
-    for (let k = 0; k < h / 9; k++) {
+    const w = 8 + r() * 16, h = 70 + r() * 130, top = 252 - h;
+    if (x < 255 || x > 345) {
+      a0 += `M${f(x)} 256V${f(top)}H${f(x + w)}V256Z` + (r() < 0.4 ? `M${f(x + w / 2 - 0.8)} ${f(top)}V${f(top - 8 - r() * 16)}h1.6V${f(top)}Z` : '');
+      for (let k = 0; k < h / 16; k++) if (r() < 0.6) aw0 += `M${f(x + 2 + r() * (w - 4))} ${f(top + 4 + r() * (h - 8))}h1.2v1.4h-1.2z`;
+      if (r() < 0.08 && fx.length < 6) fx.push({ kind: 'blink', x: x + w / 2, y: top - 2, band: 'far', markup: C(0, 0, 1.1, 'redl') });
+    }
+    x += w + 1 + r() * 4;
+  }
+  // 3. The near row of the skyline: darker, broader, more windows.
+  let b = '', gap = '', w1 = '', w2 = '', w3 = '';
+  x = -6;
+  while (x < 606) {
+    const w = 12 + r() * 24, h = 40 + r() * 110, top = 258 - h;
+    const d = `M${f(x)} 262V${f(top)}H${f(x + w)}V262Z` + (r() < 0.3 ? `M${f(x + w / 2 - 1)} ${f(top)}V${f(top - 8 - r() * 12)}h2V${f(top)}Z` : '');
+    if (x > 250 && x < 360) gap += d; else b += d;
+    for (let k = 0; k < h / 8; k++) {
       const wx = x + 2 + r() * (w - 4), wy = top + 4 + r() * (h - 8), q = r();
       const sq = `M${f(wx)} ${f(wy)}h1.4v1.6h-1.4z`;
-      if (q < 0.55) w1 += sq; else if (q < 0.7) w2 += sq; else if (q < 0.8) w3 += sq;
+      if (q < 0.5) w1 += sq; else if (q < 0.64) w2 += sq; else if (q < 0.74) w3 += sq;
     }
-    if (r() < 0.12 && fx.length < 5) fx.push({ kind: 'blink', x: x + w / 2, y: top - 2, band: 'far', markup: C(0, 0, 1.2, 'redl') });
-    x += w + r() * 2;
+    x += w + r() * 3;
   }
-  // The low city between the skyline and the street, so sparse stages never show bare sky down to the pavement.
+  const far = P(arc, 'cbarc') + P(aw, 'cbwin0') + `<rect x="0" y="110" width="600" height="150" fill="url(#HZ)"/>` +
+    P(a0, 'cbfar0') + P(aw0, 'cbwin0') + `<rect x="0" y="150" width="600" height="112" fill="url(#HZ)"/>` +
+    P(b, 'cbfar') + `<g class="delgap">${P(gap, 'cbfar')}</g>` + P(w1, 'cbwin') + P(w2, 'cbwin2') + P(w3, 'cbwin3');
+  // 4. The low city between the skyline and the street (mid band, behind the viaduct), hazed at its top.
   let low = '', lw = '';
   let lx = -4;
   while (lx < 606) {
     const w = 14 + r() * 26, h = 40 + r() * 46;
-    low += `M${f(lx)} 336V${f(254 - h * 0.25)}H${f(lx + w)}V336Z`;
-    for (let k = 0; k < 3; k++) if (r() < 0.6) lw += `M${f(lx + 3 + r() * (w - 6))} ${f(270 + r() * 56)}h1.4v1.6h-1.4z`;
+    low += `M${f(lx)} 336V${f(256 - h * 0.25)}H${f(lx + w)}V336Z`;
+    for (let k = 0; k < 4; k++) if (r() < 0.6) lw += `M${f(lx + 3 + r() * (w - 6))} ${f(262 + r() * 64)}h1.4v1.6h-1.4z`;
     lx += w + 1;
   }
-  const html = P(b, 'cbfar2') + P(a, 'cbfar') + P(low, 'cblow') + P(lw, 'cbwin3') + `<g class="delgap">${P(gap, 'cbfar')}</g>` + P(w1, 'cbwin') + P(w2, 'cbwin2') + P(w3, 'cbwin3');
-  return { html, fx };
+  const mid = `<rect x="0" y="200" width="600" height="70" fill="url(#HZ)"/>` + P(low, 'cblow') + P(lw, 'cbwin3');
+  return { far, mid, fx };
 }
 
 function stars(): string {
@@ -55,20 +86,82 @@ function stars(): string {
   let d = '', d2 = '';
   for (let i = 0; i < 70; i++) d += `M${f(r() * 600)} ${f(r() * 170)}h.9v.9h-.9z`;
   for (let i = 0; i < 26; i++) d2 += `M${f(250 + r() * 110)} ${f(60 + r() * 150)}h.9v.9h-.9z`;
-  return `<g class="stdy">${P(d, 'star2')}${C(486, 54, 9, 'warm', 'opacity=".85"')}</g><g class="delstars">${P(d2, 'star2')}</g>`;
+  // the city's glow on the cloud base, and two searchlights from the far towers
+  return `<rect x="0" y="0" width="600" height="262" fill="url(#CG)" class="nosteady"/>` +
+    P('M150 250L96 0H118ZM470 250L520 0H536Z', 'beam nosteady') +
+    `<g class="stdy">${P(d, 'star2')}${C(486, 54, 9, 'warm', 'opacity=".85"')}</g><g class="delstars">${P(d2, 'star2')}</g>`;
+}
+
+/** The viaduct of the elevated railway, behind the towers and in front of the low city. */
+function viaduct(): string {
+  let piers = '';
+  for (const x of [282, 352, 426, 500, 574]) piers += `M${x - 2.5} 268V336h5V268Z`;
+  return P(piers, 'pier') + R(-4, 262, 608, 6, 'deck') + P('M-4 262H604', 'nt nc', 'opacity=".55"') + P('M-4 268.5H604', 'k');
+}
+
+/** The old block: brick-dark buildings with fire escapes, tanks and signs; dark window frames for the vignettes. */
+function oldBlock(): string {
+  const r = rng(hash('cb-old'));
+  let body = '', shade = '', ledge = '', dark = '', cold = '', esc = '', tank = '', frames = '';
+  const vig = new Set(VIG.map((v) => `${v.x},${v.y}`));
+  for (const b of OLD) {
+    body += `M${b.x0} ${STREET}V${b.top}H${b.x1}V${STREET}Z`;
+    shade += `M${b.x1 - 4} ${b.top}h4V${STREET}h-4Z`;
+    ledge += `M${b.x0 - 1} ${b.top}h${b.x1 - b.x0 + 2}v3h${-(b.x1 - b.x0 + 2)}Z`;
+    const cx = (b.x0 + b.x1) / 2;
+    SY.forEach((y) => {
+      if (y - VH < b.top + 4) return;
+      if (vig.has(`${cx},${y}`)) {
+        frames += `M${cx - VW / 2} ${y - VH}h${VW}v${VH}h${-VW}Z`;
+        return;
+      }
+      const ww = b.x1 - b.x0 < 40 ? 10 : 13;
+      for (const dx of b.x1 - b.x0 < 40 ? [0] : [-12, 12]) {
+        const wx = cx + dx - ww / 2;
+        dark += `M${f(wx)} ${y - 20}h${ww}v20h${-ww}Z`;
+        if (r() < 0.3) cold += `M${f(wx + 1)} ${y - 8}h${ww - 2}v7h${-(ww - 2)}Z`;
+      }
+    });
+    if (b.top < 230) tank += `M${b.x0 + 8} ${b.top}v-8h12v8ZM${b.x0 + 14} ${b.top - 8}v-6`;
+  }
+  // fire escape down the side of the second building
+  for (const y of [269, 237 + 32]) esc += `M60 ${y}h22M60 ${y - 1}l22 -30`;
+  esc += 'M60 301h22M60 300l22 -30M60 241V301';
+  const signs = // vertical HOTEL OKARI, roof letters, 24H
+    `<g transform="rotate(-90 64 262)">${sign(64, 266, 'HOTEL', 11, 'nm')}</g>` + neon('M53 230h8v64h-8z', 'nm') +
+    sign(142, 199, 'OKARI', 14, 'nc') + P('M118 201h48M124 201v4M160 201v4', 'k') +
+    `<g transform="rotate(-90 236 270)">${sign(236, 273, 'VELLO', 9, 'na')}</g>` + neon('M228 248h8v44h-8z', 'na') +
+    sign(248, 266, '24H', 7, 'ng');
+  // reflections of those signs on the wet street
+  const refl = R(53, 338, 8, 30, 'rfl nm', 'opacity=".22"') + R(54.5, 340, 5, 18, 'rfl nm', 'opacity=".2"') + R(120, 336, 44, 4, 'rfl nc', 'opacity=".14"') +
+    R(228, 338, 8, 22, 'rfl na', 'opacity=".2"');
+  // emergency lighting (seen when the city is failing)
+  const emg = `<g class="emg">${R(6, 210, 4, 2.4, 'emr') + R(118, 210, 4, 2.4, 'emr') + R(180, 242, 4, 2.4, 'emr') + R(380, 324, 4, 2.4, 'emr') +
+    R(520, 324, 4, 2.4, 'emr') + `<ellipse cx="120" cy="352" rx="70" ry="10" class="emp"/><ellipse cx="470" cy="350" rx="80" ry="9" class="emp"/>`}</g>`;
+  return P(body, 'oldb') + P(shade, 'oldb2') + P(ledge, 'oldl') + P(dark, 'oldw') + P(cold, 'cold', 'opacity=".55"') +
+    P(frames, 'oldw') + P(frames.replace(/h40v24h-40Z/g, 'h40'), 'k') + P(tank, 'mt') + P(esc, 'k') + signs + refl + emg;
 }
 
 function street(): string {
   const r = rng(hash('cb-street'));
   let refl = '';
   const cols = ['nm', 'nc', 'na', 'nv'];
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 26; i++) {
     const x = r() * 600, w = 2 + r() * 8, c = cols[Math.floor(r() * 4)];
-    refl += R(x, STREET + 4 + r() * 6, w, 10 + r() * 20, `rfl ${c}`, `opacity="${(0.05 + r() * 0.1).toFixed(2)}"`);
+    refl += R(x, STREET + 6 + r() * 10, w, 10 + r() * 22, `rfl ${c}`, `opacity="${(0.05 + r() * 0.1).toFixed(2)}"`);
   }
-  return R(0, STREET, 600, 400 - STREET, 'wet') + L(0, STREET, 600, STREET, 'k') + refl +
-    P(`M0 ${STREET + 22}H600`, 'nt nc', 'opacity=".12" stroke-dasharray="10 14"') +
-    pipework();
+  // puddles mirroring the sky glow, lamp posts with cyan pools
+  let pud = '', lamps = '', pools = '';
+  for (let i = 0; i < 7; i++) { const x = 20 + r() * 560, y = 352 + r() * 16; pud += `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(10 + r() * 16)}" ry="${f(1.6 + r() * 1.4)}" class="pud"/>`; }
+  for (const x of [276, 360, 452, 548]) { lamps += `M${x} ${STREET + 2}V${STREET - 30}h6`; pools += `<ellipse cx="${x + 6}" cy="${STREET + 10}" rx="16" ry="4" class="lpool"/>` + R(x + 4, STREET - 31, 5, 1.6, 'cyl'); }
+  return R(0, STREET, 600, 400 - STREET, 'wet') + `<rect x="0" y="${STREET}" width="600" height="40" fill="url(#WG)"/>` + refl + pud;
+}
+
+function kerb(): string {
+  let lamps = '', pools = '';
+  for (const x of [276, 360, 452, 548]) { lamps += `M${x} ${STREET + 2}V${STREET - 30}h6`; pools += `<ellipse cx="${x + 6}" cy="${STREET + 12}" rx="18" ry="4" class="lpool"/>` + R(x + 4, STREET - 31, 5, 1.6, 'cyl'); }
+  return L(0, STREET, 600, STREET, 'k') + P(`M0 ${STREET + 14}H600`, 'k', 'opacity=".5"') + P(`M0 ${STREET + 26}H600`, 'nt nc', 'opacity=".12" stroke-dasharray="10 14"') +
+    pools + P(lamps, 'k K') + pipework();
 }
 
 /** Pipework undergrowth: irregular runs, risers and elbows, scaled up from the street by maintenance debt. */
@@ -94,13 +187,15 @@ export const code: Layout = {
 
   backdrop(c) {
     const sk = skyline();
-    const pipesUrl = c.u('pipes');
+    const u = (h: string) => h.replace(/url\(#HZ\)/g, c.u('cbhz')).replace(/url\(#CG\)/g, c.u('cbcg')).replace(/url\(#WG\)/g, c.u('cbwg'));
     return {
-      sky: stars(),
-      far: sk.html,
-      near: street().replace('url(#PIPES)', pipesUrl),
+      sky: u(stars()),
+      far: u(sk.far),
+      mid: u(sk.mid + street() + viaduct()),
+      near: u(oldBlock() + kerb()),
       cut: R(0, 372, 600, 28, 'wet') + P('M0 380H600M0 388H600M0 394H600', 'pipe', 'opacity=".55"') + P('M0 384H600', 'nt nc', 'opacity=".25"'),
-      fx: sk.fx,
+      fx: [...sk.fx,
+        { kind: 'steam', x: 250, y: 352, size: 1.7, band: 'near' }, { kind: 'steam', x: 418, y: 360, size: 1.9, band: 'near' }, { kind: 'steam', x: 560, y: 350, size: 1.5, band: 'near' }],
     };
   },
 
@@ -113,9 +208,20 @@ export const code: Layout = {
         { p: 'ctower', x: 160, y: 296, v: 0.66, w: 28 }, { p: 'ctower', x: 300, y: 292, v: 0.21, w: 26 }, { p: 'ctower', x: 80, y: 294, v: 0.93, w: 30 },
         { p: 'ctower', x: 604, y: 302, v: 0.05, w: 44 }, { p: 'ctower', x: 230, y: 288, v: 0.49, w: 24 }, { p: 'ctower', x: 368, y: 288, v: 0.37, w: 24 },
         { p: 'ctower', x: 4, y: 290, v: 0.27, w: 30 }, { p: 'ctower', x: 496, y: 290, v: 0.61, w: 28 },
-      ].map((s) => ({ ...s, s: 1, band: 'mid' as const })),
+      ].map((s) => ({ ...s, s: 1, h: STREET + 2 - s.y, band: 'mid' as const })),
     },
-    { key: 'attention', driver: 'reserve', overlayOf: 'city', overlayProp: 'ctowerWarm', curve: 1, slots: [] },
+    // Human attention: six warm rooms in the old block, going dark one by one; the first is the last left on.
+    { key: 'attention', driver: 'reserve', fade: true, curve: 0.9, slots: VIG },
+    // Life that is always there: the elevated train and people in the rain.
+    {
+      key: 'life', driver: 'always', slots: [],
+      movers: [
+        { p: 'elTrain', x0: -70, y0: 262, x1: 680, y1: 262, dur: 16, n: 1, s: 1, band: 'mid', z: 270 },
+        { p: 'elTrain', x0: 680, y0: 262, x1: -70, y1: 262, dur: 19, n: 1, s: 0.98, band: 'mid', z: 270 },
+        { p: 'walker', x0: -12, y0: 346, x1: 612, y1: 346, dur: 70, n: 3, s: 1.1, band: 'near' },
+        { p: 'walker', x0: 612, y0: 352, x1: -12, y1: 352, dur: 62, n: 3, s: 1.2, band: 'near' },
+      ],
+    },
     {
       key: 'bots', match: ['chatbot'], overlayOf: 'city', overlayProp: 'ctowerCold', curve: 0.8,
       anchor: { p: 'hoarding', x: 340, y: 236, s: 1.05, band: 'near' },
@@ -133,7 +239,7 @@ export const code: Layout = {
       anchor: { p: 'kiosk', x: 268, y: STREET + 2, s: 1.15, v: 0.15, band: 'near' },
       slots: weave(
         scatter('kiosk', [150, STREET - 2, 300, 8], 8, 'cb-kiosks', { from: [268, STREET], gap: [18, 4], band: 'near' }),
-        scatter('blade', [90, 200, 300, 90], 12, 'cb-blades', { from: [270, 260], gap: [22, 10], band: 'near' }),
+        scatter('blade', [262, 214, 130, 80], 10, 'cb-blades', { from: [290, 260], gap: [20, 10], band: 'near' }),
       ),
       hit: [226, 290, 90, 50],
     },
@@ -169,6 +275,7 @@ export const code: Layout = {
       movers: [
         { p: 'skycar', x0: -30, y0: 150, x1: 630, y1: 146, dur: 11, n: 3, s: 1, band: 'far' },
         { p: 'skycar', x0: 630, y0: 176, x1: -30, y1: 180, dur: 13, n: 3, s: 0.9, from: 0.3, band: 'far' },
+        { p: 'skycar', x0: -30, y0: 222, x1: 630, y1: 218, dur: 8, n: 2, s: 1.25, from: 0.2, band: 'mid', z: 226 },
       ],
     },
   ],

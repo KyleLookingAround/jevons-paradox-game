@@ -11,6 +11,7 @@ const BASE = `
   border:1px solid var(--s-frame);contain:layout paint;-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .scn-world,.scn-l,.scn-sky,.scn-hz,.scn-fog,.scn-places,.scn-glow,.scn-extra{position:absolute;inset:0;width:100%;height:100%}
 .scn-extra,.scn-plate,.scn-noise{pointer-events:none}
+.scn-bw{position:absolute;inset:0;width:100%;height:100%}
 .scn-noise{opacity:0}
 .scn-extra{overflow:hidden}
 .scn-legend{margin:2px 0 4px;text-align:center;font:italic 13px/1.3 var(--f-serif,Georgia,serif);letter-spacing:.06em;color:var(--muted,#6f5f4a);font-variant:small-caps}
@@ -74,6 +75,9 @@ const BASE = `
 .scn .sl0.on{display:inline}
 .scn .gr{transform-box:fill-box;transform-origin:50% 100%}
 .scn.live .sl0.on>.gr{animation:scn-rise .9s cubic-bezier(.2,.9,.3,1.15) both}
+.scn .sl0.fd{display:inline;opacity:0;transition:opacity 2.2s cubic-bezier(.6,0,.9,.4)}
+.scn .sl0.fd.on{opacity:1;transition:opacity .8s ease-out}
+.scn.live .sl0.fd.on>.gr{animation:none}
 @keyframes scn-rise{from{transform:scaleY(.05);opacity:0}to{transform:none;opacity:1}}
 .scn .ghost{display:none;opacity:.22}
 .scn .ghost.on{display:inline}
