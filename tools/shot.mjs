@@ -828,9 +828,13 @@ async function realFlow(url) {
       for (let round = 0; round < 25 && !(await st()).flags.revealed; round++) {
         await rich(1e6); await page.waitForTimeout(1100);
         const b = page.locator('.up .buy:not([aria-disabled="true"]):visible');
-        for (let i = 0; i < 4 && (await b.count()); i++) { await b.first().click().catch(() => {}); await page.waitForTimeout(150); }
+        for (let i = 0; i < 4 && (await b.count()); i++) {
+          await b.first().click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(150);
+          // One arm of a fork asks first: take it (an open sheet would otherwise swallow every later click).
+          if (await page.locator('.layer:not([hidden]) button:has-text("Take it")').count()) { await page.click('.layer:not([hidden]) button:has-text("Take it")'); await page.waitForTimeout(150); }
+        }
         const pl = page.locator('.scn-place.avail').first();
-        if (await pl.count()) { await pl.click().catch(() => {}); await page.locator('.scn-found:not([aria-disabled="true"]):visible').click({ timeout: 500 }).catch(() => {}); }
+        if (await pl.count()) { await pl.click({ timeout: 3000 }).catch(() => {}); await page.locator('.scn-found:not([aria-disabled="true"]):visible').click({ timeout: 500 }).catch(() => {}); }
       }
       if (!(await st()).flags.revealed) throw new Error('never revealed');
       await page.waitForTimeout(1200);
@@ -975,7 +979,7 @@ async function first() {
       const fs = await firstScreen(page);
       if (sz.tag !== 'desk' && !(fs.sell && fs.scene && fs.chip)) fail(`FIRST SCREEN ${id}/${sz.tag}: sell ${fs.sell} scene ${fs.scene} chip ${fs.chip}`);
       await page.screenshot({ path: `${out}/first-${id}-${sz.tag}.png` });
-      console.log(`first ${id} (${look}) ${sz.tag}: cockpit ${fs.cockpit}px of ${sz.h}, sell ${fs.sell}, scene ${fs.scene}, chip ${fs.chip}${cut.length ? `, cut off ${cut.length}` : ''}`);
+      console.log(`first ${id} (${look}) ${sz.tag}: cockpit ${fs.cockpit}px of ${sz.h}, sell ${fs.sell}, scene ${sz.tag === 'desk' ? 'n/a (beside)' : fs.scene}, chip ${fs.chip}${cut.length ? `, cut off ${cut.length}` : ''}`);
     }
     if (errs.length) fail(`first/${sz.tag}: ${errs.slice(0, 3).join(' | ')}`);
     await ctx.close();
