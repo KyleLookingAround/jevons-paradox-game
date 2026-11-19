@@ -1,6 +1,7 @@
 // Runs the measurement harness in headless Chromium.
-//   bun build is done first (bun run src/ui/audio/bench/build.ts), then: node src/ui/audio/bench/run.mjs <script.json|inline>
-// Usage: node src/ui/audio/bench/run.mjs '<js expression using bench, returning JSON>' [out.json]
+//   bun run tools/audio-bench.ts            (builds dist/audio-bench.html)
+//   node tools/audio-run.cjs '<async JS body using `bench`, returning JSON>' [out.json]
+//   e.g. node tools/audio-run.cjs "$(sed s/SECTOR/steam/ tools/audio-industry.js)" steam.json && python3 tools/audio-summ.py steam.json
 // PNG data URLs in the result (keys named png) are written to shots/audio/<name>.png when the result has `pngName`.
 const { chromium } = require('playwright');
 const fs = require('node:fs');

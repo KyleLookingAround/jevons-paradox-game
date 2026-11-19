@@ -141,7 +141,7 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
     // rebound sheet says only that something is unaccounted for, and the consumption sheet leaves the shadow out.
     const revealed = !!ctx.state.flags?.revealed;
     if (!revealed && kind === 'rebound') {
-      b.append(h('p', { class: 'f-note', text: 'The engineers promised a saving; the coal merchants report otherwise. Nobody has yet put a figure on the difference. Perhaps someone should write a pamphlet.' }));
+      b.append(h('p', { class: 'f-note', text: 'The engineers promised a saving; the coal merchants report otherwise. Nobody has yet put a figure on the difference.' }));
       return;
     }
     if (!revealed && kind === 'cons') {
@@ -242,7 +242,7 @@ export function buildShop(ctx: Ctx, host: HTMLElement): () => void {
   host.append(h('p', { class: 'shop-bal' }, h('span', { class: 'muted', text: 'Hindsight to spend ' }), bal), ro);
   const items: (() => void)[] = [];
   const kh = h('section', { class: 'shop-col kh' }, h('h3', { text: 'Know-how' }), h('p', { class: 'shop-k', text: 'The obvious buy. Runs start faster, and reach the wall sooner.' }));
-  const inst = h('section', { class: 'shop-col inst' }, h('h3', { text: 'Institutions' }), h('p', { class: 'shop-k', text: 'The slow buy. Only seated institutions act.' }));
+  const inst = h('section', { class: 'shop-col inst' }, h('h3', { text: 'Institutions' }), h('p', { class: 'shop-k', text: 'The slow buy. Only seated Institutions act.' }));
 
   const khView = (id: string): KnowhowView | undefined => (ctx.khs || []).find((v) => v.def.id === id);
   const inView = (id: string): InstitutionView | undefined => (ctx.insts || []).find((v) => v.def.id === id);
@@ -475,7 +475,7 @@ export function pendingSheet(ctx: Ctx, sheets: Sheets, onFaced: () => void): voi
   sheets.open('pending', (b) => {
     const yr = Math.floor(num(ctx.d?.year, 1780));
     const stand = p.cause === 'exhausted'
-      ? `The last of the ${lower(def?.resource.name ?? 'reserve')} was got up in ${yr}, after ${dur(ctx.state.time)} of improvement. Every engine in the country is more efficient than it has ever been.`
+      ? `The last of the ${lower(def?.resource.name ?? 'reserve')} went in ${yr}, after ${dur(ctx.state.time)} of improvement. Everything that used it is more efficient than it has ever been.`
       : `${def?.pressure.crisisName ?? 'The crisis'}, and this time it does not lift. ${yr}, after ${dur(ctx.state.time)} of improvement.`;
     const tl = termsLedger(ctx, () => ctx.d?.hindsightTerms);
     b.append(
@@ -517,7 +517,7 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
                 h('span', { class: 'acct-bar' }, h('span', { style: `width:${w(r.etaFold)}` })), h('span', { class: 'acct-v num', text: fold(r.etaFold) })),
               h('div', { class: 'acct-row use' }, h('span', { class: 'acct-l', text: `Peak ${res} use` }),
                 h('span', { class: 'acct-bar' }, h('span', { style: `width:${w(r.peakRFold)}` })), h('span', { class: 'acct-v num', text: fold(r.peakRFold) })),
-              h('p', { class: 'acct-tot num', text: [`${fmt(r.resourceUsed)} ${def?.resource.unit ?? ''} burned in all`, ...extra].join(' · ') }));
+              h('p', { class: 'acct-tot num', text: [`${fmt(r.resourceUsed)} ${def?.resource.unit ?? ''} used in all`, ...extra].join(' · ') }));
           })),
           ...(lr.hindsightTerms ? [h('h3', { class: 'paper-sub', text: 'Where the Hindsight came from' }), tl.el] : []),
           h('p', { class: 'paper-h big' }, h('span', { class: 'muted', text: 'Hindsight gained ' }), h('b', { class: 'num', text: fmt(num(lr.hindsightGained)) }))));
@@ -666,7 +666,7 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
     const howQuote = h('p', { class: 'muted', text: 'W. S. Jevons, 1865: “It is wholly a confusion of ideas to suppose that the economical use of fuel is equivalent to a diminished consumption.”' });
     b.append(h('section', { class: 'm-sec how' }, h('h3', { text: 'How it works' }),
       h('div', { class: 'formula' }, h('div', { class: 'f-line', text: 'R = D(pₛ) ÷ η' }), h('div', { class: 'f-line', text: 'pₛ = pᵣ ÷ η + c (+ any levy)' })),
-      h('p', { text: 'R is resource burned, D demand for the service, η efficiency, pₛ the price of the service, pᵣ the price of the resource, c everything else. Each Industry runs on its own pair of these; an Age is the stretch of the calendar they belong to.' }),
+      h('p', { text: 'R is resource burned, D demand for the service, η efficiency, pₛ the price of the service, pᵣ the price of the resource, c the cost of everything else (capital, labour). Each Industry has its own service, resource and prices; an Age is the stretch of the calendar it belongs to.' }),
       howBudget, howQuote));
 
     // Save

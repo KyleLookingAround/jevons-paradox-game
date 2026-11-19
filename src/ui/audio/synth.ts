@@ -106,6 +106,17 @@ function blep(t: number, dt: number): number {
 /** A band-limited oscillator; `f` (Hz) may be a function of the sample index. */
 export function osc(n: number, f: number | ((i: number) => number), wave: Wave = 'sine', phase = 0, sr = BUF_SR): Float32Array {
   const x = new Float32Array(n);
+  if (wave === 'sine' && typeof f === 'number') {
+    // Constant-frequency sine: a rotating phasor (no Math.sin per sample).
+    const w = (TAU * f) / sr, cw = Math.cos(w), sw = Math.sin(w);
+    let c = Math.cos(TAU * phase), s = Math.sin(TAU * phase);
+    for (let i = 0; i < n; i++) {
+      x[i] = s;
+      const c2 = c * cw - s * sw; s = s * cw + c * sw; c = c2;
+      if ((i & 4095) === 4095) { const m = 1 / Math.hypot(c, s); c *= m; s *= m; }
+    }
+    return x;
+  }
   let p = phase;
   let tri = 0;
   const fn = typeof f === 'function' ? f : null;

@@ -222,7 +222,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       const first = sectorIds(ctx.content)[0];
       const y = ageOfSector(ctx.content, first)?.yearSpan?.[0] ?? 1780;
       setText(onboard, again
-        ? `Lancashire, ${y}, again. The pit is flooded. You know more this time.`
+        ? `Lancashire, ${y}, again. The pit is flooded, and you have read the minutes.`
         : `Lancashire, ${y}. You have one atmospheric engine and a flooded pit.`);
       show(onboard, onboardState === 'show');
     } else if (onboardState === 'show' && !fresh) {

@@ -1,4 +1,5 @@
-// bun run src/ui/audio/bench/build.ts → dist/audio-bench.html (the measurement page; not shipped).
+// bun run tools/audio-bench.ts → dist/audio-bench.html: the soundscape measurement page (src/ui/audio/bench/page.ts),
+// driven in headless Chromium by tools/audio-run.cjs. Not shipped.
 import { writeFileSync, mkdirSync } from 'node:fs';
 const r = await Bun.build({ entrypoints: ['src/ui/audio/bench/page.ts'], minify: false, target: 'browser', format: 'iife' });
 if (!r.success) { for (const l of r.logs) console.error(l); process.exit(1); }

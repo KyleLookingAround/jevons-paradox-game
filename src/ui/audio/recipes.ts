@@ -108,7 +108,7 @@ function gesture(p: Palette, rng: Rng, v: number): Float32Array {
     case 'terminal': // a short blip
       return envAD(svf(osc(sec(0.05), 1200 + 120 * v, 'square'), 'lp', 2400, 0.7), 0.001, 0.035);
     case 'neon': // a soft glass tap
-      return modal(sec(0.15), 1700 + 140 * v, [[1, 1, 0.12], [2.7, 0.35, 0.06], [5.1, 0.12, 0.03]], SR, rng);
+      return modal(sec(0.15), 1700 + 140 * v, [[1, 1, 0.12], [2.7, 0.3, 0.06], [3.9, 0.08, 0.03]], SR, rng);
   }
 }
 
@@ -293,8 +293,9 @@ const W: Record<string, Recipe> = {
   // Steam's engines, one per machine stage
   newcomen: ({ rng }) => { // a slow thump, then the wheeze of the cylinder filling
     const x = buf(3.4);
-    add(x, thump(rng, 48, 0.9, 0.6), 0, 1);
-    add(x, knock(rng, 170, 0.25), sec(0.05), 0.25);
+    add(x, thump(rng, 82, 0.7, 0.6), 0, 0.7);
+    add(x, knock(rng, 240, 0.3), sec(0.03), 0.7);
+    add(x, knock(rng, 410, 0.15), sec(0.035), 0.3);
     const wz = noiseBurst(rng, 'bp', (i) => 380 + 450 * Math.sin(Math.PI * Math.min(1, i / sec(1.3))), 1.6, 0.4, 1.0, 1.6, 'p');
     add(x, wz, sec(1.0), 0.5);
     add(x, knock(rng, 140, 0.3), sec(2.6), 0.2);
@@ -302,13 +303,14 @@ const W: Record<string, Recipe> = {
   },
   watt: ({ rng }) => {
     const x = buf(1.3);
-    add(x, thump(rng, 68, 0.5, 0.4), 0, 0.8);
+    add(x, thump(rng, 98, 0.4, 0.5), 0, 0.6);
+    add(x, knock(rng, 300, 0.12), sec(0.01), 0.6);
     add(x, knock(rng, 1150, 0.05, true), sec(0.22), 0.12);
     add(x, noiseBurst(rng, 'bp', 1300, 1.1, 0.02, 0.35, 0.5, 'p'), sec(0.3), 0.35);
     return x;
   },
-  chuff: ({ rng, v }) => add(noiseBurst(rng, 'bp', 800 + 120 * v, 1.0, 0.006, 0.2, 0.3, 'p'), thump(rng, 85, 0.18, 0.2), 0, 0.5),
-  chuffFar: ({ rng, v }) => svf(add(noiseBurst(rng, 'bp', 650 + 80 * v, 1.0, 0.01, 0.25, 0.35, 'p'), thump(rng, 70, 0.2, 0.2), 0, 0.4), 'lp', 900, 0.7),
+  chuff: ({ rng, v }) => add(noiseBurst(rng, 'bp', 800 + 120 * v, 1.0, 0.006, 0.2, 0.3, 'p'), thump(rng, 120, 0.15, 0.2), 0, 0.3),
+  chuffFar: ({ rng, v }) => svf(add(noiseBurst(rng, 'bp', 650 + 80 * v, 1.0, 0.01, 0.25, 0.35, 'p'), thump(rng, 130, 0.15, 0.2), 0, 0.25), 'lp', 1100, 0.7),
   loom: ({ rng, v }) => add(knock(rng, 520 + 90 * v, 0.06), noiseBurst(rng, 'lp', 2600, 0.7, 0.001, 0.015), 0, 0.25),
   winder: ({ rng, key }) => { // pithead bell, then the drum runs up, holds and runs down
     const x = buf(9.5);
@@ -327,7 +329,7 @@ const W: Record<string, Recipe> = {
   },
   trainPass: ({ rng, key }) => { // rumble, chuffs, bogie clacks, a whistle in key
     const d = 10, n = sec(d);
-    const x = svf(brown(n, rng), 'lp', 380, 0.7);
+    const x = svf(brown(n, rng), 'bp', 300, 0.6);
     for (let i = 0; i < n; i++) x[i] *= 0.7 * gauss(i / SR, 5, 2.0);
     for (let t = 1; t < 9; t += 0.27) add(x, chuffAt(rng, t), sec(t), 0.5 * gauss(t, 5, 2.0));
     for (let t = 3.2; t < 7; t += 0.62) { add(x, knock(rng, 320, 0.05, true), sec(t), 0.3 * gauss(t, 5, 1.2)); add(x, knock(rng, 300, 0.05, true), sec(t + 0.09), 0.25 * gauss(t, 5, 1.2)); }
@@ -343,8 +345,8 @@ const W: Record<string, Recipe> = {
     const n = sec(4.2);
     const x = new Float32Array(n);
     for (const [dgr, g] of [[0, 1], [4, 0.7]] as [number, number][]) add(x, osc(n, (i) => freq(key, dgr, 1) * (1 + 0.004 * Math.sin(i / 2000)), 'saw', rng()), 0, g);
-    add(x, osc(n, freq(key, 0, 0), 'sine'), 0, 0.6);
-    svf(x, 'lp', 650, 0.8);
+    add(x, osc(n, freq(key, 0, 0), 'sine'), 0, 0.2);
+    svf(x, 'lp', 700, 0.8);
     return envPts(x, [[0, 0], [0.35, 1], [3.0, 0.9], [4.2, 0]]);
   },
   churchBell: ({ rng, key }) => bell(rng, freq(key, 0, 2), 4.5, 0.8),
@@ -359,7 +361,7 @@ const W: Record<string, Recipe> = {
   },
   tramPass: ({ rng, key }) => {
     const d = 7, n = sec(d);
-    const x = svf(brown(n, rng), 'lp', 520, 0.7);
+    const x = svf(brown(n, rng), 'bp', 380, 0.6);
     for (let i = 0; i < n; i++) x[i] *= 0.6 * gauss(i / SR, 3.6, 1.5);
     const motor = osc(n, (i) => 95 * doppler(i / SR, 3.6, 1, 0.04) * (0.8 + 0.2 * Math.min(1, i / sec(2))), 'saw');
     svf(motor, 'lp', 700, 0.8);
@@ -383,7 +385,7 @@ const W: Record<string, Recipe> = {
   },
   cabPass: ({ rng }) => { // hooves and iron tyres
     const d = 6, n = sec(d);
-    const x = svf(brown(n, rng), 'lp', 600, 0.7);
+    const x = svf(brown(n, rng), 'bp', 420, 0.6);
     for (let i = 0; i < n; i++) x[i] *= 0.35 * gauss(i / SR, 3, 1.3);
     for (let t = 0.4; t < 5.6; t += 0.36) {
       const g = gauss(t, 3, 1.3);
@@ -456,7 +458,7 @@ const W: Record<string, Recipe> = {
   // Compute
   tick: ({ rng, v }) => add(modal(sec(0.03), 1500 + 260 * v, [[1, 1, 0.018], [1.6, 0.5, 0.01], [2.3, 0.25, 0.006]], SR, rng), noiseBurst(rng, 'bp', 2000, 1.5, 0.0005, 0.004), 0, 0.2),
   beep: ({ rng, key, v }) => { const x = buf(0.3); add(x, note('terminal', rng, freq(key, 0, 3), 0.1), 0, 1); if (v % 2) add(x, note('terminal', rng, freq(key, 4, 3), 0.1), sec(0.11), 0.8); return x; },
-  throb: ({ rng, key }) => { const x = osc(sec(0.6), freq(key, 0, 1), 'sine'); add(x, osc(sec(0.6), freq(key, 0, 2), 'sine'), 0, 0.3); envAD(x, 0.04, 0.5); return add(x, noiseBurst(rng, 'lp', 220, 0.7, 0.03, 0.3, 0.5, 'b'), 0, 0.3); },
+  throb: ({ rng, key }) => { const x = osc(sec(0.6), freq(key, 0, 1), 'sine'); add(x, osc(sec(0.6), freq(key, 0, 2), 'sine'), 0, 0.6); envAD(x, 0.04, 0.5); return add(x, noiseBurst(rng, 'lp', 220, 0.7, 0.03, 0.3, 0.5, 'b'), 0, 0.3); },
   alarm: ({ rng, key }) => { const x = buf(2.2); for (let i = 0; i < 9; i++) if (i % 3 !== 2) add(x, note('terminal', rng, freq(key, 7, 2), 0.14), sec(0.22 * i), 0.6); return x; },
   whoosh: ({ rng }) => noiseBurst(rng, 'bp', (i) => 400 + 1000 * (i / sec(2)), 1.2, 0.8, 1.2, 2.2, 'p'),
   cricket: ({ rng }) => { const x = buf(1.2); for (let k = 0; k < 3; k++) { const y = osc(sec(0.18), 3500 + 200 * rng(), 'sine'); for (let i = 0; i < y.length; i++) y[i] *= Math.max(0, Math.sin((2 * Math.PI * 30 * i) / SR)); envAD(y, 0.01, 0.17); add(x, y, sec(0.35 * k), 0.6); } return x; },
@@ -465,7 +467,7 @@ const W: Record<string, Recipe> = {
   drip: ({ rng, v }) => { const f = 1100 + 260 * v + 200 * rng(); const n = sec(0.12); const x = osc(n, (i) => f * (1 + Math.min(1, i / sec(0.012))), 'sine', 0); return envAD(x, 0.001, 0.07); },
   elevated: ({ rng }) => {
     const d = 9, n = sec(d);
-    const x = svf(brown(n, rng), 'lp', 300, 0.7);
+    const x = svf(brown(n, rng), 'bp', 280, 0.6);
     for (let i = 0; i < n; i++) x[i] *= 0.8 * gauss(i / SR, 4.5, 1.8);
     for (let t = 2; t < 7; t += 0.5) { add(x, knock(rng, 260, 0.06, true), sec(t), 0.3 * gauss(t, 4.5, 1.2)); add(x, knock(rng, 240, 0.06, true), sec(t + 0.1), 0.25 * gauss(t, 4.5, 1.2)); }
     const sq = osc(n, 1750, 'sine');

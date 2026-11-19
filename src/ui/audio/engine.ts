@@ -20,6 +20,7 @@ const MAX_UI_VOICES = 6;
 const MAX_SELL_VOICES = 3;
 const XFADE_TC = 0.7;            // crossfade time constant between Industries (≈ 2.1 s to 95%)
 const SYNTH_BUDGET_MS = 6;       // most JS synthesis per tick (later hits wait for the next tick)
+const BANK_CAP = 2_400_000;      // cached samples (24 kHz mono, ≈ 9.6 MB) before least-recently-used recipes are dropped
 
 type Ctx = BaseAudioContext;
 
@@ -88,7 +89,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let master: GainNode | null = null, duck: GainNode | null = null, worldBus: GainNode | null = null, uiBus: GainNode | null = null;
   let revIn: GainNode | null = null, revLp: BiquadFilterNode | null = null;
   let canPan = false;
+  let meter: AnalyserNode | null = null, meterBuf: Float32Array<ArrayBuffer> | null = null;
   const bank = new Map<string, AudioBuffer>();
+  const used = new Map<string, number>();
   const noiseBufs = new Map<string, AudioBuffer>();
   let bankSamples = 0;
   let graphs: Graph[] = [];
@@ -105,6 +108,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let updateMs = 0, tickMs = 0, synthSpent = 0;
   const last = new Map<AudioParam, number>();
   let mq: MediaQueryList | null = null;
+  const warm: [string, Key, number][] = [];   // recipes to synthesise ahead of need, one per idle tick
 
   const now = (): number => (opts.clock ? opts.clock() : ctx ? ctx.currentTime : 0);
   const perf = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -158,6 +162,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     worldBus = c.createGain(); worldBus.gain.value = vol.world ** 2;
     uiBus = c.createGain(); uiBus.gain.value = vol.interface ** 2;
     worldBus.connect(duck); duck.connect(master); uiBus.connect(master); master.connect(lim); lim.connect(c.destination);
+    if (opts.meter) { meter = c.createAnalyser(); meter.fftSize = 2048; meterBuf = new Float32Array(meter.fftSize); lim.connect(meter); }
     // One shared room: a generated impulse (darkening noise tail), returned through a low-pass that follows the air.
     revIn = c.createGain(); revIn.gain.value = 1;
     const conv = c.createConvolver();
@@ -293,6 +298,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function recipe(name: string, key: Key, v: number, force = false): AudioBuffer | null {
     const id = `${name}|${key.root.toFixed(2)}${key.mode}|${v}`;
     let b = bank.get(id);
+    used.set(id, now());
     if (b) return b;
     if (!force && synthSpent > SYNTH_BUDGET_MS) return null;
     const t0 = perf();
@@ -328,6 +334,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       const rt = buildLayer(g, l, def.key, air, send, sector);
       g.layers.push(rt); g.byId.set(l.id, rt);
     }
+    queueWarm(def, sector);
     return g;
   }
 
@@ -421,7 +428,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (cur && cur.sector === sector && !cur.dieAt) return cur;
     const t = now();
     // Fade out whatever is playing.
-    for (const g of graphs) if (!g.dieAt) { g.dieAt = t + XFADE_TC * 5; last.delete(g.out.gain); ramp(g.out.gain, 0, XFADE_TC * 0.8); }
+    for (const g of graphs) if (!g.dieAt) { g.dieAt = t + XFADE_TC * 6; last.delete(g.out.gain); ramp(g.out.gain, 0, XFADE_TC * 1.2); }
     // Revive a fading graph of this sector, else build.
     let g = graphs.find((x) => x.sector === sector);
     if (g) { graphs = graphs.filter((x) => x !== g); g.dieAt = 0; }
@@ -431,7 +438,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     }
     graphs.push(g);
     last.delete(g.out.gain);
-    ramp(g.out.gain, 1, XFADE_TC);
+    ramp(g.out.gain, 1, XFADE_TC * 0.6);
     return g;
   }
 
@@ -490,14 +497,14 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       if (!tr) {
         const c = ctx!;
         const gain = c.createGain(); gain.gain.value = 0;
-        const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 650; lp.Q.value = 0.5;
+        const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.5;
         gain.connect(lp); lp.connect(g.air);
         const layers = def.trace.map((id) => def.layers.find((x) => x.id === id)).filter((x): x is LayerDef => !!x)
           .map((l) => { const rt = buildLayer(g, l, def.key, gain, g.send, `trace:${sid}`); rt.traceOf = sid; return rt; });
         tr = { gain, lp, layers };
         g.traces.set(sid, tr);
       }
-      ramp(tr.gain.gain, h * 0.35 * m.world, 1.5);
+      ramp(tr.gain.gain, h * 0.7 * m.world, 1.5);
       for (const rt of tr.layers) applyLayer(g, rt, { level: 1, density: rt.def.kind === 'hits' ? 0.6 * (m.frozen ? 0.1 : 1) : 0, pitch: m.frozen ? 0.85 : 1, tone: 1, blackout: false });
     }
     for (const [sid, tr] of g.traces) if (!(sid in m.traces)) ramp(tr.gain.gain, 0, 1.5);
@@ -548,7 +555,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const t = now();
     const horizon = t + LOOKAHEAD;
     for (const g of graphs.slice()) {
-      if (g.dieAt && t > g.dieAt) { killGraph(g, false); graphs = graphs.filter((x) => x !== g); continue; }
+      if (g.dieAt && t > g.dieAt) { killGraph(g, false); graphs = graphs.filter((x) => x !== g); trimBank(); continue; }
       // Beat clock: tempo glides towards its target, the beat advances with it.
       const dt = Math.max(0, t - g.beatAt);
       g.tempo += (g.tempoTarget - g.tempo) * (1 - Math.exp(-dt / 2));
@@ -558,7 +565,31 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, horizon);
       if (g.mix.stress > 0.01 && !g.dieAt) blackouts(g, t);
     }
+    // Prewarm: at most one recipe per tick, and only if nothing was synthesised for a hit this tick.
+    if (synthSpent === 0 && warm.length) { const [n, k, v] = warm.shift()!; recipe(n, k, v, true); }
     tickMs = perf() - t0;
+  }
+
+  /** Drop least-recently-used recipes once the cache passes BANK_CAP (a revisited Industry re-synthesises them). */
+  function trimBank(): void {
+    if (bankSamples <= BANK_CAP) return;
+    const order = [...bank.keys()].sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0));
+    for (const id of order) {
+      if (bankSamples <= BANK_CAP * 0.75) break;
+      if (now() - (used.get(id) ?? 0) < 20) continue;
+      bankSamples -= bank.get(id)!.length;
+      bank.delete(id); used.delete(id);
+    }
+  }
+
+  function queueWarm(def: SoundscapeDef, sector: string): void {
+    warm.length = 0;
+    const pal = paletteFor(sector, view?.look);
+    // Interface sounds first (a reveal must not stall on first use), the commonest first; then the world's.
+    for (const k of ['sell', 'buy', 'cannotAfford', 'found', 'headline', 'lever', 'decade', 'fork', 'crisis', 'backfire', 'reveal', 'steady', 'reckoning', 'industryOpened', 'ageBegun'] as SoundEventKind[])
+      for (let v = 0; v < (KIND_VARIANTS[k] ?? 1); v++) warm.push([`ui:${pal}:${k}`, def.key, v]);
+    for (const l of def.layers) if (l.kind === 'hits') for (let v = 0; v < (l.variants ?? 1); v++) warm.push([l.recipe, def.key, v]);
+    warm.push([def.crisis.recipe, def.key, 0], ['fogSwell', def.key, 0]);
   }
 
   function schedule(g: Graph, rt: LayerRt, t: number, horizon: number): void {
@@ -745,7 +776,14 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (const g of graphs) for (const l of allLayers(g)) beds += l.oscs.length + l.noises.length;
       const state: SoundscapeStats['state'] = unavailable ? 'unavailable' : !enabled ? 'off' : !ctx ? 'locked'
         : running() ? (reasons.size ? 'suspended' : 'running') : reasons.size ? 'suspended' : 'locked';
-      return { state, voices: live(worldEnds) + live(uiEnds), beds, graphs: graphs.length, sampleRate: ctx?.sampleRate ?? 0, updateMs, tickMs, bufferSamples: bankSamples };
+      let levelDb: number | undefined, peakDb: number | undefined;
+      if (meter && meterBuf) {
+        meter.getFloatTimeDomainData(meterBuf);
+        let s2 = 0, pk = 0;
+        for (let i = 0; i < meterBuf.length; i++) { const x = meterBuf[i]; s2 += x * x; pk = Math.max(pk, Math.abs(x)); }
+        levelDb = 20 * Math.log10(Math.sqrt(s2 / meterBuf.length) + 1e-9); peakDb = 20 * Math.log10(pk + 1e-9);
+      }
+      return { state, voices: live(worldEnds) + live(uiEnds), beds, graphs: graphs.length, sampleRate: ctx?.sampleRate ?? 0, updateMs, tickMs, bufferSamples: bankSamples, levelDb, peakDb };
     },
     destroy() {
       if (destroyed) return;
@@ -753,7 +791,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       stopTimer(); disarm(); listen(false);
       for (const g of graphs) killGraph(g, true);
       graphs = [];
-      bank.clear(); noiseBufs.clear(); last.clear();
+      bank.clear(); used.clear(); noiseBufs.clear(); last.clear(); warm.length = 0;
       if (ctx && !external) { const a = ctx as AudioContext; a.onstatechange = null; setTimeout(() => { void a.close().catch(() => {}); }, 250); }
       ctx = null;
     },

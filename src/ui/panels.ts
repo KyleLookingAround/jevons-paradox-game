@@ -112,7 +112,7 @@ function makeUpCard(ctx: Ctx, v0: UpgradeView): UpCard {
       h('div', { class: 'up-promise' }, promise, promiseCap), decade, reach, ruled, buy);
   } else if (kind === 'research') {
     el = h('article', { class: 'up up-research' },
-      h('div', { class: 'pamph-k', text: 'A pamphlet' }), name, h('div', { class: 'pamph-rule', 'aria-hidden': 'true' }), blurb, eff, ruled, buy);
+      h('div', { class: 'pamph-k', text: 'A study' }), name, h('div', { class: 'pamph-rule', 'aria-hidden': 'true' }), blurb, eff, ruled, buy);
   } else {
     el = h('article', { class: `up up-${kind}` }, h('header', { class: 'up-h' }, name, lvl), blurb, eff, ...(projected ? [decade, reach] : []), ruled, buy);
   }

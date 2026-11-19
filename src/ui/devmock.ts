@@ -23,7 +23,7 @@ const base = {
 const steam: SectorDef = {
   ...base, id: 'steam', name: 'Steam', years: '1780–1870', firstYear: 1780, accent: 'iron',
   tagline: 'Coal, iron, and a great deal of water to be got out of holes.',
-  service: { name: 'Motive power', unit: 'hp' }, resource: { name: 'Coal', unit: 'tons' }, pressure: { name: 'Smog', crisisName: 'The Great Smog' },
+  service: { name: 'Motive power', unit: 'hp' }, resource: { name: 'Coal', unit: 'tons' }, pressure: { name: 'Smoke', crisisName: 'The Black Fog' },
   applications: [
     { ...app('steam.pump', 'Mine pumping', 'pump', 1.5, 40, 1.5, Infinity, 0, 'Keep the pit dry; reach the deeper seams.'), reserveGainPerService: 0.05 },
     app('steam.mills', 'Cotton mills', 'mill', 0.6, 300, 2, 0.8, 150, 'Spindles by the thousand.'),
@@ -92,7 +92,7 @@ const compute: SectorDef = {
 const code: SectorDef = {
   ...base, id: 'code', name: 'Code', years: '2025–', firstYear: 2025, theme: 'agentic', accent: 'diff',
   tagline: 'Software is now cheaper to write than to read.',
-  service: { name: 'Working features', unit: 'feat' }, resource: { name: 'Attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
+  service: { name: 'Features', unit: 'features' }, resource: { name: 'Attention', unit: 'hrs' }, pressure: { name: 'Code stock', crisisName: 'The Great Outage' },
   basePrice: 4, capCost: 0.2, reserve: 3e6, resourceKind: 'flow', pressureSource: 'service', drawsOn: { sector: 'compute', perService: 2 },
   unlock: { minReckonings: 4, after: ['compute'], when: { all: [{ owns: 'compute.node', label: 'Own a Die shrink' }] } },
   applications: [
@@ -144,7 +144,7 @@ export const mockContent: Content = {
     { id: 'code.fleet', sector: 'code', name: 'Agent fleets', blurb: 'Forty of them, none of them sleeps.', kind: 'efficiency', cost: 90000, requires: ['code.agent'], effects: E('code', 4) },
   ],
   levers: [
-    { id: 'steam.duty', sector: 'steam', kind: 'duty', name: 'Fuel duty escalator', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income.', recycle: ['treasury', 'dividend'],
+    { id: 'steam.duty', sector: 'steam', kind: 'duty', name: 'Coal duty', blurb: 'A penny on the ton, rising.', catch: 'Your customers notice, and so does your income.', recycle: ['treasury', 'dividend'],
       levels: [L(60, 0.1, 0.3, 'Hold price at 30% of the fall'), L(180, 0.2, 0.6, 'Hold price at 60% of the fall'), L(540, 0.4, 0.9, 'Hold price at 90% of the fall')],
       repeat: { valueStep: 0.03, costGrowth: 1.6, upkeepGrowth: 1.3, label: 'Hold price at {pct}% of the fall' } },
     { id: 'steam.cap', sector: 'steam', kind: 'cap', name: 'Smoke abatement cap', blurb: 'So much and no more.', catch: 'Permits are dear, and smoke finds the gaps.', recycle: ['treasury', 'dividend'],
@@ -191,7 +191,7 @@ export const mockContent: Content = {
     { id: 'steadyState', name: 'Steady State', blurb: 'Fifty years of a decent life within budget.' },
   ],
   headlines: {
-    appFounded: ['{app} founded; investors delighted'], appAvailable: ['Cheap {service} makes {app} thinkable'], sectorOpened: ['{sector}: a new industry, {year}'],
+    appFounded: ['{app} founded; investors delighted'], appAvailable: ['Cheap {service} brings {app} within reach'], sectorOpened: ['{sector}: a new industry, {year}'],
     crisis: ['{sector}: crisis number {n}; Parliament stirs'], collapse: ['The air gives out'], exhausted: ['Last seam worked out'],
     backfire: ['Engines thriftier than ever; collieries report record sales'], reveal: ['Professor asks why coal use rises as engines improve'],
     leverEnacted: ['Act passed'], leverLapsed: ['Act lapses for want of support'], steadySector: ['{sector} holds steady'], steadyAll: ['Steady state'],

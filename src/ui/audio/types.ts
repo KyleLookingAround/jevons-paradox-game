@@ -61,6 +61,8 @@ export interface SoundscapeOptions {
   context?: BaseAudioContext;
   /** Seed for every variation (default fixed): the same view sequence always sounds the same. */
   seed?: number;
+  /** Add an analyser on the output so stats() reports the level (demo/diagnostics; small extra cost). */
+  meter?: boolean;
 }
 
 export interface SoundscapeStats {
@@ -77,6 +79,9 @@ export interface SoundscapeStats {
   tickMs: number;
   /** Synthesised buffers cached (samples, all). */
   bufferSamples: number;
+  /** Output level, dBFS RMS and peak over the last ~40 ms (only with options.meter). */
+  levelDb?: number;
+  peakDb?: number;
 }
 
 export interface Soundscape {

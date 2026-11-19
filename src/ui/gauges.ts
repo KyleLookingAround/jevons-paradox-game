@@ -149,7 +149,7 @@ export function buildGauges(ctx: Ctx): Comp {
   // One quiet line under the gauges: the budget, growth at frozen efficiency, and what a binding cap means.
   const budTxt = h('span', { class: 'note-bud num' });
   const growTxt = h('span', { class: 'note-grow num' });
-  const capTxt = h('span', { class: 'note-cap', text: 'The cap sets the coal; savings became service.' });
+  const capTxt = h('span', { class: 'note-cap' });
   const note = h('div', { class: 'gauge-note' }, budTxt, growTxt, capTxt);
 
   const el = h('section', { class: 'gauges', 'aria-label': 'Efficiency and consumption gauges' }, dials, foot, note);
@@ -328,7 +328,7 @@ export function buildGauges(ctx: Ctx): Comp {
     show(growTxt, !!growTxt.textContent);
     // A cap binds when it charges a permit price (SectorDerived.permitPrice > 0 only while a cap binds).
     show(capTxt, revealed && capActive(ctx) && num(e?.permitPrice) > 0);
-    setText(capTxt, `The cap sets the ${lower(resName)}; savings became service.`);
+    setText(capTxt, `The cap sets the ${lower(resName)}; the savings became service.`);
     show(note, !!(budTxt.textContent || growTxt.textContent));
   }
   return { el, update };

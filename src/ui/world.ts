@@ -44,7 +44,9 @@ export function buildNews(ctx: Ctx): Comp {
   function update(): void {
     const theme = lookFor(ctx.content, ctx.sector);
     setText(mast, MASTHEAD[theme] ?? 'The Broadsheet');
-    const news = Array.isArray(ctx.state.news) ? ctx.state.news : [];
+    // Each Industry's paper prints its own items and the general ones (NewsItem.sector), so a Steam headline never
+    // sits under Code's changelog masthead.
+    const news = (Array.isArray(ctx.state.news) ? ctx.state.news : []).filter((n) => n && (!n.sector || n.sector === ctx.sector));
     // The lead slot: a new age keeps the front page for a while (45 s of play) even as other news arrives.
     const now = num(ctx.state.time);
     const age = news.slice(0, 8).find((n) => n && n.key === 'ageBegins' && now - num(n.time) < 45 && num(n.time) <= now);
@@ -60,13 +62,13 @@ export function buildNews(ctx: Ctx): Comp {
       const fresh = lastKey !== '\u0000' && lastKey !== '' && !!top;
       lastKey = k;
       setText(yr, top ? String(Math.floor(num(top.year, 1780))) : '');
-      setText(txt, top ? top.text : 'Nothing in the papers yet. Give it time.');
+      setText(txt, top ? top.text : 'Nothing in the papers yet.');
       if (fresh && !reducedMotion()) {
         txt.classList.remove('fresh'); void txt.offsetWidth; txt.classList.add('fresh');
       }
     }
-    if (open && listKey !== k + news.length) {
-      listKey = k + news.length;
+    if (open && listKey !== ctx.sector + k + news.length) {
+      listKey = ctx.sector + k + news.length;
       const items = news.filter((n) => n !== top).slice(0, 39).map((n) =>
         h('li', null, h('span', { class: 'num', text: String(Math.floor(num(n.year, 1780))) }), h('span', { text: n.text })));
       list.replaceChildren(...(items.length ? items : [h('li', { class: 'muted', text: 'No back issues.' })]));
@@ -119,7 +121,7 @@ export function createWorldRenderer(host: HTMLElement, opts: WorldRendererOpts):
 const WEATHER = ['clear', 'light', 'thickening', 'heavy', 'choking'];
 const CLUTTER = ['tidy', 'growing', 'sprawling', 'tangled', 'unreadable'];
 
-/** Pressure in words: "Smog: heavy (62%)". */
+/** Pressure in words: "Smoke: heavy (62%)". */
 function pressureWords(def: SectorDef, pf: number): string {
   const words = def.pressureSource === 'service' ? CLUTTER : WEATHER;
   const w = words[pf < 0.08 ? 0 : pf < 0.3 ? 1 : pf < 0.55 ? 2 : pf < 0.8 ? 3 : 4];
@@ -192,7 +194,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
   // The picture's first build is the heaviest single piece of the first frame: it waits one frame, so the page
   // (header, gauges, the sell button) paints first.
   let armed = false, arming = false;
-  // Applications already known to be available (per sector), to say once when a new use becomes thinkable.
+  // Applications already known to be available (per sector), to say once when a new use comes within reach.
   const known = new Map<SectorId, Set<string>>();
   const toastOf = new Map<string, () => void>();
 
@@ -246,7 +248,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
     setAttr(sky, 'title', pressureWords(def, pf));
     cls(sky, 'bad', pf >= 0.55);
 
-    // A new use becomes thinkable in any open industry: say so once, with a way there (the player may be scrolled
+    // A new use comes within reach in any open industry: say so once, with a way there (the player may be scrolled
     // well away from the picture). The first look at an industry only records what is there.
     for (const id of openSectors(ctx)) {
       const sdef = sectorDef(ctx, id), apps = ctx.d?.sectors?.[id]?.apps;
@@ -255,7 +257,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
       const before = known.get(id);
       if (before && !ctx.d?.pendingReckoning) {
         for (const a of sdef.applications) if (now.has(a.id) && !before.has(a.id)) {
-          toastOf.set(`${id}:${a.id}`, ctx.toast(`A new use is thinkable: ${a.name}${id !== ctx.sector ? ` (${sdef.name})` : ''}. Founding it costs ${money(num(a.foundCost))}.`,
+          toastOf.set(`${id}:${a.id}`, ctx.toast(`Within reach: ${a.name}${id !== ctx.sector ? ` (${sdef.name})` : ''}. Founding it costs ${money(num(a.foundCost))}.`,
             { label: 'Show me', run: () => { if (id !== ctx.sector) ctx.selectSector(id); jump(a.id); } }));
         }
       }

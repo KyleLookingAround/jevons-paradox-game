@@ -1,5 +1,6 @@
 // The pure half of the soundscape, tested without a browser: the SceneView → mix mapping, the definitions, and every
 // synthesised recipe (finite, bounded, click-free edges, no DC, deterministic, nothing harsh above 6 kHz).
+// @ts-ignore bun:test types are not in the project tsconfig (types: [])
 import { describe, expect, test } from 'bun:test';
 import { mixFrom, sourcesFrom, momentsBetween, readSrc } from './mix';
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type HitsDef } from './defs';
@@ -192,7 +193,7 @@ describe('mixFrom (pure)', () => {
 describe('recipes (pure synthesis)', () => {
   const key = KEYS.steam;
   const names = [...WORLD_RECIPES, ...PALETTES.flatMap((p) => UI_KINDS.map((k) => `ui:${p}:${k}`))];
-  test.each(names)('%s: finite, bounded, zero edges, no DC, deterministic', (name) => {
+  test.each(names)('%s: finite, bounded, zero edges, no DC, deterministic', (name: string) => {
     const x = render(name, { rng: rngFrom(7), key, v: 1 });
     expect(x.length).toBeGreaterThan(10);
     let s = 0;

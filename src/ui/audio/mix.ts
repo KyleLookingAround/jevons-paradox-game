@@ -115,7 +115,8 @@ function layerMix(l: LayerDef, s: Sources, stage: number, frozen: boolean, calm:
   if (l.kind === 'hits') {
     density = l.density ? evalDrive(s, l.density) : level;
     if (level <= 0.001) density = 0;
-    if (calm) density *= 0.55;
+    // Calmer: fewer of the random events; the pulse (engines, looms) keeps its beat, a little softer.
+    if (calm && !l.grid) density *= 0.55;
     if (frozen) density *= 0.1;
     if (calm) level *= 0.8;
   }

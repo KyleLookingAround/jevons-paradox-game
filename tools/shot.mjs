@@ -190,10 +190,10 @@ async function flow(base, tag0 = 'flow') {
     });
     await step('tighten past the authored levels', async () => {
       await page.evaluate(() => { const r = window.rebound; r.ctx.state = { ...r.state, mandate: 1e6 }; });
-      for (let i = 0; i < 4; i++) { await page.locator('.lever:has-text("Fuel duty") .lev-raise').click(); await page.waitForTimeout(120); }
+      for (let i = 0; i < 4; i++) { await page.locator('.lever:has-text("Coal duty") .lev-raise').click(); await page.waitForTimeout(120); }
       const lv = (await st()).levers['steam.duty'].level;
       if (lv < 4) throw new Error('duty level ' + lv);
-      if (!(await page.locator('.lever:has-text("Fuel duty") .lev-raise:has-text("Tighten")').count())) throw new Error('no Tighten label');
+      if (!(await page.locator('.lever:has-text("Coal duty") .lev-raise:has-text("Tighten")').count())) throw new Error('no Tighten label');
     });
     await step('open the menu', async () => { await page.click('.tb-menu'); await page.waitForTimeout(300); await shot('menu'); });
     await step('export a save', async () => {

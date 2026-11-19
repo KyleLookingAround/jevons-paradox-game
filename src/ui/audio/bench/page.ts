@@ -74,7 +74,7 @@ const db = (x: number) => (x > 1e-12 ? 20 * Math.log10(x) : -240);
 export interface Analysis {
   peakDb: number; rmsDb: number; crestDb: number; dc: number; clipped: number;
   centroidHz: number; bands: { sub200: number; low: number; mid: number; high6k: number }; // share of energy (0–1)
-  clickMaxDb: number; clicks: number; // HF transient detector: 5 ms windows above 15 kHz vs the median
+  clickMaxDb: number; clickAt: number; clicks: number; // HF transient detector: 5 ms windows above 15 kHz vs the median
   windowsDb: number[]; // RMS per 1 s window
   silentShare: number; // share of 100 ms windows below −70 dBFS
 }
@@ -120,6 +120,7 @@ function analyse(l: Float32Array, r: Float32Array, from = 0): Analysis {
   const sorted = wins.slice().sort((p, q) => p - q);
   const med = sorted[Math.floor(sorted.length / 2)] || 1e-9;
   const maxw = sorted[sorted.length - 1] || 0;
+  const clickAt = Math.round((from + (wins.indexOf(maxw) * W) / SR) * 100) / 100;
   const clicks = wins.filter((w) => w > Math.max(med * 30, 1e-4)).length;
   const windowsDb: number[] = [];
   for (let o = s0; o + SR <= l.length; o += SR) { let e = 0; for (let i = 0; i < SR; i++) e += l[o + i] * l[o + i] + r[o + i] * r[o + i]; windowsDb.push(Math.round(db(Math.sqrt(e / (2 * SR))) * 10) / 10); }
@@ -129,7 +130,7 @@ function analyse(l: Float32Array, r: Float32Array, from = 0): Analysis {
   return {
     peakDb: r1(db(pk)), rmsDb: r1(db(rms)), crestDb: r1(db(pk) - db(rms)), dc: Math.round((sum / (2 * n)) * 1e5) / 1e5, clipped,
     centroidHz: Math.round(ec / et), bands: { sub200: r1((100 * b0) / et) / 100, low: r1((100 * b1) / et) / 100, mid: r1((100 * b2) / et) / 100, high6k: r1((1000 * b3) / et) / 1000 },
-    clickMaxDb: r1(db(maxw) - db(med)), clicks, windowsDb, silentShare: tot ? Math.round((100 * silent) / tot) / 100 : 0,
+    clickMaxDb: r1(db(maxw) - db(med)), clickAt, clicks, windowsDb, silentShare: tot ? Math.round((100 * silent) / tot) / 100 : 0,
   };
 }
 
