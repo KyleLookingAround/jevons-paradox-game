@@ -566,7 +566,7 @@ export function unreadSaveSheet(sheets: Sheets, raw: string, backup?: { info: Ba
     if (backup) {
       b.append(h('div', { class: 'confirm-box ok-box' },
         h('p', { text: `A backup from Reckoning ${backup.info.reckonings} (the run had reached ${backup.info.year}) is still here.` }),
-        h('div', { class: 'm-row' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { if (backup.restore()) close(); } }, 'Restore the backup'))));
+        h('div', { class: 'm-row' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); backup.restore(); } }, 'Restore the backup'))));
     }
     const status = h('p', { class: 'save-status muted', 'aria-live': 'polite' });
     const ta = h('textarea', { class: 'save-ta', rows: 4, spellcheck: 'false', readonly: true, 'aria-label': 'The unreadable save' }) as HTMLTextAreaElement;
@@ -701,7 +701,12 @@ export function menuSheet(ctx: Ctx, sheets: Sheets, hooks: MenuHooks, focus?: 'k
     const bkQ = h('p');
     const bkBox = h('div', { class: 'confirm-box', hidden: true }, bkQ,
       h('div', { class: 'm-row' },
-        h('button', { class: 'btn danger', type: 'button', onclick: () => { if (hooks.restoreBackup()) { close(); ctx.toast('Backup restored.'); } else { setText(status, 'The backup could not be read.'); show(bkBox, false); show(bkAsk, true); } } }, 'Restore it'),
+        h('button', { class: 'btn danger', type: 'button', onclick: () => {
+          // Close the menu first: a restored fresh run opens the Hindsight shop, which must not be closed with it.
+          close();
+          if (hooks.restoreBackup()) ctx.toast('Backup restored.');
+          else ctx.toast('The backup could not be read.');
+        } }, 'Restore it'),
         h('button', { class: 'btn', type: 'button', onclick: () => { show(bkBox, false); show(bkAsk, true); bkAsk.focus(); } }, 'Keep this run')));
     const bk = hooks.backup();
     if (bk) {

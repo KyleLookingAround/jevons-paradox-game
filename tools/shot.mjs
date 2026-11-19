@@ -453,7 +453,8 @@ async function audit() {
     await page.click('button:has-text("Restore the backup")'); await page.waitForTimeout(150);
     await page.locator('.save').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${out}/audit-menu-save.png` });
     await page.click('button:has-text("Restore it")'); await page.waitForTimeout(400);
-    if (!(await page.locator('.sheet-t:has-text("Hindsight")').count())) throw new Error('restored fresh run did not open the shop');
+    if (!(await page.locator('.layer:not([hidden]) .sheet-t:has-text("Hindsight")').count())) throw new Error('restored fresh run did not open the shop');
+    await page.screenshot({ path: `${out}/audit-restored-shop.png` });
     if (errs.length) throw new Error(errs.join(' | '));
     await ctx.close();
     const ios = await newPage(sz, { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' });
@@ -725,6 +726,54 @@ async function realplay() {
   }
 }
 
+
+/* ---------------------------------------------------------------- looks (real game) */
+// Every industry's page and scene in the real game. Later industries take hours to reach, so for these screenshots
+// they are opened through the console handle (state.sectors[id].open), then the run ticks for a while with capital
+// topped up and the first few uses founded through the page. Visual check only: not a balance or unlock test.
+async function looks() {
+  try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); } catch (e) { console.log('LOOKS: build failed'); return; }
+  const url = 'file://' + resolve(root, 'dist/index.html');
+  for (const sz of SIZES) {
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: sz.tag === 'desk' ? 1 : 2 });
+    await page.goto(url); await page.waitForTimeout(1000);
+    const ids = await page.evaluate(() => window.rebound.content.sectorOrder);
+    await page.evaluate(() => {
+      const r = window.rebound; const s = r.state; const sectors = { ...s.sectors };
+      // Roughly what the model does when an industry opens (reserve filled, free uses founded): screenshot use only.
+      for (const id of r.content.sectorOrder) {
+        if (sectors[id].open) continue;
+        const def = r.content.sectors[id]; const apps = {};
+        for (const a of def.applications) { const av = a.visibleBelow === Infinity; apps[a.id] = { available: av, founded: av && a.foundCost <= 0, satMul: 1, peakD: 0 }; }
+        sectors[id] = { ...sectors[id], open: true, reserve: def.reserve, reserveMax: def.reserve, apps };
+      }
+      r.ctx.state = r.model.fastForward({ ...s, capital: 1e12, sectors }, r.content, 120);
+    });
+    for (const id of ids) {
+      await page.evaluate((i) => window.rebound.ctx.selectSector(i), id);
+      await page.waitForTimeout(600);
+      for (let k = 0; k < 3; k++) {
+        const p = page.locator('.scn-place.avail').first();
+        if (!(await p.count())) break;
+        await p.evaluate((el) => el.scrollIntoView({ block: 'center' })); await p.click({ timeout: 2000 }).catch(() => {});
+        const f = page.locator('.scn-found:not([aria-disabled="true"]):visible');
+        if (await f.count()) await f.click({ timeout: 2000 }).catch(() => {});
+        await page.waitForTimeout(300);
+      }
+      await page.evaluate(() => { document.querySelectorAll('.toast-x').forEach((x) => x.click()); window.scrollTo(0, 0); });
+      await page.waitForTimeout(1500);
+      const o = await overflow(page);
+      if (o.sw > o.cw) fail(`OVERFLOW looks ${id}/${sz.tag}`);
+      const look = await page.evaluate(() => document.documentElement.dataset.look);
+      await page.screenshot({ path: `${out}/looks-${id}-${sz.tag}.png` });
+      if (sz.tag === 'phone') await page.screenshot({ path: `${out}/looks-${id}-${sz.tag}-full.png`, fullPage: true });
+      console.log(`looks ${id} (${look}) ${sz.tag}: cockpit ${Math.round(o.cockpit)}px`);
+    }
+    if (errs.length) fail(`looks/${sz.tag}: ${errs.slice(0, 3).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
 /* ---------------------------------------------------------------- real */
 async function real() {
   try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
@@ -837,6 +886,7 @@ if (mode === 'checks' || mode === 'all') await checks();
 if (mode === 'audit' || mode === 'all') await audit();
 if (mode === 'real') await real();
 if (mode === 'realplay') await realplay();
+if (mode === 'looks') await looks();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

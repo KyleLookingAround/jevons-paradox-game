@@ -30,7 +30,24 @@ function contentIsM1(c: Content | undefined): boolean {
   return !!(c && c.sectors && Array.isArray(c.sectorOrder) && c.sectorOrder.length && Array.isArray(c.ages));
 }
 
+/**
+ * Ask for the three families at once (not when layout first needs them) and mark the page when they are in, or after
+ * FONT_WAIT ms at most: the scene's SVG lettering (plate captions, signs) waits for that mark rather than flashing in a
+ * fallback face. Offline, the requests fail fast and the fallbacks are used.
+ */
+const FONT_WAIT = 800;
+function loadFonts(): void {
+  const done = () => document.documentElement.classList.add('fonts-in');
+  try {
+    const f = document.fonts;
+    if (!f || typeof f.load !== 'function') { done(); return; }
+    const specs = ['700 16px Fraunces', 'italic 400 16px Fraunces', '400 16px Fraunces', '700 16px Archivo', '400 16px Archivo', '400 16px "IBM Plex Mono"', '600 16px "IBM Plex Mono"'];
+    Promise.race([Promise.allSettled(specs.map((x) => f.load(x))), new Promise((r) => setTimeout(r, FONT_WAIT))]).then(done, done);
+  } catch { done(); }
+}
+
 function boot(o: GameOpts): void {
+  loadFonts();
   const mockOpts = parseMockHash(location.hash);
   const mock = !!mockOpts || !o.realModel || !contentIsM1(o.realContent);
   const model: ModelApi = mock ? makeMockModel(mockOpts ?? {}) : o.realModel!;

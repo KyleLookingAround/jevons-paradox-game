@@ -60,17 +60,20 @@ html[data-look='terminal'] {
   --radius: 0; --btn-radius: 0; --chip-radius: 0;
 }
 html[data-look='agentic'] {
-  /* Code: a cyberpunk night city. Near-black ground, magenta first, cyan and amber after; the same three families. */
+  /* Code: a cyberpunk night city (tokens shared with the scene's own look). Near-black ground; cyan first, magenta for
+     highlights and backfire, amber nowhere it would read as a warning. Every text colour is ≥ 5:1 on every surface. */
   color-scheme: dark;
-  --bg: #0b0a12; --bg-solid: #0b0a12;
-  --bg-img: radial-gradient(110% 45% at 50% -10%, rgba(255, 79, 209, .16), transparent 60%), linear-gradient(rgba(56, 225, 255, .045) 1px, transparent 1px) 0 0 / 100% 24px;
-  --surface: #14121f; --surface-2: #1d1a2e; --ink: #ece8f6; --muted: #a59dc2; --rule: rgba(236, 232, 246, .14); --rule-2: rgba(255, 79, 209, .45);
-  --accent: var(--acc-d, #ff4fd1); --accent-ink: #0b0a12; --bad: #ff6b5e; --good: #3ff0c2; --track: rgba(236, 232, 246, .09); --focus: #ffc23d;
-  --smog: 120, 46, 140; --water: #38e1ff;
-  --display: var(--f-grot); --body: var(--f-grot); --numf: var(--f-mono); --labelf: var(--f-mono);
-  --display-wt: 700; --display-stretch: 100%; --display-case: none; --display-track: -.02em;
-  --radius: 4px; --btn-radius: 4px; --chip-radius: 4px;
+  --bg: #0b0a14; --bg-solid: #0b0a14;
+  --bg-img: radial-gradient(120% 60% at 50% -10%, rgba(255, 79, 216, .14), transparent 60%), linear-gradient(rgba(62, 242, 255, .04) 1px, transparent 1px) 0 0 / 100% 24px;
+  --surface: #13111f; --surface-2: #1b1830; --ink: #e9e6ff; --muted: #8d88b5; --rule: rgba(233, 230, 255, .14); --rule-2: rgba(62, 242, 255, .45);
+  --accent: var(--acc-d, #3ef2ff); --accent-ink: #05040c; --bad: #ff4d6d; --good: #4dffb0; --track: rgba(233, 230, 255, .1); --focus: #ff4fd8;
+  --magenta: #ff4fd8;
+  --smog: 96, 22, 92; --water: #3ef2ff;
+  --display: var(--f-grot); --body: var(--f-mono); --numf: var(--f-mono); --labelf: var(--f-mono);
+  --display-wt: 800; --display-stretch: 112%; --display-case: uppercase; --display-track: .06em;
+  --radius: 0; --btn-radius: 0; --chip-radius: 0;
 }
+
 
 
 /* Accents: a small token set per industry, layered over the age's look. Each sets an accent for light looks (--acc-l),
@@ -79,7 +82,7 @@ html[data-accent='iron'] { --acc-l: #2c4a5a; --acc-d: #a9c2d4; --smog: 70, 62, 5
 html[data-accent='gas'] { --acc-l: #8f6110; --acc-d: #f2b544; --smog: 38, 34, 30; }
 html[data-accent='chrome'] { --acc-l: #0a6763; --acc-d: #55c4bd; --smog: 118, 112, 104; }
 html[data-accent='phosphor'] { --acc-l: #6d5a12; --acc-d: #e9b44a; --smog: 64, 34, 22; }
-html[data-accent='diff'] { --acc-l: #ad4318; --acc-d: #ff4fd1; --smog: 140, 140, 150; }
+html[data-accent='diff'] { --acc-l: #ad4318; --acc-d: #3ef2ff; --smog: 140, 140, 150; }
 
 /* ------------------------------------------------------------------ */
 /* Base                                                                */
@@ -304,7 +307,9 @@ svg { overflow: visible; }
 /* Applications */
 .price-row { display: flex; align-items: center; gap: 2px; margin: -4px 0 10px; font-size: calc(13px * var(--ts)); color: var(--muted); }
 .price-row .info { margin: 0; }
-/* The scene (src/ui/scene/ injects its own stylesheet); the frame around it. */
+/* The scene (src/ui/scene/ injects its own stylesheet); the frame around it. Its lettering waits for the fonts
+   (html.fonts-in, set by game.ts within 0.8 s) rather than flashing in a fallback. */
+html:not(.fonts-in) .world-mount { visibility: hidden; }
 @media (max-width: 999px) { .world-mount { margin: 0 calc(-1 * var(--gutter)); } }
 .apps .price-row { margin: 4px 0 0; flex-wrap: wrap; column-gap: 4px; }
 .apps .price-row .sky { margin-left: auto; }
@@ -544,28 +549,30 @@ html[data-look='terminal'] .up-research { box-shadow: none; border-style: double
 html[data-look='terminal'] .sell { text-transform: lowercase; }
 html[data-look='terminal'] .tb-v, html[data-look='terminal'] .dial-val { font-weight: 600; }
 
-/* Agentic: paper-grey tooling, diff colours, crisp mono. */
-html[data-look='agentic'] .sec-t { font-family: var(--f-mono); font-size: calc(15px * var(--ts)); font-weight: 600; letter-spacing: 0; }
-html[data-look='agentic'] .sec-t::after { content: '/'; color: var(--muted); }
-html[data-look='agentic'] .proj { display: block; font-family: var(--f-mono); font-size: calc(12.5px * var(--ts)); padding: 3px 8px; border-radius: 4px; }
-html[data-look='agentic'] .proj.worse { background: rgba(255, 107, 94, .12); border-left: 3px solid var(--bad); }
-html[data-look='agentic'] .proj.worse::before { content: '+ '; font-weight: 700; }
-html[data-look='agentic'] .proj.better { background: rgba(63, 240, 194, .1); border-left: 3px solid var(--good); }
-html[data-look='agentic'] .promise { color: var(--good); font-size: calc(50px * var(--ts)); }
+/* Agentic (Code): a cyberpunk page around the night-city scene. Cyan lines, magenta highlights, mono text. */
+html[data-look='agentic'] .sec-t { font-family: var(--f-mono); font-size: calc(15px * var(--ts)); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+html[data-look='agentic'] .sec-t::before { content: '// '; color: var(--magenta); }
+html[data-look='agentic'] .proj { display: block; font-family: var(--f-mono); font-size: calc(12.5px * var(--ts)); padding: 3px 8px; }
+html[data-look='agentic'] .proj.worse { background: rgba(255, 77, 109, .12); border-left: 3px solid var(--bad); }
+html[data-look='agentic'] .proj.better { background: rgba(77, 255, 176, .09); border-left: 3px solid var(--good); }
+html[data-look='agentic'] .promise { color: var(--good); font-size: calc(46px * var(--ts)); text-shadow: 0 0 14px rgba(77, 255, 176, .3); }
 html[data-look='agentic'] .up-blurb, html[data-look='agentic'] .shop-k { font-style: normal; }
 html[data-look='agentic'] .tab.sel { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-html[data-look='agentic'] .sell { background: linear-gradient(90deg, #ff4fd1, #b44dff); color: #0b0a12; font-family: var(--f-mono); font-weight: 600; font-size: calc(16px * var(--ts)); box-shadow: 0 0 18px -4px rgba(255, 79, 209, .6), 0 2px 0 rgba(0, 0, 0, .4); }
-html[data-look='agentic'] .sell-v { color: #0b0a12; opacity: .85; }
-html[data-look='agentic'] .dial-val, html[data-look='agentic'] .promise { text-shadow: 0 0 14px rgba(255, 79, 209, .35); }
-html[data-look='agentic'] .d-sweep { filter: drop-shadow(0 0 2.5px rgba(255, 79, 209, .55)); }
+html[data-look='agentic'] .sell { background: var(--accent); color: var(--accent-ink); font-family: var(--f-mono); font-weight: 600; font-size: calc(16px * var(--ts)); text-transform: uppercase; letter-spacing: .06em; box-shadow: 0 0 18px -4px rgba(62, 242, 255, .6), 3px 3px 0 var(--magenta); }
+html[data-look='agentic'] .sell-v { color: var(--accent-ink); opacity: .85; }
+html[data-look='agentic'] .dial-val { text-shadow: 0 0 12px rgba(62, 242, 255, .35); }
+html[data-look='agentic'] .d-sweep { filter: drop-shadow(0 0 2.5px rgba(62, 242, 255, .6)); }
 html[data-look='agentic'] .dial-cons .d-sweep { filter: none; }
-html[data-look='agentic'] .tk-l { fill: #a59dc2; }
-html[data-look='agentic'] .up, html[data-look='agentic'] .lever { border-color: rgba(56, 225, 255, .22); }
-html[data-look='agentic'] .up.afford { border-color: rgba(255, 79, 209, .55); }
-html[data-look='agentic'] .news-head { border-top-color: rgba(56, 225, 255, .5); }
-html[data-look='agentic'] .afford-chip { border-color: #38e1ff; color: #38e1ff; }
-html[data-look='agentic'] .btn.primary, html[data-look='agentic'] .up.afford .buy { background: var(--ink); color: var(--bg-solid); }
-html[data-look='agentic'] .up-research { box-shadow: 3px 3px 0 #38e1ff; border-radius: 4px; }
+html[data-look='agentic'] .dial-reb.backfire .dial-val { color: var(--magenta); text-shadow: 0 0 12px rgba(255, 79, 216, .55); }
+html[data-look='agentic'] .dial-reb.backfire .d-sweep { stroke: var(--magenta); filter: drop-shadow(0 0 3px var(--magenta)); }
+html[data-look='agentic'] .up, html[data-look='agentic'] .lever { border-color: rgba(62, 242, 255, .22); }
+html[data-look='agentic'] .up.afford { border-color: rgba(255, 79, 216, .6); box-shadow: inset 3px 0 0 var(--magenta); }
+html[data-look='agentic'] .news-head { border-top-color: var(--magenta); }
+html[data-look='agentic'] .afford-chip { border-color: var(--magenta); color: var(--ink); box-shadow: 0 0 12px -4px var(--magenta); }
+html[data-look='agentic'] .tab-buy { background: var(--magenta); }
+html[data-look='agentic'] .btn.primary, html[data-look='agentic'] .up.afford .buy { background: var(--ink); color: var(--bg-solid); border-color: var(--ink); }
+html[data-look='agentic'] .up-research { box-shadow: 3px 3px 0 var(--magenta); }
+html[data-look='agentic'] .mast { font-family: var(--f-mono); color: var(--magenta); }
 
 
 /* ------------------------------------------------------------------ */
@@ -871,3 +878,5 @@ html[data-look='agentic'] .topbar .num { font-family: var(--f-grot); }
   html:not([data-motion='full']) *, html:not([data-motion='full']) *::before, html:not([data-motion='full']) *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 html[data-motion='reduce'] *, html[data-motion='reduce'] *::before, html[data-motion='reduce'] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+html[data-look='agentic'] .news-txt, html[data-look='agentic'] .onboard, html[data-look='agentic'] .paper-stand { font-family: var(--f-grot); font-style: normal; }
+html[data-look='agentic'] .news-txt { font-weight: 700; letter-spacing: -.01em; }
