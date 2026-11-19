@@ -35,7 +35,7 @@ import { fin, clamp } from './util';
 /* Tick                                                                */
 /* ------------------------------------------------------------------ */
 
-export function step(state: GameState, content: Content, dt: number, lite = false): GameState {
+export function step(state: GameState, content: Content, dt: number, lite = false, away = false): GameState {
   if (!(dt > 0)) return state;
   const fl = computeFlows(state, content);
   if (fl.pending) return state;
@@ -420,7 +420,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     next = { ...next, sectors: s2 };
   }
   for (const s of unsettleList) next = unsettleAs(next, content, s, 'default', time);
-  for (const o of offers) next = appendDividend(next, content, o, fl.income);
+  for (const o of offers) next = appendDividend(next, content, o, fl.income, away);
   if (!lite && Math.floor(time / HISTORY_EVERY) > Math.floor(state.time / HISTORY_EVERY)) {
     next = { ...next, history: pushHistory(state.history, historySample(next, content, computeFlows(next, content))) };
   }

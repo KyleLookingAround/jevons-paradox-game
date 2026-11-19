@@ -18,7 +18,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 0 | `events.ts` | M2: `emit` / `pushEvents` (seq from `meta.eventSeq`, the `EVENTS_MAX` trim), the headline → event mapping. |
 | 0 | `record.ts` | M2: decisions and automated actions per model decade, `run.opening`, the `asDecision` wrapper. |
 | 1 | `steady.ts` | Budget lines; M2: paces, the line's own day (`decadeWellbeing`), `clearP`, clear skies, `sinkR`, decade choices, `newBudget`. |
-| 1 | `hindsight.ts` | The Hindsight terms a Reckoning would pay (M2: lean decades, settled sectors). |
+| 1 | `hindsight.ts` | The Hindsight terms a Reckoning would pay (M2: lean decades, settled sectors, less what was withheld for time away). |
 | 1 | `headlines.ts` | Headline choice, case-aware placeholders (M2: `{name}`), the news list. |
 | 2 | `effects.ts` | Standing effects folded into `Mods` (cached per state; M2 sources: Charter, dividends, Commons, settle dividends, institution loans; M2 effects), η and flow capacity, one-off effects. |
 | 3 | `levers.ts` | Lever levels, visibility (M2: settled sectors, loans), recycle, upkeep, the per-sector aggregate, the levy's Mandate share. |
@@ -39,7 +39,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 9 | `prestige.ts` | The Reckoning (M2: run history, openings, the offer, the 'reckoning' event), Know-how (M2: `knowhowPeak`, the respec), Institutions, the loadout; their views. |
 | 9 | `serialise.ts` | `serialize`, `deserialize`, the v1 → v2 and v2 → v3 migrations, element-by-element validation. |
 | 10 | `step.ts` | `step`, `tick`. Hot path; applies every per-step rule; one call per M2 mechanic (dividends, forced unsettles, events, `runOrders` last). |
-| 11 | `offline.ts` | M2: `fastForward` with holds, the cap and the `OfflineReport`. |
+| 11 | `offline.ts` | M2: `fastForward` with holds, the cap and the `OfflineReport`; the offline fix: Hindsight at `offline.hindsightRate` (`run.hindsightWithheld`) and steps run `away` (no dividend overflow). |
 | 12 | `derive.ts` | `derive()`: the view the UI reads every frame (M2: every new field). |
 | 12 | `projections.ts` | The cards' "this decade" and "brings within reach" projections (focused clones, structural cache with a 20 s bucket, optional per-sector laziness), and upgrade views. |
 | 13 | `index.ts` | The registry: assembles `model` (every in-run player action wrapped by `asDecision`) and the public exports. |

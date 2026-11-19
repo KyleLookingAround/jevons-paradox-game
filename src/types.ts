@@ -347,8 +347,17 @@ export interface GlobalParams {
    *   holdBefore  what fastForward will not cross unseen. 'crisis': it stops one step before a step that would fire a
    *               crisis (any sector), collapse a sector or exhaust a stock; 'collapse': before a collapse or an
    *               exhaustion; null: it holds nothing (M1 behaviour: a run can end offline). See ModelApi.fastForward.
+   *   hindsightRate  M2 (offline fix): the rate, 0–1, at which Hindsight accrues inside fastForward. Default 1 (full
+   *               rate). Everything else a catch-up does counts in full (capital, Mandate, population, the reserve and
+   *               pressure, decades and their decadeEffects, the streaks, Steady State, unlocks); only the Hindsight a
+   *               Reckoning would pay is entered at this rate. The rule, per fastForward call: let H0 and H1 be the
+   *               unrounded sum of the seven weighted HindsightTerms at the start and at the end of the catch-up (the
+   *               hold's discarded step excluded); run.hindsightWithheld += (1 − hindsightRate) × (H1 − H0), written
+   *               only when that is not 0. Hindsight is a function of the state, so the sum telescopes: one 8-hour call
+   *               and eight 1-hour calls withhold the same (to rounding), and an absence earns hindsightRate × what the
+   *               same hours earn on the untouched board. See RunStats.hindsightWithheld and HindsightTerms.withheld.
    */
-  offline?: { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null };
+  offline?: { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null; hindsightRate?: number };
   /**
    * M1: the demographic transition (see popGrowth). Default: absent = v1 linear growth with no ceiling.
    * transitionWellbeing W_t must exceed subsistence, and should exceed wellbeingTarget so a steady economy can hold
@@ -1050,6 +1059,10 @@ export interface GameState {
    * the run ends (a Reckoning discards them, unpaid). Overflow: when an append would make the list longer than
    * PENDING_DIVIDENDS_MAX, the OLDEST offer is first resolved as if its option 0 had been chosen (a 'dividendChosen'
    * event with by 'default'). Content puts the modest option first for this reason.
+   * M2 (offline fix): inside fastForward there is no overflow: an offer that would make the list longer than
+   * PENDING_DIVIDENDS_MAX is simply not made (the decade still counts and still pays its decadeEffects; only the
+   * choice is forgone, counted in OfflineReport.dividendsForgone). Choices nobody was there to make never compound,
+   * and the returning player finds the list full, not resolved for them. tick() keeps the overflow rule above.
    */
   pendingDividends: PendingDividend[];
   /** M2: the Commons this run: project id → levels owned (≥ 1; absent = 0), and the fund fed by 'commons' recycling (£). */
@@ -1162,10 +1175,21 @@ export interface OfflineReport {
   capital: number;
   mandate: number;
   population: number;
-  /** Decades completed, dividends offered, crises fired (non-zero only with holdBefore 'collapse' or null). */
+  /** Decades completed, dividends offered (added to pendingDividends), crises fired (non-zero only with holdBefore
+   *  'collapse' or null). */
   decades: number;
   dividends: number;
   crises: number;
+  /** M2 (offline fix): decades whose choice was not offered because PENDING_DIVIDENDS_MAX offers were already waiting
+   *  (see GameState.pendingDividends). Written by every fastForward; absent on reports saved before the fix (= 0). */
+  dividendsForgone?: number;
+  /**
+   * M2 (offline fix): the change in Derived.hindsightIfReckonNow over the catch-up (end − start, after withholding;
+   * may be negative), and the rate it was entered at (GlobalParams.offline.hindsightRate, default 1). Written by every
+   * fastForward; absent on reports saved before the fix. A ledger can say: Hindsight +hindsight, at hindsightRate.
+   */
+  hindsight?: number;
+  hindsightRate?: number;
   /** Purchases and foundings the standing orders made (counts, by actor), and Commons levels Treasury rules bought. */
   marketBuys: number;
   civilServiceRaises: number;
@@ -1408,6 +1432,13 @@ export interface RunStats {
   /** M2: run time of the first budget line drawn by a player action (drawBudget, or a lever raise that drew one); null
    *  until then. A standing cap's line does not count. */
   firstBudgetAt: number | null;
+  /**
+   * M2 (offline fix): Hindsight withheld from this run's Reckoning for time away (unrounded; absent = 0). Only
+   * fastForward writes it (see GlobalParams.offline.hindsightRate); a Reckoning starts the next run without it. It may
+   * dip below 0 after a catch-up in which Hindsight fell (a reserve burnt); HindsightTerms.withheld clamps at 0. No
+   * save-version change: an older save simply has no time away recorded; deserialize keeps the field only when finite.
+   */
+  hindsightWithheld?: number;
 }
 
 /** M2: one recorded opening action (for M5's rival profile). `t` is run time in seconds (game time, not wall time). */
@@ -1615,7 +1646,13 @@ export interface HindsightTerms {
   steady: number;
   /** M2: (perSettledSector ?? 0) × open sectors settled now. */
   settled: number;
-  /** M2 CHANGE: max(1, round(sum of the seven weighted terms)) — equals hindsightOnReckon. */
+  /**
+   * M2 (offline fix): max(0, run.hindsightWithheld ?? 0): Hindsight the seven terms include but a Reckoning does not
+   * pay, because it accrued while away (GlobalParams.offline.hindsightRate). Not a weighted term. Present only when
+   * > 0 (absent = 0), so a run never fast-forwarded has exactly the M2 shape.
+   */
+  withheld?: number;
+  /** M2 CHANGE: max(1, round(sum of the seven weighted terms − (withheld ?? 0))) — equals hindsightOnReckon. */
   total: number;
 }
 
@@ -2026,6 +2063,9 @@ export interface ModelApi {
    * crisis or collapse then happens in live play, seconds after the player returns; a further fastForward from a held
    * state holds again at once (simulated 0), so the board waits for the player. Standing orders run inside the steps
    * exactly as in tick. The returned state carries lastOffline (see OfflineReport), also when it simulated 0 seconds.
+   * M2 (offline fix): two rules apply only inside fastForward: Hindsight accrues at GlobalParams.offline.hindsightRate
+   * (RunStats.hindsightWithheld), and a full pendingDividends list forgoes new offers instead of overflowing (see
+   * GameState.pendingDividends). Both are deterministic and leave tick() untouched.
    * A call with seconds ≤ 0 (after clamping; NaN counts as 0) returns the same reference and writes nothing. If a
    * Reckoning is already pending it simulates nothing (heldBy 'pending').
    */

@@ -57,8 +57,13 @@ export const global: GlobalParams = {
     /* M2: about half of perSteadySector, per Industry settled at the Reckoning (kept: first Settlement at about 5 h). */
     perSettledSector: 30,
   },
-  /* M2: a night from the start (8 h), never crossing a crisis unseen; Institutions add offline steps (prestige.ts). */
-  offline: { capSeconds: 8 * 3600, holdBefore: 'crisis' },
+  /*
+   * M2: a night from the start (8 h), never crossing a crisis unseen; Institutions add offline steps (prestige.ts).
+   * Hindsight away at 15% of the rate (offline fix): a held restraint run (run 4) away for 8 h earned +4,300, about six
+   * runs' worth, at the full rate; 0.2 still left it at 1.06–1.17× its own run; 0.15 puts the worst case below one
+   * run (src/balance.test.ts E9b).
+   */
+  offline: { capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15 },
   /* Growth peaks at W ≈ 29.9 and stops at 46; the wellbeing target (34) sits below the transition. */
   demography: { transitionWellbeing: 46 },
   steady: {

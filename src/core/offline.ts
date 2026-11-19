@@ -1,7 +1,9 @@
 /**
  * Offline catch-up (M2): fastForward in steps of at most FAST_FORWARD_STEP, capped at the effective cap, holding before
  * what GlobalParams.offline.holdBefore names (the step that would fire it is discarded), with the OfflineReport.
- * Standing orders run inside the steps exactly as in tick (step.ts calls them).
+ * Standing orders run inside the steps exactly as in tick (step.ts calls them). M2 offline fix: Hindsight accrues at
+ * offline.hindsightRate (run.hindsightWithheld, written once at the end: Hindsight is a function of the state, so the
+ * withheld amount telescopes across calls), and the steps run `away`, so a full dividend list forgoes new offers.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import type { Content, GameState, OfflineReport, SectorId } from '../types';
@@ -10,18 +12,22 @@ import { idx } from './contentIndex';
 import { modsOf } from './effects';
 import type { Mods } from './effects';
 import { computeFlows } from './flows';
+import { hindsightTerms, termsSum } from './hindsight';
 import { sectorSteady } from './steady';
 import { step } from './step';
-import { fin } from './util';
+import { fin, clamp } from './util';
 
 /** GlobalParams.offline with its defaults (the deprecated offlineCapSeconds only when `offline` is absent). */
-export function offlineCfg(content: Content): { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null } {
+export function offlineCfg(content: Content): { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null; hindsightRate: number } {
   const g = content.global;
   if (g.offline) {
     const h = g.offline.holdBefore;
-    return { capSeconds: Math.max(0, fin(g.offline.capSeconds, DEFAULT_OFFLINE_CAP)), holdBefore: h === 'crisis' || h === 'collapse' ? h : null };
+    return {
+      capSeconds: Math.max(0, fin(g.offline.capSeconds, DEFAULT_OFFLINE_CAP)), holdBefore: h === 'crisis' || h === 'collapse' ? h : null,
+      hindsightRate: clamp(fin(g.offline.hindsightRate ?? 1, 1), 0, 1),
+    };
   }
-  return { capSeconds: Math.max(0, fin(g.offlineCapSeconds ?? DEFAULT_OFFLINE_CAP, DEFAULT_OFFLINE_CAP)), holdBefore: 'collapse' };
+  return { capSeconds: Math.max(0, fin(g.offlineCapSeconds ?? DEFAULT_OFFLINE_CAP, DEFAULT_OFFLINE_CAP)), holdBefore: 'collapse', hindsightRate: 1 };
 }
 /** Derived.offlineCapSeconds: the base cap plus every standing offlineCapAdd. */
 export const offlineCapOf = (content: Content, mods: Mods): number => Math.max(0, offlineCfg(content).capSeconds + mods.offlineCapAdd);
@@ -35,6 +41,7 @@ export function fastForward(state: GameState, content: Content, seconds: number)
     requested, simulated: 0, heldBy: null, from: state.time, to: state.time, capital: 0, mandate: 0, population: 0,
     decades: 0, dividends: 0, crises: 0, marketBuys: 0, civilServiceRaises: 0, treasuryBuys: 0, lapsed: [], opened: [],
     unsettled: [], lines: {}, fromSeq: state.meta.eventSeq ?? 0, toSeq: state.meta.eventSeq ?? 0,
+    dividendsForgone: 0, hindsight: 0, hindsightRate: cfg.hindsightRate,
   };
   if (computeFlows(state, content).pending) return { ...state, lastOffline: { ...report, heldBy: 'pending' } };
   const total = Math.min(requested, offlineCapOf(content, modsOf(state, content)));
@@ -46,7 +53,7 @@ export function fastForward(state: GameState, content: Content, seconds: number)
     const n = Math.ceil(total / FAST_FORWARD_STEP - 1e-9);
     const h = total / n;
     for (let i = 0; i < n; i++) {
-      const t = step(s, content, h);
+      const t = step(s, content, h, false, true);
       if (t === s) break;
       // the hold: discard a step that fires what holdBefore names
       if (cfg.holdBefore !== null) {
@@ -59,12 +66,13 @@ export function fastForward(state: GameState, content: Content, seconds: number)
       }
       // what this step did (its events are the newest in t.events)
       const seq0 = s.meta.eventSeq ?? 0;
+      let choices = 0;
       for (const e of t.events ?? []) {
         if (e.seq <= seq0) continue;
         switch (e.kind) {
           case 'decade':
             report.decades++;
-            if (e.sector && sectorSteady(content, e.sector).choices.length) report.dividends++;
+            if (e.sector && sectorSteady(content, e.sector).choices.length) choices++;
             break;
           case 'crisis': report.crises++; break;
           case 'upgradeBought': case 'appFounded': if (e.by === 'market') report.marketBuys++; break;
@@ -76,6 +84,10 @@ export function fastForward(state: GameState, content: Content, seconds: number)
           default: break;
         }
       }
+      // offers made (no overflow away: nothing else changes the list inside a step) and choices forgone
+      const made = Math.max(0, Math.min(choices, t.pendingDividends.length - s.pendingDividends.length));
+      report.dividends += made;
+      report.dividendsForgone! += choices - made;
       // a line is broken when a step leaves its decade streak at 0 (it reset, or never held)
       for (const id of ix.ids) {
         const b = t.sectors[id];
@@ -101,5 +113,12 @@ export function fastForward(state: GameState, content: Content, seconds: number)
   report.mandate = fin(s.mandate - state.mandate);
   report.population = fin(s.population - state.population);
   report.toSeq = s.meta.eventSeq ?? 0;
+  // Hindsight at offline.hindsightRate: withhold (1 − rate) of the change in the unrounded terms (types.ts)
+  const t0 = hindsightTerms(state, content);
+  if (s !== state && cfg.hindsightRate < 1) {
+    const dW = fin((1 - cfg.hindsightRate) * (termsSum(hindsightTerms(s, content)) - termsSum(t0)));
+    if (dW !== 0) s = { ...s, run: { ...s.run, hindsightWithheld: fin((s.run.hindsightWithheld ?? 0) + dW) } };
+  }
+  report.hindsight = s === state ? 0 : hindsightTerms(s, content).total - t0.total;
   return { ...s, lastOffline: report };
 }

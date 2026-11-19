@@ -48,7 +48,9 @@
  *   --commons            buy the visible Commons project with the best wellbeing per £ when affordable above 60 s of income
  *   --market=on|off      the Market in runs ≥ 2 (default on for a player who never touches it; `budget` switches it off in
  *                        sectors with a line unless --market=on)
- *   --offline-check      every 10 minutes of play: clone, fastForward 8 h, print heldBy / heldSector / simulated / pending
+ *   --offline-check      every 10 minutes of play: clone, fastForward 8 h, print heldBy / heldSector / simulated / pending,
+ *                        decades, Hindsight gained while away (OfflineReport.hindsight) and its multiple of the Hindsight
+ *                        the run itself earned at its end (×run), dividends forgone, wellbeing after
  *   --decisions          longest stretch without a player decision in hour 1 and hours 1–10, decisions and automated
  *                        actions per model decade (mean); in --json: decisionsByDecade, automatedByDecade and the gaps
  *   --total-hours=N      keep playing consecutive runs until N hours cumulative (overrides [runs])
@@ -558,7 +560,7 @@ interface RunReport {
     leanDecades: number; fullDecades: number; decisions: number; automated: number;
     decisionsByDecade: number[]; automatedByDecade: number[]; decisionTimes: number[];
     gaps: { hour1: number; run: number };
-    offline: { at: number; heldBy: string | null; heldSector?: string; simulated: number; pending: boolean; decades?: number; dH?: number; W?: number }[];
+    offline: { at: number; heldBy: string | null; heldSector?: string; simulated: number; pending: boolean; decades?: number; dH?: number; W?: number; forgone?: number }[];
   };
 }
 
@@ -753,8 +755,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       const f = model.fastForward(s, C, 8 * 3600);
       const r = f.lastOffline!;
       const pending = !!model.derive(f, C).pendingReckoning;
-      const H0 = d.hindsightTerms.total, H1 = model.derive(f, C).hindsightTerms.total;
-      offline.push({ at: s.time, heldBy: r.heldBy, ...(r.heldSector ? { heldSector: r.heldSector } : {}), simulated: r.simulated, pending, decades: r.decades, dH: H1 - H0, W: model.derive(f, C).wellbeing });
+      offline.push({ at: s.time, heldBy: r.heldBy, ...(r.heldSector ? { heldSector: r.heldSector } : {}), simulated: r.simulated, pending, decades: r.decades, dH: r.hindsight ?? 0, W: model.derive(f, C).wellbeing, forgone: r.dividendsForgone ?? 0 });
       if (pending) { failures++; console.log(`  !! offline check at ${min(s.time)} min returned a pending Reckoning`); }
       check(f, `offline check run ${idx} t=${s.time}`);
     }
@@ -896,8 +897,13 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     const parts = Object.entries(share).map(([e, x]) => `${e} ${((x / Math.max(1e-9, (d.sectors[e]?.demand ?? 0) - x)) * 100).toFixed(1)}%`);
     console.log(`${mode} #${idx} Commons at the end: wellbeing ${n(d.commons.wellbeing)}, intensity (extra demand over the rest) ${parts.join(', ') || '-'}; levels ${JSON.stringify(s.commons.levels)}`);
   }
-  if (OFFLINE_CHECK && SUMMARY) console.log(`${mode} #${idx} offline checks (8 h): ${offline.map((o) => `${min(o.at).trim()}m ${o.heldBy ?? 'none'}${o.heldSector ? `(${o.heldSector})` : ''} ${(o.simulated / 3600).toFixed(2)} h${o.pending ? ' PENDING!' : ''} (+${o.decades} dec, +${o.dH?.toFixed(0)} H, W ${o.W?.toFixed(0)})`).join(' · ') || '-'}`);
-  if (OFFLINE_CHECK) log(`  offline checks (8 h): ${offline.map((o) => `${min(o.at).trim()}m ${o.heldBy ?? 'none'}${o.heldSector ? `(${o.heldSector})` : ''} ${n(o.simulated / 3600)} h${o.pending ? ' PENDING!' : ''}`).join(' · ') || '-'}`);
+  const xRun = (o: { dH?: number }) => (terms.total > 0 ? (o.dH ?? 0) / terms.total : 0);
+  if (OFFLINE_CHECK && SUMMARY) {
+    const rate = C.global.offline?.hindsightRate ?? 1;
+    console.log(`${mode} #${idx} offline checks (8 h; Hindsight away at ${rate} of the rate, ×run = multiple of this run's ${terms.total} H): ${offline.map((o) => `${min(o.at).trim()}m ${o.heldBy ?? 'none'}${o.heldSector ? `(${o.heldSector})` : ''} ${(o.simulated / 3600).toFixed(2)} h${o.pending ? ' PENDING!' : ''} (+${o.decades} dec, +${o.dH?.toFixed(0)} H = ${xRun(o).toFixed(2)}×run, ${o.forgone} forgone, W ${o.W?.toFixed(0)})`).join(' · ') || '-'}`);
+    if (offline.length) console.log(`${mode} #${idx} offline Hindsight: max ${Math.max(...offline.map(xRun)).toFixed(2)}× this run's active Hindsight`);
+  }
+  if (OFFLINE_CHECK) log(`  offline checks (8 h): ${offline.map((o) => `${min(o.at).trim()}m ${o.heldBy ?? 'none'}${o.heldSector ? `(${o.heldSector})` : ''} ${n(o.simulated / 3600)} h${o.pending ? ' PENDING!' : ''} +${(o.dH ?? 0).toFixed(0)} H (${xRun(o).toFixed(2)}×run)`).join(' · ') || '-'}`);
   if (DECISIONS) log(`  decisions: ${s.run.decisions} (per model decade ${n(mean(s.run.decisionsByDecade))}), automated ${s.run.automated} (${n(mean(s.run.automatedByDecade))}); longest gap ${gapIn(decisionTimes, 0, Math.min(3600, s.time)).toFixed(0)} s in hour 1, ${gapIn(decisionTimes, 0, s.time).toFixed(0)} s in the run`);
   if (JSON_OUT) console.log(JSON.stringify(report));
   return { s, report };

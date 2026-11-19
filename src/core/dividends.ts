@@ -1,5 +1,5 @@
 /**
- * Decade dividends (M2): the offer a decade appends, the overflow rule, and chooseDecadeDividend. The pace multiplier
+ * Decade dividends (M2): the offer a decade appends, the overflow rule (none while away), and chooseDecadeDividend. The pace multiplier
  * applies to the chosen dividend's one-off amounts; standing effects come from SectorState.dividends (effects.ts).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
@@ -52,8 +52,12 @@ export function resolveDividend(state: GameState, content: Content, index: numbe
   return emit(out, [{ kind: 'dividendChosen', sector: offer.sector, id, n: offer.decade, by }], state.time, calendarYear(state, content));
 }
 
-/** Append an offer; first resolve the oldest as option 0 ('default') while the list would overflow. */
-export function appendDividend(state: GameState, content: Content, offer: PendingDividend, income: number): GameState {
+/**
+ * Append an offer; first resolve the oldest as option 0 ('default') while the list would overflow. Away (inside
+ * fastForward; M2 offline fix): no overflow: a full list forgoes the new offer and the state is returned unchanged.
+ */
+export function appendDividend(state: GameState, content: Content, offer: PendingDividend, income: number, away = false): GameState {
+  if (away && state.pendingDividends.length >= PENDING_DIVIDENDS_MAX) return state;
   let s = state;
   while (s.pendingDividends.length + 1 > PENDING_DIVIDENDS_MAX) s = resolveDividend(s, content, 0, 0, 'default', income);
   return { ...s, pendingDividends: [...s.pendingDividends, offer] };

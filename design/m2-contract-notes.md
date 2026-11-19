@@ -86,11 +86,16 @@ has a tolerance (`CLEAR_RATE_TOLERANCE`, 1e−6 × collapseAt per second) so sol
   Treasury rules. Never in projections (the step's `lite` flag), never while a Reckoning is pending. When the step is
   not a tick, or nothing is active, it costs one comparison (target ≤ 3% µs per tick).
 - **What the Market buys.** At most one action per open, unsettled, switched-on sector per tick, in sectorOrder. The
-  action is the affordable candidate with the shortest payback = cost ÷ (whole-state income after − income now), each
-  "after" a solve of the state with that one action applied. Candidates are available foundings, plus efficiency and
-  capital cards with no `excludes`: forks, research (the reveal) and prospects stay the player's (P11: never automate
-  forks). It acts only if the payback is within `paybackMax` (120 s by default; the UI offers 30 s, 2 min, 10 min).
-  Ties: foundings before cards, then content order.
+  action is the affordable candidate with the shortest payback = cost ÷ gain, each gain measured on a solve of the
+  state with that one action applied (`marketGain` in `src/core/orders.ts`). The gain is the running cost the card
+  saves at today's output (Σ over solved Industries of today's demand × the fall in the pre-tax price: coal no longer
+  bought, cheaper engines) plus any rise in whole-state income; neither part ever counts a loss. The first part is how
+  an engine was sold ("a third of the coal it saves"), the second how an application is. The original rule (payback =
+  cost ÷ the rise in income alone) saw no gain in a card that only cut running costs, so the Market never bought
+  efficiency. Candidates are available foundings, plus efficiency and capital cards with no `excludes`: forks,
+  research (the reveal) and prospects stay the player's (P11: never automate forks). It acts only if the payback is
+  within `paybackMax` (120 s by default; the UI offers 30 s, 2 min, 10 min). Ties: foundings before cards, then content
+  order.
 - **One per sector per tick, not a global queue.** One action per sector per 20 s is the cadence of a busy player and
   scales with the number of Industries. A global best-payback queue would starve later Industries and cost more
   solves.
@@ -173,6 +178,64 @@ explicit rules cover the ones a merge cannot get right:
 
 v1 saves chain through v2.
 
+### (j) Time away: ordinary income in full, Hindsight at a reduced rate (the offline fix)
+
+**The problem.** Offline never ended a run, but it paid too well. An 8-hour return to a held restraint run (run 4,
+minute 50) earned about +4,300 Hindsight, about six times what that whole run earned played (697). The catch-up ran
+about 300 decades and the wellbeing-years at the full rate. Unchosen dividends overflowed to option 0 and compounded,
+with wellbeing reaching 104 and the Mandate rate several times higher. A night away was worth more than hours of good
+play, and restraint became a timewall to sleep through instead of a string of decisions.
+
+**The rule, in two parts, both only inside `fastForward`:**
+
+1. **Hindsight away accrues at `offline.hindsightRate`** (content: 0.15; the contract default 1 keeps old content
+   as it was). Everything else counts in full: capital, Mandate, population, the reserve and pressure, decades and their
+   base dividend, the streaks, Steady State, unlocks. Each call adds `(1 − rate) × (H1 − H0)` to
+   `run.hindsightWithheld`. H0 and H1 are the unrounded sums of the seven weighted terms at the start and the end of
+   the catch-up. `HindsightTerms.withheld` reports the amount, and the total pays the sum less what was withheld.
+2. **No dividend overflow while away.** A decade that finds `PENDING_DIVIDENDS_MAX` offers waiting still counts and
+   still pays its `decadeEffects`, but offers no choice (`OfflineReport.dividendsForgone`). Choices nobody was there to
+   make no longer compound. The returning player finds eight choices to make, not eight made for them. `tick` keeps
+   the overflow rule, so a player who leaves the tab open is treated as before.
+
+**Why this shape.**
+
+- **One rule covers every term.** The rate applies to the whole change in Hindsight, not to chosen quantities, so
+  Steady State reached away, the unburnt ramp, decades and wellbeing-years are all treated alike. Any later term is
+  covered without a new counter.
+- **It is exact across sessions.** Hindsight is a function of the state, so the change telescopes. One 8-hour call
+  and eight 1-hour calls run the same steps and withhold the same amount (tested).
+- **One optional field, no version bump.** `run.hindsightWithheld` is absent unless set, and a Reckoning drops it.
+  `deserialize` keeps it only when finite. An older save simply has no time away recorded.
+- **Honest.** The report carries `hindsight` (the change in `hindsightIfReckonNow`) and `hindsightRate`. The ledger
+  says what was entered and that the books were kept at a reduced rate in the proprietor's absence. It does not say
+  what was "lost".
+
+**Rejected.**
+
+- *A cap per absence:* eight 1-hour returns would earn eight caps.
+- *A cap per run:* a flat amount that ignores how good the board is.
+- *Diminishing wellbeing-years without a decision:* it would change online idling too, and make the online path's
+  maths depend on decision history.
+- *The rate alone:* it leaves the overflow's compounding in place. That gift persists into active play after the
+  return (wellbeing 104 against 78, and a multiplied Mandate rate).
+
+**Measured** (`tools/balance.ts budget 5 --summary --offline-check`; 8 h from every tenth minute; multiples of the
+run's own played Hindsight):
+
+| State | Before | After |
+|---|---|---|
+| Boom (efficiency) | +1 to +35 (≤ 0.42×) | +0 to +7 (≤ 0.08×) |
+| Early restraint, run 3 at 30 min | +340 (1.39×) | +42 (0.17×) |
+| Held restraint, run 4 at 50 / 80 min | +4,286 / +4,621 (6.1× / 6.6×) | +554 / +613 (0.79× / 0.88×) |
+| Run 5 at 40 min | +1,833 (0.94×) | +265 (0.14×) |
+
+Online play is byte-for-byte unchanged. `src/balance.test.ts` E9b asserts the bound: from four restraint states, an
+8-hour absence earns no more Hindsight than that run earns played.
+
+Boom play still loses most of a night to the hold. That is accepted until banked time arrives, and it is not made
+worse: the holds and simulated hours of boom states are identical before and after.
+
 ## 2. Other decisions not dictated by the documents
 
 - **Decade wellbeing.** `decadeWellbeing` defaults to `'drawn'` and `drawnSlack` to 0.05, as drafted. `w0` is
@@ -196,7 +259,7 @@ v1 saves chain through v2.
   from. `decadeEffects` still pay on every decade (the base dividend); the choice comes on top.
 - **Unchosen dividends.** They wait, never block play, and are discarded unpaid at a Reckoning. More than eight
   resolve the oldest as option 0 (content puts the modest option first). An 8-hour offline return could otherwise
-  bring 140 offers. `slotAdd` is banned in dividends because seats matter only between runs; the audit's "+1 seat this
+  bring 140 offers. Offline fix: inside `fastForward` there is no overflow; further offers are forgone instead (see (j)). `slotAdd` is banned in dividends because seats matter only between runs; the audit's "+1 seat this
   run" cannot work mid-run.
 - **The Commons.** A project's wellbeing is `max × (1 − exp(−L × perLevel / max))`: the first level gives about
   `perLevel` and nothing exceeds `max`. It is not per head; the population rebound acts through demography. The roadmap

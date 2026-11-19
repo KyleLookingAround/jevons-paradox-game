@@ -381,7 +381,8 @@ export function deserialize(text: string, content: Content): GameState | null {
       if (def && typeof ls.recycle === 'string' && recycleOptions(def).includes(ls.recycle as LeverRecycle)) out.recycle = ls.recycle as LeverRecycle;
       levers[id] = out;
     }
-    const run = merged.run;
+    // M2 offline fix: run.hindsightWithheld is optional (absent = 0); kept only when finite
+    const { hindsightWithheld: withheld0, ...run } = merged.run;
     let s: GameState = {
       ...merged, version: SAVE_VERSION, sectors, levers, meta,
       upgrades: levelMap(merged.upgrades, (id) => { const u = ix.upgrades.get(id); return u ? upgradeMax(u) : undefined; }),
@@ -392,6 +393,7 @@ export function deserialize(text: string, content: Content): GameState | null {
         automatedByDecade: Array.isArray(run.automatedByDecade) ? run.automatedByDecade.map((x) => (isNum(x) && x >= 0 ? x : 0)) : [],
         opening: validOpeningActions(run.opening),
         firstBudgetAt: isNum(run.firstBudgetAt) ? run.firstBudgetAt : null,
+        ...(isNum(withheld0) ? { hindsightWithheld: withheld0 } : {}),
       },
       events: validEvents(merged.events, meta.eventSeq),
       pendingDividends: validPending(merged.pendingDividends, content),

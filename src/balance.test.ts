@@ -533,6 +533,29 @@ describe('M2 exit criteria', () => {
       if (r.simulated < 8 * 3600 - 1) expect(['crisis', 'collapse', 'exhausted', 'cap']).toContain(r.heldBy);
     }
   }, 30_000);
+  test('E9b: an 8-hour absence from a restraint run earns no more Hindsight than that run earns played (offline fix)', () => {
+    // at the full rate a held run 4 away for 8 h earned about six runs' worth (+4,300); the content's hindsightRate
+    // enters Hindsight away at 15%, and a full dividend list forgoes offers instead of compounding option 0
+    const rate = C.global.offline?.hindsightRate ?? 1;
+    expect(rate).toBeLessThanOrEqual(0.25);
+    const start = (k: number) => spend(model.reckon(BUD.ends[k - 1], C), true);
+    const cases: [number, number][] = [[3, 30], [4, 50], [4, 80], [5, 40]];
+    const out: string[] = [];
+    for (const [k, min] of cases) {
+      const p = play(start(k), 'budget', { settle: true, commons: true, stopAt: min * 60 }).s;
+      if (D(p).pendingReckoning) continue;
+      const f = model.fastForward(p, C, 8 * 3600);
+      const r = f.lastOffline!;
+      const active = BUD.runs[k - 1].hindsight;
+      out.push(`run ${k} at ${min} min: +${r.hindsight} H away, ${(r.hindsight! / active).toFixed(2)}× the run's ${active}`);
+      expect(r.hindsightRate).toBe(rate);
+      expect(r.hindsight!).toBe(D(f).hindsightIfReckonNow - D(p).hindsightIfReckonNow);
+      expect(r.hindsight!).toBeLessThanOrEqual(active);
+      expect(f.pendingDividends.length).toBeLessThanOrEqual(8);
+    }
+    if ((globalThis as any).process?.env?.BAL_DEBUG) console.log('E9b', out.join(' · '));
+    expect(out.length).toBeGreaterThanOrEqual(3);
+  }, 60_000);
   test('E10: ten hours of budget play open all five Industries and use Settlement', () => {
     expect(cum(BUD.runs, BUD.runs.length) / 3600).toBeGreaterThanOrEqual(10);
     for (const e of ORDER.slice(1)) expect(`${e} ${openedH(BUD.runs, e) !== null}`).toBe(`${e} true`);

@@ -104,3 +104,85 @@ describe('M2 offline', () => {
     expect(f.lastOffline!.heldBy).toBe('pending');
   });
 });
+
+// The offline fix: Hindsight away at offline.hindsightRate; no dividend overflow inside fastForward (types.ts
+// GlobalParams.offline.hindsightRate, RunStats.hindsightWithheld, GameState.pendingDividends).
+const rate = (c: Content, r: number | undefined): Content => ({ ...c, global: { ...c.global, offline: { ...c.global.offline!, hindsightRate: r } } });
+const raw = (s: GameState, c: Content) => { const t = D(s, c).hindsightTerms; return t.wellbeing + t.budget + t.unburnt + t.backfire + t.sectorsReached + t.steady + t.settled; };
+const strip = (s: GameState) => ({ ...s, lastOffline: null, run: { ...s.run, hindsightWithheld: undefined } });
+
+describe('M2 offline: Hindsight at a reduced rate, no overflow while away', () => {
+  const FULL = rate(LONG, undefined), FIFTH = rate(LONG, 0.2);
+  test('the rate withholds (1 − rate) of the change in the terms and changes nothing else', () => {
+    const s = decoupling(LONG);
+    const a = model.fastForward(s, FULL, 2 * 3600), b = model.fastForward(s, FIFTH, 2 * 3600);
+    // the default (absent) is the full rate and writes nothing new into the run
+    expect(a.run.hindsightWithheld).toBeUndefined();
+    expect(D(a, FULL).hindsightTerms.withheld).toBeUndefined();
+    expect(a.lastOffline!.hindsightRate).toBe(1);
+    // the same simulation: capital, decades, streaks, wellbeing-years, events
+    expect(strip(b)).toEqual(strip(a));
+    expect(b.run.budgetDecades).toBeGreaterThan(s.run.budgetDecades);
+    const gain = raw(a, FULL) - raw(s, FULL);
+    expect(gain).toBeGreaterThan(50);
+    expect(b.run.hindsightWithheld!).toBeCloseTo(0.8 * gain, 6);
+    expect(D(b, FIFTH).hindsightTerms.withheld!).toBeCloseTo(0.8 * gain, 6);
+    // the report: Hindsight earned while away at the rate
+    expect(b.lastOffline!.hindsightRate).toBe(0.2);
+    expect(a.lastOffline!.hindsight).toBe(D(a, FULL).hindsightIfReckonNow - D(s, FULL).hindsightIfReckonNow);
+    expect(b.lastOffline!.hindsight).toBe(D(b, FIFTH).hindsightIfReckonNow - D(s, FIFTH).hindsightIfReckonNow);
+    expect(Math.abs(b.lastOffline!.hindsight! - 0.2 * a.lastOffline!.hindsight!)).toBeLessThanOrEqual(1);
+    // the Reckoning pays what derive promised, and the next run starts with nothing withheld
+    const r = model.reckon(b, FIFTH);
+    expect(r.meta.hindsight - b.meta.hindsight).toBe(D(b, FIFTH).hindsightIfReckonNow);
+    expect(r.run.hindsightWithheld).toBeUndefined();
+    // rate 0: away earns no Hindsight at all
+    const z = model.fastForward(s, rate(LONG, 0), 2 * 3600);
+    expect(z.lastOffline!.hindsight).toBe(0);
+  });
+  test('one 8-hour call and eight 1-hour calls give the same state and withhold the same', () => {
+    const s = decoupling(LONG);
+    const one = model.fastForward(s, FIFTH, 8 * 3600);
+    let eight = s;
+    for (let i = 0; i < 8; i++) eight = model.fastForward(eight, FIFTH, 3600);
+    expect(strip(eight)).toEqual(strip(one));
+    expect(eight.run.hindsightWithheld!).toBeCloseTo(one.run.hindsightWithheld!, 6);
+    expect(D(eight, FIFTH).hindsightIfReckonNow).toBe(D(one, FIFTH).hindsightIfReckonNow);
+  });
+  test('the bound: an absence earns at most the rate × what the untouched board earns online', () => {
+    const s = decoupling(LONG);
+    const away = model.fastForward(s, FIFTH, 3600);
+    const online = run(s, 3600, FIFTH, 5);
+    const gainOnline = D(online, FIFTH).hindsightIfReckonNow - D(s, FIFTH).hindsightIfReckonNow;
+    expect(gainOnline).toBeGreaterThan(20);
+    expect(away.lastOffline!.hindsight!).toBeLessThanOrEqual(Math.ceil(0.2 * gainOnline) + 1);
+    // tick() never withholds
+    expect(online.run.hindsightWithheld).toBeUndefined();
+  });
+  test('away, a full dividend list forgoes new offers instead of resolving the oldest; tick still overflows', () => {
+    const s = decoupling(LONG);
+    const f = model.fastForward(s, FIFTH, 3600);
+    const r = f.lastOffline!;
+    expect(f.pendingDividends.length).toBe(8);
+    expect(r.dividends).toBe(8);
+    expect(r.dividendsForgone!).toBeGreaterThan(0);
+    expect(r.dividends + r.dividendsForgone!).toBe(r.decades);
+    expect(f.sectors.steam.dividends).toEqual([]);
+    expect(f.events.some((e) => e.kind === 'dividendChosen')).toBe(false);
+    // the same hour online resolves the overflow as option 0 (M2's rule, unchanged)
+    const t = run(s, 3600, FIFTH, 5);
+    expect(t.pendingDividends.length).toBe(8);
+    expect(t.sectors.steam.dividends.length).toBe(r.dividendsForgone!);
+  });
+  test('save: hindsightWithheld round-trips when finite and is dropped otherwise', () => {
+    const b = model.fastForward(decoupling(LONG), FIFTH, 3600);
+    const back = model.deserialize(model.serialize(b), FIFTH)!;
+    expect(back.run.hindsightWithheld!).toBeCloseTo(b.run.hindsightWithheld!, 9);
+    expect(D(back, FIFTH).hindsightIfReckonNow).toBe(D(b, FIFTH).hindsightIfReckonNow);
+    const j = JSON.parse(model.serialize(b));
+    j.run.hindsightWithheld = 'lots';
+    expect(model.deserialize(JSON.stringify(j), FIFTH)!.run.hindsightWithheld).toBeUndefined();
+    delete j.run.hindsightWithheld;
+    expect(model.deserialize(JSON.stringify(j), FIFTH)!.run.hindsightWithheld).toBeUndefined();
+  });
+});

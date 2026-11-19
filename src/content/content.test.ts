@@ -860,8 +860,8 @@ describe('M2: Charters', () => {
 });
 
 describe('M2: orders, offline, Institutions, Know-how trees', () => {
-  test('offline: a night from the start, holding before a crisis; the v2 field is gone', () => {
-    expect(C.global.offline).toEqual({ capSeconds: 8 * 3600, holdBefore: 'crisis' });
+  test('offline: a night from the start, holding before a crisis, Hindsight away at a reduced rate; the v2 field is gone', () => {
+    expect(C.global.offline).toEqual({ capSeconds: 8 * 3600, holdBefore: 'crisis', hindsightRate: 0.15 });
     expect(C.global.offlineCapSeconds).toBeUndefined();
   });
 

@@ -1,6 +1,8 @@
 // "While you were away": the ledger of the last catch-up (GameState.lastOffline), at the head of the feed under the
 // pinned gauges (never over them), until the player dismisses it. Shown once per report: the report's key is
-// remembered in the UI preferences. Reads the report and derive() only; every figure is the model's.
+// remembered in the UI preferences. Reads the report and derive() only; every figure is the model's. Since the offline
+// fix it also says what Hindsight the absence entered and at what rate (OfflineReport.hindsight, hindsightRate), and
+// how many decades offered no choice because the dividend list was full (dividendsForgone).
 import type { Ctx, Comp } from './ctx';
 import { sectorDef, sectorIds } from './ctx';
 import type { OfflineReport } from '../types';
@@ -24,12 +26,13 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
   const held = h('p', { class: 'aw-held' });
   const grid = h('dl', { class: 'aw-grid' });
   const lines = h('ul', { class: 'aw-lines' });
+  const books = h('p', { class: 'aw-more aw-books' });
   const more = h('p', { class: 'aw-more' });
   const ok = h('button', { class: 'btn', type: 'button', onclick: () => dismiss() }, 'Carry on');
   const toDiv = h('button', { class: 'btn linkish', type: 'button', hidden: true, onclick: () => { dismiss(); document.querySelector<HTMLElement>('.divs')?.scrollIntoView({ block: 'center' }); } }, 'Choose the dividends ↓');
   const el = h('section', { class: 'away', 'aria-label': 'While you were away', hidden: true },
     h('header', { class: 'aw-h' }, h('h2', { class: 'aw-t', text: 'While you were away' }), when),
-    held, grid, lines, more, h('div', { class: 'm-row' }, ok, toDiv));
+    held, grid, books, lines, more, h('div', { class: 'm-row' }, ok, toDiv));
   let shownKey = '';
 
   function dismiss(): void {
@@ -60,12 +63,23 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
     rows.push(['Capital', signed(num(r.capital), money)]);
     if (num(r.mandate) !== 0) rows.push(['Mandate', signed(num(r.mandate), (n) => fmt(Math.round(n)))]);
     rows.push(['People', signed(num(r.population), (n) => (n >= 10 ? fmt(n) : n.toFixed(2)))]);
+    if (typeof r.hindsight === 'number') rows.push(['Hindsight', signed(num(r.hindsight), (n) => fmt(Math.round(n)))]);
     if (num(r.decades)) rows.push(['Decades within the line', fmt(num(r.decades))]);
     if (num(r.crises)) rows.push(['Crises', fmt(num(r.crises))]);
     if (num(r.marketBuys)) rows.push(['Bought by the Market', fmt(num(r.marketBuys))]);
     if (num(r.civilServiceRaises)) rows.push(['Levers raised by the Civil Service', fmt(num(r.civilServiceRaises))]);
     if (num(r.treasuryBuys)) rows.push(['Built under Treasury rules', fmt(num(r.treasuryBuys))]);
     grid.replaceChildren(...rows.map(([k, v]) => h('div', null, h('dt', { text: k }), h('dd', { class: 'num', text: v }))));
+    // The rate Hindsight was entered at while away (the model's GlobalParams.offline.hindsightRate).
+    const rate = typeof r.hindsightRate === 'number' ? Math.max(0, Math.min(1, r.hindsightRate)) : 1;
+    let booksTxt = '';
+    if (rate < 1 && sim > 0) {
+      booksTxt = rate > 0
+        ? `The books were kept in the proprietor’s absence, Hindsight entered at ${Math.round(rate * 100)} per cent of the usual rate.`
+        : 'The books were kept in the proprietor’s absence; no Hindsight was entered.';
+    }
+    setText(books, booksTxt);
+    show(books, !!booksTxt);
 
     const ln = Object.keys(r.lines || {}).filter((id) => sectorDef(ctx, id));
     const order = sectorIds(ctx.content);
@@ -89,10 +103,13 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
     if (names(r.unsettled)) extra.push(`No longer settled: ${names(r.unsettled)}.`);
     const waiting = (ctx.state.pendingDividends || []).length;
     if (num(r.dividends) > 0 || waiting) extra.push(`${waiting === 1 ? 'One dividend waits' : `${fmt(waiting)} dividends wait`} for a choice.`);
+    const forgone = num(r.dividendsForgone);
+    const words = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    if (forgone > 0) extra.push(`With the list full, ${forgone === 1 ? 'one later decade' : `${words[forgone] ?? fmt(forgone)} later decades`} paid the base dividend and offered no choice.`);
     setText(more, extra.join(' '));
     show(more, extra.length > 0);
     show(toDiv, waiting > 0);
-    announce(`While you were away: ${dur(sim)} counted. ${heldTxt}`);
+    announce(`While you were away: ${dur(sim)} counted. ${heldTxt} ${booksTxt}`.trim());
   }
 
   function check(): void {

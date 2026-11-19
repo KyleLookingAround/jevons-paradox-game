@@ -1,5 +1,5 @@
 /**
- * Hindsight: the seven weighted terms a Reckoning would pay now.
+ * Hindsight: the seven weighted terms a Reckoning would pay now, less what was withheld for time away (M2 offline fix).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { STEADY_STATE_YEARS } from '../types';
@@ -36,8 +36,16 @@ export function hindsightTerms(state: GameState, content: Content): HindsightTer
     steady: fin(h.perSteadySector * count(run.steadySectors)),
     settled: fin((h.perSettledSector ?? 0) * settled),
   };
-  const sum = terms.wellbeing + terms.budget + terms.unburnt + terms.backfire + terms.sectorsReached + terms.steady + terms.settled;
+  const sum = termsSum(terms);
+  // M2 offline fix: Hindsight that accrued inside fastForward at less than the full rate (types.ts RunStats.hindsightWithheld)
+  const withheld = Math.max(0, fin(run.hindsightWithheld ?? 0));
+  if (withheld > 0) return { wellbeingYears: wy, intensity, ...terms, withheld, total: Math.max(1, Math.round(fin(sum - withheld))) };
   return { wellbeingYears: wy, intensity, ...terms, total: Math.max(1, Math.round(fin(sum))) };
+}
+
+/** The unrounded sum of the seven weighted terms (before withholding): what fastForward's offline rate is applied to. */
+export function termsSum(t: Pick<HindsightTerms, 'wellbeing' | 'budget' | 'unburnt' | 'backfire' | 'sectorsReached' | 'steady' | 'settled'>): number {
+  return t.wellbeing + t.budget + t.unburnt + t.backfire + t.sectorsReached + t.steady + t.settled;
 }
 
 export function hindsightOnReckon(state: GameState, content: Content): number {
