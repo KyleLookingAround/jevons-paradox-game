@@ -307,9 +307,9 @@ svg { overflow: visible; }
 /* Applications */
 .price-row { display: flex; align-items: center; gap: 2px; margin: -4px 0 10px; font-size: calc(13px * var(--ts)); color: var(--muted); }
 .price-row .info { margin: 0; }
-/* The scene (src/ui/scene/ injects its own stylesheet); the frame around it. Its lettering waits for the fonts
-   (html.fonts-in, set by game.ts within 0.8 s) rather than flashing in a fallback. */
-html:not(.fonts-in) .world-mount { visibility: hidden; }
+/* The scene (src/ui/scene/ injects its own stylesheet); the frame around it. Only its lettering waits for the fonts
+   (html.fonts-in, set by game.ts within 0.8 s) rather than flashing in a fallback; the picture and its places do not. */
+html:not(.fonts-in) .world-mount :is(text, .scn-legend) { visibility: hidden; }
 @media (max-width: 999px) { .world-mount { margin: 0 calc(-1 * var(--gutter)); } }
 .apps .price-row { margin: 4px 0 0; flex-wrap: wrap; column-gap: 4px; }
 .apps .price-row .sky { margin-left: auto; }

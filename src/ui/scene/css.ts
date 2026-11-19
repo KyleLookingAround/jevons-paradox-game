@@ -124,7 +124,7 @@ const BASE = `
 .scn.live .blink>b{animation:scn-blink 1.6s steps(2,jump-none) infinite}
 @keyframes scn-blink{50%{opacity:.15}}
 .scn .flow path{fill:none;stroke:var(--s-lit);stroke-width:calc(1.4px*var(--sw));stroke-dasharray:2 14}
-.scn.live .flow path{animation:scn-flow 2.2s linear infinite}
+.scn.live .flow path{animation:scn-flow 2.2s steps(11,end) infinite}
 @keyframes scn-flow{to{stroke-dashoffset:-32}}
 .scn.live .drift>b{animation:scn-drift 70s ease-in-out infinite alternate}
 @keyframes scn-drift{from{transform:translateX(-28px)}to{transform:translateX(28px)}}

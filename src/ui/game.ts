@@ -49,7 +49,10 @@ function loadFonts(): void {
   } catch { done(); }
 }
 
+const mark = (n: string) => { try { performance.mark(n); } catch { /* ignore */ } };
+
 function boot(o: GameOpts): void {
+  mark('rebound-boot');
   loadFonts();
   const mockOpts = parseMockHash(location.hash);
   const mock = !!mockOpts || !o.realModel || !contentIsM1(o.realContent);
@@ -106,6 +109,7 @@ function boot(o: GameOpts): void {
   if (!state) state = guard('createState', () => model.createState(content));
   if (!state) return; // fatal panel already up
 
+  mark('rebound-state');
   let d: Derived = guard('derive', () => model.derive(state!, content)) ?? emptyDerived();
   let ups: UpgradeView[] = [];
   let levs: LeverView[] = [];
@@ -275,6 +279,7 @@ function boot(o: GameOpts): void {
     return b ? { at: b.at, reckonings: b.reckonings, year: b.year } : null;
   }
 
+  mark('rebound-mounted');
   installKeys(ctx, ui);
   void installManifest();
 
@@ -294,8 +299,9 @@ function boot(o: GameOpts): void {
   }
 
   refreshViews();
+  mark('rebound-views');
   ui.update();
-  try { performance.mark('rebound-ready'); } catch { /* ignore */ }
+  mark('rebound-ready');
   if (unread != null) ui.unreadSave(unread);
   // A save made between runs (the shop was open) stays fresh: no catch-up until the next run begins.
   if (away > 0 && !d.freshRun) catchUp(away, true);

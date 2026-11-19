@@ -232,7 +232,9 @@ async function loadTiming(save, rate, fonts) {
     const fcp = performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? -1;
     const ready = performance.getEntriesByName('rebound-ready')[0]?.startTime ?? -1;
     const nav = performance.getEntriesByType('navigation')[0];
-    ok({ fcp, ready, dcl: nav?.domContentLoadedEventEnd ?? -1, interactive: performance.now(), lt: window.__lt.map(([, d]) => d) });
+    const mk = (n) => performance.getEntriesByName(n)[0]?.startTime ?? -1;
+    const marks = { boot: mk('rebound-boot'), state: mk('rebound-state'), mounted: mk('rebound-mounted'), views: mk('rebound-views'), ready };
+    ok({ fcp, ready, marks, dcl: nav?.domContentLoadedEventEnd ?? -1, interactive: performance.now(), lt: window.__lt.map(([, d]) => d) });
   }))));
   r.wall = Date.now() - t0;
   await ctx.close();
@@ -408,6 +410,7 @@ for (const st of STATES) {
     const per = (k) => (P[k] ? `${f1(P[k].t / P[k].n)}/${f1(P[k].max)}` : '—');
     console.log(`\n== ${st} @${rate}× (${r.info.sector}${r.info.pending ? ', PENDING RECKONING' : ''})`);
     console.log(`  load: FCP ${f0(r.load.fcp)} ms, ready ${f0(r.load.ready)} ms, interactive ${f0(r.load.interactive)} ms, long tasks [${r.load.lt.map(f0).join(' ')}]; slow fonts: FCP ${f0(r.loadSlowFonts.fcp)} ms, interactive ${f0(r.loadSlowFonts.interactive)} ms`);
+    { const k = r.load.marks; console.log(`  boot: script start ${f0(k.boot)} → state ${f0(k.state - k.boot)} → mount ${f0(k.mounted - k.state)} → views ${f0(k.views - k.mounted)} → first update ${f0(k.ready - k.views)} ms`); }
     console.log(`  frames (10 s): p50 ${f1(r.frames.p50)} p95 ${f1(r.frames.p95)} max ${f0(r.frames.max)} ms; >33 ${r.frames.over33}, >50 ${r.frames.over50}; long tasks ${r.lt.length} (max ${f0(Math.max(0, ...r.lt))} ms)`);
     console.log(`  scrolled to improvements: p50 ${f1(r.framesScrolled.p50)} p95 ${f1(r.framesScrolled.p95)} max ${f0(r.framesScrolled.max)}`);
     console.log(`  main thread ms/s (cdp): script ${f1(r.cdp.scriptMsPerS)} style ${f1(r.cdp.styleMsPerS)} layout ${f1(r.cdp.layoutMsPerS)} task ${f1(r.cdp.taskMsPerS)}`);
