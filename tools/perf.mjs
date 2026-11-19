@@ -25,9 +25,13 @@ if (!existsSync(resolve(DIST, 'index.html'))) { console.log('Build first: bun ru
 
 const pos = args.filter((a) => !a.startsWith('--'));
 const flag = (k) => args.find((a) => a === `--${k}` || a.startsWith(`--${k}=`));
-const STATES = (pos[0] || 'fresh,mid,late').split(',');
-const THROTTLES = (pos[1] || '4,6').split(',').map(Number);
-const TRACE = !flag('no-trace');
+// --check: budgets (exit 1 if one is exceeded): sizes from build.json, then fresh and late at 4× with generous margins.
+const CHECK = !!flag('check');
+// --load: network load timings over http (the site under /jevons-paradox-game/, as on Pages), slow 4G, cold and warm.
+const LOAD = !!flag('load');
+const STATES = (pos[0] || (CHECK ? 'fresh,late' : LOAD ? '' : 'fresh,mid,late')).split(',').filter(Boolean);
+const THROTTLES = (pos[1] || (CHECK ? '4' : '4,6')).split(',').map(Number);
+const TRACE = !flag('no-trace') && !CHECK;
 const SOAK = flag('soak') ? Number(flag('soak').split('=')[1] || 5) : 0;
 const LABEL = flag('label')?.split('=')[1];
 const VIEW = { width: 390, height: 844 };
@@ -297,7 +301,7 @@ async function tapLatency(page, cdp, sel, n, gapMs) {
 async function measureState(name, save, rate) {
   const r = { rate };
   r.load = await loadTiming(save, rate, 'block');
-  r.loadSlowFonts = await loadTiming(save, rate, 'slow');
+  r.loadSlowFonts = CHECK ? r.load : await loadTiming(save, rate, 'slow');
   const { ctx, page, cdp, errs } = await newPage(save);
   await page.goto(url);
   await page.waitForFunction(() => performance.getEntriesByName('rebound-ready').length > 0);
@@ -370,6 +374,9 @@ async function measureState(name, save, rate) {
   }
   if (buySel.rep) {
     await page.locator(buySel.rep).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    // Three single taps on a repeatable (latency; more samples than the one-off tap above).
+    r.buyRepTap = await tapLatency(page, cdp, buySel.rep, 3, 700);
     await page.waitForTimeout(300);
     const box = await page.locator(buySel.rep).boundingBox();
     if (box) {
@@ -474,7 +481,7 @@ for (const st of STATES) {
     const L = (x) => (x ? `p50 ${f0(x.p50)} p95 ${f0(x.p95)} max ${f0(x.max)} ms (handler p50 ${f1(x.procP50)}, max ${f1(x.procMax)}; n ${x.n})` : '—');
     console.log(`  tap→paint Sell: ${L(r.sellTap)}`);
     console.log(`  Sell 8/s: ${L(r.sellBurst)}; frames p95 ${f1(r.sellBurstFrames.p95)} max ${f0(r.sellBurstFrames.max)}; long tasks ${r.sellBurstLt.length} (max ${f0(Math.max(0, ...r.sellBurstLt))})`);
-    console.log(`  tap→paint Buy: ${L(r.buyTap)}`);
+    console.log(`  tap→paint Buy: ${L(r.buyTap)}${r.buyIn ? ' (in another Industry: all bought here)' : ''}; repeatable ×3: ${L(r.buyRepTap)}`);
     if (r.holdFrames) console.log(`  hold Buy 3 s: bought ${r.holdBought}; frames p95 ${f1(r.holdFrames.p95)} max ${f0(r.holdFrames.max)}; long tasks ${r.holdLt.length} (max ${f0(Math.max(0, ...r.holdLt))})`);
     if (r.tabSwitch) console.log(`  tab switch to paint: p50 ${f0(r.tabSwitch.p50)} max ${f0(r.tabSwitch.max)} ms; long tasks [${r.tabSwitch.lt.map(f0).join(' ')}]`);
     console.log(`  memory: heap ${f1(r.mem0.heapMB)} → ${f1(r.mem1.heapMB)} MB, DOM ${r.mem0.domNodes} → ${r.mem1.domNodes} elements, listeners ${r.mem0.listeners} → ${r.mem1.listeners}`);
@@ -490,6 +497,106 @@ if (SOAK && saves.late?.text) {
   console.log(`\n== soak, late state, ${SOAK} min at 1×`);
   results.soak = await soak(saves.late, SOAK);
 }
+/* ------------------------------------------------------------ load over the network (--load, and in --check) */
+// Lighthouse's "Slow 4G": 150 ms round trip, 1.6 Mbit/s down, 750 kbit/s up. Cold: a fresh profile (no HTTP cache, no
+// service worker). Warm: the same profile reloaded after the service worker has installed. "Ready" is the page's own
+// mark after its first full update (the game answers taps from then); "scene" when the picture's engine has arrived.
+async function serve() {
+  const http = await import('node:http');
+  const { extname } = await import('node:path');
+  const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+  const BASE = '/jevons-paradox-game/';
+  const srv = http.createServer((req, res) => {
+    const p = decodeURIComponent((req.url || '/').split('?')[0]);
+    if (!p.startsWith(BASE)) { res.writeHead(404); res.end(); return; }
+    let f = resolve(DIST, '.' + p.slice(BASE.length - 1));
+    if (p.endsWith('/')) f = resolve(f, 'index.html');
+    if (!existsSync(f)) { res.writeHead(404); res.end(); return; }
+    const body = readFileSync(f);
+    // As GitHub Pages: gzip for text, a short max-age (the hashed names do the cache-busting).
+    const text = /\.(html|js|css|json|webmanifest|svg)$/.test(f);
+    const gz = text && /gzip/.test(req.headers['accept-encoding'] || '');
+    res.writeHead(200, { 'content-type': MIME[extname(f)] || 'application/octet-stream', 'cache-control': 'max-age=600', ...(gz ? { 'content-encoding': 'gzip' } : {}) });
+    res.end(gz ? gzipSync(body) : body);
+  });
+  await new Promise((ok) => srv.listen(0, ok));
+  return { url: `http://localhost:${srv.address().port}${BASE}`, close: () => srv.close() };
+}
+async function loadNet(base, save, rate) {
+  const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await ctx.addInitScript(INIT);
+  if (save) await ctx.addInitScript(([txt, tab]) => { if (sessionStorage.getItem('perf.seeded')) return; sessionStorage.setItem('perf.seeded', '1'); localStorage.clear(); localStorage.setItem('rebound.save.v1', txt); localStorage.setItem('rebound.save.v1.at', String(Date.now())); if (tab) localStorage.setItem('rebound.ui.sector', tab); }, [save.text, save.tab ?? null]);
+  const page = await ctx.newPage();
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 750e3 / 8 });
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate });
+  const one = async () => {
+    await page.waitForFunction(() => performance.getEntriesByName('rebound-ready').length > 0, null, { timeout: 60000 });
+    await page.waitForFunction(() => performance.getEntriesByName('rebound-scene').length > 0, null, { timeout: 60000 }).catch(() => {});
+    return page.evaluate(() => {
+      const mk = (n) => performance.getEntriesByName(n)[0]?.startTime ?? -1;
+      const res = performance.getEntriesByType('resource');
+      const nav = performance.getEntriesByType('navigation')[0];
+      const bytes = (nav?.transferSize ?? 0) + res.reduce((a, e) => a + (e.transferSize || 0), 0);
+      return { fcp: performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? -1, ready: mk('rebound-ready'), scene: mk('rebound-scene'), kb: bytes / 1024, sw: !!navigator.serviceWorker?.controller };
+    });
+  };
+  await page.goto(base);
+  const cold = await one();
+  await page.waitForTimeout(6000); // the service worker installs and precaches
+  await page.goto(base);
+  const warm = await one();
+  await ctx.close();
+  return { cold, warm };
+}
+if (LOAD || CHECK) {
+  const srv = await serve();
+  results.loadNet = {};
+  for (const rate of LOAD ? THROTTLES : [4]) {
+    for (const st of LOAD ? ['fresh', 'late'] : ['fresh']) {
+      const r = await loadNet(srv.url, saves[st]?.text ? saves[st] : null, rate);
+      results.loadNet[`${st}@${rate}`] = r;
+      const L = (x) => `FCP ${f0(x.fcp)} ms, ready ${f0(x.ready)} ms, scene ${f0(x.scene)} ms, ${f0(x.kb)} KB over the wire${x.sw ? ', from the service worker' : ''}`;
+      console.log(`\n== load over slow 4G, ${st} @${rate}×\n  cold: ${L(r.cold)}\n  warm: ${L(r.warm)}`);
+    }
+  }
+  srv.close();
+}
+
+/* ------------------------------------------------------------ budgets (--check) */
+// Generous margins over the targets (docs/adr/ADR-2026-11-19-*.md): headless timings on a shared machine vary, and this
+// is a tripwire for regressions, not the measurement (run without --check for that).
+if (CHECK) {
+  const fails = [];
+  const want = (ok, what) => { if (!ok) fails.push(what); console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${what}`); };
+  console.log('\n== budgets');
+  const S = results.sizes;
+  want(S.initialGz / 1024 <= 240, `first paint ${(S.initialGz / 1024).toFixed(0)} KB gz ≤ 240`);
+  for (const [k, b] of [['scene', 92], ['audio', 38], ['archiveText', 62]]) if (S[k]) want(S[k].gz / 1024 <= b, `${k} ${(S[k].gz / 1024).toFixed(0)} KB gz ≤ ${b}`);
+  const F = results.states.fresh?.[4], La = results.states.late?.[4];
+  if (F) {
+    want(F.frames.p95 <= 30, `fresh frame p95 ${f1(F.frames.p95)} ms ≤ 30`);
+    want(Math.max(0, ...F.lt) <= 100, `fresh idle long tasks ≤ 100 ms (max ${f0(Math.max(0, ...F.lt))})`);
+    want((F.sellTap?.p50 ?? 0) <= 150, `fresh Sell tap→paint p50 ${f0(F.sellTap?.p50)} ms ≤ 150`);
+    if (F.buyTap) want(F.buyTap.p50 <= 200, `fresh Buy tap→paint ${f0(F.buyTap.p50)} ms ≤ 200`);
+  }
+  if (La) {
+    want(La.frames.p95 <= 50, `late frame p95 ${f1(La.frames.p95)} ms ≤ 50`);
+    want(Math.max(0, ...La.lt) <= 150, `late idle long tasks ≤ 150 ms (max ${f0(Math.max(0, ...La.lt))})`);
+    want((La.sellTap?.p50 ?? 0) <= 150, `late Sell tap→paint p50 ${f0(La.sellTap?.p50)} ms ≤ 150`);
+    if (La.tabSwitch) want(La.tabSwitch.max <= 200, `late tab switch to paint max ${f0(La.tabSwitch.max)} ms ≤ 200`);
+    want(La.mem1.domNodes <= 12000, `late DOM elements after a tab tour ${La.mem1.domNodes} ≤ 12000`);
+    want(La.mem1.heapMB <= 20, `late JS heap ${f1(La.mem1.heapMB)} MB ≤ 20`);
+  }
+  const W = results.loadNet?.['fresh@4'];
+  if (W) { want(W.warm.ready <= 3000, `warm load ready ${f0(W.warm.ready)} ms ≤ 3000 (4×, slow 4G)`); want(W.cold.ready <= 6000, `cold load ready ${f0(W.cold.ready)} ms ≤ 6000 (4×, slow 4G)`); }
+  for (const st of Object.values(results.states)) for (const r of Object.values(st)) if (r.errs?.length) fails.push('page errors: ' + r.errs[0]);
+  console.log(fails.length ? `\n${fails.length} budget(s) exceeded.` : '\nAll budgets met.');
+  process.exitCode = fails.length ? 1 : 0;
+}
+
 if (LABEL) {
   mkdirSync(resolve(root, 'design/scratch'), { recursive: true });
   writeFileSync(resolve(root, `design/scratch/perf-${LABEL}.json`), JSON.stringify(results, null, 1));

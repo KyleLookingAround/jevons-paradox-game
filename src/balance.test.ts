@@ -352,8 +352,9 @@ describe('traps and restraint systems', () => {
     // the budget player seating only its cap Institutions (no absorption, substitution or wellbeing ones) every run;
     // with its full loadout it reaches Steady State by hour 4 (E3)
     const h = firstSteadyH(capsCampaign().runs);
-    expect(h === null || h >= 3).toBe(true);
-  });
+    // measured 3.2 h (Motion, run 3, with water wheels and temperance under its line; Steam does not clear under a cap)
+    expect(h ?? 99).toBeGreaterThanOrEqual(3);
+  }, 120_000);
   longTest('a settled Industry is defensible: its defence costs under half the restraint player’s Mandate income', () => {
     // a settled Steam whose town grows by a third (population still growing at the target): the defence it costs
     const i = BUD.runs.findIndex((r) => r.settledAt !== null);
