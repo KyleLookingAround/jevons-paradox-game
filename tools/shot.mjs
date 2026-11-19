@@ -727,7 +727,13 @@ async function realplay() {
         await page.waitForTimeout(400); await shot('05-pending'); await page.click('button:has-text("Face the Reckoning")');
       } else {
         await page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
-        await page.click('.run-foot .btn'); await page.waitForTimeout(250); await page.click('button:has-text("Close the books")');
+        // "Call a Reckoning" waits for the levers (the unfolding: five minutes of play after the reveal); time is moved
+        // on through the console handle if the scripted buying got there first.
+        for (let i = 0; i < 40 && !(await page.locator('.run-foot:not([hidden]) .btn').count()) && !(await page.evaluate(() => window.rebound.d.pendingReckoning)); i++) {
+          await page.evaluate(() => { const r = window.rebound; r.ctx.state = r.model.tick(r.state, r.content, 20); }); await page.waitForTimeout(150);
+        }
+        if (await page.evaluate(() => window.rebound.d.pendingReckoning)) { await page.waitForTimeout(400); await page.click('button:has-text("Face the Reckoning")'); }
+        else { await page.click('.run-foot .btn'); await page.waitForTimeout(250); await page.click('button:has-text("Close the books")'); }
       }
       await page.waitForTimeout(500); await shot('06-summary');
       await page.click('button:has-text("Spend Hindsight")'); await page.waitForTimeout(300);

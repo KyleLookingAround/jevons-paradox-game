@@ -299,7 +299,9 @@ export function buildGauges(ctx: Ctx): GaugesComp {
         // The promised line means something only once efficiency has moved off the start.
         const promised = pts.some((p) => p[1] > 1.001);
         setAttr(spark.querySelector('.sp-prom'), 'points', promised ? pts.map((p) => `${x(p[0])},${y(1 / p[1])}`).join(' ') : '');
-        show(kProm, promised && !pts.some((p) => p[3] != null || p[4] != null));
+        // "promised" gives way to the budget and sink keys once those lines are drawn (one line of key on a phone).
+        const lines = pts.filter((p) => p[3] != null).length >= 2 || pts.filter((p) => p[4] != null).length >= 2;
+        show(kProm, promised && !lines);
         const bud = pts.filter((p) => p[3] != null);
         setAttr(spark.querySelector('.sp-bud'), 'points', bud.length >= 2 ? bud.map((p) => `${x(p[0])},${y(p[3] as number)}`).join(' ') : '');
         show(kBud, bud.length >= 2);
