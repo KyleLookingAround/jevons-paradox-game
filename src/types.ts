@@ -41,6 +41,15 @@
  * dispatch defaults (M3); SettledState is self-contained so M4's capstone can create settled sectors at run start;
  * RunSummary carries peak adoption and pressure for M3's before-and-after pictures; MetaState.opening seeds M5's
  * rival; decisions per model decade feed shift 3 (M3). Shared stocks and `feeds` (M4) are not here yet.
+ *
+ * M3 ("Every Industry its own"): search for "M3:" for what M3 adds and "M3 CHANGE" for semantics that differ from M2.
+ * design/m3-contract-notes.md gives the reasons; the lane briefs are briefs/m3-*.md. In one paragraph: four general
+ * mechanic kinds on SectorDef (seams, load, travel, priceSeen; see "M3 MECHANICS" above SectorDef), levers that bite
+ * back (LeverKind 'measure', LeverDef.sideEffects), the cast and dispatches with timed modifiers, ambient news,
+ * Histories, the household return (fileReturn) and the Proprietor's Day, the Archive, the first ending with its
+ * retrospective, and optional banked time. Every M3 system is GATED by the feature mechanism of M2.1 (Content.features,
+ * Derived.features): each names an M3FeatureId below, and nothing it adds is visible, and no action of it is accepted,
+ * before that feature is on. Until the M2.1 contract is merged, "feature f is on" reads as true.
  */
 
 /** M1 CHANGE: was the five-member union EraId. Ids are content-defined, e.g. 'steam'. */
@@ -79,8 +88,39 @@ export const DECISION_DECADES_MAX = 600;
  * fraction of collapseAt per second (1e-6 × collapseAt per second; solver noise).
  */
 export const CLEAR_RATE_TOLERANCE = 1e-6;
+/* --- M3 constants --- */
+/** M3: GameState.dispatch.answered keeps at most this many entries (the oldest dropped). */
+export const ANSWERED_MAX = 60;
+/** M3: GameState.modifiers holds at most this many timed modifiers; a new one beyond it replaces the one ending soonest. */
+export const MODIFIERS_MAX = 12;
+/** M3: SectorDef.load profiles have exactly this many hourly weights (hour 0 = midnight to 1 a.m.). */
+export const LOAD_HOURS = 24;
+/** M3: a household-return figure above this is refused as implausible (validation of untrusted input). */
+export const RETURN_FIGURE_MAX = 10_000_000;
+/** M3: MetaState.milestones and the retrospective keep at most this many keys. */
+export const MILESTONES_MAX = 200;
 /**
- * Save format version. M2 CHANGE: 3.
+ * M3: the feature ids M3 adds to the M2.1 feature mechanism (merge them into its FeatureId union). Each is switched on
+ * by its Content.features entry's `when` (content); while off, everything listed for it is hidden and refused.
+ *   'seams'        Steam's seam ladder: SectorDerived.seams shown; sinkSeam accepted. (Seams never sunk change nothing.)
+ *   'load'         the load-curve widget (SectorDerived.load shown). The load arithmetic itself acts from the moment
+ *                  an Industry with `load` opens: it is that Industry's economics, not a choice.
+ *   'travel'       the travel-time dial and sprawl (SectorDerived.travel shown); as 'load', the arithmetic always acts.
+ *   'freeAtUse'    the "free" price tag (SectorDerived.free, AppDerived.priceSeen shown); the arithmetic always acts.
+ *   'sideEffects'  the "bites back" line on levers (LeverView.bite shown, 'biteBack' headline and event). The bite
+ *                  itself always acts (the lever's `catch` line states it from the start).
+ *   'dispatches'   the scheduler draws letters (none are drawn while off); answerDispatch accepted; Derived.dispatch.
+ *   'ambient'      ambient headlines are printed (none while off).
+ *   'histories'    the History picker; chooseHistory accepted.
+ *   'archive'      the Archive viewer. Notes are recorded (MetaState.archive) whether or not it is on.
+ *   'survey'       the return filer and the second twin gauges; fileReturn accepted (withdrawReturn always is).
+ *   'bank'         banked time accrues and useBank is accepted (also needs GlobalParams.offline.bankRate > 0).
+ */
+export type M3FeatureId =
+  | 'seams' | 'load' | 'travel' | 'freeAtUse' | 'sideEffects' | 'dispatches' | 'ambient' | 'histories' | 'archive'
+  | 'survey' | 'bank';
+/**
+ * Save format version. M2 CHANGE: 3. M3 CHANGE: 4 (the v3 → v4 steps are at the end of this comment).
  * Migration rule (implemented in ModelApi.deserialize; versions chain: 1 → 2 → 3):
  *   - version > SAVE_VERSION → null (a save from the future is refused).
  *   - version 2 → 3, then stamped 3. Every field M2 adds that a fresh state supplies is filled by the deep merge
@@ -136,8 +176,34 @@ export const CLEAR_RATE_TOLERANCE = 1e-6;
  * and 'charters' when meta.reckonings ≥ 1; 'commons' when meta.reckonings ≥ 2. (Older versions migrate to 3 first.)
  * A save with a `features` object keeps its known ids with finite values.
  * The UI may keep its localStorage key; deserialize does the migration.
+ *
+ * M3: version 3 → 4 (versions chain 1 → 2 → 3 → 4; a version > 4 → null). Applied to a JSON copy, in this order; the
+ * deep merge from a fresh state supplies every other M3 field (all of which a fresh state has):
+ *   1. GameState: modifiers []; ambientLast {}; orderLog {}; historyLifted false;
+ *      dispatch = { pending: [], queue: [], answered: [], offered: [], draws: 0, standing: [], nextAt: (step 7) }.
+ *   2. Every SectorState (open or closed): seamsSunk 0. LeverState and AppState: nothing (bite and bitten are
+ *      optional, absent = 0 / false; lockInDecay acts on the existing peakD). Every SettledState: load, travel and
+ *      appPriceSeen absent (their views are null while it stays settled).
+ *   3. RunStats: dispatchesAnswered 0, dispatchesDefaulted 0.
+ *   4. MetaState: dispatches { seen: {}, arms: {}, playerArms: {} }; history null; histories {}; unlocks {};
+ *      returns {}; archive {}; flags {}; endings {}; bankedSeconds 0;
+ *      milestones = { 'sectorOpened:<s>': { run: 0, at: 0, year: 0 } for every s in meta.sectorsOpened, 'steady:<s>' likewise for meta.steadySectors, 'backfire:<s>' likewise for
+ *      meta.backfiredSectors } (run 0 and at 0 mark "before the records began"; the retrospective prints them as
+ *      "earlier"); orders.dispatch = { on: false, cast: {} }.
+ *   5. RunSummary entries (meta.runs, meta.lastRun): the M3 optional fields stay absent.
+ *   6. If state.flags.won is true: meta.endings.steadyAll = an EndingRecord for the loaded state (run = reckonings + 1,
+ *      runSeconds = state.time, totalSeconds = meta.totalSeconds, year = Derived.year rounded down), and the milestone
+ *      'won' likewise; no event (nothing is replayed).
+ *   7. After the state is built: dispatch.nextAt = max(dispatchFirstAt(content), state.time + dispatchGap(state, 0))
+ *      (see GameState.dispatch), so a loaded game does not receive a letter at once; archive notes whose subject is
+ *      owned or seen in the loaded state (ArchiveDef.subject rules), or is a sector in meta.sectorsOpened, are unlocked
+ *      with at = meta.totalSeconds and no event.
+ *   Validation (as M2, element by element, invalid entries dropped): modifiers (unknown source or arm dropped),
+ *   dispatch.pending / queue / answered / offered (unknown dispatch ids dropped), meta.returns (re-validated as
+ *   fileReturn validates; an invalid return is dropped), meta.archive, meta.histories, meta.unlocks (ids no longer in
+ *   content dropped), meta.history (unknown → null), orders.dispatch.cast (unknown cast ids dropped).
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /* ------------------------------------------------------------------ */
 /* CONDITIONS (data-only "when X")                                     */
@@ -162,6 +228,12 @@ export type CmpOp = '<' | '<=' | '>' | '>=';
  *   - M2, sector: 'settled' (1 or 0), 'clear' (SectorDerived.clear, 1 or 0), 'clearYears' (SectorState.clearYears),
  *     'leanDecades' and 'fullDecades' with `sector` set (that sector's, this run); global without `sector`.
  * Every value is the one Derived/SectorDerived/AppDerived would report for the same state.
+ * M3, global: 'steadySectors' (count of run.steadySectors), 'dispatchesAnswered' (run.dispatchesAnswered: by the
+ *   player), 'historiesCleared' (count of meta.histories with cleared true), 'totalHours' (meta.totalSeconds / 3600),
+ *   'bankedSeconds' (meta.bankedSeconds).
+ * M3, sector: 'seamsSunk' (SectorState.seamsSunk); 'loadFactor' (SectorDerived.load.factor; FALSE without `load`);
+ *   'travelHours' (SectorDerived.travel.hoursPerHead; FALSE without `travel`); 'sprawl' (SectorDerived.travel.sprawl;
+ *   FALSE without `travel`); 'bite' (the largest LeverState.bite among the sector's levers, 0 if none).
  */
 export type StatKey =
   | 'time' | 'year' | 'wellbeing' | 'population' | 'capital' | 'mandate' | 'reckonings' | 'steadyYearsAll' | 'clicks'
@@ -171,7 +243,10 @@ export type StatKey =
   | 'adoption' | 'appDemand'
   /* --- M2 --- */
   | 'decisions' | 'automated' | 'commonsLevels' | 'sectorsSettled' | 'leanDecades' | 'fullDecades'
-  | 'settled' | 'clear' | 'clearYears';
+  | 'settled' | 'clear' | 'clearYears'
+  /* --- M3 --- */
+  | 'steadySectors' | 'dispatchesAnswered' | 'historiesCleared' | 'totalHours' | 'bankedSeconds'
+  | 'seamsSunk' | 'loadFactor' | 'travelHours' | 'sprawl' | 'bite';
 
 /**
  * A data-only condition, evaluated by the core against a state (and the flows it derives).
@@ -188,11 +263,24 @@ export type StatKey =
  * `label` is the player-facing wording of this node ("Own the Separate condenser"), used by checklists
  * (Derived.nextSector). Content should label every direct child of an unlock's top-level `all`.
  * Unknown leaf shapes evaluate false.
+ * M3:
+ *   - `owns` also resolves: a seam id → sunk this run; a History id → cleared in any run (meta.histories[id].cleared);
+ *     an Archive note id → unlocked (meta.archive); a cast id → false (use `answered`).
+ *   - M3 CHANGE: { flag } is true when state.flags[flag] === true OR meta.flags[flag] === true (permanent flags set by
+ *     the one-off metaFlag effect, e.g. 'proprietor').
+ *   - { returned: id }: a return with this id is on file (meta.returns[id] exists). With `figure`, `op` and `value`:
+ *     compares that stored figure (a key of the filed figures; a missing key → FALSE). See ModelApi.fileReturn.
+ *   - { answered: dispatchId }: that dispatch has been answered (by anyone, default included) in any run
+ *     (meta.dispatches.arms[id] or the run's answered list). `arm`: only answers with that arm index. `run: true`: this
+ *     run only (GameState.dispatch.answered). `by: 'player'`: only answers the player chose.
  */
 export type Cond = (
   | { stat: StatKey; sector?: SectorId; app?: string; op: CmpOp; value: number }
   | { owns: string }
   | { flag: string }
+  /* --- M3 --- */
+  | { returned: string; figure?: string; op?: CmpOp; value?: number }
+  | { answered: string; arm?: number; run?: boolean; by?: 'player' }
   | { all: Cond[] }
   | { any: Cond[] }
   | { not: Cond }
@@ -235,6 +323,8 @@ export type Cond = (
 export const FEATURE_IDS = [
   'reboundMeter', 'levers', 'population', 'market', 'moreLevers', 'charters', 'budget', 'leverRepeat', 'dividendChoice',
   'budgetPace', 'clearSkies', 'steadyState', 'commons', 'settlement',
+  // M3 (every M3FeatureId), in the order of their intended arrival (design/m3-contract-notes.md §0).
+  'archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey', 'histories', 'bank',
 ] as const;
 export type FeatureId = typeof FEATURE_IDS[number];
 
@@ -318,6 +408,23 @@ export interface Content {
   recycleText?: Partial<Record<LeverRecycle, { name: string; blurb: string }>>;
   /** The unfolding: when each feature arrives (see FeatureDef). Default: absent (every feature unlocked from the start). */
   features?: Partial<Record<FeatureId, FeatureDef>>;
+  /* --- M3 (all optional; absent = the M2 game) --- */
+  /** M3: the recurring cast who write to the proprietor (CastDef). Default []. */
+  cast?: CastDef[];
+  /** M3: every dispatch, flat (ids unique game-wide; content order is the tie-break order of the draw). Default []. */
+  dispatches?: DispatchDef[];
+  /** M3: ambient headline templates (AmbientDef). Default []. */
+  ambient?: AmbientDef[];
+  /** M3: the Histories, in display order (HistoryDef). Default []. */
+  histories?: HistoryDef[];
+  /** M3: Archive notes (ArchiveDef), in display order. Default []. */
+  archive?: ArchiveDef[];
+  /** M3: the Proprietor's Day texts: the pamphlet and the return templates (ProprietorText). Default: absent (the
+   *  core falls back to a one-line headline "Household survey published" and an empty body). */
+  proprietor?: ProprietorText;
+  /** M3: the first ending's credits and retrospective templates (EndingText). Default: absent (the UI shows a plain
+   *  "Steady State" card with the core's retrospective items untitled). */
+  ending?: EndingText;
 }
 
 /**
@@ -433,7 +540,19 @@ export interface GlobalParams {
    *               and eight 1-hour calls withhold the same (to rounding), and an absence earns hindsightRate × what the
    *               same hours earn on the untouched board. See RunStats.hindsightWithheld and HindsightTerms.withheld.
    */
-  offline?: { capSeconds: number; holdBefore: 'crisis' | 'collapse' | null; hindsightRate?: number };
+  offline?: {
+    capSeconds: number; holdBefore: 'crisis' | 'collapse' | null; hindsightRate?: number;
+    /**
+     * M3: banked time (optional; default OFF). bankRate 0–1 (default 0 = nothing is banked). After each fastForward
+     * that stopped short of its request because of a hold or the cap (OfflineReport.heldBy 'crisis' | 'collapse' |
+     * 'exhausted' | 'cap'), and only while feature 'bank' is on:
+     *   meta.bankedSeconds = min(bankMax, meta.bankedSeconds + bankRate × (requested − simulated))
+     * (OfflineReport.banked records the addition). bankMax default 0, which also means OFF. Spent with ModelApi.useBank.
+     * Time forfeited because a Reckoning was already pending ('pending') is not banked.
+     */
+    bankRate?: number;
+    bankMax?: number;
+  };
   /**
    * M1: the demographic transition (see popGrowth). Default: absent = v1 linear growth with no ceiling.
    * transitionWellbeing W_t must exceed subsistence, and should exceed wellbeingTarget so a steady economy can hold
@@ -496,6 +615,26 @@ export interface GlobalParams {
   respecRefund?: number;
   /** The unfolding: least play (meta.totalSeconds) between two features unlocking (see FeatureDef). Default 0. */
   featureGapSeconds?: number;
+  /* --- M3 --- */
+  /**
+   * M3: the dispatch scheduler (see GameState.dispatch). Default when absent:
+   * { firstYears: 30, intervalYears: 8, jitter: 0.5, expiryYears: 12, maxPending: 1 }.
+   *   firstYears    run time (model years) of the first draw of a run.
+   *   intervalYears gap (model years) between a dispatch being RESOLVED (answered or defaulted) and the next draw,
+   *                 before jitter. 8 model years = 160 s: about one letter every three minutes of play.
+   *   jitter        0–1: the gap is intervalYears × (1 − jitter/2 + jitter × u), u ∈ [0, 1) from the seed (see
+   *                 GameState.dispatch).
+   *   expiryYears   default life of a pending dispatch (DispatchDef.expiryYears overrides), model years.
+   *   maxPending    how many dispatches may wait at once (1–3). A draw is skipped while the list is full.
+   */
+  dispatch?: { firstYears?: number; intervalYears?: number; jitter?: number; expiryYears?: number; maxPending?: number };
+  /**
+   * M3: ambient news (AmbientDef). Default when absent: { everyYears: 4, cooldownYears: 30 }.
+   *   everyYears     an ambient tick is a step from t0 to t1 with floor(t1 × YPS / everyYears) > floor(t0 × YPS /
+   *                  everyYears); at each tick at most one ambient headline is printed.
+   *   cooldownYears  default AmbientDef.cooldownYears.
+   */
+  ambient?: { everyYears?: number; cooldownYears?: number };
 }
 
 /**
@@ -614,6 +753,9 @@ export interface CommonsDef {
   effects?: EffectDef[];
   /** Offered only while this holds (and the Commons are open, and `sector`, if given, is open). Default: always. */
   requires?: Cond;
+  /** M3: hidden (not visible, not buyable, not bought by Treasury rules) unless meta.unlocks[id] (a History reward) or
+   *  a standing `unlock` effect names it. Default false. */
+  locked?: boolean;
 }
 
 /**
@@ -633,6 +775,114 @@ export interface CharterDef {
   sector?: SectorId;
   /** Optional scene key of a landmark the Charter adds to its sector's picture. Default: none. */
   landmark?: string;
+  /** M3: left out of the offer draw (set E of GameState.charterOffer) unless meta.unlocks[id] (a History reward).
+   *  Default false. Appending a locked Charter to content does not change the offers of saves that have not unlocked it. */
+  locked?: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* M3 MECHANICS: four general kinds, attached to SectorDef by field    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Each kind is optional on SectorDef; a sector without the field solves exactly as in M2. Several may be combined in one
+ * sector; inside the solve they apply in this order for a trial service price p:
+ *   1. priceSeen   each application's demand responds to its own seen price p_i(p) instead of p (ApplicationDef.priceSeen,
+ *                  priceSeen effects);
+ *   2. travel      the demand of the travel applications is scaled by the speed index v(D), which falls with total demand
+ *                  D: demand at p is the unique fixed point D* of D = demandAt(p, v(D)) (TravelDef);
+ *   3. load        the capital cost per unit of service c is scaled up by the idle plant: c_eff = c × ((1 − k) + k /
+ *                  max(floor, LF)), LF the load factor of the demand mix at p (LoadDef). c_eff replaces c EVERYWHERE c
+ *                  appears in the solve (p_pre, the substitution cost 1.5 × c, the cap's permit inversion, the Market's
+ *                  pPre, SectorDerived.capCost, SettledState.pPre), each evaluated at the demand mix of the price tried.
+ *   4. seams       the resource price of a stock sector is multiplied by the price multiplier of the deepest seam sunk
+ *                  (SeamDef). Seams are state (SectorState.seamsSunk), not part of the fixed point.
+ * Solve paths: a stock sector without substitution and without `load` keeps the closed form (p_s does not depend on D;
+ * travel's inner fixed point in D is solved inside demand(p)); a sector WITH `load` uses the bisection on p that flow
+ * sectors use (44 iterations), because c, and so p_s, depends on the mix. The shadow solve (η frozen) runs the same
+ * mechanics (its own mix, its own congestion), so the rebound meter stays a counterfactual of the whole system.
+ * Each kind teaches one named rebound and has a widget and a prop: seams (supply-side: cheap power reaches the next
+ * seam; depletion postponed and enlarged), load (utilisation: idle plant makes the next unit cheapest to sell), travel
+ * (induced demand and lock-in: speed buys distance; sprawl stays), priceSeen (the frontier at its limit: a price seen
+ * as nil cannot be lowered). Code needs no new kind: its flow resource, upkeep and deletion are its mechanic, now
+ * exposed as SectorDerived.upkeep.
+ * Later kinds attach the same way, as one optional field each (design/m3-contract-notes.md §4): Fishing's renewable
+ * stock is a new resourceKind; Iron's shared stock points at Steam's (seams then live on the owner of the stock);
+ * Plenty's second gauge is a second stock; Comfort's ratchet is ApplicationDef.ratchet beside lockInDecay;
+ * Proof-of-Work's difficulty is its own solve path.
+ */
+
+/** M3: one seam of a stock sector's ladder (SectorDef.seams), sunk in order with ModelApi.sinkSeam. */
+export interface SeamDef {
+  /** Unique game-wide ('steam.seam.barnsley'). Archive notes and `owns` refer to it. */
+  id: string;
+  /** "The Barnsley Bed". */
+  name: string;
+  /** One line. Default ''. */
+  blurb?: string;
+  /** Depth for display, in the sector's own words (the UI prints it as authored: "300 fathoms"). Default ''. */
+  depth?: string;
+  /** Resource units this seam adds to BOTH reserve and reserveMax when sunk (not scaled by any effect). */
+  tons: number;
+  /** Capital to sink it, × costMul effects (global) × costMulOf effects naming this seam id or its sector. */
+  cost: number;
+  /**
+   * Resource-price multiplier from the moment this seam is sunk (deeper coal is dearer to raise), ≥ 0. For a stock
+   * sector with seamsSunk = n ≥ 1: p_r = basePrice × seams[n − 1].priceMul × (reserveMax / Q)^alpha × Π resourcePriceMul;
+   * with n = 0 the multiplier is 1. The deepest seam's multiplier applies to all the coal (the marginal ton sets the price).
+   */
+  priceMul: number;
+  /** Reachable only while the sector's service price p_s ≤ this (cheap pumping power reaches it). Default Infinity. */
+  reachBelow?: number;
+  /** Also reachable only while this holds. Default: always. */
+  requires?: Cond;
+}
+
+/**
+ * M3: Light's load curve, a general utilisation kind (SectorDef.load). Capacity is built for the peak hour; the plant is
+ * idle the rest of the day; the idle share is paid for by every unit sold.
+ *   shape_a[h] = LOAD_HOURS × w_a[h] / Σ_h' w_a[h'] for the profile w_a of application a (mean 1 over the day);
+ *     a profile whose weights sum to ≤ 0 is treated as flat (all 1).
+ *   H[h] = Σ over founded applications a of D_a × shape_a[h]  +  extraD × shape_default[h]   (service per second, hour h)
+ *   D = mean_h H[h] (the sector's demand);  peak = max_h H[h];  LF = D / peak (1 when D ≤ 0).
+ *   c_eff = c × ((1 − fixedShare) + fixedShare / max(floor, LF))   with c = capCost × Π capCostMul.
+ * Efficiency lowers p_s, the cheap night uses (low halfPrice, night profiles) adopt, LF rises, c_eff falls, p_s falls
+ * again: the utility is paid to sell the hollows. Content compensates capCost so that the opening price is as before.
+ */
+export interface LoadDef {
+  /** Named hourly profiles: each exactly LOAD_HOURS non-negative weights (hour 0 = midnight). Others are ignored (lint). */
+  profiles: Record<string, number[]>;
+  /** The profile of applications without ApplicationDef.profile, and of extra demand (drawsOn, Commons intensity). */
+  defaultProfile: string;
+  /** k, 0–1: the share of capCost that is plant built for the peak. */
+  fixedShare: number;
+  /** Lowest load factor used in c_eff. Default 0.05. */
+  floor?: number;
+}
+
+/**
+ * M3: Motion's travel-time budget, congestion and sprawl, a general kind (SectorDef.travel).
+ *   K = roads × Π travelMul.roads (service per second at which traffic halves the speed);
+ *   s = Π travelMul.speed (free speed index; 1 = the sector's opening speed);
+ *   v(D) = s / (1 + (D / K)^b),  b = exponent ?? 4   (the speed index at total sector demand D, extraD included);
+ *   each TRAVEL application's saturation S_a is multiplied by v(D) (non-travel applications and extraD are not);
+ *   demand at price p is the unique D* ≥ 0 with D* = extraD + Σ_a max(F_a, S_a × g_a(D*) / (1 + (p_a / P_a)^k_a)),
+ *     g_a = v for travel apps, 1 otherwise (the right side falls as D rises, so the root is unique; bisection on D in
+ *     [extraD + Σ F_a, extraD + Σ max(F_a, S_a × max(1, s))], 40 iterations).
+ * Marchetti's constant falls out: at saturation D ≈ N × S × v, so the time per head D / (N × v) stays put while the
+ * miles grow with speed. Roads (K) fill again: more K, faster v, more demand until v falls back (Duranton & Turner).
+ * Display: hoursPerHead = hoursScale × (D / N) / max(v, 1e-6) (hours a day; content scales it to about 1 at the start).
+ * Sprawl is the lock-in floor (ApplicationDef.lockIn × peakD) made a stock that decays slowly (ApplicationDef.lockInDecay).
+ * With roads very large and speed 1, v ≈ 1 and the sector behaves as in M2.
+ */
+export interface TravelDef {
+  roads: number;
+  /** b. Default 4. */
+  exponent?: number;
+  /** Display scale for hoursPerHead. */
+  hoursScale: number;
+  /** Ids of the travel applications. Default: every application of the sector. */
+  apps?: string[];
 }
 
 /** M1 CHANGE (was EraDef): one service + resource economy. On screen: an "Industry". */
@@ -688,8 +938,11 @@ export interface SectorDef {
   /**
    * 'stock': a depletable reserve Q. p_r = basePrice × (reserveMax / Q)^alpha. Exhausted (forced Reckoning) once
    *          Q ≤ EXHAUSTED_BELOW × reserveMax (0.2%), not at exactly 0.
+   *          M3 CHANGE: p_r = basePrice × seamPriceMul × (reserveMax / Q)^alpha × Π resourcePriceMul (see SeamDef;
+   *          both factors are 1 by default).
    * 'flow' : a renewable capacity per second (Code's attention). p_r = basePrice × (1 / (1 − u))^alpha
    *          where u = min(0.98, R / usableCapacity). Never runs out; just gets scarce; service above u = 0.98 is rationed.
+   *          M3 CHANGE: × Π resourcePriceMul.
    */
   resourceKind: 'stock' | 'flow';
   /** Q0 for 'stock'; capacity per second for 'flow'. Increased by reserveAdd effects (see EffectDef). */
@@ -778,6 +1031,20 @@ export interface SectorDef {
    */
   settle?: { dividend: EffectDef[]; upkeepPerSpill: number; freeExcess?: number; blurb?: string };
 
+  /* --- M3 mechanics (see "M3 MECHANICS" above; each optional, absent = M2 behaviour) --- */
+  /** M3: the seam ladder ('stock' sectors only; ignored on 'flow'). Feature 'seams'. Default: none. */
+  seams?: SeamDef[];
+  /** M3: the load curve. Feature 'load' (widget only; the arithmetic always acts). Default: none. */
+  load?: LoadDef;
+  /** M3: travel time, congestion and sprawl. Feature 'travel' (widget only; the arithmetic always acts). Default: none. */
+  travel?: TravelDef;
+  /**
+   * M3: the one-line names of this Industry's mechanic, for the UI's widget heading and the lint ("one mechanic per
+   * Industry"): e.g. { name: 'The seams', rebound: 'Supply-side', blurb: 'Cheap pumping reaches deeper coal.' }.
+   * Required by the lint for every Industry from M3; Code's names its existing mechanic. Default: absent (no heading).
+   */
+  mechanic?: { name: string; rebound: string; blurb: string };
+
   applications: ApplicationDef[];
 }
 
@@ -811,6 +1078,25 @@ export interface ApplicationDef {
   reserveGainPerService?: number;
   /** Motion's twist: demand never falls below this fraction of the application's own peak (lock-in). 0 = none. */
   lockIn?: number;
+  /* --- M3 --- */
+  /**
+   * M3: sprawl that fades. Per second, while this application's demand is below its peak, AppState.peakD decays:
+   * peakD ← max(d, peakD × exp(−lockInDecay × dt)), d = its demand this step. Default 0 (M2: the peak never falls).
+   * The sector's sprawl stock (SectorDerived.travel.sprawl) is Σ lockIn × peakD over founded apps.
+   */
+  lockInDecay?: number;
+  /** M3: key into SectorDef.load.profiles (unknown key → defaultProfile). Ignored without `load`. Default defaultProfile. */
+  profile?: string;
+  /**
+   * M3: the price this application's users see, as p_a = share × p_s + flat (a nil or flat price: "free at the point of
+   * use", a subscription, a flat-rate tariff). Its demand is S_a / (1 + (p_a / P_a)^k_a): with share 0 it ignores p_s.
+   * The service is still bought at p_s (income, R and levies are unchanged): the bill is paid elsewhere
+   * (SectorDerived.free.bill = Σ (p_s − p_a) × D_a over apps with p_a < p_s). A standing priceSeen effect on the app (or
+   * its sector) replaces this definition (see EffectDef 'priceSeen'). Availability (visibleBelow) still reads p_s.
+   * Price-proof demand: an app with share 0 counts as a floor in the cap's squeeze limit (its demand at any p is
+   * max(F_a, S_a / (1 + (flat / P_a)^k_a))). Feature 'freeAtUse' (display only). Default: absent (p_a = p_s).
+   */
+  priceSeen?: { share: number; flat?: number };
 }
 
 /**
@@ -829,6 +1115,17 @@ export interface ApplicationDef {
  *     Charters. M2 CHANGE: a know-how level's one-offs fire only the first time that level is ever owned
  *     (MetaState.knowhowPeak), so a respec and re-buy grants nothing twice.
  * Unknown effect types are ignored.
+ * M3 sources of standing effects: a lever's side effects (× bite × level; LeverDef.sideEffects); a 'measure' lever's
+ *   effects (× its level value); a timed modifier (once, until it ends; GameState.modifiers); the standing effects of a
+ *   dispatch arm answered this run (once per answer, for the rest of the run); the History in force (once; like a
+ *   Charter: start-of-run effects at build, one-offs ignored).
+ * M3 ONE-OFF effects (fire once at the moment granted, wherever one-offs fire: an upgrade bought, a know-how level
+ *   above its peak, a decade, a first Steady State, a dividend chosen, a Commons level, a first settlement, a dispatch
+ *   arm answered): 'populationMul', 'pressureAdd', 'metaFlag', besides M1's mandateAdd, capitalAdd, slotAdd. Ignored on
+ *   institutions, Charters, Histories and timed modifiers, as all one-offs are. A one-off negative capitalAdd or
+ *   mandateAdd takes what there is: capital and Mandate floor at 0.
+ *   'reserveAdd' in a dispatch arm or a modifier acts at the moment granted, like a purchase (stock: reserve and
+ *   reserveMax += value × reserve; flow: capacity while in force).
  */
 export type EffectDef =
   | { type: 'etaMul'; sector: SectorId; value: number }          // efficiency ×value
@@ -867,7 +1164,36 @@ export type EffectDef =
   /** Standing: makes a standing order available (see OrdersState). */
   | { type: 'orderUnlock'; order: OrderId }
   /** Standing: every Commons project's wellbeing ×value (multiplicative across effects). */
-  | { type: 'commonsYieldMul'; value: number };
+  | { type: 'commonsYieldMul'; value: number }
+  /* --- M3 (standing unless marked ONE-OFF) --- */
+  /** Resource price p_r × value (before the permit), multiplicative across effects: a strike, a shock, a dumped price. */
+  | { type: 'resourcePriceMul'; sector: SectorId; value: number }
+  /** pressureIntensity × value (multiplicative): a tall chimney, a wet summer. */
+  | { type: 'intensityMul'; sector: SectorId; value: number }
+  /** Player income from the sector (or every sector if absent) × value: m_eff = m × value (multiplicative; after
+   *  marginAdd and its floor at 0). "Raise the rents." */
+  | { type: 'incomeMul'; sector?: SectorId; value: number }
+  /** Capital or found cost × value of one thing: `id` an upgrade, an application (foundCost), a Commons project
+   *  (capital cost), a seam; or a sector id (every upgrade, founding and seam of that sector). Multiplies with costMul. */
+  | { type: 'costMulOf'; id: string; value: number }
+  /** Cannot be bought, founded, sunk, built or raised while in force: `id` (an upgrade, application, seam, Commons
+   *  project or lever), or every lever of `leverKind` (in `sector` if given). Lowering a lever is always allowed; levels
+   *  already held stay. Forbidden things stay visible with a reason (UpgradeView.forbidden, LeverView.forbidden). The
+   *  Market and the Civil Service skip them. */
+  | { type: 'forbid'; id?: string; leverKind?: LeverKind; sector?: SectorId }
+  /** Travel (TravelDef): speed × speed, roads × roads (each default 1; multiplicative across effects). */
+  | { type: 'travelMul'; sector: SectorId; speed?: number; roads?: number }
+  /** Sets the seen price of one application (or every application of the sector) to share × p_s + flat, replacing
+   *  ApplicationDef.priceSeen. Several in force: the one with the lowest share applies, then the lowest flat. */
+  | { type: 'priceSeen'; sector: SectorId; app?: string; share: number; flat?: number }
+  /** ONE-OFF: population × value (≥ 0.01 after; an epidemic, an influx). */
+  | { type: 'populationMul'; value: number }
+  /** ONE-OFF: the sector's pressure += value × collapseAt (negative lowers it; floors at 0). A crisis threshold crossed
+   *  this way fires on the next step, as any crossing does. Ignored on a settled sector. */
+  | { type: 'pressureAdd'; sector: SectorId; value: number }
+  /** ONE-OFF: meta.flags[flag] = true, for good (read by Cond { flag }). 'proprietor' is the Proprietor's Day: the
+   *  moment it is first set, an unpublished household return on file is published (see ModelApi.fileReturn). */
+  | { type: 'metaFlag'; flag: string };
 
 export interface UpgradeDef {
   id: string;              // 'steam.condenser'
@@ -899,6 +1225,13 @@ export interface UpgradeDef {
    * Default: none (the card does not move the machines).
    */
   stage?: number;
+  /* --- M3 --- */
+  /** M3: the display name of the machine at this card's `stage` ("Watt engine"); carried on 'stageReached' events
+   *  (GameEvent.label). Default: the card's name. */
+  machine?: string;
+  /** M3: visible only while this holds, in addition to `requires` (both must hold). Used by The Proprietor's Day and
+   *  by M4's revivals. Once owned, a card stays owned whatever `when` says later. Default: always. */
+  when?: Cond;
   effects: EffectDef[];
 }
 
@@ -933,7 +1266,11 @@ export type LeverKind =
   /** Code: shipped service limited to reviewed service; removes `value` of the defect penalty and cuts D accordingly. */
   | 'reviewGate'
   /** Code: pressureIntensity × (1 − share). Shares add, ≤ 0.95. */
-  | 'sharedLibs';
+  | 'sharedLibs'
+  /** M3: a policy acting through effects: LeverDef.effects are standing effects applied with times = the current level's
+   *  `value` (multiplicative effects to the power value, additive ones × value). Range 0–∞ (repeat bounded by maxSteps).
+   *  A fuel-economy standard (etaMul), a road programme (travelMul roads), a scrappage scheme. value2 unused. */
+  | 'measure';
 
 /**
  * M1: where a levy's revenue goes (meaningful for 'duty' and 'cap' only).
@@ -983,7 +1320,7 @@ export interface LeverDef {
    *   value = last.value + k × valueStep;  value2 = last.value2 (+ k × value2Step if given);
    *   mandateCost = last.mandateCost × costGrowth^k;  mandateUpkeep = last.mandateUpkeep × upkeepGrowth^k;
    *   label = `label` with {pct} = round(value × 100), {value} = value to 2 dp, {n} = level; default `${last.label} +k`.
-   * A repeat level exists only while its value stays inside the kind's range (duty 0–0.999, cap 0.05–∞, sufficiency
+   * A repeat level exists only while its value stays inside the kind's range (M3: measure 0–∞; duty 0–0.999, cap 0.05–∞, sufficiency
    * 0.05–1, substitution/greenSpending/reviewGate 0–1, circularity/sharedLibs 0–0.95, deletion 0–0.9) and k ≤ maxSteps.
    * For a cap, valueStep is negative (each Tighten lowers the cap as a fraction of the budget). Default: no repeat.
    */
@@ -1001,6 +1338,35 @@ export interface LeverDef {
   /** M2: per-option override of Content.recycleText[option].blurb for this lever (the dividend's rebound named for
    *  this levy, say). Default: none. */
   recycleBlurb?: Partial<Record<LeverRecycle, string>>;
+  /* --- M3 --- */
+  /** M3: the standing effects of a 'measure' lever (see LeverKind 'measure'). Ignored on other kinds. Default []. */
+  effects?: EffectDef[];
+  /**
+   * M3: a lever that bites back: its own success breeds its undoing, unless paired with the right companion.
+   *   bite (LeverState.bite, 0–1) is a ramp in model years. Each step, with dy = dt × YEARS_PER_SECOND:
+   *     active = level ≥ 1 AND NOT `unless` (evaluated on the state at the start of the step);
+   *     active:   bite ← bite + (1 − bite) × (1 − exp(−dy / rampYears));
+   *     inactive: bite ← bite × exp(−dy / (decayYears ?? rampYears)).
+   *   `effects` are standing effects with times = bite × level (the integer level; repeat levels count). So the side
+   *   effect grows with the lever's level and with time, and fades when paired or lowered as slowly as it grew (an SUV
+   *   fleet is not scrapped overnight).
+   *   The first time in a run that bite reaches 0.5, LeverState.bitten = true and a 'biteBack' headline and event fire
+   *   (feature 'sideEffects' gates the headline and the UI line, not the bite).
+   *   `blurb`: the "bites back" line, one sentence ("Heavier cars fill the forecourt"); the `catch` line already names
+   *   the risk up front (lint). `unlessLabel`: the pairing in words ("unless a fuel duty is in force").
+   * Examples: a fuel-economy standard (etaMul) whose side effect is satMul on the heavy car, unless { owns: 'motion.duty'
+   * }; renewables without a cap (substitution) whose side effect is satMul on the sector (additions, not displacement),
+   * unless { owns: 'light.cap' }; an announced phase-out whose side effect is resourcePriceMul < 1 (the rush to extract).
+   * Settled sectors' levers are at 0, so their bite decays. A Reckoning resets bite (a fresh run). Default: none.
+   */
+  sideEffects?: {
+    effects: EffectDef[];
+    rampYears: number;
+    decayYears?: number;
+    unless?: Cond;
+    blurb: string;
+    unlessLabel?: string;
+  };
 }
 
 export interface LeverLevelDef {
@@ -1107,7 +1473,205 @@ export type HeadlineKey =
   | 'commonsBuilt'    // a Commons level is bought ({name} = the project; by the player or Treasury rules)
   | 'charter'         // a Charter is chosen for the run ({name} = the Charter; {sector} its sector, if any)
   /* --- the unfolding --- */
-  | 'featureUnlocked'; // a feature arrives; the text is its FeatureDef.intro, never drawn from Content.headlines
+  | 'featureUnlocked' // a feature arrives; the text is its FeatureDef.intro, never drawn from Content.headlines
+  /* --- M3 (Content.headlines must list each key; an empty array falls back to the core's one-line default) --- */
+  | 'seamSunk'        // a seam is sunk ({name} = the seam)
+  | 'biteBack'        // a lever's side effect first reaches half strength this run ({name} = the lever)
+  | 'dispatch'        // a dispatch arrives: the text is DispatchDef.headline, never a variant (the key marks the item)
+  | 'answered'        // a dispatch is answered: the arm's `reply`, if it has one (no item otherwise)
+  | 'ambient'         // an ambient headline: the text comes from the AmbientDef (the key marks the item)
+  | 'history'         // a History is cleared ({name} = the History)
+  | 'return'          // the household return is published (text from Content.proprietor)
+  | 'returnWithdrawn' // the household return is withdrawn ("…discontinued for want of funding")
+  | 'ending';         // the first ending, beside 'steadyAll' ({year}; printed once ever, in the run that reached it)
+
+/* ------------------------------------------------------------------ */
+/* M3 CONTENT: the cast, dispatches, ambient news, Histories, Archive  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Authored text in this block takes the headline placeholders with the same case rules (Content.headlines): {sector},
+ * {resource}, {service}, {age}, {year}, {app} (when the item names one), plus {cast} (the writer's name, a proper noun,
+ * substituted as written), and the per-kind numbers listed at each type. A placeholder with no value is left as typed
+ * (the lint catches it). The core substitutes; the UI prints what Derived gives it.
+ */
+
+/** M3: a recurring member of the cast (Content.cast). */
+export interface CastDef {
+  /** 'whitlow', 'fenwick', 'pryce', 'ashworth', 'correspondent', 'minister'. */
+  id: string;
+  /** As printed: "Mr Whitlow". Later generations are separate CastDefs ('missWhitlow'). */
+  name: string;
+  /** One line under the name: "Economist; a pupil of Mr Jevons". */
+  role: string;
+  /** For writers, never shown: the voice, the tics, what they always want. */
+  voice?: string;
+  /** Scene key of the figure the picture may show (the scene keeps a library; unknown → none). Default: none. */
+  figure?: string;
+  /** Writes only while this holds (e.g. reckonings ≥ 2): how the cast grows from one correspondent. Default: always. */
+  when?: Cond;
+}
+
+/** M3: one answer to a dispatch. Every arm has a price (lint): a cost, a downside effect, or both, stated in `price`. */
+export interface DispatchArm {
+  /** Button text, imperative, at most 28 characters: "Sink the shaft". */
+  label: string;
+  /** What happens, in the paper's words, one sentence (shown under the label). */
+  outcome: string;
+  /** What it costs, one short phrase ("£ and the mill owners' patience"). Required (lint). */
+  price: string;
+  /** Hard costs, refused unless affordable when the PLAYER answers: Mandate, and capital in seconds of current income
+   *  (capital cost = capitalSeconds × Derived.incomePerSec at the moment, at least 0). A default answer pays what there
+   *  is (floors at 0). Default: none. */
+  cost?: { mandate?: number; capitalSeconds?: number };
+  /** One-offs fire at once; standing effects stand for the rest of the run (once per answer). Default []. */
+  effects?: EffectDef[];
+  /** A timed modifier: standing effects for `years` model years from the answer (GameState.modifiers). Default: none. */
+  modifier?: { effects: EffectDef[]; years: number; label?: string };
+  /** A follow-up queued to come next (GameState.dispatch.queue), if eligible then. Default: none. */
+  next?: string;
+  /** The paper's line when this arm is chosen (headline 'answered'), ≤ 70 characters. Default: no item. */
+  reply?: string;
+}
+
+/**
+ * M3: a dispatch (Content.dispatches): a letter from the cast with two or three answers, expiring to a default.
+ * Eligible for a draw (see GameState.dispatch) when ALL hold: feature 'dispatches' on; its cast member's `when` holds;
+ * `sector` absent, or open (settled counts as open); `age` absent, or Derived.age === age; `when` holds; not offered
+ * already this run (GameState.dispatch.offered); if `once`, never offered before (meta.dispatches.seen[id] absent).
+ * Pools EXTEND one another: sector and age dispatches join the general ones; nothing replaces anything.
+ * Text: headline ≤ 70 characters; body ≤ 400 characters, a letter in the cast member's voice; placeholders as above.
+ */
+export interface DispatchDef {
+  id: string;
+  cast: string;
+  sector?: SectorId;
+  age?: AgeId;
+  when?: Cond;
+  /** Relative chance among equally fresh candidates. Default 1. */
+  weight?: number;
+  /** At most once in the save. Default false (it may return once the eligible pool has all been seen as often). */
+  once?: boolean;
+  headline: string;
+  body: string;
+  /** Two or three arms (lint). */
+  arms: DispatchArm[];
+  /** The arm taken on expiry (and by the dispatch standing order). Default 0. Lint: it has no `cost` and no standing
+   *  `effects` (only one-offs and a timed modifier), so defaults never compound. */
+  defaultArm?: number;
+  /** Model years before it expires to the default. Default GlobalParams.dispatch.expiryYears. */
+  expiryYears?: number;
+  /** The named rebound it dramatises (for the Archive and the lint; not shown). */
+  rebound?: string;
+}
+
+/**
+ * M3: an ambient headline template (Content.ambient), printed at ambient ticks (GlobalParams.ambient) while feature
+ * 'ambient' is on, never inside fastForward or a projection, never while a Reckoning is pending or the run is fresh.
+ * At a tick: candidates = defs whose `sector` (if any) is open and unsettled, whose `when` holds, and whose last print
+ * this run (GameState.ambientLast[id]) is at least cooldownYears ago (or never); pick the least recently printed
+ * (never first), ties by weight with u = mix32(seed ^ (tick index × 0x85EBCA6B)) / 2^32 over content order. The variant
+ * is text[mix32(seed ^ tick index) mod text.length]. No event; a NewsItem with key 'ambient'.
+ * Numbers: with `stat`, {value} = the stat's value to 3 significant figures with thousands commas; {pct} = round(value
+ * × 100) as an integer; {fold} = value to 1 decimal place (no "×"). Without `stat` those placeholders stay as typed.
+ */
+export interface AmbientDef {
+  id: string;
+  sector?: SectorId;
+  when: Cond;
+  /** Variants, each ≤ 70 characters after substitution at typical values (lint at value 1234.5). */
+  text: string[];
+  stat?: { stat: StatKey; sector?: SectorId; app?: string };
+  cooldownYears?: number;
+  weight?: number;
+}
+
+/**
+ * M3: a History (Content.histories): a named counterfactual run, chosen between runs (ModelApi.chooseHistory), with a
+ * goal. THE HISTORY RULES (design/genre-audit.md rec. 14; the lint enforces the mechanical ones):
+ *   1. Rewards are options, never power needed to progress: only `reward.unlock` of locked Commons projects or locked
+ *      Charters, an achievement, a cosmetic scene key and a title. Never an upgrade, lever, Know-how node, Institution,
+ *      seat, Hindsight or Mandate.
+ *   2. No quality-of-life feature or automation is ever locked behind a History: no orderUnlock, offlineCapAdd or
+ *      slotAdd in `reward`, and nothing a History unlocks is needed by any other system.
+ *   3. The ladder (stacking several Histories) is post-game only and capped at 30 rungs: M9, not here; nothing in M3
+ *      stacks Histories (one in force at a time).
+ *   4. Each History is cleared by the balancer's generic `budget` strategy within 2× the median clearing time.
+ * In force (meta.history === id) it acts like a second Charter for that run: standing effects in force, start-of-run
+ * effects at build, one-offs ignored; it COMPOSES with the Charter (both apply; effects multiply or add as usual)
+ * unless `suspend` lists 'charter'.
+ */
+export interface HistoryDef {
+  id: string;
+  /** "Coal-rich", "No Watt", "Laissez-faire". */
+  name: string;
+  blurb: string;
+  /** The rebound it isolates, in words ("The resource curse"). */
+  rebound: string;
+  effects: EffectDef[];
+  /** Meta systems that do not apply in this run: Know-how, the seated Institutions, the Charter, the Market. Default []. */
+  suspend?: ('knowhow' | 'institutions' | 'charter' | 'market')[];
+  /** The History's `forbid` effects lift for the rest of the run the first step this holds (GameState.historyLifted;
+   *  "no levers until the second crisis"). Default: never. */
+  forbidUntil?: Cond;
+  /** Completion: checked about once a real second while in force; the first time it holds the History is cleared. */
+  goal: Cond;
+  /** The goal in words, for the picker ("Steady State in Steam within the run"). */
+  goalLabel: string;
+  reward: { unlock?: string[]; achievement?: string; cosmetic?: string; title?: string };
+  /** Offered in the picker only while this holds against the fresh run. Default: always (once feature 'histories'). */
+  requires?: Cond;
+}
+
+/**
+ * M3: an Archive note (Content.archive): the real history behind a thing in the game, unlocked the first time its
+ * subject is owned or seen, kept for good (MetaState.archive). Rules by subject kind (checked at least once per real
+ * second of play, and at the end of every action; recorded whether or not feature 'archive' is on):
+ *   upgrade, lever, Commons project, seam: first owned (level ≥ 1, built, sunk) by anyone;
+ *   application: first available; sector: first opened; dispatch: first offered; Charter or History: first chosen;
+ *   cast member: their first dispatch offered; an achievement: earned. Unknown subject → never (lint).
+ * Facts only from design/research/*.md marked [V], or verified by the writer with the source recorded here.
+ */
+export interface ArchiveDef {
+  id: string;
+  /** The content id it is about (any kind above). Several notes may share a subject. */
+  subject: string;
+  /** "The separate condenser, 1769". */
+  title: string;
+  /** 60–160 words, the paper's archive voice. */
+  text: string;
+  /** At least one (lint). `grade`: 'V' verified against a primary or scholarly source; 'S' a reputable secondary. */
+  sources: { cite: string; url?: string; grade: 'V' | 'S' }[];
+  /** Display date ("1769", "c. 1800"). Default ''. */
+  date?: string;
+}
+
+/**
+ * M3: the Proprietor's Day texts (Content.proprietor). Placeholders, all formatted by the core: {workdayBefore},
+ * {workdayAfter} (minutes a day, integers), {workdayChange} (absolute per cent, integer, no sign: "40"), {decisionsBefore},
+ * {decisionsAfter} (decisions an hour, integers), {decisionsChange}, {sessionsBefore}, {sessionsAfter} (sessions a day,
+ * 1 decimal), {automatedPerHour} (integer). The direction picks the template list; the text never says "you" (the
+ * proprietor), never scolds, and says plainly when figures went down.
+ */
+export interface ProprietorText {
+  /** The question (shift 3): a letter from a cast member, shown when the card first becomes visible. */
+  pamphlet: { cast: string; headline: string; body: string };
+  /** Return templates by direction (see SurveyView.direction); at least one per direction (lint). */
+  returns: { direction: 'up' | 'down' | 'flat'; headline: string; body: string }[];
+  /** The line printed by withdrawReturn ("The Household Survey is discontinued for want of funding"). */
+  withdrawn: string;
+}
+
+/**
+ * M3: the first ending's texts (Content.ending). The retrospective is assembled by ModelApi.retrospective from the
+ * player's own milestones: one item per milestone key that has a template (key match: exact, or the prefix before ':'
+ * as in 'steady:*'), in the milestones' chronological order. Placeholders: {year}, {run} (the run number), {hours}
+ * (cumulative active hours, 1 decimal), {sector} (for keyed milestones), plus the usual.
+ */
+export interface EndingText {
+  credits: { title: string; lines: string[]; continueLabel: string };
+  retrospective: { key: string; headline: string }[];
+}
 
 /* ------------------------------------------------------------------ */
 /* STATE (serialisable, plain JSON)                                    */
@@ -1191,11 +1755,83 @@ export interface GameState {
    * Kept unchanged by the between-runs rebuild, so buying Know-how never changes the offer.
    */
   charterOffer: string[];
+
+  /* --- M3 --- */
+  /**
+   * M3: the dispatch scheduler's run state. Rules (all inside the step, so tick and fastForward run them alike; never in
+   * projections (lite), never while a Reckoning is pending or the run is fresh):
+   *   Expiry first: each pending dispatch with expiresAt ≤ the step's end time is resolved with its default arm, by
+   *     'default' (as answerDispatch would, but costs pay what there is).
+   *   Then a DRAW when ALL hold: feature 'dispatches' on; the step's end time ≥ nextAt; pending.length < maxPending; the
+   *     step is NOT inside fastForward or useBank ("a letter needs a reader": while away nothing new arrives, so nothing
+   *     compounds; a draw that falls due away happens on the first live step after). The draw:
+   *       1. candidates = eligible dispatches (DispatchDef); if none: nextAt += dispatchGap(state, draws) and stop.
+   *       2. if any id in `queue` is a candidate, take the first such (and remove it from the queue);
+   *       3. else keep the candidates with the smallest meta.dispatches.seen count (absent = 0) and pick by weight:
+   *          u = mix32(seed ^ Math.imul(draws + 1, 0x9E3779B1)) / 2^32; walk them in content order accumulating
+   *          weight / Σ weight; take the first whose running total exceeds u.
+   *       draws += 1; push { id, arrivedAt: end time, expiresAt: end time + (expiryYears / YEARS_PER_SECOND) }; offered
+   *       += id; meta.dispatches.seen[id] += 1; a 'dispatch' NewsItem (DispatchDef.headline) and a 'dispatchArrived'
+   *       event. nextAt is NOT advanced by a draw: the next gap starts when this one is resolved.
+   *   On every resolution (player, default or standing order): nextAt = max(nextAt, end time + dispatchGap(state, draws)).
+   *   dispatchGap(state, k) = intervalYears / YEARS_PER_SECOND × (1 − jitter / 2 + jitter × u_k),
+   *     u_k = mix32(state.seed ^ Math.imul(k + 1, 0x85EBCA6B)) / 2^32; dispatchFirstAt(content) = firstYears /
+   *     YEARS_PER_SECOND. A fresh run has nextAt = dispatchFirstAt, draws 0 and empty lists.
+   *   If the standing dispatch order is active for the dispatch's cast member (OrdersState.dispatch), it is answered at
+   *   once in the same step with its default arm, by 'dispatch' (run.automated += 1; no decision).
+   * A Reckoning ends every pending dispatch unanswered (no default effects) and the queue.
+   */
+  dispatch: {
+    pending: PendingDispatch[];
+    /** Follow-ups (DispatchArm.next), FIFO, at most 8 (older dropped). */
+    queue: string[];
+    /** Answers this run, oldest first, at most ANSWERED_MAX (their standing effects stay in force even when trimmed:
+     *  see `standing`). */
+    answered: AnsweredDispatch[];
+    /** Ids offered this run (no repeats within a run). */
+    offered: string[];
+    /** Draws made this run. */
+    draws: number;
+    /** Run time of the next draw (seconds). */
+    nextAt: number;
+    /** Every answer this run whose arm has standing `effects`, as [dispatchId, arm] (never trimmed): the Mods source. */
+    standing: [string, number][];
+  };
+  /**
+   * M3: timed modifiers in force (dispatch arms' `modifier`), oldest first. Each applies its effects (looked up from
+   * content by source and arm) as standing effects while time < until; it is removed at the end of the first step whose
+   * end time ≥ until, with a 'modifierEnded' event. Stacking: different sources stack (effects compose as usual); the
+   * SAME source and arm again refreshes `until` to the later of the two (it never stacks with itself). More than
+   * MODIFIERS_MAX: the one ending soonest is removed first (no event). A Reckoning clears the list.
+   */
+  modifiers: ActiveModifier[];
+  /** M3: ambient id → run time it was last printed (this run). */
+  ambientLast: Record<string, number>;
+  /** M3: the Market's last order-tick outcome per open sector, for OrdersView.market.why (see MarketWhy). Run-scoped. */
+  orderLog: Record<SectorId, { t: number; outcome: 'bought' | 'none' | 'cash' | 'payback'; id?: string; payback?: number }>;
+  /** M3: the History in force has met its forbidUntil this run (its forbid effects no longer apply). */
+  historyLifted: boolean;
 }
+
+/** M3: a dispatch waiting for an answer (GameState.dispatch.pending). */
+export interface PendingDispatch {
+  id: string;
+  /** Run times (seconds). */
+  arrivedAt: number;
+  expiresAt: number;
+}
+
+/** M3: an answered dispatch (GameState.dispatch.answered). `t` is run time; `by` 'player', 'default' or 'dispatch'. */
+export interface AnsweredDispatch { id: string; arm: number; t: number; by: Actor }
+
+/** M3: a timed modifier (GameState.modifiers). `source` is the dispatch id; effects = that dispatch's arms[arm].modifier. */
+export interface ActiveModifier { source: string; arm: number; since: number; until: number }
 
 /** M2: who took an action or caused an event. 'default' = the rules themselves (a lapse, an overflow, an offline hold).
  *  Later: 'dispatch' (M3), 'rival' (M5), 'agent' (M7). */
-export type Actor = 'player' | 'market' | 'civilService' | 'treasury' | 'default';
+export type Actor = 'player' | 'market' | 'civilService' | 'treasury' | 'default'
+  /** M3: the standing dispatch order (OrdersState.dispatch) answered a dispatch with its default arm. */
+  | 'dispatch';
 
 /** M2: one decade dividend offer (GameState.pendingDividends). */
 export interface PendingDividend {
@@ -1235,6 +1871,26 @@ export interface PendingDividend {
  *   'won'            (steadyAll)
  *   'reckoning'      id (the cause), sector (the cause sector, if any) — the first event of the new run
  *   'featureUnlocked' id (the FeatureId); see FeatureDef
+ * M3 CHANGES: 'backfire' and 'steadyState' and 'sectorOpened' carry first: true when it is the first time in the save
+ *   (meta.backfiredSectors / meta.steadySectors / meta.sectorsOpened did not have the sector before); 'stageReached'
+ *   carries label = the card's `machine` ?? its name.
+ * M3 kinds:
+ *   'seamSunk'          sector, id (seam), n (seamsSunk after), label (seam name), by 'player'
+ *   'biteBack'          sector, id (lever) — first time this run its bite reaches 0.5
+ *   'dispatchArrived'   id (dispatch), sector (its sector, if any), label (cast id)
+ *   'dispatchAnswered'  id (dispatch), n (arm index), sector (if any), by ('player' | 'default' | 'dispatch')
+ *   'modifierEnded'     id (source dispatch), n (arm)
+ *   'historyChosen'     id (History) — between runs, like 'charterChosen' (not for null)
+ *   'historyCleared'    id (History); first: true the first time it is ever cleared
+ *   'returnFiled'       id (return id) ; 'returnPublished' id, n (workday change in whole per cent, signed)
+ *   'returnWithdrawn'   id
+ *   'archiveUnlocked'   id (note), label (its subject)
+ *   'ending'            id ('steadyAll') — once ever, immediately after the run's 'won'
+ *   'bankUsed'          n (seconds simulated)
+ * All M3 step events take the time at the END of the step, in this order within a step: the M2 order, then expiries
+ * ('modifierEnded', default 'dispatchAnswered'), then a draw ('dispatchArrived'), then 'biteBack', then
+ * 'historyCleared', then 'archiveUnlocked', then (if orders tick) the standing orders' events. Two thresholds crossed in
+ * one step emit two events, in that order (as crises do).
  */
 export type EventKind =
   | 'appAvailable' | 'appFounded' | 'upgradeBought' | 'stageReached' | 'leverEnacted' | 'leverLapsed'
@@ -1242,7 +1898,10 @@ export type EventKind =
   | 'crisis' | 'collapse' | 'exhausted' | 'backfire' | 'reveal' | 'sectorOpened' | 'ageBegins' | 'commonsBuilt'
   | 'charterChosen' | 'won' | 'reckoning'
   /* the unfolding */
-  | 'featureUnlocked';
+  | 'featureUnlocked'
+  /* --- M3 --- */
+  | 'seamSunk' | 'biteBack' | 'dispatchArrived' | 'dispatchAnswered' | 'modifierEnded' | 'historyChosen'
+  | 'historyCleared' | 'returnFiled' | 'returnPublished' | 'returnWithdrawn' | 'archiveUnlocked' | 'ending' | 'bankUsed';
 
 /** M2: one event (GameState.events). Plain JSON. */
 export interface GameEvent {
@@ -1256,6 +1915,10 @@ export interface GameEvent {
   id?: string;
   n?: number;
   by?: Actor;
+  /** M3: true when this is the first time in the save (see EventKind). Absent otherwise. */
+  first?: boolean;
+  /** M3: a display name the consumer would otherwise have to look up (a machine, a seam, a cast id; see EventKind). */
+  label?: string;
 }
 
 /**
@@ -1310,6 +1973,11 @@ export interface OfflineReport {
    *  still in GameState.events. */
   fromSeq: number;
   toSeq: number;
+  /* --- M3 (absent on reports saved before M3 = 0) --- */
+  /** M3: pending dispatches resolved by default during the catch-up (no new ones are drawn while away). */
+  dispatchesDefaulted?: number;
+  /** M3: seconds added to meta.bankedSeconds by this call (see GlobalParams.offline.bankRate). */
+  banked?: number;
 }
 
 /**
@@ -1389,6 +2057,13 @@ export interface SettledState {
   /** Per application (founded ones): demand and adoption at settlement (AppDerived reports these while settled). */
   appD: Record<string, number>;
   appAdoption: Record<string, number>;
+  /* --- M3 (absent on settlements made before M3: the views report null while settled) --- */
+  /** M3: the load curve at settlement (SectorDerived.load reports it frozen). */
+  load?: { factor: number; hours: number[]; capCostEff: number };
+  /** M3: travel at settlement (SectorDerived.travel reports it frozen; sprawl keeps decaying only once unsettled). */
+  travel?: { speed: number; hoursPerHead: number; roads: number; sprawl: number };
+  /** M3: the seen price per founded application at settlement (AppDerived.priceSeen while settled). */
+  appPriceSeen?: Record<string, number>;
 }
 
 /** M1 CHANGE (was EraState). */
@@ -1451,6 +2126,9 @@ export interface SectorState {
   dividends: string[];
   /** M2: highest pressure this run (RunSummary.peakPressure = peakPressure / collapseAt). */
   peakPressure: number;
+  /* --- M3 --- */
+  /** M3: seams sunk this run (SectorDef.seams[0 … seamsSunk − 1]); 0 without seams. */
+  seamsSunk: number;
 }
 
 export interface AppState {
@@ -1472,6 +2150,11 @@ export interface LeverState {
   ref: number;
   /** M1: chosen recycle option; absent = the lever's default (recycle[0] ?? 'treasury'). */
   recycle?: LeverRecycle;
+  /* --- M3 --- */
+  /** M3: side-effect strength 0–1 (LeverDef.sideEffects). Absent = 0 (levers without side effects need not carry it). */
+  bite?: number;
+  /** M3: the bite has reached 0.5 this run ('biteBack' fired). Absent = false. */
+  bitten?: boolean;
 }
 
 export interface NewsItem {
@@ -1520,6 +2203,8 @@ export interface RunStats {
    * chooseDecadeDividend, settle, unsettle, buyCommons, and setOrders while not Derived.freshRun. One per call that
    * changes the state (whatever it changes). Not counted: clicks (run.clicks), refused actions, anything a standing
    * order does (run.automated), and the between-runs actions (Know-how, Institutions, loadout, Charter, respec).
+   * M3: also sinkSeam and answerDispatch (by the player). Not counted: fileReturn, withdrawReturn, useBank,
+   * chooseHistory, and default or standing-order answers.
    */
   decisions: number;
   /** M2: decisions per model decade of this run: index k counts decisions taken at run time t with
@@ -1541,6 +2226,11 @@ export interface RunStats {
    * save-version change: an older save simply has no time away recorded; deserialize keeps the field only when finite.
    */
   hindsightWithheld?: number;
+  /* --- M3 --- */
+  /** M3: dispatches the player answered this run (each also counts in decisions). */
+  dispatchesAnswered: number;
+  /** M3: dispatches resolved by default or by the standing dispatch order this run. */
+  dispatchesDefaulted: number;
 }
 
 /** M2: one recorded opening action (for M5's rival profile). `t` is run time in seconds (game time, not wall time). */
@@ -1563,7 +2253,9 @@ export interface OpeningRecord {
 }
 
 /** M2: which standing order. */
-export type OrderId = 'market' | 'civilService' | 'treasury';
+export type OrderId = 'market' | 'civilService' | 'treasury'
+  /** M3: the standing dispatch order (default answers for chosen cast members). */
+  | 'dispatch';
 
 /**
  * M2: standing orders, automation as policy (MetaState.orders: they persist across Reckonings as the player's settings;
@@ -1606,6 +2298,13 @@ export type OrderId = 'market' | 'civilService' | 'treasury';
  *   gets one level ('commonsBuilt' by 'treasury', run.automated += 1).
  * Default OrdersState: { market: { on: true, paybackMax: GlobalParams.orders.marketPaybackMax ?? 120, sectors: {} },
  *   civilService: { on: false, levers: {} }, treasury: { on: false, keepSeconds: 60, projects: [] } }.
+ * M3: THE DISPATCH ORDER (default off; available while a standing orderUnlock 'dispatch' is in force). Not an order
+ *   tick rule: when a dispatch arrives from a cast member with cast[id] === true and the order is active, it is answered
+ *   at once with its default arm, by 'dispatch' (see GameState.dispatch). Default dispatch: { on: false, cast: {} }.
+ * M3: the Market skips forbidden candidates (EffectDef 'forbid') and, when the History in force suspends 'market', is
+ *   unavailable. At each order tick it writes GameState.orderLog[s] for every sector it considered: 'bought' (id = the
+ *   upgrade or application), 'none' (no eligible candidate), 'cash' (eligible candidates, none affordable), 'payback'
+ *   (affordable ones, best payback > paybackMax; payback = the best, seconds).
  */
 export interface OrdersState {
   market: {
@@ -1627,6 +2326,8 @@ export interface OrdersState {
     /** Commons project ids in priority order. */
     projects: string[];
   };
+  /** M3: cast id → answer that cast member's dispatches with the default arm (missing = no). */
+  dispatch: { on: boolean; cast: Record<string, boolean> };
 }
 
 /** M2: a partial update for ModelApi.setOrders: given fields replace the stored ones (maps and lists are replaced whole,
@@ -1635,6 +2336,8 @@ export interface OrdersPatch {
   market?: { on?: boolean; paybackMax?: number; sectors?: Record<SectorId, boolean> };
   civilService?: { on?: boolean; levers?: Record<SectorId, string[]> };
   treasury?: { on?: boolean; keepSeconds?: number; projects?: string[] };
+  /** M3: dispatch.cast is merged key by key; unknown cast ids dropped. */
+  dispatch?: { on?: boolean; cast?: Record<string, boolean> };
 }
 
 export interface MetaState {
@@ -1683,6 +2386,85 @@ export interface MetaState {
    * = {} (a fresh meta has {}). Saves from before the unfolding are grandfathered by deserialize (see SAVE_VERSION).
    */
   features?: Partial<Record<FeatureId, number>>;
+  /* --- M3 --- */
+  /** M3: dispatch history across the save: times offered, answers per arm by anyone, and per arm by the player
+   *  (arrays indexed by arm, extended with zeros). M5's rival and the retrospective read it. */
+  dispatches: { seen: Record<string, number>; arms: Record<string, number[]>; playerArms: Record<string, number[]> };
+  /** M3: the History in force this run (chosen while fresh), or null. reckon() resets it to null (recorded in the
+   *  RunSummary). */
+  history: string | null;
+  /** M3: per History ever chosen: runs played with it, whether cleared, and the fastest clear (run seconds). */
+  histories: Record<string, { runs: number; cleared: boolean; best: number | null }>;
+  /** M3: permanent unlocks of locked Commons projects and Charters (History rewards), and cosmetic keys and titles. */
+  unlocks: Record<string, true>;
+  /** M3: returns on file, by return id (see ModelApi.fileReturn). */
+  returns: Record<string, FiledReturn>;
+  /** M3: Archive note id → meta.totalSeconds when unlocked. */
+  archive: Record<string, number>;
+  /** M3: permanent flags set by the one-off metaFlag effect ('proprietor'). */
+  flags: Record<string, boolean>;
+  /** M3: endings reached, by id ('steadyAll' in M3; M4 renames nothing, it adds 'actOne'). */
+  endings: Record<string, EndingRecord>;
+  /**
+   * M3: the first time ever of each thing the retrospective tells, by key (never overwritten; at most MILESTONES_MAX).
+   * Keys written by the core: 'reveal'; 'backfire:<s>'; 'sectorOpened:<s>'; 'decade' (the first decade within budget);
+   * 'clearSkies:<s>'; 'steady:<s>'; 'settled:<s>'; 'seam:<s>' (first seam sunk); 'dispatch' (first answered);
+   * 'history' (first cleared); 'proprietor' (the Proprietor's Day); 'won'. run 0 / at 0 mark "before the records began"
+   * (migrated saves).
+   */
+  milestones: Record<string, { run: number; at: number; year: number }>;
+  /** M3: banked seconds (GlobalParams.offline.bankRate; ModelApi.useBank). 0 when banking is off. */
+  bankedSeconds: number;
+}
+
+/**
+ * M3: a filed return (MetaState.returns). `figures` are exactly the validated figures (see ModelApi.fileReturn);
+ * `run` = meta.reckonings when filed; `at` = meta.totalSeconds when filed; `published`: printed in the paper already;
+ * `template`: index into the chosen direction's templates, fixed at publication (null before).
+ */
+export interface FiledReturn {
+  figures: Record<string, number>;
+  run: number;
+  at: number;
+  published: boolean;
+  template: number | null;
+}
+
+/**
+ * M3: the household return's figures, as the UI's play ledger computes them (all counts, ≥ 0; "before" = before the
+ * Market first became available on this device, as the ledger's phase mark records it; "after" = since). The UI never
+ * files a household return with fewer than these keys; extra keys are dropped.
+ *   activeMinutesBefore, activeMinutesAfter   active minutes (page visible, an input in the last 60 s)
+ *   sessionsBefore, sessionsAfter             sessions (visible spans after ≥ 10 minutes hidden)
+ *   looksBefore, looksAfter                   returns to the visible page
+ *   decisionsBefore, decisionsAfter           player decisions observed (increases of run.decisions)
+ *   automatedAfter                            standing orders' actions observed since the Market
+ *   daysBefore, daysAfter                     calendar days with at least one session
+ *   quietDays                                 days with exactly one session of at most 15 active minutes (any phase)
+ */
+export interface HouseholdFigures {
+  activeMinutesBefore: number; activeMinutesAfter: number;
+  sessionsBefore: number; sessionsAfter: number;
+  looksBefore: number; looksAfter: number;
+  decisionsBefore: number; decisionsAfter: number;
+  automatedAfter: number;
+  daysBefore: number; daysAfter: number;
+  quietDays: number;
+}
+
+/** M3: what the player files (ModelApi.fileReturn). Untrusted: the core validates it. M3 knows one id, 'household'. */
+export interface PlayReturn {
+  id: string;
+  figures: Record<string, number>;
+}
+
+/** M3: an ending reached (MetaState.endings). */
+export interface EndingRecord {
+  /** Run number (meta.reckonings + 1 then), run time and meta.totalSeconds when reached, calendar year (integer). */
+  run: number;
+  runSeconds: number;
+  totalSeconds: number;
+  year: number;
 }
 
 export interface RunSummary {
@@ -1705,6 +2487,8 @@ export interface RunSummary {
     etaFold: number; peakRFold: number; resourceUsed: number; unburnt?: number; decades?: number;
     leanDecades?: number; peakPressure?: number; peakAdoption?: Record<string, number>; stage?: number;
     steady?: boolean; settled?: boolean;
+    /** M3: seams sunk; load factor, speed index and sprawl at the end (absent where the sector has no such kind). */
+    seams?: number; loadFactor?: number; speed?: number; sprawl?: number;
   }>;
   /** M1: the Hindsight breakdown at the Reckoning. Absent on summaries migrated from v1. */
   hindsightTerms?: HindsightTerms;
@@ -1722,6 +2506,13 @@ export interface RunSummary {
   automatedByDecade?: number[];
   /** Σ Commons levels at the end. */
   commonsLevels?: number;
+  /* --- M3 (absent on summaries made before M3) --- */
+  /** M3: the History in force, if any, and whether it was cleared in this run. */
+  history?: string;
+  historyCleared?: boolean;
+  /** M3: run.dispatchesAnswered and run.dispatchesDefaulted at the end. */
+  dispatchesAnswered?: number;
+  dispatchesDefaulted?: number;
   /** run.peakWellbeing is `peakWellbeing`; this is state.peakPopulation. */
   peakPopulation?: number;
 }
@@ -1830,7 +2621,143 @@ export interface Derived {
   respec: { allowed: boolean; refund: number; refundByTree: Record<string, number> };
   /** The unfolding: every FeatureId, true once unlocked (always true for a feature absent from Content.features). */
   features: Record<FeatureId, boolean>;
+  /* --- M3 --- */
+  /** M3: dispatches (empty and nextIn null while feature 'dispatches' is off). */
+  dispatch: DispatchesView;
+  /** M3: timed modifiers in force, ending soonest first. */
+  modifiers: ModifierView[];
+  /** M3: the History in force (meta.history), whether it was cleared this run, whether its forbids have lifted. */
+  history: { id: string | null; cleared: boolean; lifted: boolean };
+  /** M3: the household survey, once a household return is on file; null otherwise (or while feature 'survey' is off). */
+  survey: SurveyView | null;
+  /** M3: banked time: seconds, the cap, and whether useBank would run now. */
+  bank: { seconds: number; max: number; usable: boolean };
+  /** M3: the first ending: reached in any run (meta.endings.steadyAll), and this run's progress to it
+   *  (steadyYearsAll / STEADY_STATE_YEARS, 0–1) and whether every sector is open (the win needs both). */
+  ending: { reached: boolean; record: EndingRecord | null; progress: number; allOpen: boolean };
+  /** M3: Archive notes unlocked (in content) and in content. */
+  archive: { unlocked: number; total: number };
 }
+
+/** M3: Derived.dispatch. */
+export interface DispatchesView {
+  /** Pending, oldest first. */
+  pending: PendingDispatchView[];
+  /** Seconds of run time until the next draw may happen; null while drawing is paused (feature off, list full, fresh,
+   *  a Reckoning pending). */
+  nextIn: number | null;
+}
+
+/** M3: one pending dispatch as the panel shows it (all text already substituted). */
+export interface PendingDispatchView {
+  id: string;
+  def: DispatchDef;
+  cast: CastDef | null;
+  headline: string;
+  body: string;
+  /** Seconds left before the default is taken. */
+  expiresIn: number;
+  defaultArm: number;
+  arms: {
+    label: string; outcome: string; price: string;
+    /** Resolved hard costs now (capital in £ = capitalSeconds × income per second). */
+    capital: number; mandate: number;
+    /** answerDispatch would accept this arm now. */
+    affordable: boolean;
+    /** The arm's effects and modifier, for the UI's effect formatter. */
+    effects: EffectDef[]; modifier: { effects: EffectDef[]; years: number; label?: string } | null;
+  }[];
+}
+
+/** M3: one timed modifier for the page. */
+export interface ModifierView {
+  source: string;
+  arm: number;
+  /** DispatchArm.modifier.label ?? the arm's label. */
+  label: string;
+  effects: EffectDef[];
+  /** Seconds of run time left. */
+  remaining: number;
+}
+
+/**
+ * M3: the household survey (Derived.survey), from meta.returns.household. Rates guard their denominators: a rate with
+ * a zero denominator is null, and a change with a null or zero base is null.
+ *   workdayBefore = activeMinutesBefore / daysBefore; workdayAfter likewise (active minutes per day played)
+ *   decisionsPerHourBefore = decisionsBefore / (activeMinutesBefore / 60); After likewise
+ *   automatedPerHour = automatedAfter / (activeMinutesAfter / 60)
+ *   sessionsPerDayBefore = sessionsBefore / daysBefore; After likewise
+ *   minutesPerSessionBefore = activeMinutesBefore / sessionsBefore; After likewise
+ *   workdayChange = workdayAfter / workdayBefore − 1; decisionsChange likewise
+ *   direction = 'up' if workdayChange > 0.05, 'down' if < −0.05, else 'flat' (null change → 'flat')
+ *   pure: the model's own decisions per model decade, before the Market (the mean over meta.runs entries with
+ *     index 1 of Σ decisionsByDecade / its length) and after (entries with index ≥ 2, likewise); null when none.
+ * The second pair of twin gauges is automatedPerHour ("Decisions automated") against decisionsPerHourAfter ("The
+ * proprietor's decisions per hour").
+ */
+export interface SurveyView {
+  filedRun: number;
+  published: boolean;
+  workdayBefore: number | null; workdayAfter: number | null; workdayChange: number | null;
+  decisionsPerHourBefore: number | null; decisionsPerHourAfter: number | null; decisionsChange: number | null;
+  automatedPerHour: number | null;
+  sessionsPerDayBefore: number | null; sessionsPerDayAfter: number | null;
+  minutesPerSessionBefore: number | null; minutesPerSessionAfter: number | null;
+  direction: 'up' | 'down' | 'flat';
+  pure: { decisionsPerDecadeBefore: number | null; decisionsPerDecadeAfter: number | null };
+  /** The published return, substituted (Content.proprietor), or null before publication. */
+  text: { headline: string; body: string } | null;
+}
+
+/** M3: one History for the picker (ModelApi.historyViews, content order). */
+export interface HistoryView {
+  def: HistoryDef;
+  /** requires holds and feature 'histories' is on. */
+  offered: boolean;
+  inForce: boolean;
+  /** meta.histories[id] or zeros. */
+  runs: number;
+  cleared: boolean;
+  best: number | null;
+  /** offered, Derived.freshRun, and not already in force. */
+  canChoose: boolean;
+}
+
+/** M3: one Archive note (ModelApi.archiveViews, content order; locked notes included with unlocked false and no text). */
+export interface ArchiveView {
+  id: string;
+  subject: string;
+  /** The subject's display name (card, lever, application, project, seam, dispatch headline, History, Charter, cast
+   *  member, achievement or sector name), or the id if unknown. */
+  subjectName: string;
+  title: string;
+  date: string;
+  unlocked: boolean;
+  /** meta.totalSeconds at unlock, or null. */
+  at: number | null;
+  /** Empty while locked. */
+  text: string;
+  sources: ArchiveDef['sources'];
+}
+
+/** M3: one item of the retrospective Gazette (ModelApi.retrospective), oldest first. */
+export interface RetroItem {
+  key: string;
+  run: number;
+  year: number;
+  /** meta.totalSeconds at the milestone. */
+  at: number;
+  sector?: SectorId;
+  /** Substituted EndingText.retrospective headline. Milestones with no matching template are left out. */
+  headline: string;
+}
+
+/** M3: why the Market did or did not act in a sector (OrdersView.marketWhy). */
+export type MarketWhy =
+  | { reason: 'unavailable' | 'off' | 'sectorOff' | 'settled' | 'fresh' | 'pending' | 'waiting' }
+  | { reason: 'bought'; id: string; at: number }
+  | { reason: 'none' | 'cash'; at: number }
+  | { reason: 'payback'; payback: number; at: number };
 
 /** M2: Derived.orders. */
 export interface OrdersView {
@@ -1848,6 +2775,16 @@ export interface OrdersView {
   treasury: { available: boolean; on: boolean; keepSeconds: number; projects: string[] };
   /** Seconds of run time until the next order tick. */
   nextTickIn: number;
+  /* --- M3 --- */
+  /** M3: per OPEN sector, why the Market did or did not act: the static reasons first ('unavailable' — not yet
+   *  available or suspended by the History; 'off'; 'sectorOff'; 'settled'; 'fresh'; 'pending'), else the last order
+   *  tick's outcome from GameState.orderLog ('bought' | 'none' | 'cash' | 'payback'), else 'waiting' (no tick yet). */
+  marketWhy: Record<SectorId, MarketWhy>;
+  /** M3: the standing dispatch order. */
+  dispatch: { available: boolean; on: boolean; cast: Record<string, boolean> };
+  /** M3: shift 3's label per order, fixed by the contract: market 'opening'; civilService, treasury and dispatch
+   *  'closing'. The UI shows it only once meta.flags.proprietor is true. */
+  kind: Record<OrderId, 'opening' | 'closing'>;
 }
 
 /** M1 CHANGE (was EraDerived). */
@@ -1975,6 +2912,67 @@ export interface SectorDerived {
   /** M2: model years until an active cap with no line draws one (steady.standingDrawYears − openFor × YEARS_PER_SECOND,
    *  at least 0); null when no cap lever of the sector is active or a budget exists. */
   standingDrawIn: number | null;
+  /* --- M3 (each null where the sector lacks the kind, or while its feature is off) --- */
+  /** M3: the seam ladder (feature 'seams'). */
+  seams: SeamsView | null;
+  /** M3: the load curve (feature 'load'; live, or frozen from SettledState.load while settled; null if settled
+   *  before M3). */
+  load: LoadView | null;
+  /** M3: travel (feature 'travel'; live, or frozen from SettledState.travel while settled). */
+  travel: TravelView | null;
+  /** M3: free at the point of use (feature 'freeAtUse'): present when any founded application's seen price differs
+   *  from p_s. bill = Σ (p_s − p_a) × D_a over those with p_a < p_s (£ per second); freeShare = their D share. */
+  free: { bill: number; freeShare: number } | null;
+  /** M3: Code's mechanic exposed (sectors with pressureUpkeep > 0; no feature gate, it is the Industry's gauge): the
+   *  share of capacity eaten by upkeep, min(0.95, P × pressureUpkeep / capacity), and deletion out-flow and pressure
+   *  in-flow per second. */
+  upkeep: { share: number; deletionOut: number; pressureIn: number } | null;
+}
+
+/** M3: SectorDerived.seams. */
+export interface SeamsView {
+  sunk: number;
+  total: number;
+  /** The current resource-price multiplier from seams (1 before any). */
+  priceMul: number;
+  ladder: {
+    def: SeamDef;
+    sunk: boolean;
+    /** The next one only: reachBelow and requires hold now. False for the others. */
+    reachable: boolean;
+    /** Capital cost now (after cost effects). */
+    cost: number;
+    /** ModelApi.sinkSeam would accept it now. */
+    canSink: boolean;
+    /** A forbid effect is in force on it. */
+    forbidden: boolean;
+  }[];
+}
+
+/** M3: SectorDerived.load. */
+export interface LoadView {
+  /** LF, 0–1. */
+  factor: number;
+  /** H[h], service per second in each hour (LOAD_HOURS values). */
+  hours: number[];
+  peak: number;
+  /** c before and after the idle-plant mark-up. */
+  capCostBase: number;
+  capCostEff: number;
+}
+
+/** M3: SectorDerived.travel. */
+export interface TravelView {
+  /** v(D) and the free speed s. */
+  speed: number;
+  freeSpeed: number;
+  roads: number;
+  /** (D / K)^b. */
+  congestion: number;
+  hoursPerHead: number;
+  /** Σ lockIn × peakD over founded applications (service per second locked in) and its share of D (0 if D is 0). */
+  sprawl: number;
+  sprawlShare: number;
 }
 
 export interface AppDerived {
@@ -1983,8 +2981,16 @@ export interface AppDerived {
   demand: number;
   /** demand / current effective saturation, 0–1. M2: in a settled sector, the frozen SettledState values. */
   adoption: number;
-  /** Available, not founded, capital ≥ foundCost, no Reckoning pending (M2: and the sector not settled). */
+  /** Available, not founded, capital ≥ foundCost, no Reckoning pending (M2: and the sector not settled).
+   *  M3: and not forbidden; the cost is `foundCost` below (after costMulOf effects). */
   canFound: boolean;
+  /* --- M3 --- */
+  /** M3: the price this application's users see (= servicePrice without priceSeen). */
+  priceSeen: number;
+  /** M3: foundCost after costMulOf effects. */
+  foundCost: number;
+  /** M3: a forbid effect is in force on it. */
+  forbidden: boolean;
 }
 
 export interface UpgradeView {
@@ -2016,6 +3022,10 @@ export interface UpgradeView {
    * − 1, i.e. "+180% coal if founded". Ordered by visibleBelow descending. [] when projectedDecade is null.
    */
   bringsWithinReach: { appId: string; projectedChange: number }[];
+  /* --- M3 --- */
+  /** M3: a forbid effect is in force on it (it stays visible; `affordable` is false). M3 CHANGE: `visible` also needs
+   *  UpgradeDef.when; `cost` includes costMulOf effects. */
+  forbidden: boolean;
 }
 
 export interface LeverView {
@@ -2039,6 +3049,12 @@ export interface LeverView {
   /** M2: recycleOptions with their resolved wording (LeverDef.recycleBlurb ?? Content.recycleText ?? defaults) and
    *  whether setLeverRecycle would accept each now ('commons' needs the Commons open). */
   recycleChoices: { option: LeverRecycle; name: string; blurb: string; available: boolean }[];
+  /* --- M3 --- */
+  /** M3: side effects: LeverState.bite, whether it is growing now (level ≥ 1 and `unless` not met), whether the pairing
+   *  holds, and the texts; null for levers without sideEffects, or while feature 'sideEffects' is off. */
+  bite: { value: number; growing: boolean; unlessMet: boolean; blurb: string; unlessLabel: string } | null;
+  /** M3: a forbid effect is in force on it (canRaise false; lowering allowed). */
+  forbidden: boolean;
 }
 
 /** M2: one Commons project for the Commons panel (ModelApi.commonsViews, content order). */
@@ -2114,6 +3130,16 @@ export interface ModelApi {
    * force); events [] and charterOffer [] (reckon() fills both for its run); pendingDividends [], commons
    * { levels: {}, fund: 0 }, lastOffline null. A fresh meta also has charter null, the default OrdersState, runs [],
    * eventSeq 0, knowhowPeak {}, peakPopulationEver 1.
+   * M3: the History in meta.history applies like a second Charter (its `suspend` list removes Know-how, the seated
+   * Institutions, the Charter or the Market from this run; meta.histories[id].runs += 1 is written by chooseHistory,
+   * not here). A fresh run has dispatch { pending: [], queue: [], answered: [], offered: [], draws: 0, standing: [],
+   * nextAt: dispatchFirstAt }, modifiers [], ambientLast {}, orderLog {}, historyLifted false; every SectorState
+   * seamsSunk 0; LeverState bite and bitten absent until a side effect ramps; run.dispatchesAnswered 0 and
+   * dispatchesDefaulted 0. A fresh meta
+   * also has the M3 MetaState fields empty (dispatches { seen: {}, arms: {}, playerArms: {} }, history null, histories
+   * {}, unlocks {}, returns {}, archive {}, flags {}, endings {}, milestones {}, bankedSeconds 0) and orders.dispatch
+   * { on: false, cast: {} }. The signature is unchanged: a History, like a Charter, is chosen on the fresh run
+   * (chooseHistory), not passed in.
    */
   createState(content: Content, meta?: MetaState, seed?: number): GameState;
 
@@ -2161,6 +3187,29 @@ export interface ModelApi {
    *   - Every headline the step emits whose HeadlineKey has an EventKind of the same meaning also emits that event
    *     (see EventKind), in the same order ('steadySector' → 'steadyState', 'steadyAll' → 'won').
    *   - Last, if the step is an order tick, the standing orders run (see OrdersState).
+   *
+   * M3 CHANGES to the step. Every rule reads the state at the START of the step, as in M2.
+   *   - Solve: the mechanic kinds (see "M3 MECHANICS") and the M3 effects act inside computeFlows; nothing in the step
+   *     needs to know them except as below.
+   *   - Per unsettled sector, after the applications block: lockInDecay (ApplicationDef.lockInDecay) on peakD.
+   *   - Levers: bite ramps per LeverDef.sideEffects (after Mandate and lapses, so a lapsed lever is judged at its new
+   *     level from the next step); 'biteBack' once per lever per run.
+   *   - Timed modifiers: those with until ≤ the step's end time are removed ('modifierEnded').
+   *   - Dispatches: expiry, then a draw, as GameState.dispatch says (no draw inside fastForward or useBank).
+   *   - Ambient: at an ambient tick, outside fastForward and useBank, one AmbientDef (see AmbientDef).
+   *   - The History in force: forbidUntil checked each step (historyLifted); goal checked about once a real second
+   *     (as achievements with `when`): the first time it holds this run, meta.histories[id].cleared = true, best =
+   *     min(best, run time), reward.unlock ids into meta.unlocks (and achievement granted, cosmetic and title into
+   *     meta.unlocks as keys 'cosmetic:<key>' and 'title:<text>'), 'history' headline, 'historyCleared' event,
+   *     milestone 'history' if absent.
+   *   - Archive: notes whose subject rule now holds are unlocked (about once a real second; ArchiveDef).
+   *   - Milestones (MetaState.milestones): written at the moment each first happens (keys listed there).
+   *   - The win: when flags.won is first set in a run and meta.endings.steadyAll is absent, write it (EndingRecord), the
+   *     milestone 'won', the 'ending' headline and event after 'won'. The run continues ("The ledger continues"); a
+   *     later win in a later run sets flags.won and 'won' as in M2 but no second 'ending'.
+   *   - Mandate: a 'measure' lever's upkeep counts as any lever's.
+   *   - Standing orders: the Market skips forbidden candidates and writes orderLog; nothing else changes.
+   * Settled sectors: as M2; their levers are at 0, so their bite decays; lockInDecay does not run while settled.
    */
   tick(state: GameState, content: Content, dt: number): GameState;
   /**
@@ -2182,6 +3231,9 @@ export interface ModelApi {
    * OfflineReport.lines tells a redraw from the pause. Decades still accrue away on a line that holds, as before.
    * A call with seconds ≤ 0 (after clamping; NaN counts as 0) returns the same reference and writes nothing. If a
    * Reckoning is already pending it simulates nothing (heldBy 'pending').
+   * M3: inside fastForward no dispatch is drawn and no ambient headline printed; pending dispatches still expire to
+   * their defaults (OfflineReport.dispatchesDefaulted); timed modifiers still end; bites ramp; Histories and the Archive
+   * are checked as in tick. After the call, banked time per GlobalParams.offline.bankRate (OfflineReport.banked).
    */
   fastForward(state: GameState, content: Content, seconds: number): GameState;
 
@@ -2190,7 +3242,11 @@ export interface ModelApi {
   /* --- player actions: each returns the new state, or the same reference if the action is not allowed --- */
   /* M2: every in-run action below that changes the state counts once in run.decisions / decisionsByDecade (see
    *     RunStats.decisions) and emits its events with by 'player'. Every in-run action except setOrders (and reckon
-   *     itself) is refused while a Reckoning is pending. */
+   *     itself) is refused while a Reckoning is pending.
+   * M3: sinkSeam and answerDispatch are decisions too (add them to RunStats.decisions' list). fileReturn,
+   *     withdrawReturn, useBank and chooseHistory are not. Every M3 action is refused while its feature is off (see
+   *     M3FeatureId). buyUpgrade, foundApp, setLever (raises) and buyCommons are refused for forbidden things; their
+   *     capital costs include costMulOf effects. */
   /** capital += Derived.clickValue; run.clicks++. */
   click(state: GameState, content: Content): GameState;
   /** Refused if not visible, maxed, excluded, unaffordable, or a Reckoning is pending. One-off effects fire.
@@ -2325,8 +3381,90 @@ export interface ModelApi {
    * the run's length and its Charter; sets meta.charter = null; then, on the new run, draws charterOffer (see
    * GameState.charterOffer) and emits the 'reckoning' event. Pending dividends, the Commons and settlements end with
    * the run; meta.orders carries over.
+   * M3: reckon() also records the History (RunSummary.history, historyCleared) and sets meta.history = null; records
+   * dispatchesAnswered/Defaulted and per-sector seams, loadFactor, speed and sprawl; ends pending dispatches, the queue
+   * and the modifiers unpaid; publishes an unpublished household return into the new run's news if meta.flags.proprietor
+   * (see fileReturn). meta.dispatches, histories, unlocks, returns, archive, flags, endings, milestones and the bank
+   * carry over.
    */
   hindsightOnReckon(state: GameState, content: Content): number;
+
+  /* --- M3 actions --- */
+  /**
+   * M3: sink the next seam of `sector` (SectorDef.seams[seamsSunk]). Refused unless: feature 'seams' on; the sector open,
+   * unsettled and 'stock'; a next seam exists; it is reachable (p_s ≤ reachBelow and `requires`); not forbidden;
+   * capital ≥ its cost (after costMul and costMulOf); no Reckoning pending. Effect: capital −= cost; reserve and
+   * reserveMax += tons; seamsSunk += 1; 'seamSunk' headline and event (by 'player'); milestone 'seam:<s>' if absent. A
+   * decision. The Market never sinks seams.
+   */
+  sinkSeam(state: GameState, content: Content, sector: SectorId): GameState;
+  /**
+   * M3: answer a pending dispatch with arm `arm` (0-based). `id` selects which pending dispatch (default: the oldest).
+   * Refused unless: feature 'dispatches' on; it is pending; the arm exists; its `cost` is affordable (Mandate ≥ mandate
+   * and capital ≥ capitalSeconds × Derived.incomePerSec); no Reckoning pending. Effect, in order: pay the cost; fire the
+   * arm's one-off effects (reserveAdd at once); its standing effects join dispatch.standing (once per answer, rest of
+   * run); its modifier (if any) is added to modifiers with since = time, until = time + years / YEARS_PER_SECOND
+   * (stacking per GameState.modifiers); `next` (if any) is appended to the queue; the pending entry is removed;
+   * answered += { id, arm, t: time, by: 'player' }; meta.dispatches.arms[id][arm] += 1 and playerArms[id][arm] += 1;
+   * run.dispatchesAnswered += 1; the 'answered' headline (if the arm has a reply) and 'dispatchAnswered' event;
+   * milestone 'dispatch' if absent; nextAt per GameState.dispatch. A decision.
+   * A default resolution (expiry, the standing order) does the same with the default arm, by 'default' or 'dispatch',
+   * paying what there is, counting run.dispatchesDefaulted and meta.dispatches.arms (not playerArms), no decision.
+   */
+  answerDispatch(state: GameState, content: Content, arm: number, id?: string): GameState;
+  /**
+   * M3: choose this run's History (or null for none). Allowed only while Derived.freshRun and feature 'histories' is
+   * on; refused for an id not offered (HistoryView.offered) or already in force. Sets meta.history; if not null,
+   * meta.histories[id].runs += 1 (and −1 on the History it replaces, if that was chosen in this same fresh run, so
+   * switching back and forth counts one run); rebuilds the run as buyKnowhow; then a 'historyChosen' event (not for
+   * null). Not a decision. A History composes with the Charter (see HistoryDef).
+   */
+  chooseHistory(state: GameState, content: Content, id: string | null): GameState;
+  /**
+   * M3: file a return: the one bridge from the UI's wall clock into the model (shift 3). The figures are untrusted
+   * input and are validated; any failure refuses the whole return (same reference):
+   *   - feature 'survey' on; ret is an object with `id` a string and `figures` a plain object;
+   *   - id === 'household' (M3 knows no other); every key of HouseholdFigures present;
+   *   - each value a finite number, 0 ≤ value ≤ RETURN_FIGURE_MAX; values are floored to integers (all are counts);
+   *   - consistency: sessions ≤ looks on each side; days ≤ sessions on each side; quietDays ≤ daysBefore + daysAfter;
+   *   - at most one filing per id per run: refused if meta.returns[id].run === meta.reckonings, unless the figures are
+   *     identical (then the same reference is returned and nothing is written).
+   * Keys not in HouseholdFigures are dropped. Effect: meta.returns[id] = { figures, run: meta.reckonings, at:
+   * meta.totalSeconds, published: false, template: null } (a later filing replaces an earlier one); 'returnFiled' event.
+   * If meta.flags.proprietor is already true, the return is published at once (see below) — else it waits for the card.
+   * Publication (here, when the card is bought, or at reckon()): published = true; template = mix32(state.seed ^
+   * meta.reckonings) mod (number of Content.proprietor.returns templates of SurveyView.direction); a 'return' NewsItem
+   * with the substituted headline; 'returnPublished' event (n = round(workdayChange × 100), 0 if null); milestone
+   * 'proprietor' if absent. At most one publication per run (the paper's annual statistics): a filing in a run that has
+   * already published waits for the next reckon(), which publishes an unpublished household return into the new run's
+   * news (only while meta.flags.proprietor). Wall-clock time itself never enters the core; the state stays a pure
+   * function of its inputs. Not a decision. Allowed while a Reckoning is pending.
+   */
+  fileReturn(state: GameState, content: Content, ret: PlayReturn): GameState;
+  /**
+   * M3: withdraw a return (the "Close the Household Survey" switch): deletes meta.returns[id] (so the save holds no
+   * figures), prints Content.proprietor.withdrawn as a 'returnWithdrawn' item and event. Refused (same reference) if no
+   * such return is on file. Allowed always (whatever the features), also while a Reckoning is pending. Not a decision.
+   * meta.flags.proprietor stays (the reveal happened); Derived.survey becomes null.
+   */
+  withdrawReturn(state: GameState, content: Content, id: string): GameState;
+  /**
+   * M3: spend banked time (optional; GlobalParams.offline.bankRate). Simulates s = min(seconds, meta.bankedSeconds) as
+   * fastForward does (steps of 5 s, the same holds, the away rules: Hindsight at hindsightRate, no dividend overflow,
+   * no dispatch draws, no ambient news), WITHOUT the offline cap, and subtracts the seconds actually simulated from the
+   * bank. Refused (same reference) when feature 'bank' is off, s ≤ 0, or a Reckoning is pending. Writes no lastOffline;
+   * emits 'bankUsed' (n = seconds simulated). The UI may call it in small slices beside tick to play banked time at 2×.
+   * Not a decision.
+   */
+  useBank(state: GameState, content: Content, seconds: number): GameState;
+
+  /* --- M3 views --- */
+  /** M3: the History picker (content order). */
+  historyViews(state: GameState, content: Content): HistoryView[];
+  /** M3: the Archive (content order). */
+  archiveViews(state: GameState, content: Content): ArchiveView[];
+  /** M3: the retrospective Gazette from meta.milestones and Content.ending (oldest first; see EndingText). */
+  retrospective(state: GameState, content: Content): RetroItem[];
 
   /* --- persistence --- */
   serialize(state: GameState): string;
