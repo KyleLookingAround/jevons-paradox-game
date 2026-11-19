@@ -176,6 +176,14 @@ export function obtain(job: Job, opts: { sync?: boolean; cb?: Done; pin?: boolea
   return null;
 }
 
+/** The buffer if it is in the bank, without queueing anything. */
+export function peek(job: Job): AudioBuffer | null {
+  const id = jobId(job);
+  const b = bank.get(id);
+  if (b) used.set(id, ++clock);
+  return b ?? null;
+}
+
 /** Queued and not yet ready. */
 export function pending(): number { return waiting.size; }
 export function bankSamples(): number { return samples; }

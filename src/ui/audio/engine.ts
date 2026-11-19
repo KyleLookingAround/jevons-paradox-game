@@ -11,7 +11,7 @@ import { SOUNDSCAPES, soundscapeFor, paletteFor, type SoundscapeDef, type LayerD
 import { mixFrom, momentsBetween } from './mix';
 import { hasRecipe } from './recipes';
 import { rngFrom, hash, type Rng } from './synth';
-import { obtain, attach, detach, bankSamples } from './synthq';
+import { obtain, peek, attach, detach, bankSamples } from './synthq';
 import type { Job } from './jobs';
 import { freq, ratio, semis, type Key } from './music';
 
@@ -68,6 +68,7 @@ interface Graph {
   beatAt: number;
   mix: Mix | null;
   dieAt: number;        // 0 = alive
+  dead?: boolean;       // torn down
   blackoutNext: number;
 }
 
@@ -272,7 +273,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function recipe(name: string, key: Key, v: number, force = false, cb?: (b: AudioBuffer | null) => void): AudioBuffer | null {
     const job: Job = { t: 'recipe', name, key, v, seed };
     if (sync) {
-      if (!force && synthSpent > SYNTH_BUDGET_MS) { const b = obtain(job, { ctx }); return b; }
+      if (!force && synthSpent > SYNTH_BUDGET_MS) return peek(job);
       const t0 = perf();
       const b = obtain(job, { sync: true, ctx });
       synthSpent += perf() - t0;
@@ -339,16 +340,26 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (const [d, oct, wave, gn, det] of l.tones ?? []) addOsc(freq(key, d, oct), wave, gn, det ?? 0);
       for (const [hz, wave, gn] of l.hz ?? []) addOsc(hz, wave, gn, 0);
     } else {
-      const b = noise(l.src);
-      const chans = l.stereo ? [-0.7, 0.7] : [0];
-      chans.forEach((p, i) => {
-        const s = c.createBufferSource(); s.buffer = b; s.loop = true;
-        let n: AudioNode = s;
-        if (l.stereo && canPan) { const pn = (c as AudioContext).createStereoPanner(); pn.pan.value = p; s.connect(pn); n = pn; }
-        n.connect(into);
-        s.start(t, (rt.rng() * 0.4 + i * 0.5) * b.duration);
-        rt.noises.push(s);
-      });
+      const dest = into;
+      const startNoise = (b: AudioBuffer, late: boolean) => {
+        if (g.dead || ctx !== c) return;
+        const chans = l.stereo ? [-0.7, 0.7] : [0];
+        const st = now();
+        chans.forEach((p, i) => {
+          const s = c.createBufferSource(); s.buffer = b; s.loop = true; s.playbackRate.value = rt.pitch || 1;
+          let n: AudioNode = s;
+          if (l.stereo && canPan) { const pn = (c as AudioContext).createStereoPanner(); pn.pan.value = p; s.connect(pn); n = pn; }
+          if (late) {
+            // Arriving into a bed that may already be up: fade in rather than step in (no click).
+            const fg = c.createGain(); fg.gain.value = 0; fg.gain.setTargetAtTime(1, st, 0.25); n.connect(fg); n = fg;
+          }
+          n.connect(dest);
+          s.start(st, (rt.rng() * 0.4 + i * 0.5) * b.duration);
+          rt.noises.push(s);
+        });
+      };
+      const b = noise(l.src, (nb) => { if (nb) startNoise(nb, true); });
+      if (b) startNoise(b, false);
     }
     if (l.lfo) {
       const o = c.createOscillator(); o.type = 'sine';
@@ -379,6 +390,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   }
 
   function killGraph(g: Graph, fast: boolean): void {
+    g.dead = true;
     const t = now();
     if (fast) { try { g.out.gain.cancelScheduledValues(t); g.out.gain.setTargetAtTime(0, t, 0.015); } catch { /* ignore */ } }
     const stopAt = t + (fast ? 0.1 : 0.02);
@@ -525,7 +537,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const t = now();
     const horizon = t + LOOKAHEAD;
     for (const g of graphs.slice()) {
-      if (g.dieAt && t > g.dieAt) { killGraph(g, false); graphs = graphs.filter((x) => x !== g); trimBank(); continue; }
+      if (g.dieAt && t > g.dieAt) { killGraph(g, false); graphs = graphs.filter((x) => x !== g); continue; }
       // Beat clock: tempo glides towards its target, the beat advances with it.
       const dt = Math.max(0, t - g.beatAt);
       g.tempo += (g.tempoTarget - g.tempo) * (1 - Math.exp(-dt / 2));
@@ -535,21 +547,10 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, horizon);
       if (g.mix.stress > 0.01 && !g.dieAt) blackouts(g, t);
     }
-    // Prewarm: at most one recipe per tick, and only if nothing was synthesised for a hit this tick.
-    if (synthSpent === 0 && warm.length) { const [n, k, v] = warm.shift()!; recipe(n, k, v, true); }
+    // Offline: prewarm at most one recipe per tick, and only if nothing was synthesised for a hit this tick. (Live, the
+    // whole list went to the worker when the graph was built.)
+    if (sync && synthSpent === 0 && warm.length) { const [n, k, v] = warm.shift()!; recipe(n, k, v, true); }
     tickMs = perf() - t0;
-  }
-
-  /** Drop least-recently-used recipes once the cache passes BANK_CAP (a revisited Industry re-synthesises them). */
-  function trimBank(): void {
-    if (bankSamples <= BANK_CAP) return;
-    const order = [...bank.keys()].sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0));
-    for (const id of order) {
-      if (bankSamples <= BANK_CAP * 0.75) break;
-      if (now() - (used.get(id) ?? 0) < 20) continue;
-      bankSamples -= bank.get(id)!.length;
-      bank.delete(id); used.delete(id);
-    }
   }
 
   function queueWarm(def: SoundscapeDef, sector: string): void {
@@ -560,6 +561,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       for (let v = 0; v < (KIND_VARIANTS[k] ?? 1); v++) warm.push([`ui:${pal}:${k}`, def.key, v]);
     for (const l of def.layers) if (l.kind === 'hits') for (let v = 0; v < (l.variants ?? 1); v++) warm.push([l.recipe, def.key, v]);
     warm.push([def.crisis.recipe, def.key, 0], ['fogSwell', def.key, 0]);
+    if (!sync) { for (const [n, k, v] of warm) recipe(n, k, v); warm.length = 0; }
   }
 
   function schedule(g: Graph, rt: LayerRt, t: number, horizon: number): void {
