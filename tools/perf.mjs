@@ -351,12 +351,16 @@ async function measureState(name, save, rate) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(400);
 
-  // Taps on Sell: one at a time (latency), then 8 a second for 5 s.
+  // Taps on Sell: one at a time (latency), then 8 a second for 5 s. M5: a Ministry sells nothing by hand (the button is
+  // gone); the tap measured there is Pryce's answer line on the first lever card (opens and closes his ranked list).
+  const ministry = await page.evaluate(() => !!window.rebound.d.chair);
+  const sellSel = ministry ? '.lever .ans-line' : '.sell';
+  if (ministry) { r.tapIs = 'answer line (Ministry)'; await page.locator('section.levers').scrollIntoViewIfNeeded(); await page.waitForTimeout(800); await page.locator(sellSel).first().scrollIntoViewIfNeeded(); await page.waitForTimeout(400); }
   t = await now(page);
-  r.sellTap = await tapLatency(page, cdp, '.sell', 6, 400);
+  r.sellTap = await tapLatency(page, cdp, sellSel, 6, 400);
   const tb = await now(page);
   const fp = trace(cdp, page, 5600).then((x) => x.frames);
-  r.sellBurst = await tapLatency(page, cdp, '.sell', 40, 125);
+  r.sellBurst = await tapLatency(page, cdp, sellSel, 40, 125);
   r.sellBurstFrames = await fp;
   r.sellBurstLt = await longTasks(page, tb);
 
@@ -372,7 +376,8 @@ async function measureState(name, save, rate) {
     const rep = here.find((v) => v.def.repeatable), one = here.find((v) => !v.def.repeatable) ?? rep;
     return { one: one ? `.up[data-up="${one.def.id}"] .buy` : null, rep: rep ? `.up[data-up="${rep.def.id}"] .buy` : null };
   });
-  let buySel = await pick();
+  // M5: in a Ministry no card is bought (the order book is the company's): no Buy to time.
+  let buySel = ministry ? {} : await pick();
   if (buySel.switchTo) {
     await page.evaluate((id) => window.rebound.ctx.selectSector(id), buySel.switchTo);
     await page.waitForTimeout(2500);
@@ -381,7 +386,7 @@ async function measureState(name, save, rate) {
     buySel = await pick();
     r.buyIn = buySel.one ? 'switched' : undefined;
   }
-  if (!buySel.one && !buySel.rep) {
+  if (!ministry && !buySel.one && !buySel.rep) {
     // Everything bought (the late state): take back the last improvement bought here (a level of a repeatable one if
     // there is one), so there is something to buy.
     const ok = await page.evaluate(() => {
@@ -509,7 +514,7 @@ for (const st of STATES) {
     console.log(`  loop pieces, mean/max ms: tick ${per('model.tick')} (${P['model.tick']?.n ?? 0}×) derive ${per('model.derive')} upgradeViews ${per('model.upgradeViews')} leverViews ${per('model.leverViews')} knowhow ${per('model.knowhowViews')} inst ${per('model.institutionViews')} serialize ${per('model.serialize')}`);
     console.log(`  ui, mean/max ms: update ${per('ui.update')} afford ${per('ui.afford')} topbar ${per('ui.topbar')} tabs ${per('ui.tabs')} gauges ${per('ui.gauges')} dock ${per('ui.dock')} news ${per('ui.news')} world ${per('ui.world')} [view ${per('scene.view')} scene ${per('scene.update')}] ups ${per('ui.ups')} budget ${per('ui.budget')} levs ${per('ui.levs')} | M3: mech ${per('ui.mech')} letters ${per('ui.letters')} survey ${per('ui.survey')} orders ${per('ui.orders')}`);
     const L = (x) => (x ? `p50 ${f0(x.p50)} p95 ${f0(x.p95)} max ${f0(x.max)} ms (handler p50 ${f1(x.procP50)}, max ${f1(x.procMax)}; n ${x.n})` : '—');
-    console.log(`  tap→paint Sell: ${L(r.sellTap)}`);
+    console.log(`  tap→paint Sell${r.tapIs ? ` (${r.tapIs})` : ''}: ${L(r.sellTap)}`);
     console.log(`  Sell 8/s: ${L(r.sellBurst)}; frames p95 ${f1(r.sellBurstFrames.p95)} max ${f0(r.sellBurstFrames.max)}; long tasks ${r.sellBurstLt.length} (max ${f0(Math.max(0, ...r.sellBurstLt))})`);
     console.log(`  tap→paint Buy: ${L(r.buyTap)}${r.buyIn ? ` (${r.buyIn})` : ''}; repeatable ×3: ${L(r.buyRepTap)}`);
     if (r.holdFrames) console.log(`  hold Buy 3 s: bought ${r.holdBought}; frames p95 ${f1(r.holdFrames.p95)} max ${f0(r.holdFrames.max)}; long tasks ${r.holdLt.length} (max ${f0(Math.max(0, ...r.holdLt))})`);

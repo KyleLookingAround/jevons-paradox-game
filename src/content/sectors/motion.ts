@@ -431,10 +431,10 @@ const motionLevers: LeverDef[] = [
     recycleBlurb: { commons: 'Spent on the Commons instead: a bus pass, a shorter week, and a fortnight in the sun with the time.' },
   }), 'Pryce Consolidated will pay it on the barrels it reports.'),
     /* M5 (registry lane, for the coordinator's order of discovery): the duty is the expensive lever on the day. Per
-     * level, −4 in Confidence's target when enacted, +0.5 after twenty model years (a fuel duty is resented, then
+     * level, −6 in Confidence's target when enacted, +0.5 after thirty model years (ten minutes, two Parliaments) (a fuel duty is resented, then
      * forgotten), on top of the price share every levy costs. A steward who reaches for it first pays at the polls;
      * one who meets the light trucks under a standard first finds the duty closes the ladder. */
-    popularity: { start: -4, after: 0.5, years: 20 },
+    popularity: { start: -6, after: 0.5, years: 30 },
   },
   afterChair(lever({
     id: 'motion.cap', sector: 'motion', kind: 'cap',

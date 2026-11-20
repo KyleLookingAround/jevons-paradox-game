@@ -456,7 +456,9 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     if (typeof doc.startViewTransition !== 'function' || reducedMotion() || sheets.blocking() || document.hidden) { apply(); return; }
     const ids = sectorIds(ctx.content);
     document.documentElement.setAttribute('data-dir', ids.indexOf(to) >= ids.indexOf(from) ? 'next' : 'prev');
-    try { doc.startViewTransition(apply); } catch { apply(); }
+    // An aborted transition (the viewport changed size mid-way: a page much taller or shorter, M5's capstone tabs) rejects
+    // its promises; that is not an error, the switch has happened.
+    try { const vt = doc.startViewTransition(apply) as { ready?: Promise<unknown>; finished?: Promise<unknown>; updateCallbackDone?: Promise<unknown> } | undefined; vt?.ready?.catch(() => {}); vt?.finished?.catch(() => {}); vt?.updateCallbackDone?.catch(() => {}); } catch { apply(); }
   }
 
   // After a tap, only these patch before the frame (the purchase, the figures, the sell button); the picture, the paper

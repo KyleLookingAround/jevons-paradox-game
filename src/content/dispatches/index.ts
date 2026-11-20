@@ -18,6 +18,12 @@ import { fishingDispatches } from './fishing';
 import { chairDispatches } from './chair';
 import { plentyDispatches } from './plenty';
 
+/** M5 (DispatchDef.recur): the Ministry's wager letters may come again once a Parliament (design §9.3: at least one
+ *  wager a Parliament for every style of play; the text lane's PARLIAMENT_WAGERED holds the ordinary letters back until
+ *  one is answered, so without recurrence the guarantee ran out with the pool). A letter marked `once` keeps it. */
+const recurEachParliament = (ds: DispatchDef[]): DispatchDef[] =>
+  ds.map((d) => (d.arms.some((a) => a.wager) && !d.once ? { ...d, recur: 'parliament' as const } : d));
+
 export const dispatches: DispatchDef[] = [
   ...generalDispatches,
   ...steamDispatches,
@@ -29,6 +35,6 @@ export const dispatches: DispatchDef[] = [
   ...ironDispatches,
   ...fishingDispatches,
   ...ageDispatchesM4,
-  ...chairDispatches,
-  ...plentyDispatches,
+  ...recurEachParliament(chairDispatches),
+  ...recurEachParliament(plentyDispatches),
 ];

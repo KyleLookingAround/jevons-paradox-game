@@ -20,7 +20,7 @@ export function treatyBox(ctx: Ctx): { el: HTMLElement; update(): void } {
     if (!t) return;
     setText(prec, fmt(Math.floor(num(t.precedent))));
     show(sign, t.available);
-    setText(signL, `${MT.treatyTitle}: +${fmt(Math.floor(num(t.precedentIfNow)))} ${MT.precedent}`);
+    setText(signL, `Sign ${MT.treatyTitle.replace(/^The/, "the")}: +${fmt(Math.floor(num(t.precedentIfNow)))} ${MT.precedent}`);
     const k = t.articles.map((a) => a.def.id).join(',');
     if (k !== key) {
       key = k; rows.clear();

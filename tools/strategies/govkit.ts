@@ -28,9 +28,19 @@ const chairSectors = (s: GameState, c: Content): SectorId[] => {
   return out;
 };
 
-/** Raise one level of the cheapest raisable lever among `list`; the same state if none. */
-function raiseCheapest(s: GameState, c: Content, list: LeverView[]): GameState {
-  const ok = list.filter((v) => v.visible && v.canRaise && v.nextCost !== null).sort((a, b) => (a.nextCost! - b.nextCost!));
+/** M5: Mandate a steward would pay to avoid a point of Confidence (a lever's popularity on enactment). */
+// GOV_POP_MANDATE=0 gives the steward who ignores a lever's popularity (straight to the duty): an experiment knob.
+const POP_MANDATE = Number((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.GOV_POP_MANDATE ?? 60);
+const popularityCost = (v: LeverView): number => {
+  const p = v.def.popularity;
+  if (!p) return 0;
+  // the next level takes what one level's term is now (the start figure from level 0)
+  const term = v.level === 0 ? p.start : (v.popularity ?? 0) / Math.max(1, v.level);
+  return Math.max(0, -term) * POP_MANDATE;
+};
+/** Raise one level of the cheapest raisable lever among `list` (Mandate, plus `extra` if given); the same state if none. */
+function raiseCheapest(s: GameState, c: Content, list: LeverView[], extra: (v: LeverView) => number = () => 0): GameState {
+  const ok = list.filter((v) => v.visible && v.canRaise && v.nextCost !== null).sort((a, b) => (a.nextCost! + extra(a)) - (b.nextCost! + extra(b)));
   for (const v of ok) {
     const n = model.setLever(s, c, v.def.id, v.level + 1);
     if (n !== s) return n;
@@ -82,12 +92,17 @@ function stewardOnce(s0: GameState, c: Content, readSheet: boolean): GameState {
     // recycle every levy as a dividend (it offsets the price in Confidence)
     for (const v of views) if (v.level > 0 && v.recycle !== 'dividend' && v.recycleOptions.includes('dividend')) s = model.setLeverRecycle(s, c, v.def.id, 'dividend');
     if (sd.resourceUse > sd.budgetR * 1.01) {
-      const levies = model.leverViews(s, c).filter((v) => v.def.sector === id && LEVY.has(v.def.kind));
-      // the rival's answer, where the core gives one: prefer levers he would comply with
-      const comply = levies.filter((v) => !v.rivalAnswer || v.rivalAnswer.chosen === 'comply');
-      const n = raiseCheapest(s, c, comply.length ? comply : levies);
-      s = n !== s ? n : raiseCheapest(s, c, model.leverViews(s, c).filter((v) => v.def.sector === id && v.def.kind === 'measure'));
+      // M5 (registry lane): the card prints the lever's Confidence term (LeverDef.popularity) as well as Pryce's answer;
+      // the steward weighs both. Candidates: the levies and the standard-style measures (the road programme, which adds
+      // traffic, is no answer to a line); cost = Mandate + POP_MANDATE Mandate a point of Confidence the lever would take
+      // on enactment. Prefer levers he would comply with (or evade: a rung is a lesson, and the bot amends it).
+      const cands = model.leverViews(s, c).filter((v) => v.def.sector === id
+        && (LEVY.has(v.def.kind) || (v.def.kind === 'measure' && (v.def.ladder?.length ?? 0) > 0)));
+      const fine = cands.filter((v) => !v.rivalAnswer || ['comply', 'evade'].includes(v.rivalAnswer.chosen));
+      s = raiseCheapest(s, c, fine.length ? fine : cands, popularityCost);
     }
+    // M5 (registry lane): settle a chair Industry as soon as it can be (Steady State on its line: the Treaty's gate)
+    if (model.derive(s, c).sectors[id]?.canSettle) { const n = model.settle(s, c, id); if (n !== s) { s = n; continue; } }
     // compensate a closure
     const comp = model.derive(s, c).chair?.compensation?.[id];
     if (comp?.canCompensate && comp.cost < s.capital * 0.5) s = model.compensate(s, c, id);
