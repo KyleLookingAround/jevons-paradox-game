@@ -9,7 +9,7 @@ import { P, C, R, E, f } from '../svg';
 type Era = 'victorian' | 'mid' | 'eighties' | 'night';
 const eraOf = (look: string): Era => (look === 'chrome' ? 'mid' : look === 'terminal' ? 'eighties' : look === 'cyberpunk' || look === 'agentic' ? 'night' : 'victorian');
 
-interface Kit { hat: 'top' | 'bowler' | 'cap' | 'bonnet' | 'trilby' | 'none' | 'hood' | 'cloche'; skirt?: boolean; stout?: boolean; hold?: 'notebook' | 'book' | 'basket' | 'brochure' | 'box' | 'cane' | 'paper' | 'screen' | 'none'; coat?: 'long' | 'short'; small?: boolean; accent?: boolean }
+interface Kit { hat: 'top' | 'bowler' | 'cap' | 'bonnet' | 'trilby' | 'none' | 'hood' | 'cloche'; skirt?: boolean; stout?: boolean; hold?: 'notebook' | 'book' | 'basket' | 'brochure' | 'box' | 'cane' | 'paper' | 'screen' | 'none' | 'rail' | 'jar'; coat?: 'long' | 'short'; small?: boolean; accent?: boolean; gansey?: boolean }
 
 /** Who wears what, by cast key (aliases included so content can name roles or people). */
 const CAST: Record<string, Kit> = {
@@ -30,6 +30,14 @@ const CAST: Record<string, Kit> = {
   engineer: { hat: 'cap', hold: 'book', coat: 'short' },
   proprietor: { hat: 'top', hold: 'none', coat: 'long' },
   paperboy: { hat: 'cap', hold: 'paper', coat: 'short', small: true },
+  /* M4: Pryce the elder in a frock coat with a sample of rail; Skipper Tench in a gansey; Miss Isbister with a
+     sampling jar. */
+  pryceElder: { hat: 'top', stout: true, hold: 'rail', coat: 'long' },
+  ironmaster: { hat: 'top', stout: true, hold: 'rail', coat: 'long' },
+  skipper: { hat: 'cap', stout: true, hold: 'none', coat: 'short', gansey: true },
+  tench: { hat: 'cap', stout: true, hold: 'none', coat: 'short', gansey: true },
+  naturalist: { hat: 'bonnet', skirt: true, hold: 'jar' },
+  isbister: { hat: 'bonnet', skirt: true, hold: 'jar' },
 };
 
 export const FIGURE_KEYS = Object.keys(CAST);
@@ -76,6 +84,8 @@ export function figureArt(key: string, look: string): FigureArt | null {
     const hem = k.coat === 'long' ? -6.5 * s : -10 * s;
     b += P(`M${f(-w)} ${f(hem)}L${f(-w + 0.6)} ${f(top + 2)}Q0 ${f(top - 0.6)} ${f(w - 0.6)} ${f(top + 2)}L${f(w)} ${f(hem)}Z`, era === 'mid' ? 'ac k' : 'd k');
     b += P(`M0 ${f(top + 1)}V${f(hem)}`, 'k k2');
+    // A gansey: the knitted yoke across the chest, in bands.
+    if (k.gansey) b += P(`M${f(-w + 0.8)} ${f(top + 4)}H${f(w - 0.8)}M${f(-w + 0.8)} ${f(top + 6)}H${f(w - 0.8)}`, 'b k2');
   }
   // Head and hat.
   b += C(0, hy, 2.6 * s, 'b k');
@@ -93,6 +103,8 @@ export function figureArt(key: string, look: string): FigureArt | null {
     case 'paper': b += P(`M${f(hx - 0.6)} ${f(hyy - 6)}h4.4v5.4h-4.4z`, 'b k') + P(`M${f(hx)} ${f(hyy - 5)}h3.2M${f(hx)} ${f(hyy - 3.8)}h3.2M${f(hx)} ${f(hyy - 2.6)}h2`, 'k k2') +
       P(`M${f(-w - 0.4)} ${f(top + 4)}l-2.4 7h4.4z`, 'b2 k'); break;
     case 'screen': b += R(hx - 0.4, hyy - 4.4, 3.4, 4.8, 'lit k'); break;
+    case 'rail': b += P(`M${f(hx - 0.4)} ${f(hyy - 0.6)}h4.6M${f(hx - 0.4)} ${f(hyy + 2.4)}h4.6M${f(hx + 1.9)} ${f(hyy - 0.6)}v3`, 'k K'); break;
+    case 'jar': b += R(hx - 0.2, hyy - 4.6, 3.2, 4.6, 'wa k') + R(hx - 0.5, hyy - 5.4, 3.8, 1, 'd') + C(hx + 1.4, hyy - 2, 0.6, 'd'); break;
     default: break;
   }
   if (key !== 'proprietor') return { body: b };

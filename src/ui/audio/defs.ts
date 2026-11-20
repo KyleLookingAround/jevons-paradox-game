@@ -9,7 +9,9 @@ import type { Palette } from './recipes';
  *  'one' · 'pace' · 'pressure' · 'haze' · 'reserve' · 'pop' · 'stage' · 'built' · 'empty' · 'steady' · 'clear' ·
  *  'decoupling' · 'stress' · 'app:<icon or id>' · 'lever:<kind>' ·
  *  M3 (0 or neutral when the view field is absent): 'seamsOn' · 'depth' · 'loadOn' · 'hourLoad' · 'night' · 'day' ·
- *  'travelOn' · 'congestion' · 'sprawl' · 'freeOn' · 'freeShare' · 'paidShare' — prefixed 'inv:' for 1 − x, or
+ *  'travelOn' · 'congestion' · 'sprawl' · 'freeOn' · 'freeShare' · 'paidShare' ·
+ *  M4 (Fishing's stock; see mix.ts M4View): 'stockOn' · 'life' (the TRUE stock) · 'fleet' · 'tied' · 'moratorium' ·
+ *  'foreign' — prefixed 'inv:' for 1 − x, or
  *  'step<t>:<src>' for a soft step from 0 to 1 as <src> passes t (e.g. 'step0.5:reserve'). */
 export type Src = string;
 
@@ -33,6 +35,9 @@ interface LayerBase {
   lp?: number;
   /** Playback-rate / frequency multiplier from a source: [src, at 0, at 1]. */
   pitch?: [Src, number, number];
+  /** M4: the sea life (drive it from 'life'). It comes back slowly (a rise takes ~15 s, a fall ~2 s); the world's
+   *  'thresholdCrossed' cuts it out over two seconds and 'surveyReveal' lifts it a few dB for two. */
+  life?: boolean;
 }
 
 export interface BedDef extends LayerBase {
@@ -86,8 +91,9 @@ export interface SoundscapeDef {
   air: { bright: number; reverb: number };
   palette: Palette;
   layers: LayerDef[];
-  /** The world's own crisis moment (played when SceneView.crises rises): a recipe over a low fog swell. */
-  crisis: { recipe: string; gain: number };
+  /** The world's own crisis moment (played when SceneView.crises rises): a recipe over a low swell ('fogSwell', or
+   *  M4 `swell`: e.g. Iron's furnace roar rising). */
+  crisis: { recipe: string; gain: number; swell?: string };
   /** Layer ids that still sound, faint and distant, under later Industries (heritage). */
   trace: string[];
   /** Lever kind → recipe for its small signature (default 'lv.<kind>', else 'lv.generic'). */
@@ -178,6 +184,9 @@ const light: SoundscapeDef = {
       gain: 0.25, level: { add: [['pop', 0.7], ['built', 0.3]] }, density: { add: [['pop', 0.7], ['built', 0.3]], mul: [['hourLoad', 0.7]] }, send: 0.3 },
     { id: 'town', kind: 'bed', src: 'brown', filter: ['bandpass', 400, 0.8], stereo: true, tone: ['hourLoad', 0.8, 1],
       gain: 0.11, level: { add: [['pop', 0.7], ['built', 0.4]], mul: [['hourLoad', 0.5]] } },
+    // M4 heritage: the harbour at the edge of the town: Fishing's bell buoy, far off and faint (G is a white note too).
+    { id: 'buoy', kind: 'hits', recipe: 'bellBuoy', variants: 3, rate: 1 / 40, minGap: 20, pan: [0.75, 0.9], lp: 1400,
+      gain: 0.035, level: { add: [one(0.6), ['empty', 0.4]] }, send: 0.6 },
   ],
   crisis: { recipe: 'fogHorn', gain: 0.12 },
   trace: ['gas', 'tram'],
@@ -312,6 +321,94 @@ const code: SoundscapeDef = {
 };
 
 /* ------------------------------------------------------------------ */
+/* M4 Iron & Steel: the foundry by night                                */
+/* ------------------------------------------------------------------ */
+// A aeolian (white notes, like Steam and Light). The drop hammer is the pulse; the furnaces roar and breathe with the
+// blast; now and then a furnace is tapped (a rising hiss and a shower of sparks); the rolling mills squeal in key, the
+// riveters tick, the converter roars at stage 2 and the open hearth hums at 3. A nightjar at Steady State.
+const iron: SoundscapeDef = {
+  id: 'iron', key: KEYS.iron, tempo: [58, 92], air: { bright: 7500, reverb: 0.32 }, palette: 'ledger',
+  layers: [
+    { id: 'night', kind: 'bed', src: 'pink', filter: ['bandpass', 430, 0.7], lfo: { rate: 0.06, depth: 0.45, to: 'filter' }, stereo: true,
+      gain: 0.12, level: { add: [one(0.55), ['empty', 0.45]], mul: [['inv:built', 0.4]] }, send: 0.1 },
+    // The furnaces: a roar that breathes with the blowing engines (every other beat).
+    { id: 'furnace', kind: 'bed', src: 'brown', filter: ['bandpass', 170, 0.75], lfo: { rate: 0.5, beats: true, depth: 0.45, to: 'gain' }, mech: true, pan: -0.15,
+      tone: ['pace', 0.85, 1.35], gain: 0.2, level: { add: [['step0.005:built', 0.35], ['built', 0.7], ['pace', 0.2]] } },
+    { id: 'blast', kind: 'bed', src: 'pink', filter: ['bandpass', 520, 1.1], lfo: { rate: 0.5, beats: true, depth: 0.6, to: 'gain' }, mech: true, pan: -0.25,
+      gain: 0.06, level: { add: [['built', 0.7], ['pace', 0.4]], pow: 1.2 } },
+    // The drop hammer is the pulse (on the beat; a heavier blow on the one).
+    { id: 'hammer', kind: 'hits', recipe: 'dropHammer', variants: 3, grid: { every: 1, pattern: [1, 0.55, 0.85, 0.5], jitter: 0.008 }, mech: true, pan: [0.05, 0.25], lp: 3200,
+      gain: 0.3, level: { add: [['step0.005:built', 0.45], ['built', 1]], max: 1 }, density: { add: [['step0.005:built', 0.6], ['built', 0.6]] }, send: 0.3 },
+    { id: 'tap', kind: 'hits', recipe: 'furnaceTap', variants: 2, rate: 1 / 34, minGap: 16, pan: [-0.5, -0.2], lp: 4500,
+      gain: 0.2, level: { add: [['built', 1.2]], max: 1 }, density: { add: [['built', 0.8], ['pace', 0.4]], mul: [['built', 1]] }, send: 0.35 },
+    { id: 'rolling', kind: 'hits', recipe: 'rollingMill', variants: 3, rate: 1 / 15, minGap: 6, pan: [0.2, 0.6], lp: 3500, mech: true,
+      gain: 0.15, level: { add: [['app:rails', 1], ['app:plate', 0.6], ['app:wire', 0.5]], max: 1 }, send: 0.3 },
+    { id: 'rivets', kind: 'hits', recipe: 'rivets', variants: 4, rate: 1 / 9, minGap: 2.5, pan: [0.3, 0.8], lp: 3500,
+      gain: 0.1, level: { add: [['app:girder', 1], ['app:plate', 0.8]], max: 1 }, send: 0.3 },
+    { id: 'cans', kind: 'hits', recipe: 'canClatter', variants: 3, rate: 1 / 14, minGap: 5, pan: [-0.7, -0.4], lp: 3500,
+      gain: 0.08, level: { add: [['app:cans', 1]] }, send: 0.25 },
+    { id: 'lathes', kind: 'bed', src: 'tones', tones: [[0, 2, 'triangle', 0.4, -6], [0, 2, 'triangle', 0.4, 7], [4, 2, 'sine', 0.3]], filter: ['lowpass', 900, 0.7],
+      lfo: { rate: 0.21, depth: 0.25, to: 'gain' }, mech: true, pitch: ['pace', 1, 1.05], pan: 0.45, gain: 0.025, level: { add: [['app:lathe', 1]] } },
+    // The Bessemer converter's blow (stage 2) and the open hearth's slow hum (stage 3).
+    { id: 'converter', kind: 'bed', src: 'pink', filter: ['bandpass', 760, 0.6], lfo: { rate: 0.09, depth: 0.3, to: 'filter' }, stages: [2], pan: -0.4,
+      gain: 0.07, level: { add: [['built', 0.8], ['pace', 0.3]] }, send: 0.3 },
+    { id: 'hearth', kind: 'bed', src: 'tones', tones: [[0, 0, 'sawtooth', 0.4, -5], [0, 0, 'sawtooth', 0.4, 6], [4, 0, 'sine', 0.3]], filter: ['lowpass', 380, 0.7],
+      stages: [3], mech: true, pan: -0.35, gain: 0.05, level: { add: [['built', 0.8], ['pace', 0.3]] } },
+    { id: 'town', kind: 'bed', src: 'brown', filter: ['bandpass', 380, 0.8], stereo: true,
+      gain: 0.1, level: { add: [['pop', 0.8], ['built', 0.2]] } },
+    { id: 'nightjar', kind: 'hits', recipe: 'nightjar', variants: 2, rate: 1 / 16, minGap: 8, pan: [-0.7, -0.4], lp: 3000,
+      gain: 0.07, level: { add: [['steady', 1], ['clear', 0.2]], mul: [['inv:haze', 0.7]], max: 1 }, send: 0.45 },
+  ],
+  // The Orange Night: the roar swells and an alarm bell rings in key.
+  crisis: { recipe: 'ironAlarm', gain: 0.18, swell: 'roarSwell' },
+  trace: ['hammer'],
+};
+
+/* ------------------------------------------------------------------ */
+/* M4 Fishing: the harbour at dawn                                      */
+/* ------------------------------------------------------------------ */
+// C ionian (white notes). The swell on a slow cycle, a bell buoy in key, the trawlers' engines across the water and
+// their steam winches, the fish market's bell. The gulls, the porpoises' breaths and the shoals breaking the surface
+// follow the TRUE stock ('life'), never the fleet's catch per trip: the honest world. While the scar holds they stay
+// thin; the fleet sounds normal until it ties up. A moratorium leaves the halyards and the gulls.
+const fishing: SoundscapeDef = {
+  id: 'fishing', key: KEYS.fishing, tempo: [50, 78], air: { bright: 8500, reverb: 0.3 }, palette: 'ledger',
+  layers: [
+    { id: 'swell', kind: 'bed', src: 'brown', filter: ['lowpass', 420, 0.6], lfo: { rate: 0.075, depth: 0.55, to: 'gain' }, stereo: true,
+      gain: 0.11, level: { add: [one(0.8), ['empty', 0.2]] }, send: 0.15 },
+    { id: 'surf', kind: 'bed', src: 'pink', filter: ['bandpass', 950, 0.5], lfo: { rate: 0.075, depth: 0.8, to: 'gain' }, stereo: true,
+      gain: 0.06, level: { add: [one(1)] }, send: 0.1 },
+    { id: 'buoy', kind: 'hits', recipe: 'bellBuoy', variants: 3, rate: 1 / 11, minGap: 5, pan: [0.55, 0.8], lp: 2600,
+      gain: 0.08, level: { add: [one(1)] }, send: 0.5 },
+    // The sea life: the honest world.
+    { id: 'gulls', kind: 'hits', recipe: 'gull', variants: 6, rate: 0.5, minGap: 0.7, pan: [-0.8, 0.8], lp: 4500, life: true,
+      gain: 0.095, level: { add: [['life', 1]] }, density: { add: [['life', 1.1]], max: 1.1 }, send: 0.35 },
+    { id: 'porpoise', kind: 'hits', recipe: 'porpoise', variants: 3, rate: 1 / 12, minGap: 4, pan: [-0.6, 0.2], lp: 3500, life: true,
+      gain: 0.08, level: { add: [['life', 1]], pow: 1.5 }, send: 0.4 },
+    { id: 'shoals', kind: 'hits', recipe: 'shoalSplash', variants: 3, rate: 1 / 7, minGap: 2, pan: [-0.7, 0.4], lp: 4000, life: true,
+      gain: 0.06, level: { add: [['life', 1]], pow: 2 }, send: 0.35 },
+    // The fleet (never the stock): trawlers' engines across the water, steam winches, the market bell, the fish train.
+    { id: 'trawlers', kind: 'hits', recipe: 'trawler', variants: 3, grid: { every: 1, pattern: [0.9, 0.35, 0.7, 0.3] }, mech: true, pan: [-0.7, -0.2], lp: 1300,
+      gain: 0.24, level: { add: [['fleet', 1]] }, density: { add: [['fleet', 1.1]] }, send: 0.4 },
+    { id: 'winch', kind: 'hits', recipe: 'winch', variants: 3, rate: 1 / 14, minGap: 6, pan: [-0.3, 0.3], lp: 3200,
+      gain: 0.14, level: { add: [['fleet', 1]] }, send: 0.3 },
+    { id: 'market', kind: 'hits', recipe: 'marketBell', variants: 2, rate: 1 / 38, minGap: 18, pan: [0.3, 0.5], lp: 3500,
+      gain: 0.07, level: { add: [['app:fryer', 0.6], ['app:fishTrain', 0.6], ['pop', 0.3]], mul: [['inv:tied', 1]], max: 1 }, send: 0.5 },
+    { id: 'fishTrain', kind: 'hits', recipe: 'trainPass', rate: 1 / 40, minGap: 20, sweep: true, mech: true, lp: 1600,
+      gain: 0.18, level: { add: [['app:fishTrain', 1]], mul: [['inv:tied', 1]] }, send: 0.35 },
+    { id: 'foreign', kind: 'hits', recipe: 'trawler', variants: 3, rate: 0.35, minGap: 1.6, pan: [0.6, 0.9], lp: 750,
+      gain: 0.1, level: { add: [['foreign', 1.6]], max: 1 }, send: 0.55 },
+    { id: 'quay', kind: 'bed', src: 'brown', filter: ['bandpass', 420, 0.8], stereo: true,
+      gain: 0.17, level: { add: [['pop', 0.6], ['built', 0.4]], mul: [['inv:tied', 0.6]] } },
+    // Tied up: the boats in the harbour, the halyards slapping the masts.
+    { id: 'halyards', kind: 'hits', recipe: 'halyard', variants: 4, rate: 0.45, minGap: 0.6, pan: [-0.5, 0.5], lp: 3500,
+      gain: 0.09, level: { add: [['tied', 1]] }, send: 0.3 },
+  ],
+  crisis: { recipe: 'fogHorn', gain: 0.12 },
+  trace: ['swell', 'buoy'],
+};
+
+/* ------------------------------------------------------------------ */
 /* Generic: any Industry without its own                               */
 /* ------------------------------------------------------------------ */
 const generic: SoundscapeDef = {
@@ -334,7 +431,7 @@ const generic: SoundscapeDef = {
   trace: ['works'],
 };
 
-export const SOUNDSCAPES: Record<string, SoundscapeDef> = { steam, light, motion, compute, code, generic };
+export const SOUNDSCAPES: Record<string, SoundscapeDef> = { steam, light, iron, fishing, motion, compute, code, generic };
 
 /** Register (or replace) the soundscape for a sector id. */
 export function registerSoundscape(sectorId: string, def: SoundscapeDef): void { SOUNDSCAPES[sectorId] = def; }

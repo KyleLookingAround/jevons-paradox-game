@@ -28,8 +28,13 @@ const IND: Ind[] = [
   { id: 'code', name: 'Code', look: 'agentic', service: ['Working features', 'features'], resource: 'Human attention', pressure: 'Code stock', crisis: 'The Great Outage', flow: true, apps: [
     ['wrench', 'Internal tools', 'The spreadsheet, promoted.', 0], ['phone-app', 'Throwaway personal apps', 'Built Tuesday, forgotten Friday.', 2000],
     ['scroll', 'Legacy rewrites', 'Same system, new bugs.', 8000], ['chatbot', 'Chatbots on everything', 'Ask the toaster.', 20000], ['robots', 'Agents writing for agents', 'Nearly unsaturable.', 60000]] },
-  { id: 'iron', name: 'Iron (no scene yet)', look: 'ledger', service: ['Iron', 't'], resource: 'Ore', pressure: 'Slag', crisis: 'The Slag Slide', apps: [
-    ['furnace', 'Blast furnaces', 'Hot blast.', 0], ['rolling-mill', 'Rolling mills', 'Rails by the mile.', 500], ['bridge', 'Iron bridges', 'Span anything.', 3000], ['mystery', 'Something new', 'Unknown icon.', 9000]] },
+  /* M4 */
+  { id: 'iron', name: 'Iron & Steel', look: 'ledger', service: ['Iron & steel', 'tons'], resource: 'Coke', pressure: 'Slag & smoke', crisis: 'The Orange Night', apps: [
+    ['wire', 'Fencing wire', 'Miles of it.', 0], ['rails', 'Rails', 'The railway’s largest capital item.', 400], ['plate', 'Ship plate', 'Iron hulls.', 1500],
+    ['girder', 'Bridges & girders', 'Gasholders, then power stations.', 5000], ['cans', 'Tinplate & cans', 'Canned fish keeps.', 12000], ['lathe', 'Machine tools', 'The lathe makes every machine cheaper.', 30000]] },
+  { id: 'fishing', name: 'Fishing', look: 'ledger', service: ['Fish landed', 'tons'], resource: 'Fish on the banks', pressure: 'Empty banks', crisis: 'A Poor Season', apps: [
+    ['fishTrain', 'Fresh fish by rail', 'Billingsgate by breakfast.', 0], ['fryer', 'Fried fish shops', 'A cheap supper.', 500], ['smokehouse', 'Salt and smoked trade', 'Kippers.', 2000],
+    ['sack', 'Fish meal for the fields', 'The by-catch, ground.', 6000], ['bottle', 'Cod liver oil', 'A spoonful a day.', 15000], ['carton', 'Fish fingers', 'Act II.', 90000]] },
 ];
 const LEVERS: [string, string][] = [['duty', 'Fuel duty'], ['cap', 'Hard cap'], ['sufficiency', 'Sufficiency'], ['substitution', 'Substitution'],
   ['circularity', 'Circularity'], ['greenSpending', 'Green spending'], ['deletion', 'Deletion'], ['reviewGate', 'Review gates'], ['sharedLibs', 'Shared libraries']];
@@ -42,6 +47,24 @@ interface DemoState {
   clear: boolean; clearProgress: number; pressureToClear: number | null; settled: boolean; commons: number[]; landmark: string;
   /* M3 (each absent = its feature off) */
   m3?: Partial<Pick<SceneView, 'seams' | 'load' | 'travel' | 'free' | 'figures' | 'watch'>> & { bite?: Record<string, number> };
+  /* M4 (each absent = its Industry or system not there) */
+  m4?: Partial<Pick<SceneView, 'feeds' | 'fedBy' | 'stock' | 'capstoned' | 'preview'>>;
+}
+
+/** M4 demo data: what the adapter fills at time t of a run (0–1) with Iron and Fishing open. */
+export function m4For(id: string, t: number): NonNullable<DemoState['m4']> {
+  const sh = (k: number) => Math.round(Math.max(0, Math.min(1, (t - k) * 2)) * 100) / 100;
+  switch (id) {
+    case 'iron': return { feeds: [{ to: 'steam', factor: 1 - 0.15 * sh(0.1) - 0.08 * sh(0.3) }, { to: 'fishing', factor: 1 - 0.15 * sh(0.3) }, { to: 'light', factor: 1 - 0.12 * sh(0.5) }].filter((x) => x.factor < 1) };
+    case 'steam': return { fedBy: [{ from: 'iron', app: 'iron.rails', share: sh(0.1) }, { from: 'iron', app: 'iron.shipPlate', share: sh(0.3) }].filter((x) => x.share > 0) };
+    case 'light': return { fedBy: [{ from: 'iron', app: 'iron.girders', share: sh(0.5) }].filter((x) => x.share > 0) };
+    case 'fishing': {
+      const truth = Math.max(0.06, 1 - t * 0.95);
+      return { stock: { reported: Math.round(Math.pow(truth, 0.3) * 100) / 100, truth: Math.round(truth * 100) / 100, surveyed: false, foreign: Math.round((0.1 + 0.45 * t) * 100) / 100, scar: false, crossed: truth < 0.2, moratorium: false },
+        fedBy: [{ from: 'iron', app: 'iron.shipPlate', share: sh(0.3) }, { from: 'iron', app: 'iron.tinplate', share: sh(0.5) }].filter((x) => x.share > 0) };
+    }
+    default: return {};
+  }
 }
 
 /** M3 demo data: Light's day (an evening peak and the small hours' hollow; `fill` 0–1 = how far night uses fill it). */
@@ -101,6 +124,19 @@ export const PRESETS: Record<string, (ind: number) => DemoState> = {
   /* Motion's sprawl that stays: demand has fallen (adoption down, traffic thin) but the suburbs are still there */
   thinnedM3: (i) => ({ ...PRESETS.late(i), adoption: IND[i].apps.map(() => 0.18), pressure: 0.3, pace: 0.3, m3: { ...m3For(IND[i].id, 0.9), travel: { speed: 0.95, sprawl: 0.85, sprawlShare: 0.9, freeSpeed: 2 } } }),
   proprietorM3: (i) => ({ ...PRESETS.late(i), m3: { ...m3For(IND[i].id, 0.75), figures: ['proprietor'], watch: 0.8 } }),
+  /* M4: the same states with Iron and Fishing open (the order book, the stock, the capstone) */
+  earlyM4: (i) => ({ ...PRESETS.earlyM3(i), m4: m4For(IND[i].id, 0.15) }),
+  midM4: (i) => ({ ...PRESETS.midM3(i), m4: m4For(IND[i].id, 0.45) }),
+  lateM4: (i) => ({ ...PRESETS.lateM3(i), m4: m4For(IND[i].id, 0.75) }),
+  crisisM4: (i) => ({ ...PRESETS.crisisM3(i), m4: m4For(IND[i].id, 1) }),
+  /* the honest sea: the gauge still reads high, the world is thinning (the survey not yet made) */
+  honestM4: (i) => ({ ...PRESETS.lateM3(i), m4: { ...m4For(IND[i].id, 0.75) } }),
+  surveyedM4: (i) => { const m = m4For(IND[i].id, 0.75); return { ...PRESETS.lateM3(i), m4: { ...m, ...(m.stock ? { stock: { ...m.stock, surveyed: true } } : {}) } }; },
+  scarM4: (i) => { const m = m4For(IND[i].id, 1); return { ...PRESETS.crisisM3(i), pressure: 0.94, m4: { ...m, ...(m.stock ? { stock: { ...m.stock, truth: 0.06, reported: 0.43, crossed: true, scar: true, surveyed: true } } : {}) } }; },
+  moratoriumM4: (i) => { const m = m4For(IND[i].id, 0.8); return { ...PRESETS.lateM3(i), m4: { ...m, ...(m.stock ? { stock: { ...m.stock, truth: 0.3, surveyed: true, moratorium: true } } : {}) } }; },
+  capstoneM4: (i) => { const m = m4For(IND[i].id, 0.5); return { ...PRESETS.settled(i), m4: { ...m, ...(m.stock ? { stock: { ...m.stock, truth: 0.55, reported: 0.84, surveyed: true, foreign: 0 } } : {}), capstoned: { year: 1911, arrears: false } } }; },
+  arrearsM4: (i) => { const m = m4For(IND[i].id, 0.5); return { ...PRESETS.settled(i), pressure: 0.55, pace: 0.6, steady: false, clear: false, m4: { ...m, ...(m.stock ? { stock: { ...m.stock, truth: 0.35, reported: 0.73, surveyed: true } } : {}), capstoned: { year: 1911, arrears: true } } }; },
+  previewM4: (i) => ({ ...PRESETS.midM3(i), m4: { ...m4For(IND[i].id, 0.45), preview: true } }),
   endingM3: (i) => ({ ...PRESETS.steady(i), clear: true, clearProgress: 1, m3: { ...m3For(IND[i].id, 0.6), figures: ['correspondent', 'whitlow', 'fenwick', 'pryce', 'minister', 'proprietor'], watch: 0.3 } }),
 };
 
@@ -123,6 +159,7 @@ export function viewOf(s: DemoState): SceneView {
     commons: (COMMONS[ind.id] ?? []).map(([icon, name], k) => ({ id: `${ind.id}.c.${icon}`, icon, name, level: s.commons[k] ?? 0 })).filter((c) => c.level >= 1),
     landmark: s.landmark || null,
     ...(s.m3 ? { seams: s.m3.seams, load: s.m3.load, travel: s.m3.travel, free: s.m3.free, figures: s.m3.figures, watch: s.m3.watch } : {}),
+    ...(s.m4 ?? {}),
   };
 }
 
@@ -155,8 +192,8 @@ function stripMode(indId: string): void {
   document.body.classList.add('strip');
   const wrap = document.getElementById('app')!;
   wrap.innerHTML = '';
-  const m2 = /m2/.test(location.hash), m3 = /m3/.test(location.hash);
-  for (const name of m3 ? ['earlyM3', 'midM3', 'lateM3', 'crisisM3', 'thinnedM3', 'proprietorM3', 'endingM3'] : m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
+  const m2 = /m2/.test(location.hash), m3 = /m3/.test(location.hash), m4 = /m4/.test(location.hash);
+  for (const name of m4 ? ['earlyM4', 'midM4', 'lateM4', 'crisisM4', 'surveyedM4', 'scarM4', 'moratoriumM4', 'capstoneM4', 'arrearsM4', 'previewM4'] : m3 ? ['earlyM3', 'midM3', 'lateM3', 'crisisM3', 'thinnedM3', 'proprietorM3', 'endingM3'] : m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
     const fig = document.createElement('figure');
     const cap = document.createElement('figcaption');
     cap.textContent = name;
@@ -166,7 +203,7 @@ function stripMode(indId: string): void {
     const sc = createScene(host, { reducedMotion: true });
     const st = PRESETS[name](i);
     // The crisis frame shows the fog: bump crises after a first update.
-    if (name === 'crisis' || name === 'crisisM3') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
+    if (name === 'crisis' || name === 'crisisM3' || name === 'crisisM4') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
     sc.update(viewOf(st));
   }
 }
@@ -270,6 +307,13 @@ function interactive(): void {
       ['M3: the Proprietor’s Day', () => { s.m3 = { ...(s.m3 ?? {}), figures: [...(s.m3?.figures ?? []), 'proprietor'], watch: 0.8 }; render(); }],
       ['M3: the ending', () => { s = { ...PRESETS.endingM3(s.ind), look: s.look }; fire('ending', { id: 'steadyAll' }); }],
       ['M3: frozen Reckoning still', async () => { const { renderStill } = await import('../engine'); const svg = await renderStill(viewOf({ ...PRESETS.crisisM3(s.ind), reckoning: 'collapse' }), { width: 600, height: 400 }); const w = window.open(''); w?.document.write(svg as string); }],
+      /* M4 */
+      ['M4: Iron and Fishing open', () => { s.m4 = m4For(IND[s.ind].id, 0.75); render(); }],
+      ['M4: the Board’s survey (reveal)', () => { const m = s.m4?.stock ? s.m4 : m4For(IND[s.ind].id, 0.75); if (m.stock) { s.m4 = { ...m, stock: { ...m.stock, surveyed: true } }; } fire('surveyed', { label: 'reveal', first: true }); }],
+      ['M4: threshold crossed', () => { const m = s.m4?.stock ? s.m4 : m4For(IND[s.ind].id, 0.9); if (m.stock) s.m4 = { ...m, stock: { ...m.stock, truth: 0.15, crossed: true } }; s.crises++; fire('thresholdCrossed', {}); }],
+      ['M4: scar healed', () => { if (s.m4?.stock) s.m4 = { ...s.m4, stock: { ...s.m4.stock, scar: false, truth: 0.5 } }; fire('scarHealed', {}); }],
+      ['M4: capstoned', () => { s = { ...PRESETS.capstoneM4(s.ind), look: s.look }; fire('capstoned', { id: 'actOne' }); }],
+      ['M4: arrears', () => { s = { ...PRESETS.arrearsM4(s.ind), look: s.look }; fire('arrears', {}); }],
       ['Highlight a place', () => scene.highlight?.({ app: `${IND[s.ind].id}.${IND[s.ind].apps[1][0]}` })],
       ['Clear highlight', () => scene.highlight?.(null)],
       ['Replay a run (10 s)', () => { const vs: SceneView[] = []; for (let t = 0; t <= 1; t += 1 / 60) vs.push(viewOf(runAt(s.ind, t))); scene.replay?.(vs, { seconds: 10 }); }],

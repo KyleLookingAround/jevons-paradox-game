@@ -162,7 +162,11 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   emblem.setAttribute('aria-hidden', 'true');
   const ring = div('scn-hl');
   ring.setAttribute('aria-hidden', 'true');
-  stage.append(banner, toast, emblem, ring);
+  // M4: the Preview corner mark (an Industry of a Preview Act).
+  const prevMark = div('scn-prev');
+  prevMark.setAttribute('aria-hidden', 'true');
+  prevMark.textContent = 'Preview';
+  stage.append(banner, toast, emblem, prevMark, ring);
   const summary = document.createElement('p');
   summary.className = 'vh-scn';
   summary.id = id + 'sum';
@@ -807,6 +811,16 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       case 'reserve': return v.reserveFraction;
       case 'light': return lightMean;
       case 'always': return 1;
+      /* M4 */
+      case 'fed': { let x = 0; for (const fb of v.fedBy ?? []) if ((p.def.match ?? []).includes(fb.app)) x = Math.max(x, fb.share); return x; }
+      case 'chart': return v.stock ? (v.stock.surveyed ? v.stock.truth : v.stock.reported) : v.reserveFraction;
+      case 'world': return v.stock ? v.stock.truth : v.reserveFraction;
+      case 'boats': return tiedUp(v) ? 0 : lightMean > 0 ? Math.max(0.2, Math.min(1, lightMean * 1.6)) * (0.15 + 0.85 * (v.stock ? v.stock.truth : 1)) : 0;
+      case 'tied': return tiedUp(v) ? 1 : 0;
+      case 'foreign': return v.stock ? clamp(v.stock.foreign / 0.6, 0, 1) : 0;
+      case 'surveyed': return v.stock?.surveyed ? 1 : 0;
+      case 'scar': return v.stock?.scar ? 1 : 0;
+      case 'crises': return p.keys.length ? clamp(v.crises / p.keys.length, 0, 1) : 0;
       default: return 0;
     }
   }
@@ -845,7 +859,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const pf = clamp(v.pressureFraction, 0, 1.2);
     // How far towards the Steady State look: M2 clear skies bring it in over the 50 years; M1 views use the streak.
     const clear = v.steady ? 1 : v.clear ? 0.45 + 0.55 * clamp(v.clearProgress ?? 0, 0, 1) : v.decoupling ? 0.6 * v.steadyProgress : 0;
-    const held = !!v.settled;
+    // M4: a capstoned Industry in arrears loses its held look (the wash withdraws, the smoke returns).
+    const held = !!v.settled && !v.capstoned?.arrears;
     const pfv = Math.min(1, pf) * (1 - 0.85 * clear);
     // Haze by band: below the sink line it thins near first, far last (pressureToClear when the host gives it).
     const hb = typeof v.pressureToClear === 'number' ? Math.min(Math.min(1, pf), 0.15 + 0.85 * v.pressureToClear) * (1 - 0.85 * clear) : pfv;
@@ -898,8 +913,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     // A city under strain (pressure near collapse, not yet clearing): styles may stage blackouts, failing signs.
     root.classList.toggle('stress', pf >= 0.8 && !v.steady && clear < 0.3 && !held);
     syncShed();
-    const embText = held ? (v.settledYear ? `Settled ${v.settledYear}` : 'Settled') : '';
+    // M4: a capstone's emblem is an engraved cartouche with the year of the Act's ending (withdrawn in arrears).
+    const capY = v.capstoned ? v.capstoned.year : null;
+    const embText = held ? (v.capstoned ? (capY ? `Settled ${capY}` : 'Settled') : v.settledYear ? `Settled ${v.settledYear}` : 'Settled') : '';
     if (emblem.textContent !== embText) { emblem.textContent = embText; emblem.classList.toggle('on', !!embText); }
+    if (emblem.classList.contains('cart') !== !!v.capstoned) emblem.classList.toggle('cart', !!v.capstoned);
+    if (prevMark.classList.contains('on') !== !!v.preview) prevMark.classList.toggle('on', !!v.preview);
+    if (root.classList.contains('arrears') !== !!v.capstoned?.arrears) root.classList.toggle('arrears', !!v.capstoned?.arrears);
 
     // Refresh each plot's application from this view (plots are built once; the data moves every tick).
     const byId = new Map(v.apps.map((a) => [a.id, a]));
@@ -1007,6 +1027,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     // Moments (from the event list, or by comparison for hosts without one).
     const now = Date.now(); // UI-side timers only (the scene holds no game rules)
     const moments = desk.take(v, now, quiet);
+    // M4: an Industry whose crises have their own names (Iron: The Orange Night, then The Slag Slide).
+    const cn = b.layout.crisisNames;
+    if (cn) for (const m of moments) if (m.kind === 'crisis' && m.n && cn[m.n - 1] && desk.caption) desk.caption.text = cn[m.n - 1];
     for (const m of moments) play(m, v);
     // onStage: once per change of an Industry's machines (never on the first sight of an Industry).
     const seen = lastStageSeen.get(v.sectorId);
@@ -1123,6 +1146,11 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         pulse(b.elsByKey.get(`b:${kinds.includes(kind) ? kind : '*'}`) ?? [], 'raise', 1800);
         break;
       }
+      case 'surveyed': case 'threshold': case 'scarHealed': playSea(b, m, v, still); break;
+      case 'capstoned':
+        if (!still) { emblem.classList.remove('stamp'); void emblem.offsetWidth; emblem.classList.add('stamp'); later(() => emblem.classList.remove('stamp'), 1600); }
+        break;
+      case 'arrears': flashCls('fl-backfire', 5000); showToast('In arrears'); break;
       case 'ending': {
         // The sky clears completely (the fresh sky, held for a while) and a paper boy runs along the front with it.
         flashCls('fl-clear', 3200);
@@ -1138,6 +1166,66 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         break;
       }
     }
+  }
+  /** M4: play the sea's moments (the survey vessel putting out, the chart draining, the gulls returning). */
+  function playSea(b: Built, m: Moment, v: SceneView, still: boolean): void {
+    const l = b.layout;
+    const anim = (el: HTMLElement | null, kf: Keyframe[], o: KeyframeAnimationOptions) => { if (el && !still && typeof el.animate === 'function') { try { el.animate(kf, o); } catch { /* ignore */ } } };
+    if (m.kind === 'surveyed') {
+      const run = l.surveyRun;
+      const art = run ? propFor(l.look, b.look, 'surveyBoat') : null;
+      if (run && art && !still) {
+        const s = depthScale(l, run[1]);
+        let inner = '';
+        try { inner = art({ s, v: 0.5, stage: b.stageN, w: 0, h: 0, r: rng(1), u: (x) => `url(#${pid}${x})`, hatch: (lv = 0) => `url(#${pid}${lv ? 'x' : 'h'}${hatchLevel(s)})`, overlay: false }, { fx: () => {} }); } catch { inner = ''; }
+        const el = momentSprite(b, `<div class="fx on mv" style="left:${f(run[0])}px;top:${f(run[1])}px">${spr(`<g transform="scale(${s})">${inner}</g>`)}</div>`, 6200);
+        anim(el, [{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${f(run[2] - run[0])}px,${f(run[3] - run[1])}px)`, opacity: 1 }], { duration: 6000, easing: 'ease-in-out', fill: 'forwards' });
+      }
+      if (m.text === 'reveal' && v.stock) drainChart(b, v, still);
+      showToast('The Board’s vessel puts out');
+    } else if (m.kind === 'threshold') {
+      const c = l.chart;
+      if (c && !still) {
+        const el = momentSprite(b, `<div class="fx on veil" style="left:${f(c[0])}px;top:${f(c[1])}px;width:${f(c[2])}px;height:${f(c[3])}px"><i style="width:${f(c[2] * 0.5)}px"></i></div>`, 4200);
+        anim(el?.firstElementChild as HTMLElement | null, [{ transform: `translateX(${f(-c[2] * 0.5)}px)` }, { transform: `translateX(${f(c[2])}px)` }], { duration: 4000, easing: 'ease-in', fill: 'forwards' });
+      }
+    } else if (m.kind === 'scarHealed') {
+      const g = propFor(l.look, b.look, 'gulls');
+      if (!still) {
+        let inner = '';
+        try { inner = g({ s: 1, v: 0.5, stage: b.stageN, w: 0, h: 0, r: rng(7), u: (x) => `url(#${pid}${x})`, hatch: () => '', overlay: false }, { fx: () => {} }); } catch { inner = ''; }
+        const el = momentSprite(b, `<div class="fx on mv" style="left:640px;top:150px">${spr(`<g transform="scale(1.4)">${inner}</g>`)}</div>`, 7200);
+        anim(el, [{ transform: 'translate(0,0)' }, { transform: 'translate(-300px,60px)' }], { duration: 7000, easing: 'ease-out', fill: 'forwards' });
+      }
+      showToast('The gulls are back');
+    }
+  }
+  /** The Board's survey, on the chart: the stipple the fleet's figure showed and the truth does not fades out, left to
+   *  right, once. Copies of the vanished shoals as sprites (opacity only, composited); the drawing already shows the
+   *  truth underneath. Reduced motion: the still of the after (nothing to play). */
+  function drainChart(b: Built, v: SceneView, still: boolean): void {
+    const p = b.plots.find((q) => q.def.key === 'shoals');
+    const c = b.layout.chart;
+    if (!p || !c || still || !v.stock) return;
+    const n = p.keys.length, curve = p.def.curve ?? 0.6;
+    const from = Math.min(n, Math.round(n * Math.pow(v.stock.reported, curve)));
+    const to = Math.max(0, p.count);
+    if (from <= to) return;
+    let html = '';
+    const xs: number[] = [];
+    for (let i = to; i < from; i++) {
+      const e = b.elsByKey.get(p.keys[i])?.[0];
+      if (!e) continue;
+      const tr = /translate\(([-\d.]+)/.exec(e.getAttribute('transform') ?? '');
+      xs.push(tr ? +tr[1] : c[0]);
+      html += `<div class="fx on drn">${spr(e.outerHTML.replace(/class="[^"]*"/, '').replace(/data-k="[^"]*"/, ''))}</div>`;
+    }
+    const box = momentSprite(b, `<div class="fx on" style="left:0;top:0">${html}</div>`, 4200);
+    if (!box) return;
+    Array.from(box.children).forEach((el, i) => {
+      const d = 400 + ((xs[i] - c[0]) / Math.max(1, c[2])) * 2400;
+      try { (el as HTMLElement).animate([{ opacity: 1 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], { duration: 900, delay: d, easing: 'ease-in', fill: 'both' }); } catch { (el as HTMLElement).style.opacity = '0'; }
+    });
   }
   /** A sprite that plays once over the drawing and is removed (a puff of steam, the paper boy). */
   function momentSprite(b: Built, html: string, ms: number): HTMLElement | null {
@@ -1687,6 +1775,13 @@ function viewSig(v: SceneView): string {
   if (v.free) s += `|fr${v.free.apps.join(',')}`;
   if (v.figures) s += `|fg${v.figures.join(',')}`;
   if (v.watch != null) s += `|w${q(v.watch, 10)}`;
+  // M4
+  if (v.fedBy) s += `|fb${v.fedBy.map((x) => x.app + q(x.share, 20)).join(',')}`;
+  if (v.feeds) s += `|fd${v.feeds.map((x) => x.to + q(x.factor, 50)).join(',')}`;
+  const sk = v.stock;
+  if (sk) s += `|st${q(sk.reported, 50)}/${q(sk.truth, 50)}/${q(sk.foreign, 50)}${sk.surveyed ? 's' : ''}${sk.scar ? 'x' : ''}${sk.crossed ? 'c' : ''}${sk.moratorium ? 'm' : ''}`;
+  if (v.capstoned) s += `|cp${v.capstoned.year ?? ''}${v.capstoned.arrears ? 'a' : ''}`;
+  if (v.preview) s += '|pv';
   return s;
 }
 
@@ -1744,7 +1839,30 @@ function normalise(v: SceneView): SceneView {
     landmark: typeof v.landmark === 'string' && v.landmark ? v.landmark : null,
     events: Array.isArray(v.events) ? v.events.filter((e) => e && Number.isFinite(e.seq)) : undefined,
     ...normaliseM3(v),
+    ...normaliseM4(v),
   };
+}
+
+/** M4 fields, cleaned (each stays absent when absent or malformed). */
+function normaliseM4(v: SceneView): Partial<SceneView> {
+  const n = (x: unknown, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
+  const o: Partial<SceneView> = { feeds: undefined, fedBy: undefined, stock: undefined, capstoned: undefined, preview: undefined };
+  if (Array.isArray(v.feeds)) o.feeds = v.feeds.filter((x) => x && typeof x.to === 'string').map((x) => ({ to: x.to, factor: clamp(n(x.factor, 1), 0, 1) }));
+  if (Array.isArray(v.fedBy)) o.fedBy = v.fedBy.filter((x) => x && typeof x.app === 'string').map((x) => ({ from: String(x.from ?? ''), app: x.app, share: clamp(n(x.share), 0, 1) }));
+  const st = v.stock;
+  if (st && typeof st === 'object') {
+    o.stock = { reported: clamp(n(st.reported, 1), 0, 1), truth: clamp(n(st.truth, n(st.reported, 1)), 0, 1), surveyed: !!st.surveyed, foreign: clamp(n(st.foreign), 0, 1),
+      scar: !!st.scar, crossed: !!st.crossed, moratorium: !!st.moratorium };
+  }
+  if (v.capstoned && typeof v.capstoned === 'object') o.capstoned = { year: v.capstoned.year == null ? null : Math.floor(n(v.capstoned.year)), arrears: !!v.capstoned.arrears };
+  if (v.preview === true) o.preview = true;
+  return o;
+}
+
+/** M4: the fleet is tied up in harbour: a moratorium, or a failed bank (the stock crossed its threshold and is low). */
+function tiedUp(v: SceneView): boolean {
+  const s = v.stock;
+  return !!s && (s.moratorium || s.truth < 0.1 || (s.crossed && s.truth < 0.25));
 }
 
 /** Where the Commons stand: the layout's civic sites, else sites taken from its town plot (every few houses). */

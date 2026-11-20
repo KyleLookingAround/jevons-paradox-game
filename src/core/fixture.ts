@@ -432,12 +432,13 @@ export const fixtureM3Gated: Content = {
  * measure lever carrying the survey and one carrying the fishery limits (foreignMul), settle.requires on 'surveyed',
  * and drawsOn Steam. Two dispatches with wager arms (one on capital, one on Fish's stockFraction). The survey reveal
  * card. Feature 'estimates' arrives with the survey flag. Variant fixtureM4Acts: Act I (Steam, Iron, Fish; a capstone;
- * endingYears 2) and a Preview Act II (the later ages).
+ * endingYears 2) and a Preview Act II (the later ages). Iron and Fish open from the second run (the condenser; 1k
+ * hp·years of Steam), after Steam and Iron.
  */
 const iron = sector({
   id: 'iron', basePrice: 9, capCost: 0.05, margin: 0.2, resourceStock: 'steam', reserve: 1, pressureIntensity: 0.001,
   settle: { dividend: [], upkeepPerSpill: 1, blurb: 'Iron settles.' },
-  unlock: { minReckonings: 0, after: ['steam'], when: { stat: 'time', op: '>=', value: 1e9 } },
+  unlock: { minReckonings: 1, after: ['steam'], when: { owns: 'steam.condenser', label: 'Own the Separate condenser' } },
   applications: [
     { ...app('iron.rails', 0.8, 200, 2), feeds: [{ sector: 'steam', capCostMul: 0.8 }] },
     { ...app('iron.girders', 0.6, 300, 2, Infinity, 100), feeds: [{ sector: '*', capCostMul: 0.9 }] },
@@ -454,7 +455,7 @@ const fish = sector({
     firstSurvey: { atCrisis: 2, afterSeconds: 600, years: 10 },
   },
   settle: { dividend: [], upkeepPerSpill: 1, requires: { stat: 'surveyed', sector: 'fish', op: '>=', value: 1, label: 'The stock surveyed' } },
-  unlock: { minReckonings: 0, after: ['steam'], when: { stat: 'time', op: '>=', value: 1e9 } },
+  unlock: { minReckonings: 1, after: ['iron'], when: { stat: 'serviceDelivered', sector: 'steam', op: '>=', value: 1_000 } },
   applications: [app('fish.market', 1.5, 300, 1.5), app('fish.trawlers', 0.5, 2_000, 2, Infinity, 200)],
 });
 const m4Levers: LeverDef[] = [

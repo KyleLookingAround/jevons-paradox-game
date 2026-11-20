@@ -121,6 +121,47 @@ export interface SceneView {
   /** 0–1: how often the proprietor checks his watch (decisions per hour after the Market against before); 0 or absent =
    *  he does not. */
   watch?: number;
+
+  /* --- M4 (all optional: absent = the M3 picture; nothing new is drawn before its Industry or system) --- */
+  /** On a feed SOURCE (Iron): the order book, per Industry it feeds now (SectorDerived.feeds): the target's id and the
+   *  product of this Industry's feed factors into it (≤ 1; 0.85 = its machines 15% cheaper). Drawn as lettered wagons
+   *  leaving the goods yard. */
+  feeds?: SceneFeed[];
+  /** On a FED Industry: each founded application of another Industry that feeds this one, and how far it is adopted
+   *  (`share` 0–1). What it draws: Steam's second track and new engine house (Rails), iron hulls in the harbour (Ship
+   *  plate), Light's steel gasholder frame (Girders), Fishing's iron trawlers (Ship plate) and cannery (Tinplate). */
+  fedBy?: SceneFedBy[];
+  /** Fishing's stock (SectorDerived.stock, 'renewable' only). THE RULE: the chart's stipple reads `reported` until
+   *  `surveyed`, then `truth`; the living world (gulls, porpoises, surface shoals, boats out) always reads `truth`. */
+  stock?: SceneStock;
+  /** A capstoned Industry (opened settled at run start by the Act's ending): the year of that ending and whether it is
+   *  in arrears now (the held wash withdraws and the smoke, or the empty water, returns). Drawn as an engraved cartouche
+   *  "Settled {year}". */
+  capstoned?: { year: number | null; arrears: boolean };
+  /** The Industry plays as a Preview (SectorDerived.preview): a small "Preview" mark in the picture's corner. */
+  preview?: boolean;
+}
+
+/** M4: SceneView.feeds. */
+export interface SceneFeed { to: string; factor: number }
+/** M4: SceneView.fedBy. */
+export interface SceneFedBy { from: string; app: string; share: number }
+/** M4: SceneView.stock (all fractions 0–1). */
+export interface SceneStock {
+  /** Catch per trip, (Q/K)^β: what the fleet reports. */
+  reported: number;
+  /** The true Q/K (SectorDerived.stock.world): for the world only, never a gauge. */
+  truth: number;
+  /** A survey is in force: the chart shows the truth; the survey vessel is at sea. */
+  surveyed: boolean;
+  /** The foreign fleets' share of the catch (0 without foreign fleets): pennant sails on the banks. */
+  foreign: number;
+  /** A scar lasts on the banks (meta.world.scars): blank grey water lettered "No fish found". */
+  scar: boolean;
+  /** The stock crossed below its threshold this run. */
+  crossed: boolean;
+  /** The quota is at its moratorium (its level's value is 0): the fleet is tied up in harbour. */
+  moratorium: boolean;
 }
 
 export interface SceneCommons { id: string; icon: string; level: number; name: string }

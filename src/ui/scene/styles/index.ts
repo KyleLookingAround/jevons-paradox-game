@@ -8,8 +8,9 @@ import { terminal } from './terminal';
 import { agentic } from './agentic';
 import { cyberpunk } from './cyberpunk';
 import { generic } from './generic';
+import { foundry } from './foundry';
 
-const STYLES: Record<string, ArtStyle> = { ledger, gaslight, chrome, terminal, agentic, cyberpunk, generic };
+const STYLES: Record<string, ArtStyle> = { ledger, gaslight, chrome, terminal, agentic, cyberpunk, generic, foundry };
 
 export function registerStyle(style: ArtStyle): void {
   const old = STYLES[style.id];

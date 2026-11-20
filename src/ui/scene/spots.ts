@@ -17,7 +17,8 @@ import { seamSection } from './props/strata';
 import { figureArt } from './props/figures';
 import { sceneCss } from './css';
 
-export type SpotKind = 'scaffold' | 'stakes' | 'sunrise' | 'fog' | 'ruin' | 'chimneys' | 'pamphlet' | 'sign' | 'clear' | 'seam' | 'bite' | 'letter';
+export type SpotKind = 'scaffold' | 'stakes' | 'sunrise' | 'fog' | 'ruin' | 'chimneys' | 'pamphlet' | 'sign' | 'clear' | 'seam' | 'bite' | 'letter'
+  /* M4 */ | 'banks' | 'survey' | 'sails' | 'gulls' | 'cartouche';
 
 /** Every HeadlineKey of the contract (M1–M3) → its spot. The coverage test checks this list against types.ts. */
 export const SPOT_OF: Record<string, SpotKind> = {
@@ -31,6 +32,8 @@ export const SPOT_OF: Record<string, SpotKind> = {
   leverEnacted: 'sign', leverLapsed: 'sign', budgetDrawn: 'sign',
   steadySector: 'clear', steadyAll: 'clear', clearSkies: 'clear', settled: 'clear', decade: 'clear', ending: 'clear',
   seamSunk: 'seam', biteBack: 'bite', dispatch: 'letter', answered: 'letter',
+  // M4
+  threshold: 'banks', surveyed: 'survey', foreignFleets: 'sails', scarHealed: 'gulls', arrears: 'chimneys', actEnding: 'cartouche',
 };
 
 /** Each look's own props for the spots' parts (lookup falls back like the scene's). */
@@ -111,6 +114,26 @@ export function spot(key: string, look: string, o: SpotOptions = {}): string {
         (fig ? `<g transform="translate(26 ${G}) scale(1.6)">${fig.body}</g>` : '');
       break;
     }
+    /* M4: the sea. A strip of chart (soundings, stipple shoals) under a line of water with boats. */
+    case 'banks': case 'survey': case 'sails': case 'gulls': {
+      const W = 44; // the waterline
+      const chart = R(0, 58, 120, 22, 'b') + L(0, 58, 120, 58, 'k K') + P('M8 74q20-10 44-4t60-6M14 64q30 6 52 2', 'k k2') +
+        `<text x="6" y="70" class="spt">12</text><text x="96" y="66" class="spt">27</text>`;
+      const shoal = (x: number, y: number, n: number) => Array.from({ length: n }, (_, i) => C(x + ((i * 37) % 17) - 8, y + ((i * 23) % 7) - 3, 0.7, 'd')).join('');
+      const sea = R(0, W, 120, 14, 'wa') + L(0, W, 120, W, 'k') + P('M6 49h10M30 52h14M70 48h9M92 53h16', 'k k2');
+      const boat = (x: number, k = 1, cls = 'b') => `<g transform="translate(${x} ${W}) scale(${k})">${P('M-9 -3H9L6 1H-6Z', cls + ' k')}${L(0, -3, 0, -16, 'k')}${P('M0 -15L7 -5H0Z', 'b2 k')}</g>`;
+      const gull = (x: number, y: number) => P(`M${x - 3} ${y}q1.5 -2 3 0q1.5 -2 3 0`, 'k');
+      if (kind === 'banks') body = sea + boat(30) + chart + R(40, 60, 64, 18, 'gd', 'opacity=".9"') + `<text x="72" y="71" class="spt spi" text-anchor="middle">No fish found</text>`;
+      else if (kind === 'survey') body = sea + `<g transform="translate(58 ${W})">${P('M-12 -3H12L9 1H-9Z', 'd k')}${R(-3, -9, 6, 6, 'b k')}${L(4, -12, 4, -3, 'k')}${P('M9 -2L24 12', 'k k2')}${P('M22 10l5 4l-4 3z', 'b2 k')}</g>` + chart + shoal(30, 68, 6) + shoal(90, 72, 4);
+      else if (kind === 'sails') body = sea + boat(24) + `<g transform="translate(70 ${W}) scale(.8)">${P('M-9 -3H9L6 1H-6Z', 'b k')}${L(0, -3, 0, -18, 'k')}${P('M0 -18l6 2l-6 2z', 'ac')}</g>` +
+        `<g transform="translate(96 ${W}) scale(.7)">${P('M-9 -3H9L6 1H-6Z', 'b k')}${L(0, -3, 0, -18, 'k')}${P('M0 -18l6 2l-6 2z', 'ac2')}</g>` + chart + shoal(20, 66, 10) + shoal(84, 70, 8);
+      else body = `<g class="sunf"><circle cx="96" cy="16" r="7" class="k" style="fill:var(--s-sun)"/></g>` + sea + boat(40) + gull(30, 22) + gull(44, 16) + gull(56, 26) + gull(64, 14) + gull(78, 24) + chart + shoal(50, 68, 14);
+      break;
+    }
+    case 'cartouche':
+      body = hill + ground + put(parts.house, 22, G, 0.5, 0.3) + put(parts.house, 100, G, 0.5, 0.7) +
+        `<g transform="translate(60 34)">${P('M-34 -12Q-38 0 -34 12H34Q38 0 34 -12Z', 'b k K')}${P('M-30 -8Q-33 0 -30 8H30Q33 0 30 -8Z', 'k k2')}<text x="0" y="4" text-anchor="middle" class="spt spi spc">Settled</text></g>`;
+      break;
   }
   const style = styleFor(st)!;
   const defs = `<defs>${style.defs(pf)}</defs>`;
@@ -121,4 +144,4 @@ export function spot(key: string, look: string, o: SpotOptions = {}): string {
 }
 
 /** The spot kinds, for a gallery or a test. */
-export const SPOT_KINDS: SpotKind[] = ['scaffold', 'stakes', 'sunrise', 'fog', 'ruin', 'chimneys', 'pamphlet', 'sign', 'clear', 'seam', 'bite', 'letter'];
+export const SPOT_KINDS: SpotKind[] = ['scaffold', 'stakes', 'sunrise', 'fog', 'ruin', 'chimneys', 'pamphlet', 'sign', 'clear', 'seam', 'bite', 'letter', 'banks', 'survey', 'sails', 'gulls', 'cartouche'];

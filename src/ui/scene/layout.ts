@@ -87,7 +87,17 @@ export interface MoverDef {
 export type Driver = 'app' | 'population' | 'pressure' | 'depletion' | 'reserve' | 'light' | 'always'
   /* M3 */
   | 'congestion'  // 1 − SceneView.travel.speed (queues on the road); 0 without travel
-  | 'roads';      // new roads built: (travel.freeSpeed − 1) / 1.5; 0 without travel
+  | 'roads'       // new roads built: (travel.freeSpeed − 1) / 1.5; 0 without travel
+  /* M4 */
+  | 'fed'         // what another Industry's feeding application built here: the fedBy share of the apps in `match`
+  | 'chart'       // the chart's stipple: stock.reported until stock.surveyed, then stock.truth (reserve without stock)
+  | 'world'       // the living sea (gulls, porpoises, surface shoals): stock.truth, always (reserve without stock)
+  | 'boats'       // boats out: the fleet's activity (mean adoption) scaled by the true stock; 0 while tied up
+  | 'tied'        // the fleet tied up in harbour: 1 at a moratorium or a failed bank (crossed and the stock low)
+  | 'foreign'     // foreign sails: stock.foreign / 0.6
+  | 'surveyed'    // the survey vessel and its track: 1 while stock.surveyed
+  | 'scar'        // blank grey water on the chart: 1 while a scar lasts
+  | 'crises';     // crisis marks that stay for the run: slot i shows once crises > i (density crises / slots)
 
 export interface PlotDef {
   key: string;
@@ -181,6 +191,17 @@ export interface Layout {
   /** Levers that bite back: lever kind → where its side effect appears ('*' = any other kind); the slot's prop is
    *  drawn (hidden until the bite reaches 0.5). */
   bite?: Record<string, Slot>;
+  /* --- M4 (all optional) --- */
+  /** Crisis names by crisis number (1-based; index 0 = the first crisis) when an Industry's crises differ (Iron: The
+   *  Orange Night, then The Slag Slide); default: SceneView.crisisName for every crisis. */
+  crisisNames?: string[];
+  /** The chart (Fishing): where its shoals lie, for the survey's drain [x, y, w, h] (the plot keyed 'shoals' is the
+   *  stipple). */
+  chart?: [number, number, number, number];
+  /** Where the survey vessel puts out from and to (the 'surveyed' moment): [x0, y0, x1, y1]. */
+  surveyRun?: [number, number, number, number];
+  /** Postcard crop [x, y, w, h] of the 600 × 400 picture (default: the middle 3:2 of the land). */
+  card?: [number, number, number, number];
 }
 
 /* ------------------------------------------------------------------ */

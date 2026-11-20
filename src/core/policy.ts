@@ -17,6 +17,7 @@ import { leverLevelDef, leverNetUpkeep, leverReachable, leverVisible, recycleOpt
 import { featureOn } from './features';
 import { budgetROf, isWithin, newBudget, pacesOf } from './steady';
 import { fin } from './util';
+import { drawLine, lineR } from './account';
 
 /** Largest number of lever levels one setLever call may climb (guards unbounded repeat). */
 const MAX_LEVEL_JUMP = 10_000;
@@ -25,7 +26,8 @@ const MAX_LEVEL_JUMP = 10_000;
 function drawBudgetAt(state: GameState, content: Content, s: SectorId, R: number, W: number, items: NewsItem[], ev: EvDraft[], by: Actor, pace?: string): Record<SectorId, SectorState> {
   const es = state.sectors[s];
   const year = calendarYear(state, content);
-  const budget = newBudget(content, s, R, state.time, year, W, es.pressure, pace);
+  // M4 (the Survey): on the account of the moment ('full' while 'estimates' is on)
+  const budget = idx(content).anyM4 ? drawLine(state, content, computeFlows(state, content), s, R, state.time, year, W, es.pressure, pace) : newBudget(content, s, R, state.time, year, W, es.pressure, pace);
   items.push(headline(state, content, 'budgetDrawn', state.time, { year }, s));
   ev.push({ kind: 'budgetDrawn', sector: s, id: budget.pace, by });
   const redraw = !!es.budget;
@@ -75,7 +77,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
     // QA (B17): a cap enacted over a line the economy has outgrown would cut use to the old line at a stroke; it redraws
     // the line at today's use instead, at its own pace (the streak is already broken while over the line)
     const bR = budgetROf(es0, content.sectors[def.sector], content, state.time);
-    if (bR !== null && !isWithin(f.R, bR)) sectors = drawBudgetAt(state, content, def.sector, f.R, fl.wellbeing, items, ev, by, es0.budget.pace);
+    if (bR !== null && !isWithin(lineR(state, content, fl, def.sector), bR)) sectors = drawBudgetAt(state, content, def.sector, f.R, fl.wellbeing, items, ev, by, es0.budget.pace);
   }
   const year = calendarYear(state, content);
   items.push(headline(state, content, 'leverEnacted', state.time, { year }, def.sector));

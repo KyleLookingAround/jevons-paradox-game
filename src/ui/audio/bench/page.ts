@@ -2,7 +2,7 @@
 // real engine, analyses the result, and draws spectrograms. Driven by ./run.mjs. Not part of the game bundle.
 import { createSoundscape } from '../engine';
 import { SOUNDSCAPES, registerSoundscape, type SoundscapeDef, type LayerDef } from '../defs';
-import { demoView, runView, viewOf, preset, type PresetName } from '../views';
+import { demoView, runView, viewOf, preset, stockOf, type PresetName, type DemoStock } from '../views';
 import type { SceneView } from '../../scene/types';
 import type { SoundEventKind, SoundEventDetail, SoundscapeTap } from '../types';
 
@@ -365,6 +365,81 @@ const m3api = {
   },
 };
 
+/* ---------------- M4 ---------------- */
+
+const fishView = (p: PresetName, st: DemoStock, extra: Partial<SceneView> = {}) => ({ ...demoView('fishing', p), ...extra, stock: stockOf(st) }) as unknown as SceneView;
+
+const m4api = {
+  /** A held Fishing state with a given stock. */
+  async fish(p: PresetName, st: DemoStock, name: string, dur = 20, extra: Partial<SceneView> = {}) {
+    const out = await renderCase({ name, dur, view: hold(fishView(p, st, extra)) });
+    return { a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, name) };
+  },
+  /** The lying gauge, heard: the true stock falls 0.9 → 0.15 over `dur` while catch per trip (the gauge) stays high;
+   *  the fleet keeps working. Then at 0.85·dur the threshold is crossed (the world's cut). */
+  async decline(dur = 90) {
+    const v = (t: number) => { const u = t / dur, truth = 0.9 - 0.8 * Math.min(1, u / 0.85); return fishView('late', { truth, reported: Math.pow(Math.max(truth, 0.3), 0.3), foreign: 0.3, crossed: u > 0.85, scar: u > 0.85 }); };
+    const out = await renderCase({ name: 'decline', dur, view: v, events: [[0.85 * dur, 'thresholdCrossed', 'fishing']] });
+    return { a: analyse(out.l, out.r, 2), png: spectrogram(out.l, out.r, `fishing · the true stock 0.9 → 0.1 over ${Math.round(0.85 * dur)} s, catch per trip still high; threshold crossed at ${Math.round(0.85 * dur)} s`, [[0.85 * dur, 'thresholdCrossed']]) };
+  },
+  /** The sea life alone (only the life layers), a held truth: its level, for the "gulls go quiet" check. */
+  async lifeOnly(truth: number, scar = false, dur = 30) {
+    const orig = SOUNDSCAPES.fishing;
+    registerSoundscape('fishing', { ...orig, layers: orig.layers.filter((l) => l.life), trace: [] });
+    try {
+      const out = await renderCase({ name: 'life', dur, view: hold(fishView('late', { truth, scar })) });
+      return { a: analyse(out.l, out.r, 3) };
+    } finally { registerSoundscape('fishing', orig); }
+  },
+  /** The Board's Survey: the reveal at `at` over a held, thinned sea (truth 0.35). Life-only render too. */
+  async reveal(at = 6, dur = 16, lifeOnly = false) {
+    const orig = SOUNDSCAPES.fishing;
+    if (lifeOnly) registerSoundscape('fishing', { ...orig, layers: orig.layers.filter((l) => l.life), trace: [] });
+    try {
+      const out = await renderCase({ name: 'reveal', dur, view: hold(fishView('late', { truth: 0.45 })), events: [[at, 'surveyed', 'fishing', { label: 'reveal' }]] });
+      return { a: analyse(out.l, out.r, 1), png: spectrogram(out.l, out.r, `fishing · the Board's Survey at ${at} s (sea life lifted for 2 s; no sting)${lifeOnly ? ', sea life only' : ''}`, [[at, 'surveyReveal']]) };
+    } finally { if (lifeOnly) registerSoundscape('fishing', orig); }
+  },
+  /** Healing: the scar lifts at `at` (truth 0.5): the sea life should come back over ~15 s, not at once. Life only. */
+  async heal(at = 5, dur = 30) {
+    const orig = SOUNDSCAPES.fishing;
+    registerSoundscape('fishing', { ...orig, layers: orig.layers.filter((l) => l.life), trace: [] });
+    try {
+      const out = await renderCase({ name: 'heal', dur, view: (t) => fishView('late', { truth: 0.6, scar: t < at }) });
+      return { a: analyse(out.l, out.r, 1), png: spectrogram(out.l, out.r, `fishing · sea life only: the scar heals at ${at} s (truth 0.6)`, [[at, 'scarHealed']]) };
+    } finally { registerSoundscape('fishing', orig); }
+  },
+  /** Interface sound with detail, alone. */
+  async event(sector: string, kind: SoundEventKind, det: SoundEventDetail = {}, dur = 9) {
+    const out = await renderCase({ name: 'ev', dur, view: () => null, events: [[0.2, kind, sector, det]] });
+    return { a: analyse(out.l, out.r, 0) };
+  },
+  /** A state with extra fields merged (fedBy, heritage, stock). */
+  async state(sector: string, p: PresetName, extra: Record<string, unknown>, name: string, dur = 20) {
+    const out = await renderCase({ name, dur, view: hold({ ...demoView(sector, p), ...extra } as unknown as SceneView) });
+    return { a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, name) };
+  },
+  async diff(sector: string, p: PresetName, extra: Record<string, unknown>, dur = 30) {
+    const a = await renderCase({ name: 'a', dur, view: hold(demoView(sector, p)) });
+    const b = await renderCase({ name: 'b', dur, view: hold({ ...demoView(sector, p), ...extra } as unknown as SceneView) });
+    const l = new Float32Array(a.l.length), r = new Float32Array(a.l.length);
+    for (let i = 0; i < l.length; i++) { l[i] = b.l[i] - a.l[i]; r[i] = b.r[i] - a.r[i]; }
+    return { added: analyse(l, r, 3), base: analyse(a.l, a.r, 3) };
+  },
+  /** A tab switch with RMS per 100 ms around it (the crossfade dip). */
+  async switchDip(a: string, b: string, p: PresetName = 'mid') {
+    const va = demoView(a, p), vb = demoView(b, p);
+    const out = await renderCase({ name: 'sw', dur: 16, view: (t) => (t < 6 ? va : vb) });
+    const w = (from: number, to: number) => { let e = 0, n = 0; for (let i = Math.round(from * SR); i < Math.round(to * SR); i++) { e += out.l[i] ** 2 + out.r[i] ** 2; n += 2; } return 10 * Math.log10(e / n + 1e-20); };
+    const before = w(3, 6), after = w(12, 16);
+    let lo = 0;
+    // 1 s windows through the fade, against the quieter of the two settled states (a dip is going below both).
+    for (let t = 5.5; t < 10.5; t += 0.25) lo = Math.min(lo, w(t, t + 1) - Math.min(before, after));
+    return { before: Math.round(before * 10) / 10, after: Math.round(after * 10) / 10, dipDb: Math.round(lo * 10) / 10, a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, `tab switch ${a} → ${b} at 6 s`, [[6, b]]) };
+  },
+};
+
 (window as unknown as { bench: typeof api; m3: typeof m3api }).bench = api;
+(window as unknown as { m4: typeof m4api }).m4 = m4api;
 (window as unknown as { m3: typeof m3api }).m3 = m3api;
 document.title = 'audio bench ready';

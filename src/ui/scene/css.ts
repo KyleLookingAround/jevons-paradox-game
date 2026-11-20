@@ -259,6 +259,17 @@ const BASE = `
 .scn .sgn{fill:#f3ead2;stroke:#0e3a38;stroke-width:calc(.8px*var(--sw))}
 .scn .sgt{fill:#0e3a38;font:700 6px/1 var(--labelf,system-ui,sans-serif)}
 .scn .bcab .cab{fill:none;stroke:var(--s-sv);stroke-width:calc(.9px*var(--sw));stroke-dasharray:3 2;opacity:.85}
+/* M4: the capstone's cartouche (stamped once), the Preview mark, the sea's moments (sprites: opacity and transform). */
+.scn-emb.cart{border-radius:2px;padding:3px 12px;box-shadow:0 0 0 2px var(--s-paper),0 0 0 3px var(--s-ink),0 0 0 5px var(--s-paper),0 0 0 5.6px var(--s-ink)}
+.scn.live .scn-emb.stamp{animation:scn-stamp 1.4s cubic-bezier(.3,1.4,.5,1) both}
+@keyframes scn-stamp{0%{opacity:0;transform:scale(1.8)}60%{opacity:1;transform:scale(.94)}100%{opacity:.9;transform:none}}
+.scn-prev{position:absolute;left:2.5%;top:3%;padding:1px 6px;font:italic 600 10px/1.4 var(--f-serif,Georgia,serif);letter-spacing:.1em;font-variant:small-caps;
+  color:var(--s-ink);background:var(--s-paper);border:1px dashed var(--s-ink);opacity:0;pointer-events:none}
+.scn-prev.on{opacity:.85}
+.scn .drn{position:absolute;left:0;top:0}
+.scn .veil{overflow:hidden}.scn .veil i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,rgba(var(--s-mist),0),rgba(var(--s-mist),.95) 50%,rgba(var(--s-mist),0))}
+.scn.arrears .scn-held{opacity:0!important}
+.scn-spot .spt{fill:var(--s-ink);font:6px/1 var(--f-serif,Georgia,serif)}.scn-spot .spi{font-style:italic}.scn-spot .spc{font-size:9px;font-variant:small-caps}
 .scn .stdy{display:none}.scn.steady .stdy{display:inline}
 .scn .nosteady{display:inline}.scn.steady .nosteady{display:none}
 

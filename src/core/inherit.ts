@@ -31,15 +31,16 @@ export function capstonedSector(def: SectorDef, fresh: SectorState, rec: Capston
   };
 }
 
-/** Apply the world to a fresh run's sectors and levers (both maps owned by the caller, written in place). */
-export function inheritWorld(content: Content, meta: MetaState, sectors: Record<SectorId, SectorState>, levers: Record<string, LeverState>): void {
+/** Apply the world to a fresh run's sectors and levers (both maps owned by the caller, written in place); `opened`
+ *  builds a sector as an opening would (its reserve as a fresh run builds it). */
+export function inheritWorld(content: Content, meta: MetaState, sectors: Record<SectorId, SectorState>, levers: Record<string, LeverState>, opened: (def: SectorDef) => SectorState): void {
   const cap = meta.world?.capstone;
   if (!cap) return;
   const ix = idx(content);
   for (const s of ix.ids) {
     const rec = cap[s];
     if (!rec || !sectors[s]) continue;
-    sectors[s] = capstonedSector(content.sectors[s], sectors[s], rec);
+    sectors[s] = capstonedSector(content.sectors[s], sectors[s].open ? sectors[s] : opened(content.sectors[s]), rec);
     for (const l of ix.leversBySector[s] ?? []) if (levers[l.id]) levers[l.id] = { ...levers[l.id], level: 0, ref: 0 };
   }
 }

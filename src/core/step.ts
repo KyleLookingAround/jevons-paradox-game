@@ -45,7 +45,8 @@ import { stepBites } from './sideEffects';
 import { decayedPeak } from './travel';
 import type { ActDef } from '../types';
 import { actStreak } from './acts';
-import { actEndingMeta, arrearsStep, depletionP, drainOfDrawers, drawLine, mirrorDrawers, newM4Step, stepCapstone, stepM4, stepRenewableSector } from './world';
+import { drawLine } from './account';
+import { actEndingMeta, arrearsStep, depletionP, drainOfDrawers, mirrorDrawers, newM4Step, stepCapstone, stepM4, stepRenewableSector } from './world';
 import type { M4Step } from './world';
 
 /* ------------------------------------------------------------------ */

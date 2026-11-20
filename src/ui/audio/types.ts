@@ -38,14 +38,27 @@ export type SoundEventKind =
   | 'ledgerContinues' // "The ledger continues": the credits bed gives way to play, with a pen stroke
   | 'arrived'         // a new system unlocks ('featureUnlocked'): one small "something has arrived" cue per Age
   | 'history'         // a History cleared ('historyCleared'): a line ruled off
+  /* --- M4 (additive) --- */
+  | 'wager'           // a wager answered: a coin on the counter, then one note (detail.outcome 'won' | 'lost': a fifth apart).
+                      // 'answer' / 'dispatchAnswered' with detail.label 'won' | 'lost' (the contract's wager label) plays it too
+  | 'actEnding'       // an Act's ending (Act I: 'ending' with Content.acts): a slower 'ending', its credits held longer
+  | 'arrears'         // a capstoned Industry falls into arrears ('arrears'): a muffled toll
+  | 'thresholdCrossed'// the world's own (no sting): the sea life cuts out over two seconds ('thresholdCrossed')
+  | 'surveyReveal'    // the Board's Survey (no sting): the sea life, honest all along, comes up a few dB for two seconds
   /* contract-named aliases of the above (the page may call either) */
-  | 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared';
+  | 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared'
+  /* M4: 'surveyed' plays 'surveyReveal' only with detail.label 'reveal' (the Board's free first survey); else nothing */
+  | 'surveyed';
 
 /** M3: contract event names accepted as aliases of the sound's own name. */
 export const SOUND_EVENT_ALIASES: Readonly<Record<string, SoundEventKind>> = {
   seamSunk: 'seam', dispatchArrived: 'letter', dispatchAnswered: 'answer', biteBack: 'bite', returnPublished: 'survey',
   featureUnlocked: 'arrived', historyCleared: 'history',
+  surveyed: 'surveyReveal',
 };
+
+/** M4: kinds that are the world's own (they change the world's layers, play no interface sound, have no recipe). */
+export const WORLD_EVENT_KINDS: readonly SoundEventKind[] = ['thresholdCrossed', 'surveyReveal'];
 
 /** Every kind event() accepts (the sound's own names, then the aliases). Unknown kinds are ignored silently. */
 export const SOUND_EVENT_KINDS: readonly SoundEventKind[] = [
@@ -53,7 +66,9 @@ export const SOUND_EVENT_KINDS: readonly SoundEventKind[] = [
   'steady', 'reckoning', 'industryOpened', 'ageBegun',
   'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues',
   'arrived', 'history',
+  'wager', 'actEnding', 'arrears', 'thresholdCrossed', 'surveyReveal',
   'seamSunk', 'dispatchArrived', 'dispatchAnswered', 'biteBack', 'returnPublished', 'featureUnlocked', 'historyCleared',
+  'surveyed',
 ];
 
 export interface SoundEventDetail {
@@ -77,6 +92,12 @@ export interface SoundEventDetail {
   lever?: string;
   /** Marks a first time in the save (GameEvent.first): the moment is played a little fuller. */
   first?: boolean;
+  /* --- M4 (optional) --- */
+  /** 'wager': how it came out. Absent: 'won'. */
+  outcome?: 'won' | 'lost';
+  /** GameEvent.label, passed through: 'won' | 'lost' on a wager's 'dispatchAnswered' (plays 'wager'); 'reveal' on
+   *  'surveyed' (plays 'surveyReveal'; any other 'surveyed' is silent). */
+  label?: string;
 }
 
 export interface Volumes {

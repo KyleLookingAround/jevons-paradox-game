@@ -63,7 +63,7 @@ export function handedByFeeds(ix: ContentIndex, fls: Record<SectorId, SectorFlow
     const ws: [SectorId, number][] = [];
     for (const t of tg) {
       const et = state.sectors[t];
-      if (!et?.open || et.settled || !fls[t]) continue;
+      if (!et?.open || et.settled) continue; // (not "solved": the weights are the source's, so a cap mid-solve sees the same)
       let w = 0;
       for (const e of ix.feedsInto[t] ?? []) if (e.src === s && e.app === i) w += 1 - feedFactor(e.mul, adoptionIn(f, i));
       if (w > 0) { ws.push([t, w]); wsum += w; }

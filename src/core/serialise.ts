@@ -617,7 +617,9 @@ export function deserialize(text: string, content: Content): GameState | null {
         ? Object.fromEntries(Object.entries(savedMeta.features).filter(([k, v]) => FEATURE_SET.has(k) && typeof v === 'number' && Number.isFinite(v)))
         : grandfathered(content, merged0, isObj(raw.flags) && raw.flags.revealed === true),
     };
-    const fresh = createState(content, meta, typeof raw.seed === 'number' ? raw.seed : 1);
+    // M4: the merge base is built without the world (a capstone in meta would otherwise lend its built sector's fields
+    // to a saved sector that lacks them); the saved run carries its own capstoned sectors
+    const fresh = createState(content, { ...meta, world: undefined }, typeof raw.seed === 'number' ? raw.seed : 1);
     const merged = merge(fresh, { ...raw, meta: undefined }) as GameState;
     // only sectors known to content; sanitise budgets and decades
     const sectors: Record<SectorId, SectorState> = {};

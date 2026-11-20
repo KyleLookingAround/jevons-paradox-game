@@ -34,6 +34,22 @@ export const STEM_GROUPS: Record<string, StemGroup[]> = {
     { id: 'parlour', label: 'parlour piano', layers: ['piano'], about: 'a parlour piano through a window, phrases in key' },
     { id: 'signs', label: 'sign buzz', layers: ['signs'], about: 'the buzz of shop signs (100 Hz and harmonics)' },
     { id: 'streets', label: 'cabs and town', layers: ['cabs', 'town'], about: 'hansom cabs on cobbles and the town murmur' },
+    { id: 'harbour', label: 'harbour edge', layers: ['buoy'], about: "a bell buoy far off at the harbour's edge (Fishing's, heard faintly here)" },
+  ],
+  iron: [
+    { id: 'air', label: 'night air', layers: ['night', 'nightjar'], about: 'the night air over the works and a nightjar churring at Steady State' },
+    { id: 'furnaces', label: 'furnaces', layers: ['furnace', 'blast', 'tap'], about: 'the furnace roar breathing with the blast every other beat, and a furnace tapped now and then (a rising hiss and a shower of sparks)' },
+    { id: 'hammer', label: 'the drop hammer', layers: ['hammer'], about: 'the drop hammer on the beat: a deep blow and the anvil ringing on A' },
+    { id: 'mills', label: 'mills and riveters', layers: ['rolling', 'rivets', 'cans', 'lathes'], about: 'a bar through the rolls (rumble and a squeal in key), riveters\' trains of blows, tin cans down a chute, machine-tool tones' },
+    { id: 'steel', label: 'converter and hearth', layers: ['converter', 'hearth'], about: 'the Bessemer converter blowing (stage 2) and the open hearth humming (stage 3)' },
+    { id: 'town', label: 'town', layers: ['town'], about: 'the town murmur' },
+  ],
+  fishing: [
+    { id: 'sea', label: 'the sea', layers: ['swell', 'surf', 'buoy'], about: 'the swell on a slow cycle, the surf with it, a bell buoy in key' },
+    { id: 'life', label: 'sea life', layers: ['gulls', 'porpoise', 'shoals'], about: 'gulls, porpoises breathing and shoals breaking the surface: they follow the TRUE stock, and thin long before the catch does' },
+    { id: 'fleet', label: 'the fleet', layers: ['trawlers', 'winch', 'foreign'], about: "the trawlers' engines across the water, their steam winches, foreign boats further out" },
+    { id: 'quay', label: 'quay and market', layers: ['market', 'fishTrain', 'quay'], about: 'the fish market bell, the fish train leaving, the quay murmur' },
+    { id: 'harbour', label: 'tied up', layers: ['halyards'], about: 'halyards slapping the masts when the fleet is tied up' },
   ],
   motion: [
     { id: 'air', label: 'breeze and birds', layers: ['breeze', 'birds'], about: 'breeze and birds of the open road' },

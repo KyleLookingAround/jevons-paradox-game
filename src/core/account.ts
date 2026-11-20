@@ -8,7 +8,8 @@
  * content without M4 fields, whose 'estimates' is undefined and so "always on", keeps the M3 chimney account).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { Content, GameState, MetaState, SectorId } from '../types';
+import type { BudgetState, Content, GameState, MetaState, SectorId } from '../types';
+import { newBudget } from './steady';
 import { idx } from './contentIndex';
 import { featureOn } from './features';
 import { handedByFeeds } from './feeds';
@@ -70,4 +71,11 @@ export function lineR(state: GameState, content: Content, fl: { sectors: Record<
   const f = fl.sectors[s];
   if (!f) return 0;
   return state.sectors[s]?.budget?.account === 'full' ? fullAccount(state, content, fl).fullR[s] ?? f.R : f.R;
+}
+
+/** A new line for sector s drawn now on the account of the moment (feature 'estimates': 'full', r0 = fullR; else 'own'). */
+export function drawLine(state: GameState, content: Content, fl: { sectors: Record<SectorId, SectorFlow> }, s: SectorId, R: number, time: number, year: number, W: number, P: number, pace?: string): BudgetState {
+  const full = accountOn(content, state.meta);
+  const r0 = full ? fullAccount(state, content, fl).fullR[s] ?? R : R;
+  return full && r0 > 0 ? newBudget(content, s, r0, time, year, W, P, pace, 'full') : newBudget(content, s, R, time, year, W, P, pace);
 }

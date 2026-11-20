@@ -3,6 +3,8 @@
 //
 //   Steam   D dorian      (the white notes)          pastoral, a little sombre: drones on D and A
 //   Light   G mixolydian  (the white notes)          the same set, warmer: dusk, a bandstand
+//   Iron    A aeolian     (the white notes)          M4: the foundry at night, minor and heavy
+//   Fishing C ionian      (the white notes)          M4: the open, bright sea of 1883
 //   Motion  C lydian      (+F♯)                      bright, open-road optimism with a raised fourth
 //   Compute E aeolian     (+F♯)                      the same set as Motion, minor: cool phosphor
 //   Code    B aeolian     (+F♯ +C♯)                  night, rain, one sharp further
@@ -34,6 +36,8 @@ export const midiHz = (m: number) => A4 * Math.pow(2, (m - 69) / 12);
 export const KEYS: Record<string, Key> = {
   steam: { root: midiHz(38), mode: 'dorian', name: 'D dorian' },
   light: { root: midiHz(43), mode: 'mixolydian', name: 'G mixolydian' },
+  iron: { root: midiHz(33), mode: 'aeolian', name: 'A aeolian' },
+  fishing: { root: midiHz(36), mode: 'ionian', name: 'C ionian' },
   motion: { root: midiHz(36), mode: 'lydian', name: 'C lydian' },
   compute: { root: midiHz(40), mode: 'aeolian', name: 'E aeolian' },
   code: { root: midiHz(35), mode: 'aeolian', name: 'B aeolian' },

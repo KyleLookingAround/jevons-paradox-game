@@ -6,7 +6,7 @@
 // built once when it is shown and crossfaded; the previous graph is torn down after the fade. Transients are
 // synthesised in JS once (./recipes) and each plays as one buffer source + gain (+ panner). Voices are capped.
 import type { SceneView } from '../scene/types';
-import { SOUND_EVENT_ALIASES, type Soundscape, type SoundscapeOptions, type SoundEventKind, type SoundEventDetail, type Volumes, type SoundscapeStats, type Mix } from './types';
+import { SOUND_EVENT_ALIASES, WORLD_EVENT_KINDS, type Soundscape, type SoundscapeOptions, type SoundEventKind, type SoundEventDetail, type Volumes, type SoundscapeStats, type Mix } from './types';
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type SoundscapeDef, type LayerDef, type BedDef, type HitsDef } from './defs';
 import { mixFrom, momentsBetween } from './mix';
 import { hasRecipe, CAST_FAMILY, MOTIFS, MOTIF_AT } from './recipes';
@@ -88,10 +88,12 @@ interface Graph {
   watch?: LayerRt;
   /** M3: when Light's day began for this graph (s, context time), or NaN. */
   dayAt: number;
+  /** M4: when the graph was built (the sea life fades in at the ordinary pace when a tab is first shown). */
+  bornAt: number;
 }
 
 /** The sound's own kinds (aliases resolve to these first). */
-type OwnKind = Exclude<SoundEventKind, 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared'>;
+type OwnKind = Exclude<SoundEventKind, 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared' | 'surveyed' | 'thresholdCrossed' | 'surveyReveal'>;
 const KIND_GAIN: Record<OwnKind, number> = {
   sell: 0.22, buy: 0.3, cannotAfford: 0.26, found: 0.34, lever: 0.34, fork: 0.3, headline: 0.26, reveal: 0.42, backfire: 0.42,
   crisis: 0.32, decade: 0.3, steady: 0.38, reckoning: 0.4, industryOpened: 0.34, ageBegun: 0.4,
@@ -99,14 +101,21 @@ const KIND_GAIN: Record<OwnKind, number> = {
   // the reveal; the rest sit with buy and lever.
   seam: 0.36, letter: 0.2, letterOpened: 0.16, answer: 0.28, letterExpired: 0.1, bite: 0.3, survey: 0.3, proprietor: 0.42,
   ending: 0.4, ledgerContinues: 0.26, arrived: 0.26, history: 0.28,
+  // M4: the coin sits with buy; the Act's ending with the first ending; the toll with the survey.
+  wager: 0.3, actEnding: 0.4, arrears: 0.3,
 };
 const KIND_VARIANTS: Partial<Record<SoundEventKind, number>> = { sell: 6, buy: 3 };
 /** Moments worth playing late (a beat or so) rather than not at all, if their sound is not ready on first use. */
 const LATE_OK = new Set<SoundEventKind>(['reveal', 'backfire', 'steady', 'reckoning', 'ageBegun', 'industryOpened', 'crisis', 'decade', 'found', 'fork',
-  'seam', 'letter', 'survey', 'proprietor', 'ending', 'arrived', 'history', 'bite']);
+  'seam', 'letter', 'survey', 'proprietor', 'ending', 'arrived', 'history', 'bite', 'wager', 'actEnding', 'arrears']);
 const DUCKS: Partial<Record<SoundEventKind, [number, number]>> = { reveal: [0.45, 4.5], backfire: [0.6, 2], steady: [0.6, 3], ageBegun: [0.5, 3.5], reckoning: [0.7, 3],
-  seam: [0.75, 2.5], proprietor: [0.4, 4.6], ending: [0.55, 5], survey: [0.8, 2.5] };
+  seam: [0.75, 2.5], proprietor: [0.4, 4.6], ending: [0.55, 5], survey: [0.8, 2.5], actEnding: [0.5, 7.5], arrears: [0.8, 3] };
 const CREDITS_S = 75;            // the first ending's credits bed holds this long by itself before it fades
+const ACT_CREDITS_S = 110;       // M4: an Act's credits hold longer, and their bells come less often
+const LIFE_RISE_TC = 5;          // M4: the sea life comes back slowly (≈ 15 s to 95%); it goes in ≈ 2 s
+const CUT_HOLD_S = 12;           // M4: after 'thresholdCrossed' the sea life stays cut this long, then the mix's own level returns (slowly)
+const LIFT_S = 2;                // M4: 'surveyReveal' lifts the sea life this long
+const LIFT_GAIN = 1.6;           // … by this much (+4 dB), and calls it a little more often
 const DAY_S = 60;                // Light's day: 24 hours in a minute, from dusk, as the picture's clock
 const LETTER_SPACING_S = 30;     // letters closer than this are played softer and without the motif (never nagging)
 
@@ -148,7 +157,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let attached: BaseAudioContext | null = null;
   let lastLetter = -1e9;
   // The first ending's credits: a held chord that breathes, with a bell now and then, for about a minute.
-  let credits: { out: GainNode; oscs: OscillatorNode[]; lfos: OscillatorNode[]; t0: number; stopAt: number; nextBell: number; key: Key; pal: string; rng: Rng } | null = null;
+  let credits: { out: GainNode; oscs: OscillatorNode[]; lfos: OscillatorNode[]; t0: number; stopAt: number; nextBell: number; key: Key; pal: string; rng: Rng; slow: number } | null = null;
+  // M4: the world's own moments on the sea life ('thresholdCrossed' cuts it, 'surveyReveal' lifts it), per sector.
+  let lifeFx: { sector: string; kind: 'cut' | 'lift'; t0: number } | null = null;
   let endingAmt = 0;            // 0–1, what the mix is told (ramps in with the credits, out after them)
   const sync = !!external;                     // offline/tests: synthesise at once; live: in the worker
   // Export taps (offline only). Without them nothing below creates a node or changes a value.
@@ -411,6 +422,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const g: Graph = {
       def, sector, out, world, air, thick, fog, send, layers: [], byId: new Map(), traces: new Map(), levers: new Map(),
       rng: rngFrom(seed ^ hash(sector)), tempo: def.tempo[0], tempoTarget: def.tempo[0], beat: 0, beatAt: now(), mix: null, dieAt: 0, blackoutNext: 0, dayAt: NaN,
+      bornAt: now(),
     };
     // Layers are built lazily, the first time the mix gives them a level (see apply): an empty valley costs a few nodes,
     // and a busy one thickens as it fills.
@@ -581,7 +593,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         rt = buildLayer(g, l, g.def.key, g.air, g.send, g.sector);
         g.layers.push(rt); g.byId.set(l.id, rt);
       }
-      applyLayer(g, rt, lm);
+      if (l.life && lm) applyLife(g, rt, lm);
+      else applyLayer(g, rt, lm);
     }
     applyTraces(g, m);
     applyLevers(g, m);
@@ -593,11 +606,27 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     updateMs = perf() - t0;
   }
 
-  function applyLayer(g: Graph, rt: LayerRt, lm: Mix['layers'][string] | undefined, scale = 1): void {
+  /** M4: the sea life. Honest and slow: it comes back over ~15 s and goes in ~2; the world's moments cut or lift it. */
+  function applyLife(g: Graph, rt: LayerRt, lm: Mix['layers'][string]): void {
+    const t = now();
+    let scale = 1, dens = 1;
+    const fx = lifeFx && lifeFx.sector === g.sector ? lifeFx : null;
+    if (fx) {
+      const age = t - fx.t0;
+      if (fx.kind === 'cut') { if (age < CUT_HOLD_S) { scale = 0; dens = 0; } else lifeFx = null; }
+      else if (age < LIFT_S) { scale = LIFT_GAIN; dens = 1.5; } else lifeFx = null;
+    }
+    const target = lm.level * rt.def.gain * scale;
+    const prev = last.get(rt.level.gain) ?? 0;
+    const tc = target > prev * 1.05 + 1e-5 && t - g.bornAt > 3 && !(fx && fx.kind === 'lift') ? LIFE_RISE_TC : fx?.kind === 'lift' ? 0.25 : 0.6;
+    applyLayer(g, rt, { ...lm, density: lm.density * dens }, scale, tc);
+  }
+
+  function applyLayer(g: Graph, rt: LayerRt, lm: Mix['layers'][string] | undefined, scale = 1, tc = 0.6): void {
     if (!lm) return;
     const l = rt.def;
     rt.variant = lm.variant;
-    ramp(rt.level.gain, lm.level * l.gain * scale, 0.6);
+    ramp(rt.level.gain, lm.level * l.gain * scale, tc);
     rt.density = lm.density;
     rt.pitch = lm.pitch;
     if (l.kind === 'bed') {
@@ -671,7 +700,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       f.setValueAtTime(700, t + 6);
       f.exponentialRampToValueAtTime(16000, t + 12);
     } catch { /* ignore */ }
-    const swell = recipe('fogSwell', g.def.key, 0, true);
+    const swell = recipe(g.def.crisis.swell ?? 'fogSwell', g.def.key, 0, true);
     if (swell && playBuf(swell, gateTo('crisis', g.out), t, 0.22 * (calm() ? 0.7 : 1), 0, null, gateTo('crisis', g.send), 0.5, worldEnds, MAX_WORLD_VOICES + 2)) tap?.onVoice?.({ source: 'crisis', at: t, dur: swell.duration, grid: false });
     const bell = recipe(g.def.crisis.recipe, g.def.key, 0, true);
     if (bell && playBuf(bell, gateTo('crisis', g.out), t + 0.6, g.def.crisis.gain * (calm() ? 0.7 : 1), 0, null, gateTo('crisis', g.send), 0.6, worldEnds, MAX_WORLD_VOICES + 2)) tap?.onVoice?.({ source: 'crisis', at: t + 0.6, dur: bell.duration, grid: false });
@@ -718,7 +747,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     for (const k of ['sell', 'buy', 'cannotAfford', 'found', 'headline', 'lever', 'decade', 'fork', 'crisis', 'backfire', 'reveal', 'steady', 'reckoning', 'industryOpened', 'ageBegun'] as SoundEventKind[])
       for (let v = 0; v < (KIND_VARIANTS[k] ?? 1); v++) warm.push([`ui:${pal}:${k}`, def.key, v]);
     for (const l of def.layers) if (l.kind === 'hits') for (let v = 0; v < (l.variants ?? 1); v++) warm.push([l.recipe, def.key, v]);
-    warm.push([def.crisis.recipe, def.key, 0], ['fogSwell', def.key, 0]);
+    warm.push([def.crisis.recipe, def.key, 0], [def.crisis.swell ?? 'fogSwell', def.key, 0]);
     if (!sync) { for (const [n, k, v] of warm) recipe(n, k, v); warm.length = 0; }
   }
 
@@ -827,9 +856,15 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   function uiEvent(asked: SoundEventKind, d: SoundEventDetail = {}): void {
     if (!ctx || !wanted() || !running() || !uiBus) return;
-    let kind = (SOUND_EVENT_ALIASES[asked] ?? asked) as OwnKind;
+    // M4: the world's own moments (no interface sound): the sea life cut, or lifted for the Board's Survey.
+    if (asked === 'surveyed' && d.label !== 'reveal') return;
+    const wk = SOUND_EVENT_ALIASES[asked] ?? asked;
+    if ((WORLD_EVENT_KINDS as readonly string[]).includes(wk)) { worldEvent(wk as SoundEventKind, d); return; }
+    let kind = wk as OwnKind;
     if (!Object.prototype.hasOwnProperty.call(KIND_GAIN, kind)) return;   // unknown kinds: silence
     if (kind === 'answer' && d.by === 'default') kind = 'letterExpired';
+    // M4: a wager's answer carries label 'won' | 'lost': the coin on the counter instead of the pen and stamp.
+    if (kind === 'answer' && (d.label === 'won' || d.label === 'lost')) kind = 'wager';
     const sector = d.sector ?? current()?.sector ?? view?.sectorId ?? '';
     const pal = paletteFor(sector, d.look ?? view?.look);
     const key = soundscapeFor(sector).key;
@@ -862,6 +897,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       }
     }
     if (kind === 'ending') startCredits(pal, key);
+    if (kind === 'actEnding') startCredits(pal, key, ACT_CREDITS_S, 1.5);
     if (kind === 'ledgerContinues') stopCredits(3);
     let rate = 1;
     const nv = KIND_VARIANTS[kind] ?? 1;
@@ -895,6 +931,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     // Not synthesised yet (the first moments after sound is turned on): play it when it is ready if that is soon, or at
     // any delay for the rare moments that must not be lost; a tap's sound that would arrive late is dropped.
     if (kind === 'seam') v = seamV;
+    if (kind === 'wager') v = (d.outcome ?? (d.label === 'lost' ? 'lost' : 'won')) === 'lost' ? 1 : 0;
     const b = recipe(name, key, v, true, (nb) => {
       if (!nb || ctx !== c0 || !wanted() || !running()) return;
       const late = now() - t;
@@ -903,6 +940,15 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (b) { go(b, t + 0.005); after?.(); }
   }
   let seamV = 0;
+
+  /** M4: 'thresholdCrossed' (the sea life cuts out over two seconds, no sting) and 'surveyReveal' (it comes up a few dB
+   *  for two seconds under the card, no sting). Acts on the sector named, else the one showing; the current view is
+   *  re-applied at once so the change starts now, not at the next update. */
+  function worldEvent(kind: SoundEventKind, d: SoundEventDetail): void {
+    const sector = d.sector ?? current()?.sector ?? view?.sectorId ?? '';
+    lifeFx = { sector, kind: kind === 'thresholdCrossed' ? 'cut' : 'lift', t0: now() };
+    if (view && current()?.sector === sector) apply(view);
+  }
 
   function duckFor(kind: SoundEventKind, at: number): void {
     const dk = DUCKS[kind];
@@ -918,7 +964,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   /* ---------------- the first ending's credits ---------------- */
 
-  function startCredits(pal: string, key: Key): void {
+  function startCredits(pal: string, key: Key, hold = CREDITS_S, slow = 1): void {
     if (!ctx || !worldBus) return;
     stopCredits(1.5);
     const c = ctx, t = now();
@@ -942,7 +988,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       oscs.push(o); lfos.push(l);
     });
     out.gain.setTargetAtTime(0.11, t, 1.6);
-    credits = { out, oscs, lfos, t0: t, stopAt: t + CREDITS_S, nextBell: t + 6, key, pal, rng };
+    credits = { out, oscs, lfos, t0: t, stopAt: t + hold, nextBell: t + 6 * slow, key, pal, rng, slow };
   }
 
   function creditsTick(t: number, horizon: number): void {
@@ -953,7 +999,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       const d = degs[Math.floor(cr.rng() * degs.length)];
       const b = recipe(`ui:${cr.pal}:decade`, cr.key, 0, true);
       if (b && cr.nextBell >= t - 0.01) playBuf(b, cr.out, Math.max(t, cr.nextBell), 0.5 + 0.2 * cr.rng(), (cr.rng() - 0.5) * 0.8, null, null, 0, worldEnds, MAX_WORLD_VOICES, ratio(cr.key, d) * 0.5);
-      cr.nextBell += 7 + 5 * cr.rng();
+      cr.nextBell += (7 + 5 * cr.rng()) * cr.slow;
     }
   }
 

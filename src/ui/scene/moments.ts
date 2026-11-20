@@ -20,11 +20,18 @@ export type MomentKind =
   /* M3 */
   | 'seamSunk'   // a shaft sinks to the next seam, a puff of steam at the head, the gallery lights
   | 'biteBack'   // a lever's side effect appears where it stands
-  | 'ending';    // the first ending: the sky clears completely and a paper boy runs through
+  | 'ending'     // the first ending: the sky clears completely and a paper boy runs through
+  /* M4 */
+  | 'surveyed'   // the survey vessel puts out; with text 'reveal' (the Board's first survey) the chart drains to the truth
+  | 'threshold'  // the stock crossed its threshold: a veil drains across the chart, once
+  | 'scarHealed' // the scar heals: the gulls come back over the fleet
+  | 'capstoned'  // the cartouche stamps
+  | 'arrears';   // a capstoned Industry in arrears: the held wash withdraws, the smoke returns
 
 export interface Moment { kind: MomentKind; app?: string; id?: string; by?: string; n?: number; text?: string }
 
-interface Prev { crises: number; steady: boolean; stage: number; clear: boolean; settled: boolean; status: Map<string, string>; commons: Map<string, number>; seams: number; bitten: Set<string> }
+interface Prev { crises: number; steady: boolean; stage: number; clear: boolean; settled: boolean; status: Map<string, string>; commons: Map<string, number>; seams: number; bitten: Set<string>;
+  /* M4 */ surveyed: boolean; crossed: boolean; scar: boolean; capstoned: boolean; arrears: boolean }
 
 export class MomentDesk {
   /** Highest event seq seen by this scene (seqs are global across sectors, so a sector switch resets nothing). */
@@ -83,9 +90,16 @@ export class MomentDesk {
       for (const [id, lv] of commons) if ((p.commons.get(id) ?? 0) < lv) out.push({ kind: 'commons', id, n: lv });
       if (v.seams && v.seams.sunk > p.seams && v.seams.sunk === p.seams + 1) out.push({ kind: 'seamSunk', n: v.seams.sunk });
       for (const l of v.levers) if ((l.bite ?? 0) >= 0.5 && !p.bitten.has(l.id)) out.push({ kind: 'biteBack', id: l.id });
+      // M4
+      if (v.stock && !p.surveyed && v.stock.surveyed) out.push({ kind: 'surveyed' });
+      if (v.stock && !p.crossed && v.stock.crossed) out.push({ kind: 'threshold' });
+      if (v.stock && p.scar && !v.stock.scar) out.push({ kind: 'scarHealed' });
+      if (v.capstoned && !p.capstoned) out.push({ kind: 'capstoned', n: v.capstoned.year ?? undefined });
+      if (v.capstoned?.arrears && !p.arrears) out.push({ kind: 'arrears' });
     }
     const bitten = new Set(v.levers.filter((l) => (l.bite ?? 0) >= 0.5).map((l) => l.id));
-    this.prev.set(v.sectorId, { crises: v.crises, steady: !!v.steady, stage: v.stage, clear: !!v.clear, settled: !!v.settled, status, commons, seams: v.seams?.sunk ?? 0, bitten });
+    this.prev.set(v.sectorId, { crises: v.crises, steady: !!v.steady, stage: v.stage, clear: !!v.clear, settled: !!v.settled, status, commons, seams: v.seams?.sunk ?? 0, bitten,
+      surveyed: !!v.stock?.surveyed, crossed: !!v.stock?.crossed, scar: !!v.stock?.scar, capstoned: !!v.capstoned, arrears: !!v.capstoned?.arrears });
     if (quiet) return [];
     for (const m of out) {
       if (m.kind === 'crisis') { this.crisisUntil = now + 7200; this.caption = { text: m.text ?? v.crisisName, until: now + 7000, sector: v.sectorId }; }
@@ -113,6 +127,11 @@ function fromEvent(e: SceneEvent, v: SceneView): Moment | null {
     case 'seamSunk': return { kind: 'seamSunk', id: e.id, n: e.n, text: e.label };
     case 'biteBack': return { kind: 'biteBack', id: e.id };
     case 'ending': return { kind: 'ending', id: e.id };
+    case 'surveyed': return { kind: 'surveyed', id: e.id, text: e.label === 'reveal' ? 'reveal' : undefined };
+    case 'thresholdCrossed': return { kind: 'threshold' };
+    case 'scarHealed': return { kind: 'scarHealed' };
+    case 'capstoned': return { kind: 'capstoned', id: e.id, n: v.capstoned?.year ?? undefined };
+    case 'arrears': return { kind: 'arrears' };
     default: return null;
   }
 }

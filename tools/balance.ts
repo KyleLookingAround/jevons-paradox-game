@@ -85,9 +85,9 @@
  *        --safe-pressure=0.5, --draw-after=4, --fork-sector=<id>|all.
  * Runs are consecutive (the prestige loop), except in `forks`.
  */
-import { model, evalCond } from '../src/core';
+import { model, evalCond, leverLevelDef } from '../src/core';
 import { content as realContent } from '../src/content';
-import { fixture, fixtureM3, fixtureM3Bank } from '../src/core/fixture';
+import { fixture, fixtureM3, fixtureM3Bank, fixtureM4, fixtureM4Acts } from '../src/core/fixture';
 import { BUDGET_TOLERANCE, YEARS_PER_SECOND } from '../src/types';
 import type { Content, EffectDef, GameState, HindsightTerms, InstitutionDef, SectorId, UpgradeView } from '../src/types';
 // @ts-ignore — node types are not installed; Bun provides node:fs
@@ -105,7 +105,9 @@ const flag = (name: string, dflt: string): string => {
   return a === undefined ? dflt : a.includes('=') ? a.slice(a.indexOf('=') + 1) : 'true';
 };
 const positional = argv.filter((a) => !a.startsWith('--'));
-const strategy = (positional[0] ?? 'efficiency') as Strategy;
+/** M4: `fishsteward` is the budget player with the steward's Fishing rules (see m4Actions). */
+const STEWARD = positional[0] === 'fishsteward';
+const strategy = (STEWARD ? 'budget' : positional[0] ?? 'efficiency') as Strategy;
 if (!STRATEGIES.includes(strategy)) {
   console.error(`unknown strategy "${strategy}" (${STRATEGIES.join(' | ')})`);
   process.exit(2);
@@ -114,7 +116,9 @@ const runs = Math.max(1, parseInt(positional[1] ?? '3', 10) || 3);
 const realOk = Array.isArray((realContent as Partial<Content> | undefined)?.sectorOrder) && !!realContent?.sectors;
 const FIXTURE = flag('fixture', 'false');
 const useFixture = FIXTURE !== 'false' || !realOk;
-const C0: Content = useFixture ? (FIXTURE === 'm2' ? fixture : FIXTURE === 'bank' ? fixtureM3Bank : fixtureM3) : realContent;
+const C0: Content = useFixture
+  ? (FIXTURE === 'm2' ? fixture : FIXTURE === 'bank' ? fixtureM3Bank : FIXTURE === 'm4' ? fixtureM4 : FIXTURE === 'm4acts' ? fixtureM4Acts : fixtureM3)
+  : realContent;
 /**
  * --off=load,travel,free (balance experiments): the content with a mechanic's physics stripped, to attribute a change in
  * pacing to it. load: no LoadDef (capCost × the load term the sector would have at its opening profile is NOT restored;
@@ -225,6 +229,7 @@ for (const d of Object.values(C.sectors)) for (const a of d.applications) {
   if (IGNORE.has('load') && d.load && (a.profile ?? d.load.defaultProfile) !== d.load.defaultProfile) IGNORED_APPS.add(a.id);
   if (IGNORE.has('travel') && d.travel && (!d.travel.apps || d.travel.apps.includes(a.id)) && ((a.lockIn ?? 0) > 0 || (a.lockInDecay ?? 0) > 0)) IGNORED_APPS.add(a.id);
   if (IGNORE.has('free') && a.priceSeen) IGNORED_APPS.add(a.id);
+  if (IGNORE.has('feeds') && a.feeds?.length) IGNORED_APPS.add(a.id); // M4: founds no use that feeds (criterion 5)
 }
 /** --ignore=free also skips the cards that set a seen price (Compute's business models, Light's flat rate). */
 const IGNORED_CARDS = new Set(IGNORE.has('free') ? C.upgrades.filter((u) => u.effects.some((e) => e.type === 'priceSeen')).map((u) => u.id) : []);
@@ -943,6 +948,100 @@ const FIXED_RETURN: Record<string, number> = RETURN_JSON ? JSON.parse(RETURN_JSO
   activeMinutesBefore: 600, activeMinutesAfter: 420, sessionsBefore: 20, sessionsAfter: 18, looksBefore: 60, looksAfter: 70,
   decisionsBefore: 900, decisionsAfter: 300, automatedAfter: 1500, daysBefore: 10, daysAfter: 10, quietDays: 4,
 };
+/* ---------------- M4: Fishing play, the steward, wagers, the act's ending ---------------- */
+/** The content has M4 data (only then do the M4 behaviours act and the M4 summary columns print). */
+const M4C = !!C.acts?.length || Object.values(C.sectors).some((d) => d.resourceKind === 'renewable' || d.resourceStock || d.applications.some((a) => a.feeds?.length));
+/** --survey=never|cruise|board: never survey; raise a survey measure from the first poor season (a crisis in that
+ *  Industry this run); seat an Institution that surveys whenever one can be bought and seated (between runs).
+ *  Default: cruise for fishsteward, never otherwise. */
+const SURVEY = flag('survey', STEWARD ? 'cruise' : 'never');
+/** --dump-ending[=<dir>]: write the state at the Act I ending (act1-ending.json) and late in Act I, the first moment all
+ *  but one of the ending set are settled (act1-late.json), for the UI and Playwright lanes. */
+const DUMP_ENDING = flag('dump-ending', 'false');
+const DUMP_DIR = DUMP_ENDING === 'true' ? 'design/scratch/m4-fixtures' : DUMP_ENDING;
+const dumped = new Set<string>();
+let M4R: { endingHour: number | null; arrears: number; minStock: Record<string, number>; surveyedMin: Record<string, number>; crossed: Record<string, boolean>; capDefence: number; capDefenceN: number; accounts: Record<string, string> } =
+  { endingHour: null, arrears: 0, minStock: {}, surveyedMin: {}, crossed: {}, capDefence: 0, capDefenceN: 0, accounts: {} };
+const surveyLevers = (e: SectorId) => C.levers.filter((l) => l.sector === e && (l.effects ?? []).some((x) => x.type === 'survey' && x.sector === e));
+const isRenewable = (e: SectorId) => C.sectors[e]?.resourceKind === 'renewable';
+
+/** What the page shows of a wager's condition: an unsurveyed stock reads as its catch per trip (thoughtful). */
+function pageCond(s: GameState, c: import('../src/types').Cond): import('../src/types').Cond {
+  const x = c as Record<string, unknown>;
+  if ('all' in x) return { ...c, all: (x.all as import('../src/types').Cond[]).map((y) => pageCond(s, y)) } as import('../src/types').Cond;
+  if ('any' in x) return { ...c, any: (x.any as import('../src/types').Cond[]).map((y) => pageCond(s, y)) } as import('../src/types').Cond;
+  if ('not' in x) return { ...c, not: pageCond(s, x.not as import('../src/types').Cond) } as import('../src/types').Cond;
+  if (x.stat === 'stockFraction' && typeof x.sector === 'string' && !model.derive(s, C).sectors[x.sector]?.stock?.surveyed) return { ...c, stat: 'reportedStock' } as import('../src/types').Cond;
+  return c;
+}
+/** A wager arm's branch worth to this player: the branch its own estimate says will happen (thoughtful: from what the
+ *  page shows; oracle: the true condition, an upper bound). 0 for an ordinary arm. */
+function wagerValue(s: GameState, sector: SectorId | undefined, a: import('../src/types').DispatchArm): number {
+  if (!a.wager) return 0;
+  const win = DISPATCH === 'oracle' ? evalCond(s, C, a.wager.when) : evalCond(s, C, pageCond(s, a.wager.when));
+  return armSuits(s, sector, win ? a.wager.win : a.wager.lose);
+}
+/** Between runs (--survey=board): buy and seat an Institution that surveys, when Hindsight and a seat allow. */
+function boardSeat(s: GameState): GameState {
+  if (SURVEY !== 'board') return s;
+  for (const d of C.institutions ?? []) {
+    if (!d.effects.some((x) => x.type === 'survey')) continue;
+    if ((s.meta.institutions[d.id] ?? 0) < 1) { const t = model.buyInstitution(s, C, d.id); if (t !== s) s = t; }
+    if ((s.meta.institutions[d.id] ?? 0) >= 1 && !s.meta.loadout.includes(d.id)) { const t = model.setLoadout(s, C, [...s.meta.loadout, d.id]); if (t !== s) s = t; }
+  }
+  return s;
+}
+/** The M4 parts of a strategy, every 5 s: Fishing (survey, line, quota, the steward's limits), the run's M4 records, the
+ *  fixture dumps. */
+function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
+  let d = model.derive(s, C);
+  for (const e of ORDER) {
+    const x = d.sectors[e];
+    if (!x || !isRenewable(e) || !x.stock) continue;
+    M4R.minStock[e] = Math.min(M4R.minStock[e] ?? 1, x.stock.world);
+    if (x.stock.crossed) M4R.crossed[e] = true;
+    if (x.stock.surveyed && M4R.surveyedMin[e] === undefined) M4R.surveyedMin[e] = s.time / 60;
+    if (x.settled) continue;
+    if (SURVEY === 'cruise' && !x.stock.surveyed && s.sectors[e].crisesFired >= 1) {
+      for (const l of surveyLevers(e)) {
+        const v = model.leverViews(s, C).find((y) => y.def.id === l.id);
+        if (v?.canRaise && v.level < 1) { const t = model.setLever(s, C, l.id, 1); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `SURVEY ${e} (${l.id})` }); } }
+      }
+    }
+    if (restraint && x.stock.surveyed) {
+      if (!s.sectors[e].budget) s = model.drawBudget(s, C, e, PACE);
+      const want = STEWARD ? 0.9 : 1;
+      for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.def.kind === 'quota' && y.visible)) {
+        let best = 0, bv = Infinity;
+        for (let k = 1; k <= v.maxLevel; k++) { const lv = leverLevelDef(v.def, k); const val = lv?.value ?? NaN; if (Number.isFinite(val) && Math.abs(val - want) < bv) { bv = Math.abs(val - want); best = k; } }
+        if (best && v.level !== best) { const t = model.setLever(s, C, v.def.id, best); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `QUOTA ${v.def.id} → level ${best}` }); } }
+      }
+      if (STEWARD && C.levers.some((l) => l.sector === e && l.kind === 'quota' && (s.levers[l.id]?.level ?? 0) >= 1)) {
+        for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.visible && y.canRaise && y.level < 1 && (y.def.effects ?? []).some((f) => f.type === 'foreignMul'))) {
+          const t = model.setLever(s, C, v.def.id, 1); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `LIMITS ${v.def.id}` }); }
+        }
+      }
+    }
+  }
+  d = model.derive(s, C);
+  // records: arrears time, the capstone's share of the Mandate, the line accounts, the act's ending hour
+  if (ORDER.some((e) => s.sectors[e]?.arrears)) M4R.arrears += 5;
+  let capDef = 0;
+  for (const e of ORDER) if (s.sectors[e]?.capstoned) capDef += d.sectors[e]?.settleDefence ?? 0;
+  if (ORDER.some((e) => s.sectors[e]?.capstoned)) { M4R.capDefence += Math.min(1, capDef / Math.max(1e-9, d.mandatePerSec + capDef + 1e-9)); M4R.capDefenceN++; }
+  for (const e of ORDER) { const b = s.sectors[e]?.budget; if (b) M4R.accounts[e] = b.account ?? 'own'; }
+  const act = C.acts?.find((a) => a.ending);
+  if (act?.ending && M4R.endingHour === null && s.meta.endings?.[act.ending.id] && s.flags.won) M4R.endingHour = s.meta.totalSeconds / 3600;
+  if (DUMP_ENDING !== 'false' && act?.ending) {
+    const set = act.ending.sectors.filter((e) => !!C.sectors[e]);
+    const settled = set.filter((e) => s.sectors[e]?.open && s.sectors[e].settled).length;
+    const write = (name: string) => { if (dumped.has(name)) return; dumped.add(name); writeFileSync(`${DUMP_DIR}/${name}`, model.serialize(s)); log(`  state written to ${DUMP_DIR}/${name}`); };
+    if (settled >= set.length - 1 && set.length > 1 && !s.meta.endings?.[act.ending.id]) write('act1-late.json');
+    if (s.meta.endings?.[act.ending.id] && s.flags.won) write('act1-ending.json');
+  }
+  return s;
+}
+
 /** The M3 parts of a strategy, every second of play: seams (every 5 s), dispatch answers, the household return. */
 function m3Actions(s: GameState, ctx: RunCtx, mode: Strategy, tick5: boolean): GameState {
   if (SEAMS && ANY_SEAMS && !IGNORE.has('seams') && tick5 && mode !== 'idle') {
@@ -965,7 +1064,7 @@ function m3Actions(s: GameState, ctx: RunCtx, mode: Strategy, tick5: boolean): G
       if (ARM_OVERRIDE && ARM_OVERRIDE.id === p.id) arm = ARM_OVERRIDE.arm;
       else if (DISPATCH === 'random') arm = Math.floor(dispatchRng() * def.arms.length);
       else if (DISPATCH === 'best') { let b = -Infinity; def.arms.forEach((a, i) => { const v = armPay(a.effects, a.cost); if (v > b) { b = v; arm = i; } }); }
-      else if (DISPATCH === 'thoughtful') { let b = -Infinity; def.arms.forEach((a, i) => { const v = armSuits(s, def.sector, a); if (v > b) { b = v; arm = i; } }); }
+      else if (DISPATCH === 'thoughtful' || DISPATCH === 'oracle') { let b = -Infinity; def.arms.forEach((a, i) => { const v = armSuits(s, def.sector, a) + wagerValue(s, def.sector, a); if (v > b) { b = v; arm = i; } }); }
       const next = model.answerDispatch(s, C, arm, p.id);
       if (next !== s) { s = next; ctx.ev.push({ t: s.time, text: `DISPATCH ${p.id} → arm ${arm}` }); ctx.firsts.firstAnswer ??= s.time; }
     }
@@ -1006,6 +1105,12 @@ function scanUnlocks(s: GameState): void {
       case 'returnPublished': note('proprietor', "the Proprietor's Day"); break;
       case 'ending': note('ending', 'the ending'); break;
       case 'seamSunk': note('seam', 'first seam'); break;
+      /* M4: Fishing's firsts and the capstone */
+      case 'crisis': if (e.sector && C.sectors[e.sector]?.resourceKind === 'renewable') note(`poor:${e.sector}`, `first poor season ${e.sector}`); break;
+      case 'thresholdCrossed': note(`banks:${e.sector}`, `banks fail ${e.sector}`); break;
+      case 'surveyed': note(`survey:${e.sector}`, e.first ? `the Board's Survey ${e.sector}` : `first survey ${e.sector}`); break;
+      case 'scarHealed': note(`scar:${e.sector}`, `scar healed ${e.sector}`); break;
+      case 'capstoned': note('capstone', 'the capstone'); break;
       default: break;
     }
   }
@@ -1023,6 +1128,13 @@ function printUnlocks(): void {
   let small = Infinity;
   for (let i = 1; i < fs.length; i++) small = Math.min(small, fs[i] - fs[i - 1]);
   console.log(`unlocks: longest gap between firsts to hour 20: ${(gap / 60).toFixed(1)} min (from ${(at / 60).toFixed(1)}); smallest gap between two feature unlocks to hour 10: ${Number.isFinite(small) ? `${(small / 60).toFixed(1)} min` : '-'}`);
+  // M4: new things per run (features and Industry openings) and the smallest gap between two of them
+  const news = unlockLog.filter((u) => u.feature || u.what.startsWith('Industry '));
+  const byRun: Record<number, number> = {};
+  for (const u of news) byRun[u.run] = (byRun[u.run] ?? 0) + 1;
+  let sm = Infinity;
+  for (let i = 1; i < news.length; i++) sm = Math.min(sm, news[i].t - news[i - 1].t);
+  console.log(`unlocks: new things per run (features + Industry openings) ${Object.entries(byRun).map(([r, k]) => `#${r} ${k}`).join(' ') || '-'}; smallest gap ${Number.isFinite(sm) ? `${(sm / 60).toFixed(1)} min` : '-'}`);
 }
 
 /* ---------------- one run ---------------- */
@@ -1103,6 +1215,7 @@ const clickRatio = (s: GameState): number | null => {
 function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string> = new Set(), arms?: string[]): { s: GameState; report: RunReport } {
   let s = start;
   const ctx: RunCtx = { ev: [], effBuys: [], skip: new Set(skip), firsts: {}, buyTimes: [] };
+  M4R = { endingHour: null, arrears: 0, minStock: {}, surveyedMin: {}, crossed: {}, capDefence: 0, capDefenceN: 0, accounts: {} };
   const ev = ctx.ev;
   const memo: BudgetMemo = { revealAt: null };
   const series: string[] = [];
@@ -1195,6 +1308,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
         }
       }
       s = m3Actions(s, ctx, mode, tick5);
+      if (M4C && tick5 && mode !== 'idle') s = m4Actions(s, ctx, restraint);
       if (restraint && tick5) {
         s = chooseDividends(s, ctx);
         if (SETTLE) { const b = s; s = settleAll(s, ctx); if (s !== b) settlements++; }
@@ -1517,12 +1631,15 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
           ` disp ${R.m3.answered}/${R.m3.defaulted} hist ${R.m3.history ?? '-'}${R.m3.history ? ` ${R.m3.historyClearedMin !== null ? `cleared@${R.m3.historyClearedMin.toFixed(1)}` : 'not cleared'}` : ''}` +
           ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'} mandate ${n(R.m3.mandateEnd)} gross/s ${R.m3.peakGross.toFixed(1)}` +
           ` Wy ${Object.entries(R.m3.wy).map(([e, v]) => `${e}:${v.toFixed(0)}`).join(',')}` : '') +
+        (M4C ? ` · m4 ending ${M4R.endingHour !== null ? `${M4R.endingHour.toFixed(2)} h` : '-'} capstone defence ${M4R.capDefenceN ? `${(100 * M4R.capDefence / M4R.capDefenceN).toFixed(0)}%` : '-'} arrears ${M4R.arrears.toFixed(0)} s` +
+          ` stock ${Object.entries(M4R.minStock).map(([e, v]) => `${e}:min ${v.toFixed(2)}${M4R.crossed[e] ? ' crossed' : ''}${M4R.surveyedMin[e] !== undefined ? ` surveyed@${M4R.surveyedMin[e].toFixed(1)}` : ''}`).join(',') || '-'}` +
+          ` account ${Object.entries(M4R.accounts).map(([e, v]) => `${e}:${v}`).join(',') || '-'}` : '') +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }
     s = model.reckon(r.s, C);
     if (mode !== 'idle') {
       const sp = spendHindsight(s, mode === 'mixed' || mode === 'charter' || mode === 'crisisFarm' ? 'budget' : mode === 'market' ? 'efficiency' : mode === 'human' ? 'levers' : mode);
-      s = sp.s;
+      s = boardSeat(sp.s);
       if (sp.bought.length) log(`  spent Hindsight on: ${sp.bought.join(', ')} (left ${n(s.meta.hindsight)}); loadout ${s.meta.loadout.join(', ') || '—'}`);
     }
     if (HISTORY && s.meta.reckonings >= HISTORY_AT) {

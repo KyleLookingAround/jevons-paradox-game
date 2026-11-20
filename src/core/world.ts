@@ -27,8 +27,7 @@ import { milestone } from './milestones';
 import { addModifier } from './modifiers';
 import { rAddedOf } from './orderBook';
 import { foreignCatch, growthOf, renewableOf, reportedOf, scarMulOf, sizeOf, startStockOf, stepStock } from './renewable';
-import { clearPOf, newBudget } from './steady';
-import { accountOn, fullAccount } from './account';
+import { clearPOf } from './steady';
 import type { SectorFlow } from './solver';
 import { clamp, fin } from './util';
 
@@ -198,15 +197,6 @@ export function actEndingMeta(state: GameState, content: Content, act: ActDef, s
   meta = milestone(meta, `ending:${id}`, null, year);
   if (act.capstone) meta = { ...meta, world: { ...(meta.world ?? {}), capstone: capstoneRecords({ ...state, meta }, content, act, year) } };
   return meta;
-}
-
-/* ---- budget lines on the account of the moment ---- */
-
-/** A new line for sector s drawn now on the account of the moment (feature 'estimates': 'full', r0 = fullR). */
-export function drawLine(state: GameState, content: Content, fl: Flows, s: SectorId, R: number, time: number, year: number, W: number, P: number, pace?: string) {
-  const full = accountOn(content, state.meta);
-  const r0 = full ? fullAccount(state, content, fl).fullR[s] ?? R : R;
-  return newBudget(content, s, full && r0 > 0 ? r0 : R, time, year, W, P, pace, full && r0 > 0 ? 'full' : undefined);
 }
 
 /* ---- after the M3 rules: surveys, the order book's peaks, the M4 news and events ---- */

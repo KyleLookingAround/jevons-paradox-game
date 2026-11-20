@@ -1,6 +1,7 @@
 // Shared helpers of the M4 tests (m4.*.test.ts): states with chosen sectors open and applications founded, against
 // fixtureM4 (fixture.ts) unless another content is given.
-import type { Content, GameState, MetaState, SectorId, SectorState } from '../types';
+import type { Content, GameState, MetaState, SectorId, SectorState, SettledState } from '../types';
+import { computeFlows } from './flows';
 import { model } from './index';
 import { fixtureM4 } from './fixture';
 import { modsOf } from './effects';
@@ -27,3 +28,14 @@ export function openWith(c: Content, open: SectorId[], founded: string[] = [], m
 }
 export const D4 = (s: GameState, c: Content = C4) => model.derive(s, c);
 export const run4 = (s: GameState, secs: number, c: Content = C4, dt = 1) => { for (let t = 0; t < secs - 1e-9; t += dt) s = model.tick(s, c, dt); return s; };
+
+/** A settlement snapshot of the sector now (what settle() records), without settle()'s Steady State checks. */
+export function forceSettle(s: GameState, c: Content, id: SectorId): GameState {
+  const fl = computeFlows(s, c);
+  const f = fl.sectors[id];
+  const es = s.sectors[id];
+  const appD: Record<string, number> = {}, appAdoption: Record<string, number> = {};
+  c.sectors[id].applications.forEach((a, i) => { if (es.apps[a.id]?.founded) { appD[a.id] = f.appD[i]; appAdoption[a.id] = f.appSat[i] > 0 ? f.appD[i] / f.appSat[i] : 0; } });
+  const st: SettledState = { since: s.time, sinceYear: 1800, D: f.D, R: f.R, ps: f.ps, pPre: f.pPre, income: f.income, P: es.pressure, eta: f.eta, defect: 1, N0: s.population, spillMul0: fl.inputs[id].spillMul, extraD0: fl.inputs[id].extraD, appD, appAdoption };
+  return patch(s, id, { settled: st, settledBefore: true });
+}

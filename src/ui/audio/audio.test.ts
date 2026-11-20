@@ -11,10 +11,12 @@ import { WORKER_SRC } from './worker-src';
 import { rngFrom, BUF_SR, peak, svf } from './synth';
 import { KEYS, semis, MODES } from './music';
 import { demoView, viewOf, preset, runView, PRESET_NAMES } from './views';
-import { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES } from './types';
+import { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES, WORLD_EVENT_KINDS } from './types';
+import { lifeFrom } from './mix';
+import { stockOf } from './views';
 import type { SceneView } from '../scene/types';
 
-const SECTORS = ['steam', 'light', 'motion', 'compute', 'code'];
+const SECTORS = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
 const mix = (v: SceneView, calm = false) => mixFrom(v, soundscapeFor(v.sectorId), { calm });
 
 function deepFreeze<T>(o: T): T {
@@ -42,7 +44,8 @@ describe('definitions', () => {
   });
   test('neighbouring Ages differ by at most one note (tab switches modulate, not jolt)', () => {
     const set = (k: (typeof KEYS)[string]) => new Set(Array.from({ length: 7 }, (_, d) => Math.round(12 * Math.log2(k.root / 8.1758) + semis(k, d)) % 12));
-    const order = ['steam', 'light', 'motion', 'compute', 'code'];
+    // M4: the Coal Age is Steam, Light, Iron and Fishing (all on the white notes), then Motion one sharp further.
+    const order = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
     for (let i = 1; i < order.length; i++) {
       const a = set(KEYS[order[i - 1]]), b = set(KEYS[order[i]]);
       const diff = [...b].filter((x) => !a.has(x)).length;
@@ -50,15 +53,16 @@ describe('definitions', () => {
     }
   });
   test('unknown Industry falls back to the generic bed; palettes follow the look', () => {
-    expect(soundscapeFor('iron').id).toBe('generic');
-    expect(paletteFor('iron', 'gaslight')).toBe('gaslight');
+    expect(soundscapeFor('nowhere').id).toBe('generic');
+    expect(paletteFor('nowhere', 'gaslight')).toBe('gaslight');
     expect(paletteFor('code')).toBe('neon');
     expect(paletteFor(undefined, 'nonsense')).toBe('ledger');
   });
   test('every interface event kind has a recipe in every palette', () => {
     const own = SOUND_EVENT_KINDS.filter((k) => !(k in SOUND_EVENT_ALIASES));
-    for (const k of own) for (const p of PALETTES) expect(hasRecipe(`ui:${p}:${k}`)).toBe(true);
-    expect([...UI_KINDS].sort()).toEqual([...own].sort());
+    const played = own.filter((k) => !WORLD_EVENT_KINDS.includes(k));   // M4: the world's own kinds have no recipe
+    for (const k of played) for (const p of PALETTES) expect(hasRecipe(`ui:${p}:${k}`)).toBe(true);
+    expect([...UI_KINDS].sort()).toEqual([...played].sort());
     for (const [a, k] of Object.entries(SOUND_EVENT_ALIASES)) { expect(SOUND_EVENT_KINDS).toContain(a as never); expect(own).toContain(k); }
   });
 });
@@ -169,7 +173,7 @@ describe('mixFrom (pure)', () => {
       const ma = mix(demoView(s, 'early')), mb = mix(demoView(s, 'late'));
       expect(mb.air).toBeLessThan(ma.air);
       // The made world gets busier (birds, rain and the warm rooms are the quiet, and go the other way).
-      const quiet = /^(birds|evening|drips|night|room\d)$/;
+      const quiet = /^(birds|evening|drips|night|room\d|gulls|porpoise|shoals|nightjar)$/;
       const busy = (m: typeof ma) => Object.entries(m.layers).reduce((t, [id, l]) => t + (quiet.test(id) ? 0 : l.density), 0);
       expect(busy(mb)).toBeGreaterThan(busy(ma));
       expect(mb.layers[Object.keys(mb.layers).find((k) => quiet.test(k))!].level).toBeLessThanOrEqual(ma.layers[Object.keys(ma.layers).find((k) => quiet.test(k))!].level);
@@ -388,5 +392,136 @@ describe('M3: synthesis jobs and the worker', () => {
     // @ts-ignore tools are outside the project tsconfig
     const { workerSource } = await import('../../../tools/audio-worker.ts');
     expect(WORKER_SRC).toBe(await workerSource());
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M4                                                                  */
+/* ------------------------------------------------------------------ */
+
+const fish = (stock: Parameters<typeof stockOf>[0], p: Parameters<typeof preset>[1] = 'late', extra: Partial<SceneView> = {}) =>
+  ({ ...demoView('fishing', p), ...extra, stock: stockOf(stock) }) as unknown as SceneView;
+
+describe('M4: nothing of Iron or Fishing is heard elsewhere', () => {
+  test('a stock or a feed on another Industry changes none of its layers', () => {
+    for (const s of ['steam', 'light', 'motion', 'compute', 'code']) {
+      const a = mix(demoView(s, 'late'));
+      const b = mix({ ...demoView(s, 'late'), stock: stockOf({ truth: 0.1, crossed: true, scar: true, moratorium: true }), feeds: [{ to: 'steam', factor: 0.8 }] } as unknown as SceneView);
+      expect(b.layers).toEqual(a.layers);
+      expect(b.traces).toEqual(a.traces);
+    }
+  });
+});
+
+describe('M4: Iron', () => {
+  test('the empty works: night air, no hammer; anything founded brings the hammer and the furnace', () => {
+    const e = mix(demoView('iron', 'empty')), m = mix(demoView('iron', 'mid'));
+    expect(e.layers.hammer.level).toBe(0); expect(e.layers.furnace.level).toBe(0);
+    expect(e.layers.night.level).toBeGreaterThan(0.8);
+    expect(m.layers.hammer.level).toBeGreaterThan(0.5); expect(m.layers.hammer.density).toBeGreaterThan(0.5);
+    expect(m.layers.furnace.level).toBeGreaterThan(0.4);
+  });
+  test('the converter only at stage 2, the open hearth only at 3; the nightjar only at Steady State', () => {
+    for (let st = 0; st <= 3; st++) {
+      const m = mix(viewOf('iron', { ...preset('iron', 'late'), stage: st }));
+      expect(m.layers.converter.level > 0).toBe(st === 2);
+      expect(m.layers.hearth.level > 0).toBe(st === 3);
+    }
+    expect(mix(demoView('iron', 'late')).layers.nightjar.level).toBe(0);
+    expect(mix(demoView('iron', 'steady')).layers.nightjar.level).toBeGreaterThan(0.6);
+  });
+  test('the products drive their own sounds (rails roll, girders are riveted)', () => {
+    const only = (k: number) => viewOf('iron', { ...preset('iron', 'late'), status: Array.from({ length: 6 }, (_, i) => (i === k ? 'founded' : 'hidden')) });
+    expect(mix(only(1)).layers.rolling.level).toBeGreaterThan(0.5);
+    expect(mix(only(1)).layers.rivets.level).toBe(0);
+    expect(mix(only(3)).layers.rivets.level).toBeGreaterThan(0.5);
+    expect(mix(only(3)).layers.rolling.level).toBe(0);
+  });
+  test('The Orange Night: the roar swells (its own swell) and the bell is in key', () => {
+    expect(soundscapeFor('iron').crisis.swell).toBe('roarSwell');
+    expect(hasRecipe('roarSwell')).toBe(true);
+  });
+  test('heritage: Iron\'s hammer is heard faintly under an Industry it feeds, whatever the tab order', () => {
+    const v = { ...demoView('steam', 'mid'), fedBy: [{ from: 'iron', app: 'iron.rails', share: 0.3 }] } as unknown as SceneView;
+    const m = mix(v);
+    expect(m.traces.iron).toBeGreaterThan(0.5);
+    expect(m.traces.iron).toBeLessThanOrEqual(1);
+    expect(soundscapeFor('iron').trace).toEqual(['hammer']);
+    expect(mix(demoView('steam', 'mid')).traces.iron).toBeUndefined();
+    // and never itself
+    expect(mix({ ...demoView('iron', 'mid'), fedBy: [{ from: 'iron', app: 'x', share: 1 }] } as unknown as SceneView).traces.iron).toBeUndefined();
+  });
+  test("heritage: Fishing's bell buoy faint at Light's harbour edge", () => {
+    const m = mix(demoView('light', 'mid'));
+    expect(m.layers.buoy.level).toBeGreaterThan(0.3);
+    expect(soundscapeFor('light').layers.find((l) => l.id === 'buoy')!.gain).toBeLessThan(0.05);
+  });
+});
+
+describe('M4: Fishing — the sea life follows the TRUE stock', () => {
+  test('the gulls read truth, never the catch per trip', () => {
+    const a = mix(fish({ truth: 0.8, reported: 0.7 })), b = mix(fish({ truth: 0.2, reported: 0.7 })), c = mix(fish({ truth: 0.8, reported: 0.2 }));
+    expect(a.layers.gulls.level).toBeGreaterThan(b.layers.gulls.level * 4);
+    expect(c.layers).toEqual(a.layers);                       // the reported figure changes nothing at all
+    expect(b.layers.gulls.level).toBeLessThan(0.15);           // near the threshold the gulls have all but gone…
+    expect(b.layers.trawlers.level).toEqual(a.layers.trawlers.level); // …while the fleet sounds exactly as before
+    expect(b.layers.winch.level).toEqual(a.layers.winch.level);
+  });
+  test('monotone in truth; porpoises and shoals go first', () => {
+    let prev = -1;
+    for (let t = 0; t <= 1.0001; t += 0.05) { const g = mix(fish({ truth: t })).layers.gulls.level; expect(g).toBeGreaterThanOrEqual(prev); prev = g; }
+    const half = mix(fish({ truth: 0.45 }));
+    expect(half.layers.shoals.level).toBeLessThan(half.layers.porpoise.level);
+    expect(half.layers.porpoise.level).toBeLessThan(half.layers.gulls.level);
+    expect(lifeFrom(0.2, false)).toBeLessThan(0.1);
+    expect(lifeFrom(1, false)).toBe(1);
+  });
+  test('hysteresis: while the scar holds the sea life stays thin at the same stock; the fleet is unchanged', () => {
+    const healed = mix(fish({ truth: 0.6 })), scarred = mix(fish({ truth: 0.6, scar: true, crossed: false }));
+    expect(scarred.layers.gulls.level).toBeLessThan(healed.layers.gulls.level * 0.4);
+    expect(scarred.layers.trawlers.level).toEqual(healed.layers.trawlers.level);
+  });
+  test('the fleet ties up at a moratorium (halyards and gulls only), or when the banks have failed and the boats stop', () => {
+    const work = mix(fish({ truth: 0.6 })), mor = mix(fish({ truth: 0.6, moratorium: true, foreign: 0.4 }));
+    for (const id of ['trawlers', 'winch', 'market', 'fishTrain', 'foreign']) expect(mor.layers[id].level).toBe(0);
+    expect(mor.layers.halyards.level).toBeGreaterThan(0.9);
+    expect(work.layers.halyards.level).toBe(0);
+    expect(mor.layers.gulls.level).toEqual(work.layers.gulls.level);
+    const failedStopped = mix(fish({ truth: 0.1, crossed: true, scar: true }, 'late', { pace: 0.02 }));
+    const failedStillGoing = mix(fish({ truth: 0.1, crossed: true, scar: true }, 'late', { pace: 0.6 }));
+    expect(failedStopped.layers.trawlers.level).toBe(0); expect(failedStopped.layers.halyards.level).toBeGreaterThan(0.9);
+    expect(failedStillGoing.layers.trawlers.level).toBeGreaterThan(0.5);
+  });
+  test('foreign boats follow the foreign share', () => {
+    expect(mix(fish({ truth: 0.6, foreign: 0 })).layers.foreign.level).toBe(0);
+    expect(mix(fish({ truth: 0.6, foreign: 0.5 })).layers.foreign.level).toBeGreaterThan(0.6);
+  });
+  test('without a stock field the sea life follows reserveFraction (the true stock for a renewable)', () => {
+    const v = { ...demoView('fishing', 'late') } as unknown as Record<string, unknown>;
+    delete v.stock;
+    const m = mix({ ...v, reserveFraction: 0.9 } as unknown as SceneView), n = mix({ ...v, reserveFraction: 0.15 } as unknown as SceneView);
+    expect(m.layers.gulls.level).toBeGreaterThan(n.layers.gulls.level * 4);
+    expect(m.layers.halyards.level).toBe(0);
+  });
+  test('sea-life layers are marked (the engine brings them back slowly and plays the world\'s moments on them)', () => {
+    const life = soundscapeFor('fishing').layers.filter((l) => l.life).map((l) => l.id).sort();
+    expect(life).toEqual(['gulls', 'porpoise', 'shoals']);
+  });
+});
+
+describe('M4: interface', () => {
+  test('wager: won and lost differ (a fifth apart); the Act ending is longer than the first ending; arrears is muffled', () => {
+    const r = (name: string, v = 0) => render(name, { rng: rngFrom(5), key: KEYS.steam, v });
+    expect(r('ui:ledger:wager', 0)).not.toEqual(r('ui:ledger:wager', 1));
+    expect(r('ui:ledger:actEnding').length).toBeGreaterThan(r('ui:ledger:ending').length * 1.2);
+    const x = r('ui:ledger:arrears');
+    const hi = svf(Float32Array.from(x), 'hp', 1500, 0.707);
+    let eh = 0, et = 0; for (let i = 0; i < x.length; i++) { eh += hi[i] * hi[i]; et += x[i] * x[i]; }
+    expect(eh / et).toBeLessThan(0.05);
+  });
+  test('the contract names map: surveyed → surveyReveal; the world kinds are not interface sounds', () => {
+    expect(SOUND_EVENT_ALIASES.surveyed).toBe('surveyReveal');
+    expect([...WORLD_EVENT_KINDS].sort()).toEqual(['surveyReveal', 'thresholdCrossed']);
+    for (const k of WORLD_EVENT_KINDS) expect(hasRecipe(`ui:ledger:${k}`)).toBe(false);
   });
 });

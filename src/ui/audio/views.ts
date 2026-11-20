@@ -11,13 +11,25 @@ export const DEMO_INDUSTRIES: Ind[] = [
   { id: 'motion', name: 'Motion', look: 'chrome', apps: [['van', 'Delivery vans'], ['car', 'Commuting'], ['mall', 'Out-of-town shopping'], ['suburb', 'Suburbs'], ['plane', 'Package holidays']] },
   { id: 'compute', name: 'Compute', look: 'terminal', apps: [['sheet', 'Spreadsheets'], ['globe', 'The web'], ['cloud', 'Cloud storage'], ['play', 'Streaming'], ['brain', 'Model training']] },
   { id: 'code', name: 'Code', look: 'agentic', flow: true, apps: [['wrench', 'Internal tools'], ['phone-app', 'Throwaway personal apps'], ['scroll', 'Legacy rewrites'], ['chatbot', 'Chatbots on everything'], ['robots', 'Agents writing for agents']] },
-  { id: 'iron', name: 'Iron (no soundscape)', look: 'ledger', apps: [['furnace', 'Blast furnaces'], ['rolling-mill', 'Rolling mills'], ['bridge', 'Iron bridges']] },
+  // M4 (icons as in src/content/sectors/iron.ts and fishing.ts)
+  { id: 'iron', name: 'Iron & Steel', look: 'ledger', apps: [['wire', 'Fencing wire'], ['rails', 'Rails'], ['plate', 'Ship plate'], ['girder', 'Bridges & girders'], ['cans', 'Tinplate & cans'], ['lathe', 'Machine tools']] },
+  { id: 'fishing', name: 'Fishing', look: 'ledger', apps: [['fishTrain', 'Fresh fish by rail'], ['fryer', 'Fried fish shops'], ['smokehouse', 'Salt and smoked trade'], ['sack', 'Fish meal for the fields'], ['bottle', 'Cod liver oil'], ['carton', 'Fish fingers']] },
 ];
+
+/** M4: Fishing's stock as the scene lane's SceneView.stock (briefs/m4-scene.md). `truth` is Q/K; `reported` is catch
+ *  per trip, (Q/K)^0.3 (hyperstability), unless given. */
+export interface DemoStock { truth: number; reported?: number; surveyed?: boolean; foreign?: number; scar?: boolean; crossed?: boolean; moratorium?: boolean }
+export const stockOf = (s: DemoStock) => ({ reported: s.reported ?? Math.pow(Math.max(0, s.truth), 0.3), truth: s.truth, surveyed: !!s.surveyed, foreign: s.foreign ?? 0,
+  scar: !!s.scar, crossed: !!s.crossed, moratorium: !!s.moratorium });
 
 export interface DemoParams {
   status: SceneApp['status'][]; adoption: number[]; stage: number; pressure: number; reserve: number; pop: number; pace: number;
   levers: string[]; crises: number; reckoning: '' | 'exhausted' | 'collapse' | 'chosen'; decoupling: boolean; steadyProgress: number; steady: boolean;
   heritage?: Record<string, number>;
+  /** M4 (Fishing): the stock; absent = derived from `reserve` (the true stock) with nothing crossed. */
+  stock?: DemoStock;
+  /** M4: who feeds this Industry (SceneView.fedBy). */
+  fedBy?: { from: string; app: string; share: number }[];
 }
 
 export const PRESET_NAMES = ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady'] as const;
@@ -56,7 +68,10 @@ export function viewOf(sector: string, p: DemoParams): SceneView {
     levers: p.levers.map((kind) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name: kind })),
     decoupling: p.decoupling, steadyProgress: p.steadyProgress, steady: p.steady,
     reckoning: p.reckoning ? { cause: p.reckoning, here: true } : null, year: null, heritage: p.heritage,
-  };
+    // M4 fields (not yet on SceneView: the scene lane adds them; read through mix.ts M4View)
+    ...(ind.id === 'fishing' ? { stock: stockOf(p.stock ?? { truth: p.reserve, foreign: 0.1 + 0.4 * p.pace }) } : {}),
+    ...(p.fedBy ? { fedBy: p.fedBy } : {}),
+  } as SceneView;
 }
 
 export const demoView = (sector: string, name: PresetName) => viewOf(sector, preset(sector, name));

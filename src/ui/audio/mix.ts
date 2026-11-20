@@ -26,6 +26,44 @@ export interface Sources {
   /** Compute's "free at the point of use": 1 when shown; the founded uses' adoption-weighted share that is free and
    *  that is paid at the till (both scaled by how built the place is; 0 when absent). */
   freeOn: number; freeShare: number; paidShare: number;
+  /* --- M4: Fishing's stock (0 or neutral when SceneView.stock is absent; see M4View) --- */
+  /** 1 when the stock is shown. */
+  stockOn: number;
+  /** The sea life (gulls, porpoises, shoals), 0–1, from the TRUE stock (`stock.truth`, never `reported`), thinned while
+   *  the scar holds. Without `stock` it follows reserveFraction (which the contract keeps true for a renewable). */
+  life: number;
+  /** The fleet is tied up, 0–1: a moratorium, or the banks failed and the boats stopped (crossed with the pace gone). */
+  tied: number;
+  /** The fleet at work, 0–1: how built the port is, times (1 − tied). Never reads the stock: it sounds normal until it
+   *  ties up. */
+  fleet: number;
+  /** 1 under a moratorium. */
+  moratorium: number;
+  /** The foreign share of the catch, 0–1 (their sails, their engines), silent under a moratorium. */
+  foreign: number;
+}
+
+/**
+ * M4 SceneView fields, as the scene lane's brief defines them (briefs/m4-scene.md). Read through this optional type so
+ * the soundscape compiles and stays silent-safe before (and whether or not) the scene lane adds them to SceneView.
+ */
+export interface M4View {
+  /** Fishing. The world (and so the sound) reads `truth`; the chart reads `reported` until `surveyed`. */
+  stock?: { reported?: number; truth?: number; surveyed?: boolean; foreign?: number; scar?: boolean; crossed?: boolean; moratorium?: boolean } | null;
+  /** Iron: the Industries it feeds. */
+  feeds?: { to: string; factor: number }[] | null;
+  /** A fed Industry: who feeds it, through which application, and how much. Iron's hammer is heard faintly under it. */
+  fedBy?: { from: string; app: string; share: number }[] | null;
+  capstoned?: { year: number; arrears: boolean } | null;
+  preview?: boolean;
+}
+const m4 = (v: SceneView): M4View => (v ?? {}) as unknown as M4View;
+
+/** The sea life from the true stock: silent near the threshold, full from about 70% of the natural size. */
+export function lifeFrom(truth: number, scar: boolean): number {
+  const t = clamp(fin(truth, 1), 0, 1);
+  const x = clamp((t - 0.12) / 0.58, 0, 1);
+  return Math.pow(x, 1.3) * (scar ? 0.35 : 1);
 }
 
 /** How much of the night it is at hour h (0–24): 1 from midnight to 4.30, dawn to 6.30, 0 by day, dusk from 19 to 22. */
@@ -92,6 +130,13 @@ export function sourcesFrom(view: SceneView, hour?: number | null): Sources {
     }
   }
   const fTot = freeW + paidW;
+  // M4: the stock. The sea life reads the truth; the fleet reads the port, and stops only when it ties up.
+  const st = m4(view).stock;
+  const stockOn = st && typeof st === 'object' ? 1 : 0;
+  const truth = stockOn ? fin(st!.truth, fin(view?.reserveFraction, 1)) : fin(view?.reserveFraction, 1);
+  const moratorium = stockOn && st!.moratorium ? 1 : 0;
+  const pace0 = clamp(fin(view?.pace), 0, 1);
+  const tied = Math.max(moratorium, stockOn && st!.crossed ? 1 - smooth(0.06, 0.25, pace0) : 0);
   return {
     pace: clamp(fin(view?.pace), 0, 1), pressure, haze, reserve: clamp(fin(view?.reserveFraction, 1), 0, 1),
     pop: clamp(fin(view?.popFraction), 0, 1), stage: clamp(Math.round(fin(view?.stage)), 0, 3) / 3,
@@ -101,6 +146,8 @@ export function sourcesFrom(view: SceneView, hour?: number | null): Sources {
     loadOn: hours ? 1 : 0, hourLoad: hours ? loadAt(hours, h) : 1, night: hours ? nightness(h) : 0, day: hours ? 1 - nightness(h) : 0,
     travelOn, congestion: travelOn ? clamp(1 - fin(tv!.speed, 1), 0, 1) : 0, sprawl: travelOn ? clamp(fin(tv!.sprawl), 0, 1) : 0,
     freeOn, freeShare: fTot ? (freeW / fTot) * Math.min(1, built * 1.4) : 0, paidShare: fTot ? (paidW / fTot) * Math.min(1, built * 1.4) : 0,
+    stockOn, life: lifeFrom(truth, !!(stockOn && st!.scar)), tied, fleet: clamp(built * 1.4 + 0.15 * pace0, 0, 1) * (1 - tied), moratorium,
+    foreign: stockOn ? clamp(fin(st!.foreign), 0, 1) * (1 - moratorium) : 0,
   };
 }
 
@@ -156,6 +203,14 @@ export function mixFrom(view: SceneView, def: SoundscapeDef, opt: MixOptions = {
   const traces: Record<string, number> = {};
   const h = view?.heritage;
   if (h && typeof h === 'object') for (const [k, v] of Object.entries(h)) if (k !== view.sectorId && fin(v) > 0) traces[k] = clamp(fin(v), 0, 1) * (1 - 0.5 * s.clear);
+  // M4: an Industry fed by another hears it faintly (Iron's hammer under Steam's rails and Light's girders), whatever
+  // the order of the tabs (heritage lists only earlier Industries).
+  const fb = m4(view).fedBy;
+  if (Array.isArray(fb)) for (const f of fb) {
+    if (!f || typeof f.from !== 'string' || f.from === view.sectorId) continue;
+    const lv = clamp(0.45 + 0.8 * clamp(fin(f.share), 0, 1), 0, 1) * (1 - 0.5 * s.clear);
+    traces[f.from] = Math.max(traces[f.from] ?? 0, lv);
+  }
 
   const levers: Record<string, number> = {};
   for (const k of Object.keys(s.levers)) levers[k] = 1;

@@ -14,12 +14,13 @@ const perf = args.includes('--perf');
 const sw = args.includes('--switch');
 const m2 = args.includes('--m2'); // the M2 strip: clearing, steady, settled, Commons + landmark
 const m3 = args.includes('--m3'); // the M3 strip (#strip=<id>&m3); with --perf/--switch: the busiest state with every M3 feature on
-const sfx = m2 ? '-m2' : m3 ? '-m3' : '';
-const busy = m3 ? 'crisisM3' : 'crisis';
-const hash = m2 ? '&m2' : m3 ? '&m3' : '';
+const m4 = args.includes('--m4'); // M4: the strip with Iron and Fishing open (#strip=<id>&m4); with --perf/--switch/--trace: crisisM4
+const sfx = m2 ? '-m2' : m3 ? '-m3' : m4 ? '-m4' : '';
+const busy = m4 ? 'crisisM4' : m3 ? 'crisisM3' : 'crisis';
+const hash = m2 ? '&m2' : m3 ? '&m3' : m4 ? '&m4' : '';
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7);
 const inds = args.filter((a) => !a.startsWith('--'));
-const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron'];
+const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron', 'fishing'];
 const list = inds.length ? inds : ALL;
 const file = resolve('dist/scene-demo.html');
 if (!existsSync(file)) { console.error('Build first: bun run tools/scene-demo.ts'); process.exit(1); }
@@ -44,7 +45,7 @@ if (args.includes('--trace')) {
   await p.goto(url);
   await p.waitForFunction(() => !!window.__scene);
   const rows = [];
-  for (const ind of list.filter((x) => x !== 'iron')) {
+  for (const ind of list) {
     await p.evaluate(([i, b]) => window.__scene.preset(b, i), [ind, busy]);
     await p.waitForTimeout(9000); // past the crisis fog
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
@@ -76,7 +77,7 @@ if (args.includes('--trace')) {
   await p.waitForFunction(() => !!window.__scene);
   await p.evaluate((b) => { window.__busy = b; }, busy);
   await cdp.send('Performance.enable');
-  const ids = list.filter((x) => x !== 'iron');
+  const ids = list;
   const rows = [];
   const metric = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
   for (let pass = 0; pass < 2; pass++) {
@@ -116,7 +117,7 @@ if (args.includes('--trace')) {
     console.log('strip', ind);
   }
   // Live single frames (animated, mid-motion) of the late stage, phone and desktop, scene only.
-  for (const ind of m2 || m3 ? [] : list) {
+  for (const ind of m2 || m3 || m4 ? [] : list) {
     for (const [w, tag] of [[390, 'phone'], [1280, 'desk']]) {
       if (only && only !== tag) continue;
       const p = await page(w, 900);
@@ -137,7 +138,7 @@ if (args.includes('--trace')) {
   await p.goto(url);
   await p.waitForFunction(() => !!window.__scene);
   const results = [];
-  for (const ind of list.filter((x) => x !== 'iron')) {
+  for (const ind of list) {
     await p.evaluate(([i, b]) => window.__scene.preset(b, i), [ind, busy]);
     await p.waitForTimeout(800);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });

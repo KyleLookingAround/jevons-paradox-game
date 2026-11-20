@@ -188,7 +188,65 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
     landmark,
     events: sceneEvents(events, sectorId),
     ...m3.fields,
+    ...m4Fields(content, state, derived, sectorId),
   };
+}
+
+/**
+ * M4: the optional fields of one Industry's view (feeds, fedBy, stock, capstoned, preview). Each is left out while the
+ * core reports nothing for it (a core before M4, an Industry without the mechanic), so an M3 host draws the M3 picture.
+ */
+function m4Fields(content: Content, state: GameState, derived: Derived | null | undefined, sectorId: string): Partial<SceneView> {
+  const out: Partial<SceneView> = {};
+  type SD4 = Partial<{ feeds: { to?: string; factor?: number }[] | null; preview: boolean; capstoned: boolean; arrears: boolean;
+    stock: { reported?: number; true?: number | null; surveyed?: boolean; foreign?: { share?: number } | null; scar?: unknown; crossed?: boolean; world?: number } | null;
+    apps: Record<string, { founded?: boolean; adoption?: number; feeds?: Record<string, number> | null }> }>;
+  const sd = derived?.sectors?.[sectorId] as SD4 | undefined;
+  // The order book (on Iron).
+  if (Array.isArray(sd?.feeds) && sd.feeds.length) {
+    out.feeds = sd.feeds.filter((x) => x && typeof x.to === 'string').map((x) => ({ to: String(x.to), factor: Math.round(clamp(n(x.factor, 1), 0, 1) * 100) / 100 }));
+  }
+  // What feeds this Industry: founded applications of other Industries whose feeds name it (or '*'). The core's
+  // AppDerived.feeds is authoritative when present; the content's ApplicationDef.feeds otherwise.
+  const fed: NonNullable<SceneView['fedBy']> = [];
+  for (const [sid, sdef] of Object.entries(content?.sectors ?? {})) {
+    if (sid === sectorId || !sdef || !Array.isArray(sdef.applications)) continue;
+    for (const a of sdef.applications) {
+      const fd = (a as { feeds?: { sector?: string }[] }).feeds;
+      if (!Array.isArray(fd) || !fd.length) continue;
+      const ad = (derived?.sectors?.[sid] as SD4 | undefined)?.apps?.[a.id];
+      const as = state?.sectors?.[sid]?.apps?.[a.id];
+      if (!(ad?.founded ?? as?.founded)) continue;
+      const feedsHere = ad?.feeds && typeof ad.feeds === 'object' ? sectorId in ad.feeds : fd.some((x) => x && (x.sector === sectorId || x.sector === '*'));
+      const here = state?.sectors?.[sectorId];
+      if (!feedsHere || (here && here.open === false)) continue;
+      fed.push({ from: sid, app: String(a.id), share: Math.round(clamp(n(ad?.adoption), 0, 1) * 100) / 100 });
+    }
+  }
+  if (fed.length) out.fedBy = fed;
+  // The stock (Fishing). The chart reads `reported` until surveyed; the world always reads the true stock.
+  const st = sd?.stock;
+  if (st && typeof st === 'object') {
+    let moratorium = false;
+    for (const l of Array.isArray(content?.levers) ? content.levers : []) {
+      if (!l || (l as { sector?: string }).sector !== sectorId || String(l.kind) !== 'quota') continue;
+      const lv = Math.floor(n(state?.levers?.[l.id]?.level));
+      const ld = Array.isArray(l.levels) ? l.levels[lv - 1] : undefined;
+      if (lv >= 1 && ld && n((ld as { value?: number }).value, 1) === 0) moratorium = true;
+    }
+    const r2 = (x: number) => Math.round(clamp(x, 0, 1) * 100) / 100;
+    out.stock = {
+      reported: r2(n(st.reported, 1)), truth: r2(n(st.world, n(st.true, n(st.reported, 1)))), surveyed: !!st.surveyed,
+      foreign: r2(n(st.foreign?.share)), scar: !!st.scar, crossed: !!st.crossed, moratorium,
+    };
+  }
+  // The capstone (the Act's ending) and the Preview mark.
+  if (sd?.capstoned) {
+    const rec = (state as { meta?: { world?: { capstone?: Record<string, { year?: number }> } } } | undefined)?.meta?.world?.capstone?.[sectorId];
+    out.capstoned = { year: Number.isFinite(rec?.year) ? Math.floor(rec!.year!) : null, arrears: !!sd.arrears };
+  }
+  if (sd?.preview) out.preview = true;
+  return out;
 }
 
 /** Is a feature on? Derived.features is the gate the UI reads too; a host without it (old saves, tests) reads "on". */
@@ -205,7 +263,9 @@ function m3Fields(content: Content, state: GameState, derived: Derived | null | 
   const out: Partial<SceneView> = {};
   const sd = derived?.sectors?.[sectorId] as (Partial<{ seams: unknown; load: unknown; travel: unknown; free: unknown; servicePrice: number; apps: Record<string, { founded?: boolean; adoption?: number; demand?: number; priceSeen?: number }> }> | undefined);
   // Seams (Steam).
-  const sv = sd?.seams as { sunk?: number; total?: number; ladder?: { sunk?: boolean; reachable?: boolean; forbidden?: boolean }[] } | null | undefined;
+  // M4: a drawer on another Industry's reserve (Iron on Steam's coal) shows the owner's seam section, hollowed by both.
+  const owner = (content?.sectors?.[sectorId] as { resourceStock?: string } | undefined)?.resourceStock;
+  const sv = (sd?.seams ?? (owner ? (derived?.sectors?.[owner] as { seams?: unknown } | undefined)?.seams : null)) as { sunk?: number; total?: number; ladder?: { sunk?: boolean; reachable?: boolean; forbidden?: boolean }[] } | null | undefined;
   if (sv && typeof sv === 'object' && featureOn(derived, 'seams')) {
     const ladder = Array.isArray(sv.ladder) ? sv.ladder : [];
     const total = Math.max(0, Math.floor(n(sv.total, ladder.length)));

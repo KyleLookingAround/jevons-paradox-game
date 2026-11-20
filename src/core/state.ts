@@ -136,7 +136,7 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
   for (const s of ix.ids) sectors[s] = freshSector(content.sectors[s], mods, s === first, m);
   const levers: Record<string, LeverState> = {};
   for (const l of content.levers ?? []) levers[l.id] = { level: Math.min(mods.startLevers[l.id] ?? 0, leverMaxLevel(l)), ref: 0 };
-  inheritWorld(content, m, sectors, levers); // M4: the one carry-over step (capstones; scars via freshSector)
+  inheritWorld(content, m, sectors, levers, (def) => freshSector(def, mods, true, m)); // M4: the one carry-over step (capstones; scars via freshSector)
   const g = content.global;
   let s: GameState = {
     version: SAVE_VERSION, seed: (seed ?? 1) >>> 0, time: 0,

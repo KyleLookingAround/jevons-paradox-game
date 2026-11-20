@@ -115,6 +115,11 @@ function catchUp(state: GameState, content: Content, requested: number, capped: 
           const cs = ix.ids.find((id) => (t.sectors[id]?.crisesFired ?? 0) > (s.sectors[id]?.crisesFired ?? 0));
           if (cs !== undefined) { held = { by: 'crisis', sector: cs }; undo(); break; }
         }
+        // M4: nor a capstone going into arrears (under 'crisis' and 'collapse' alike)
+        if (ix.anyM4) {
+          const ar = ix.ids.find((id) => !!t.sectors[id]?.arrears && !s.sectors[id]?.arrears);
+          if (ar !== undefined) { held = { by: 'arrears', sector: ar }; undo(); break; }
+        }
       }
       // what this step did (its events are the newest in t.events)
       const seq0 = s.meta.eventSeq ?? 0;

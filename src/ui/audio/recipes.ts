@@ -144,7 +144,8 @@ function chord(rng: Rng, key: Key, degs: number[], dur: number, oct = 1, att = 0
 }
 
 export const UI_KINDS = ['sell', 'buy', 'cannotAfford', 'found', 'lever', 'fork', 'headline', 'reveal', 'backfire', 'crisis', 'decade', 'steady', 'reckoning', 'industryOpened', 'ageBegun',
-  'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues', 'arrived', 'history'] as const;
+  'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues', 'arrived', 'history',
+  'wager', 'actEnding', 'arrears'] as const;
 
 /* ------------------------------------------------------------------ */
 /* M3: the post, the pen, the watch                                    */
@@ -247,6 +248,17 @@ function watchTick(rng: Rng, v: number): Float32Array {
   const f = v % 2 ? 1900 : 2350;
   const x = modal(sec(0.05), f, [[1, 1, 0.014], [1.62, 0.45, 0.009], [2.4, 0.15, 0.005]], SR, rng);
   return add(x, noiseBurst(rng, 'bp', 2600, 1.4, 0.0004, 0.004), 0, 0.25);
+}
+
+/** M4: a coin put down on a wooden counter: a short spin (rising rattle), two small bounces, a settle. */
+function coin(rng: Rng): Float32Array {
+  const x = buf(0.5);
+  const ring = (f: number, d: number) => modal(sec(d + 0.02), f, [[1, 1, d], [1.52, 0.5, d * 0.7], [2.18, 0.25, d * 0.4]], SR, rng);
+  add(x, knock(rng, 520, 0.05), 0, 0.35);                 // the wood
+  add(x, ring(2350 + 80 * rng(), 0.22), 0, 0.5);
+  let t = 0.09, g = 0.4;
+  for (let k = 0; k < 7; k++) { add(x, ring(2350 + 60 * rng(), 0.05), sec(t), g); t += 0.045 * Math.pow(0.82, k); g *= 0.8; }
+  return svf(x, 'lp', 4200, 0.7);
 }
 
 function ui(p: Palette, kind: string, c: RecipeCtx): Float32Array {
@@ -424,6 +436,30 @@ function ui(p: Palette, kind: string, c: RecipeCtx): Float32Array {
       add(x, penStroke(rng, 0.5), 0, 0.5);
       add(x, arp(p, rng, key, [0, 4, 7], 0.16, 0.7, 2, 1.4), sec(0.45), 0.5);
       return x;
+    }
+    /* --- M4 --- */
+    case 'wager': { // a coin on the counter (a spin, two bounces, settling), then one note: won on the fifth, lost a fifth below
+      const x = buf(1.6);
+      add(x, coin(rng), 0, 0.7);
+      const won = v % 2 === 0;
+      add(x, note(p, rng, freq(key, won ? 4 : 0, 2), won ? 0.8 : 0.9), sec(0.42), won ? 0.5 : 0.42);
+      return svf(x, 'lp', 4200, 0.7);
+    }
+    case 'actEnding': { // an Act's ending: the first ending's shape, slower and lower, the chord held longer
+      const x = buf(11.5);
+      add(x, bell(rng, freq(key, 0, 1), 8, 0.6), 0, 0.45);
+      add(x, bell(rng, freq(key, 4, 1), 6, 0.5), sec(2.4), 0.22);
+      add(x, chord(rng, key, [0, 4, 7], 10.8, 1, 3.6, 0.22), sec(0.4), 0.32);
+      add(x, arp(p, rng, key, [0, 2, 4, 7, 9, 11], 0.7, 1.4, 2, 2.4), sec(2.0), 0.3);
+      add(x, birdPhrase(rng, 1), sec(8.2), 0.16);
+      return svf(x, 'lp', 4000, 0.6);
+    }
+    case 'arrears': { // a muffled toll: a low bell struck twice, behind a wall
+      const x = buf(5.2);
+      add(x, bell(rng, freq(key, 0, 1), 3.4, 0.5), 0, 0.6);
+      add(x, bell(rng, freq(key, 0, 1), 3.0, 0.5), sec(1.9), 0.48);
+      add(x, thump(rng, 70, 0.6, 0.2), 0, 0.3);
+      return svf(x, 'lp', 900, 0.7);
     }
     case 'ageBegun': {
       const x = buf(4.2);
@@ -723,6 +759,150 @@ const W: Record<string, Recipe> = {
   guitar: ({ rng, key, v }) => { const x = buf(3.4); const degs = [[0, 4, 7], [5, 9, 12], [3, 7, 10], [4, 7, 11]][v % 4]; degs.forEach((d, i) => add(x, svf(pluck(sec(3), freq(key, d, 1), 2.6, 0.5, rng), 'lp', 2600, 0.6), sec(0.05 * i), 0.5)); return x; },
   kettle: ({ rng }) => { const n = sec(5.5); const x = svf(brown(n, rng), 'bp', (i) => 200 + 300 * (i / n), 1.2); envPts(x, [[0, 0], [4.8, 1], [5.0, 0.2], [5.5, 0]]); return add(x, knock(rng, 1300, 0.03), sec(5.0), 0.4); },
   pencil: ({ rng }) => { const n = sec(1.8); const x = svf(white(n, rng), 'bp', 2300, 2); for (let i = 0; i < n; i++) x[i] *= Math.max(0, Math.sin(i / (sec(0.17)) * Math.PI)) ** 2 * 0.5; return x; },
+
+  /* --- M4 Iron & Steel --- */
+  dropHammer: ({ rng, key, v }) => { // the blow: a deep thud, the anvil's ring in key, the scale flying
+    const x = buf(1.3);
+    add(x, thump(rng, 66 + 4 * v, 0.55, 0.7), 0, 0.85);
+    add(x, svf(knock(rng, 180 + 15 * v, 0.2), 'lp', 900, 0.7), sec(0.004), 0.5);
+    add(x, modal(sec(1.1), freq(key, 0, 3), [[1, 1, 0.9], [2.76, 0.35, 0.45], [5.4, 0.1, 0.2]], SR, rng), sec(0.006), 0.18);
+    add(x, noiseBurst(rng, 'bp', 1800, 0.9, 0.001, 0.05), 0, 0.25);
+    return svf(x, 'lp', 3600, 0.7);
+  },
+  furnaceTap: ({ rng }) => { // tapping the furnace: a rising hiss as the iron runs, a shower of sparks, then the runner
+    const d = 7, n = sec(d);
+    const x = new Float32Array(n);
+    const hiss = svf(white(n, rng), 'bp', (i) => 600 + 1700 * Math.min(1, i / sec(3.2)), 0.8);
+    envPts(hiss, [[0, 0], [3.0, 1], [5.0, 0.8], [d, 0]]);
+    add(x, hiss, 0, 0.45);
+    const roar = svf(brown(n, rng), 'bp', 240, 0.7);
+    envPts(roar, [[0, 0], [1.5, 0.6], [4, 1], [d, 0]]);
+    add(x, roar, 0, 0.6);
+    // The sparks: a granular shower, densest just after the hiss tops out, each grain a tiny metal ping.
+    for (let k = 0; k < 140; k++) {
+      const t = 2.0 + Math.pow(rng(), 1.6) * 4.2;
+      const g = gauss(t, 3.2, 1.0) * (0.25 + 0.5 * rng());
+      const f = 1900 + 2200 * rng();
+      add(x, modal(sec(0.03), f, [[1, 1, 0.012], [1.7, 0.4, 0.006]], SR, rng), sec(t), g * 0.5);
+    }
+    return svf(x, 'lp', 4600, 0.7);
+  },
+  rollingMill: ({ rng, key, v }) => { // a bar through the rolls: the rumble, a pitched squeal in key, the clank at each end
+    const d = 6, n = sec(d);
+    const x = svf(brown(n, rng), 'bp', 190, 0.7);
+    for (let i = 0; i < n; i++) x[i] *= 0.7 * gauss(i / SR, 3, 1.4);
+    const f0 = freq(key, [4, 2, 7][v % 3], 4);
+    const sq = osc(n, (i) => { const t = i / SR; return f0 * (0.97 + 0.04 * Math.min(1, t / 3) - 0.03 * Math.max(0, t - 4)) * (1 + 0.004 * Math.sin(2 * Math.PI * 5.5 * t)); }, 'tri', rng());
+    svf(sq, 'bp', f0, 2.5);
+    envPts(sq, [[0, 0], [1.2, 0], [1.9, 1], [4.3, 0.8], [5.2, 0], [d, 0]]);
+    add(x, sq, 0, 0.18);
+    add(x, svf(knock(rng, 260, 0.18, true), 'lp', 1800, 0.7), sec(1.1), 0.5);
+    add(x, svf(knock(rng, 240, 0.2, true), 'lp', 1800, 0.7), sec(5.0), 0.45);
+    return x;
+  },
+  rivets: ({ rng, v }) => { // a riveter's train of blows (ticking metal), one or two runs
+    const x = buf(2.6);
+    const runs = 1 + (v % 2);
+    let t = 0.02;
+    for (let r = 0; r < runs; r++) {
+      const n = 9 + Math.floor(rng() * 8), gap = 0.06 + 0.015 * rng(), f = 1500 + 350 * rng();
+      for (let k = 0; k < n; k++) add(x, knock(rng, f * (1 + 0.02 * (rng() - 0.5)), 0.025, true), sec(t + k * gap), 0.5 * (0.7 + 0.3 * rng()) * (k === n - 1 ? 1.3 : 1));
+      t += n * gap + 0.45 + 0.3 * rng();
+    }
+    return svf(x, 'lp', 3600, 0.7);
+  },
+  canClatter: ({ rng }) => { // tin cans down a chute: light metal knocks tumbling, slowing
+    const x = buf(1.4);
+    let t = 0.01;
+    for (let k = 0; k < 10; k++) { add(x, modal(sec(0.12), 1100 + 900 * rng(), [[1, 1, 0.08], [2.3, 0.5, 0.05], [3.9, 0.2, 0.03]], SR, rng), sec(t), 0.5 * (0.6 + 0.4 * rng())); t += 0.05 + 0.06 * rng() + 0.012 * k; }
+    return svf(x, 'lp', 3800, 0.7);
+  },
+  nightjar: ({ rng, v }) => { // the nightjar's churr: a long dry trill on two pitches, rising and falling
+    const d = 3.2 + 0.8 * (v % 2), n = sec(d);
+    const f = (i: number) => { const t = i / SR; return (t % 1.6 < 1.0 ? 1350 : 1150) * (1 + 0.01 * Math.sin(t * 3)); };
+    const x = osc(n, f, 'sine', rng());
+    for (let i = 0; i < n; i++) x[i] *= Math.pow(Math.max(0, Math.sin((2 * Math.PI * 28 * i) / SR)), 2);
+    envPts(x, [[0, 0], [0.3, 1], [d - 0.4, 0.9], [d, 0]]);
+    return svf(x, 'lp', 2800, 0.7);
+  },
+  ironAlarm: ({ rng, key }) => { // the works bell rung fast, in key: The Orange Night
+    const x = buf(4);
+    for (let i = 0; i < 10; i++) add(x, bell(rng, freq(key, 0, 3), 0.7, 1.0), sec(0.26 * i + 0.01 * rng()), 0.42 * (i < 8 ? 1 : 0.7));
+    return svf(x, 'lp', 3800, 0.7);
+  },
+  roarSwell: ({ rng }) => { // the furnaces' roar rising over the town
+    const n = sec(8);
+    const x = svf(brown(n, rng), 'bp', (i) => 160 + 160 * Math.min(1, i / sec(3)), 0.7);
+    add(x, svf(pink(n, rng), 'bp', 600, 0.8), 0, 0.12);
+    return envPts(x, [[0, 0], [2.6, 1], [5, 0.85], [8, 0]]);
+  },
+
+  /* --- M4 Fishing --- */
+  bellBuoy: ({ rng, key, v }) => { // a bell buoy on the swell: two or three strokes, unevenly, as the buoy rolls
+    const x = buf(5.5);
+    const strokes = 2 + (v % 2);
+    let t = 0;
+    for (let k = 0; k < strokes; k++) { add(x, bell(rng, freq(key, v === 2 ? 4 : 0, 2), 3.2, 0.9), sec(t), 0.5 * (0.7 + 0.3 * rng())); t += 0.55 + 0.6 * rng(); }
+    return svf(x, 'lp', 3400, 0.7);
+  },
+  gull: ({ rng, v }) => { // a herring gull: a long call, or the laughing run
+    const x = buf(2.4);
+    const call = (f: number, d: number, g: number, at: number) => {
+      const n = sec(d);
+      const y = osc(n, (i) => { const t = i / n; return f * (1.25 - 0.45 * t + 0.08 * Math.sin(t * 9)); }, 'saw', rng());
+      svf(y, 'bp', f * 1.2, 2.2);
+      add(y, osc(n, (i) => f * (1.25 - 0.45 * (i / n)), 'sine', rng()), 0, 0.3);
+      envPts(y, [[0, 0], [d * 0.12, 1], [d * 0.6, 0.7], [d, 0]]);
+      add(x, y, sec(at), g);
+    };
+    const base = 1250 + 400 * rng();
+    if (v % 3 === 0) call(base, 0.55, 0.8, 0);                                           // the long call
+    else if (v % 3 === 1) { for (let k = 0; k < 5; k++) call(base * (1 - 0.03 * k), 0.16, 0.7 - 0.08 * k, 0.21 * k); } // the laugh
+    else { call(base * 1.1, 0.22, 0.7, 0); call(base, 0.3, 0.6, 0.35); }                // two notes
+    return svf(x, 'lp', 4200, 0.7);
+  },
+  porpoise: ({ rng }) => { // a porpoise surfacing: a sharp breath out, a quick breath in
+    const x = buf(1.0);
+    add(x, noiseBurst(rng, 'bp', 1100, 0.9, 0.006, 0.16, 0.25, 'p'), 0, 0.8);
+    add(x, noiseBurst(rng, 'lp', 420, 0.7, 0.01, 0.12, 0.2, 'b'), 0, 0.35);
+    add(x, noiseBurst(rng, 'bp', 1500, 1.2, 0.05, 0.1, 0.2, 'p'), sec(0.28), 0.3);
+    return x;
+  },
+  shoalSplash: ({ rng }) => { // a shoal breaking the surface: a scatter of small splashes
+    const x = buf(1.4);
+    for (let k = 0; k < 14; k++) add(x, noiseBurst(rng, 'bp', 1400 + 1800 * rng(), 1.4, 0.002, 0.04 + 0.04 * rng()), sec(Math.pow(rng(), 1.4) * 1.0), 0.4 * (0.5 + 0.5 * rng()));
+    return svf(x, 'lp', 4200, 0.7);
+  },
+  trawler: ({ rng, v }) => { // a steam trawler's engine across the water: a soft low chuff
+    const x = buf(0.6);
+    add(x, noiseBurst(rng, 'bp', 520 + 50 * v, 1.0, 0.01, 0.22, 0.32, 'p'), 0, 0.6);
+    add(x, thump(rng, 92 + 6 * v, 0.2, 0.2), 0, 0.5);
+    return svf(x, 'lp', 1300, 0.7);
+  },
+  winch: ({ rng, v }) => { // a steam capstan hauling the trawl: the pawl's ratchet quickening, a hiss of steam
+    const d = 3.4, x = buf(d);
+    let t = 0.05, gap = 0.16;
+    while (t < 2.6) { add(x, knock(rng, 880 + 60 * v + 40 * rng(), 0.03, true), sec(t), 0.4); t += gap; gap = Math.max(0.07, gap * 0.94); }
+    const st = noiseBurst(rng, 'bp', 1300, 0.9, 0.3, 1.6, 2.4, 'p');
+    add(x, st, sec(0.3), 0.3);
+    add(x, svf(brown(sec(2.6), rng), 'bp', 200, 0.8), sec(0.05), 0.25);
+    return envPts(svf(x, 'lp', 3200, 0.7), [[0, 0], [0.04, 1], [d - 0.3, 1], [d, 0]]);
+  },
+  marketBell: ({ rng, key, v }) => { // the fish market's handbell: a run of quick strokes before the auction
+    const x = buf(2.6);
+    for (let k = 0; k < 7; k++) add(x, modal(sec(0.7), freq(key, v % 2 ? 4 : 0, 3), [[1, 1, 0.6], [2.0, 0.35, 0.35], [2.76, 0.25, 0.25], [5.4, 0.08, 0.12]], SR, rng), sec(0.17 * k + 0.02 * rng()), 0.45 * (k % 2 ? 0.75 : 1));
+    return svf(x, 'lp', 3600, 0.7);
+  },
+  halyard: ({ rng, v }) => { // a halyard slapping a mast in the harbour, a block knocking
+    const x = buf(1.3);
+    const n = 1 + (v % 3);
+    for (let k = 0; k < n; k++) {
+      const t = k * (0.22 + 0.1 * rng());
+      add(x, knock(rng, 640 + 120 * rng(), 0.06), sec(t), 0.5);
+      add(x, knock(rng, 1700 + 300 * rng(), 0.04, true), sec(t + 0.004), 0.22);
+    }
+    return svf(x, 'lp', 3600, 0.7);
+  },
 
   // Lever signatures (small, occasional)
   'lv.duty': ({ rng, key }) => { const x = buf(1.4); add(x, bell(rng, freq(key, 4, 3), 0.6, 1.2), 0, 0.5); add(x, bell(rng, freq(key, 4, 3), 0.6, 1.2), sec(0.3), 0.4); return x; },
