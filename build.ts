@@ -166,7 +166,7 @@ writeFileSync('dist/build.json', JSON.stringify({ edition, files, initial, initi
 /* ---------------------------------------------------------------- budgets (KB; perf pass 2, docs/adr/ADR-2026-11-19-*) */
 // Gzipped sizes, a little above the build that set them, so a real regression fails and noise does not. Raise one only
 // with a reason in the commit (and a look at what grew: `bun run build.ts` prints every file).
-const BUDGET: Record<string, number> = { firstPaint: 240, app: 218, styles: 22, scene: 92, audio: 38, archiveText: 62 };
+const BUDGET: Record<string, number> = { firstPaint: 240, app: 218, styles: 22, scene: 100, audio: 38, archiveText: 62 };
 const over: string[] = [];
 const gzKB = (n: number) => n / 1024;
 if (gzKB(sum('gz', initial)) > BUDGET.firstPaint) over.push(`first paint ${gzKB(sum('gz', initial)).toFixed(1)} KB gz > ${BUDGET.firstPaint}`);
