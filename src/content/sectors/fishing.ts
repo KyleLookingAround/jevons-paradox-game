@@ -447,12 +447,13 @@ const fishingUpgrades: UpgradeDef[] = withStages([
 /* LEVERS                                                              */
 /* ------------------------------------------------------------------ */
 
-/* Levers with more than the helpers' three authored levels: Mandate 1 : 3 : 9 : 27 …, upkeep 1 : 2.5 : 6.25 …
- * (the helpers' ratios, extended). */
-function levels(values: number[], cost: number, upkeep: number, labels: string[]): LeverLevelDef[] {
+/* Levers with more than the helpers' three authored levels. Default ratios are the helpers' (Mandate × 3 a level,
+ * upkeep × 2.5); the five-level quota and the four widths take gentler ones (× 2 and × 1.6), so that the moratorium is
+ * paid for in suppers and idle ports rather than in an impossible Mandate bill. */
+function levels(values: number[], cost: number, upkeep: number, labels: string[], costStep = 3, upkeepStep = 2.5): LeverLevelDef[] {
   return values.map((value, i) => ({
-    mandateCost: sig2(cost * 3 ** i),
-    mandateUpkeep: Math.round(upkeep * 2.5 ** i * 1000) / 1000,
+    mandateCost: sig2(cost * costStep ** i),
+    mandateUpkeep: Math.round(upkeep * upkeepStep ** i * 1000) / 1000,
     value,
     label: labels[i],
   }));
@@ -476,7 +477,7 @@ const fishingLevers: LeverDef[] = [
     name: 'Fishery limits',
     blurb: 'Waters closed to foreign boats, wider at each level. The Hague, 1882, gave each nation three miles of its own coast.',
     catch: 'Foreign boats leave the banks. Your own fleet will want the room, unless the Board sets the catch.',
-    levels: levels([1, 2, 3, 4], 250, 0.08, ['Close the bays', 'Twelve miles', 'Fifty miles', 'Two hundred miles']),
+    levels: levels([1, 2, 3, 4], 250, 0.08, ['Close the bays', 'Twelve miles', 'Fifty miles', 'Two hundred miles'], 2, 1.6),
     repeat: { valueStep: 1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 0, label: 'Limits, step {n}' },
     effects: [{ type: 'foreignMul', sector: 'fishing', value: 0.55 }],
     sideEffects: {
@@ -515,7 +516,7 @@ const fishingLevers: LeverDef[] = [
     blurb: 'The catch set below what the banks regrow, by the Board’s own figure. Nought is a moratorium.',
     catch: 'Less fish, dearer suppers, idle crews. At nought Grimsby’s fleet is laid up, and its men with it.',
     levels: levels([0.9, 0.75, 0.6, 0.4, 0], 300, 0.1,
-      ['90% of the surplus', '75% of the surplus', '60% of the surplus', '40% of the surplus', 'Moratorium']),
+      ['90% of the surplus', '75% of the surplus', '60% of the surplus', '40% of the surplus', 'Moratorium'], 2, 1.6),
     repeat: { valueStep: -0.05, costGrowth: 1.45, upkeepGrowth: 1.3, maxSteps: 0, label: '{pct}% of the surplus' },
   },
   /* Closed season: sufficiency (the spawning months closed; appetite for fish lowered with the season). */

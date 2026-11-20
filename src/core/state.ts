@@ -17,6 +17,11 @@ import { absorptionOf } from './effects';
 import { fin } from './util';
 import { featureOn } from './features';
 import { dispatchFirstAt } from './dispatchClock';
+import { inheritWorld, stampCapstones } from './inherit';
+import { startStockOf, sizeOf } from './renewable';
+import { calendarYear } from './calendar';
+
+const NO_META = {} as MetaState;
 
 /** M3: a fresh run's dispatch scheduler state (GameState.dispatch). */
 export function freshDispatch(content: Content): GameState['dispatch'] {
@@ -58,17 +63,20 @@ export function freshRunStats(): RunStats {
   };
 }
 
-export function freshSector(def: SectorDef, mods: Mods, open: boolean): SectorState {
+/** A fresh sector. M4: a renewable starts at K, or low while scarred (`meta`, RenewableDef.startScarred); reserveMax = K. */
+export function freshSector(def: SectorDef, mods: Mods, open: boolean, meta?: MetaState): SectorState {
   const apps: Record<string, AppState> = {};
   for (const a of def.applications) {
     const avail = open && a.visibleBelow === Infinity;
     const start = open && mods.startFounded.has(a.id);
     apps[a.id] = { available: avail || start, founded: (avail && a.foundCost <= 0) || start, satMul: 1, peakD: 0, peakAdoption: 0 };
   }
-  const q = def.resourceKind === 'flow' ? flowCapacity(def, mods) : Math.max(0, def.reserve * (1 + (mods.reserveAdd[def.id] ?? 0)));
+  const ren = def.resourceKind === 'renewable';
+  const q = def.resourceKind === 'flow' ? flowCapacity(def, mods) : ren ? startStockOf(def, meta ?? NO_META) : Math.max(0, def.reserve * (1 + (mods.reserveAdd[def.id] ?? 0)));
+  const qMax = ren ? sizeOf(def) : q;
   return {
     open, openFor: 0, eta: open ? etaAt(def, mods, 0) : def.baseEta, etaAtBase: 0, reserve: open ? q : 0,
-    reserveMax: open ? q : 0, pressure: 0, crisesFired: 0, apps, baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0,
+    reserveMax: open ? qMax : 0, pressure: 0, crisesFired: 0, apps, baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0,
     peakR: 0, steadyYears: 0, backfired: false, budget: null, serviceDelivered: 0, decadesWithin: [],
     decadesLean: [], windowLean: false, clearYears: 0, settled: null, settledBefore: false, dividends: [], peakPressure: 0,
     seamsSunk: 0,
@@ -123,9 +131,10 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
   const upgrades: Record<string, number> = {};
   const mods = computeMods(upgrades, m, content, NO_SOURCES, '');
   const sectors: Record<SectorId, SectorState> = {};
-  for (const s of ix.ids) sectors[s] = freshSector(content.sectors[s], mods, s === first);
+  for (const s of ix.ids) sectors[s] = freshSector(content.sectors[s], mods, s === first, m);
   const levers: Record<string, LeverState> = {};
   for (const l of content.levers ?? []) levers[l.id] = { level: Math.min(mods.startLevers[l.id] ?? 0, leverMaxLevel(l)), ref: 0 };
+  inheritWorld(content, m, sectors, levers); // M4: the one carry-over step (capstones; scars via freshSector)
   const g = content.global;
   let s: GameState = {
     version: SAVE_VERSION, seed: (seed ?? 1) >>> 0, time: 0,
@@ -149,7 +158,7 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
     es = { ...es, apps };
     next[id] = snapshotBase(es, f);
   }
-  s = { ...s, sectors: next };
+  s = { ...s, sectors: stampCapstones(next, calendarYear(s, content)) };
   s = { ...s, history: [historySample(s, content, computeFlows(s, content))] };
   return s;
 }
