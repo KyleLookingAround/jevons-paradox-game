@@ -34,7 +34,7 @@ Bun is the whole toolchain; there are no runtime dependencies. Keep it that way 
 
 ## Status (20 Nov 2026)
 
-M1, M2 and M3 are built and live on `main` (M3 paragraph below). Five Industries in three Ages; honest rebound instruments; budget lines
+M1 to M4 are built and live on `main` (M3 and M4 paragraphs below). Seven Industries: the Coal Age's four are Act I, the later three open after its ending as Previews; honest rebound instruments; budget lines
 with paces, decades judged from the day drawn (lean or full), clear skies and Steady State; decade dividends; Settlement;
 the Commons; standing orders (the Market from run 2); Charters; an offline hold with Hindsight entered at a reduced rate;
 Know-how respec; a living illustrated scene per Industry in its Age's art style, one country throughout; generated sound
@@ -62,8 +62,7 @@ Screen install is unverified; in boom play most of a long absence is lost to the
 planned); the restraint player has a stretch of about three minutes with nothing to decide late in runs 1–2 (M3's
 dispatches address it); pacing figures come from scripted players, not people.
 
-**M3 (merged to `main` 20 Nov 2026; was: built on the working branch, the coordinator updates this section on
-merging).** Every Industry its own mechanic (seams, load, travel, the free price, the code stock), each a temptation
+**M3 (merged to `main` 20 Nov 2026).** Every Industry its own mechanic (seams, load, travel, the free price, the code stock), each a temptation
 whose trade is shown under a drawn line; levers that bite back; the cast and 62 letters; Histories; the Archive; the
 household return and the Proprietor's Day; the first ending: every Industry settled at once for fifty years, with
 Parliament holding three settlements until the Settlement Commission (Hindsight) makes room for five — measured at about
@@ -73,10 +72,25 @@ Parliament holding three settlements until the Settlement Commission (Hindsight)
 src/balance.long.test.ts` ≈ 5–20 min. Open: the letters do not yet reward the budget player's thoughtful answers over
 the defaults (see `design/roadmap.md`, M3).
 
+**M4, "The Survey" (merged to `main` 20 Nov 2026).** Every milestone from M4 on is a paradigm shift (table at the head
+of `design/roadmap.md`; M7 is the prestige shift, "The Inheritance"). M4's: the gauges are estimates and the burn is
+shared. Act I is the Coal Age's four Industries (Steam, Light, Iron & Steel, Fishing); Motion, Compute and Code are
+Previews after the Act I ending, which leaves the Coal Age settled for good (the capstone, with arrears). Iron's order
+book feeds other Industries (cheaper machines and wider demand: Steam's coal 1.25x with it) and budget lines are drawn
+on the full account; Fishing is a renewable stock with a threshold and a scar, foreign fleets that fill the room left,
+and a gauge (catch per trip) that is the skippers' report until the Board's Survey (about hour 7.7: 81% reported, 50%
+true). Wager letters stake 2.2% of a run's Hindsight. Measured Act I ending 15.3-17.3 h. Contract at save version 5
+(`design/m4-contract-notes.md`; hunks marked `M4:`, `M4 (amend):`, `M4 (finish):`). Content prose loads as a lazy part
+after first paint (`docs/adr/ADR-2026-11-20-late-content-text.md`): page code that builds late words once must fill
+them in `onText()`. Recorded misses (`design/roadmap.md`, M4): hours 8-15 are mostly saving for the Settlement
+Commission; letters barely matter to a burning player (+2.2%); burning earns 0.6-0.7 of restraint's Hindsight a minute
+(M3: about 0.4); nobody has played it but scripted players.
+
 ## Next steps, in order
 
-1. **M3: stop and look.** It is live. Have the owner play it; decide the open letter target; M4 design is in `design/m4-*.md` (in progress).
-2. **M4–M9** per `design/roadmap.md`.
+1. **Stop and look.** M4 is live. Have the owner play it (the Survey at hour 6-8; the Act I ending fixtures are in
+   `design/scratch/m4-balance/`, local only) and listen to the sound.
+2. **M5, The Other Chair**, then M6-M10 per `design/roadmap.md`: design first, contract alone, lanes, balance last.
 
 Working rules for parallel agents (contract first and alone, lanes own folders, balance last by one agent) are at the
 top of `design/roadmap.md`. Merge to `main` when tests pass, the tree typechecks and builds, and the result has been
