@@ -33,7 +33,7 @@ export const SPOT_OF: Record<string, SpotKind> = {
   steadySector: 'clear', steadyAll: 'clear', clearSkies: 'clear', settled: 'clear', decade: 'clear', ending: 'clear',
   seamSunk: 'seam', biteBack: 'bite', dispatch: 'letter', answered: 'letter',
   // M4
-  threshold: 'banks', surveyed: 'survey', foreignFleets: 'sails', scarHealed: 'gulls', arrears: 'chimneys', actEnding: 'cartouche',
+  threshold: 'banks', surveyed: 'survey', foreignFleets: 'sails', scarHealed: 'gulls', arrears: 'chimneys', actEnding: 'cartouche', achievement: 'survey', // M4 polish: the spring surveys
 };
 
 /** Each look's own props for the spots' parts (lookup falls back like the scene's). */

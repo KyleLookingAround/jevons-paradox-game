@@ -1439,8 +1439,9 @@ describe('M3: the feature schedule (the unfolding, continued)', () => {
     // M4 CHANGE (design/m4-design.md §9): the run floors follow the M4 schedule. Run 4 is the Commons and Iron; run 5
     // Settlement and the seams; run 6 Fishing and the Board's Survey only; run 7 the household survey and the load
     // curve; run 8 Histories and the Archive; run 9 the bite. The Previews' widgets wait on their Industries (rk floors
-    // are only their Industries' own).
-    const floors = { seams: 4, load: 6, archive: 7, sideEffects: 8, survey: 6, histories: 7, travel: 2, freeAtUse: 3 } as const;
+    // are only their Industries' own). M4 polish: the Archive in run 9 (the Act I ending's run, which had nothing new;
+    // run 8 has the third spring survey), the bite in run 10.
+    const floors = { seams: 4, load: 6, archive: 8, sideEffects: 9, survey: 6, histories: 7, travel: 2, freeAtUse: 3 } as const;
     for (const [id, n] of Object.entries(floors)) expect(`${id} ${rkFloor(F[id as keyof typeof floors]!.when)}`).toBe(`${id} ${n}`);
     // the mid-run arrivals share one window shorter than the gap between arrivals, so at most one of them arrives a run.
     // M4 CHANGE: the window is minutes 25 to 29 (Fishing reopens at minute 20 or later in every run from run 7).
@@ -1904,9 +1905,9 @@ describe('M4: the unfolding of the Coal Age complete (design §9)', () => {
     }
   });
 
-  test('the Archive by run 8, the bite by run 9, the household survey a run after the Board’s Survey', () => {
-    expect(rkFloor(F.archive!.when)).toBeLessThanOrEqual(7);
-    expect(rkFloor(F.sideEffects!.when)).toBeLessThanOrEqual(8);
+  test('the Archive by run 9, the bite by run 10, the household survey a run after the Board’s Survey (M4 polish)', () => {
+    expect(rkFloor(F.archive!.when)).toBeLessThanOrEqual(8);
+    expect(rkFloor(F.sideEffects!.when)).toBeLessThanOrEqual(9);
     expect(rkFloor(F.survey!.when)).toBe(6);
   });
 });

@@ -107,7 +107,8 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
    * opening IS the run's mid-run arrival (Iron in run 4, Fishing in run 6, the Previews after the Act I ending).
    *   - Mid-run arrivals share one window, minutes 25 to 29 of a run (MID), clear of any Industry's opening by five
    *     minutes; each also needs the one before it (a chain) and a run floor, so they come one run apart, in the runs no
-   *     Industry first opens in: the seams (run 5), the load curve (run 7), the Archive (run 8), the bite (run 9).
+   *     Industry first opens in: the seams (run 5), the load curve (run 7), the Archive (run 9; M4 polish, was 8), the
+   *     bite (run 10).
    *   - Reckoning arrivals (AT_RECKONING): the Commons (run 4), Settlement (run 5), the household survey (run 7) and
    *     Histories (run 8); run 6 has none (Fishing and the Board's Survey are its two things).
    *   - The Previews' widgets arrive at the Reckoning after their Industry first opened (travel, the free price); each
@@ -129,9 +130,11 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
     name: 'The seams',
   },
   /* Mid-run in run 8 (M4: after the load curve; the travel dial is a Preview's now): a quiet arrival (it asks nothing).
-   * Notes have been kept since the first minute of play, so nothing is lost by waiting. */
+   * Notes have been kept since the first minute of play, so nothing is lost by waiting.
+   * M4 polish: run 9 (rk 8), the Act I ending's run for a player who passes a spring survey a run (achievements.ts
+   * SPRINGS): run 8 has the third spring, and the ending's run had nothing new in its two hours. */
   archive: {
-    when: actOne(rk(7), { feature: 'load' }, ...MID),
+    when: actOne(rk(8), { feature: 'load' }, ...MID),
     intro: 'The Gazette opens its archive to subscribers',
     name: 'The Archive',
   },
@@ -158,7 +161,7 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
   /* Mid-run in run 9, a run after the Archive at the earliest, once a lever's side effect has taken hold anywhere:
    * introduced by the 'biteBack' headline itself (a player who never lets a lever bite never needs it). */
   sideEffects: {
-    when: actOne(rk(8), { feature: 'archive' }, ...MID, { any: SECTORS.map((sector): Cond => ({ stat: 'bite', sector, op: '>=', value: 0.3 })) }),
+    when: actOne(rk(9), { feature: 'archive' }, ...MID, { any: SECTORS.map((sector): Cond => ({ stat: 'bite', sector, op: '>=', value: 0.3 })) }),
     name: 'Levers that bite back',
   },
   /* At a Reckoning from hour 6, once the Civil Service is owned: the Statistics Office's household survey (The

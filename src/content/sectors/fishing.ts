@@ -460,7 +460,8 @@ const fishingUpgrades: UpgradeDef[] = withStages([
     id: 'fishing.garstang', sector: 'fishing', kind: 'research',
     name: 'Garstang’s inquiry',
     blurb: 'Garstang, 1900: The Impoverishment of the Sea, a summary of the evidence on the alleged depletion of the trawling grounds.',
-    cost: 60_000,
+    /* M4 polish: 25,000 (was 60,000): within reach in the run Fishing opens, where the first spring survey needs it */
+    cost: 25_000,
     when: {
       any: [
         { stat: 'crises', sector: 'fishing', op: '>=', value: 1 },

@@ -1,5 +1,10 @@
 # M5 — open questions for the owner
 
+**Decided by the coordinator on the owner's delegation, 20 Nov 2026:** Q1 yes (closed in Ministries); Q2 yes ("Not yet"
+offered); Q3 as D2 recommends; Q4 yes; Q5 yes; Q6 Motion first; Q7 the full M5, the Treaty the first cut. Q8 stands as a
+request. The owner has also said there are no other players at present: saves may be broken where that is cleaner, so
+long as an old save loads without crashing.
+
 20 Nov 2026. Everything else in `design/m5-design.md` is decided; these are the owner's. Each has my recommendation and
 what the documents assume until it is answered. The roadmap's D2–D6 stand as recommended where these do not touch them.
 

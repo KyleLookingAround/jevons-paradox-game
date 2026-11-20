@@ -191,6 +191,8 @@ function applySets(c: Content): Content {
 }
 const C: Content = applySets(stripMechanics(C0));
 const HOURS = parseFloat(flag('hours', '3'));
+/** M4 polish: --work-done: budget and mixed also Reckon once the run's work is done (workDone; always on for human). */
+const WORK_DONE = flag('work-done', 'false') !== 'false';
 const EVERY = parseFloat(flag('every', '120'));
 const CPS = parseFloat(flag('cps', '5'));
 const CLICK_UNTIL = parseFloat(flag('click-until', '0.5'));
@@ -678,6 +680,17 @@ function reckonBrings(s: GameState, e: SectorId, i: number): boolean {
   return !!c && c.feature === 'settlement' && s.meta.achievements?.steadyState === true;
 }
 
+/** M4 polish: nothing left in this run that a person would stay for: no spring survey to pass this run (SPRINGS: the
+ *  next one needs the one before from an earlier run), and no Industry of the ending's set waiting to be settled but
+ *  for time (only room, or nothing). */
+function workDone(s: GameState): boolean {
+  if (!s.sectors.fishing?.open) return false;
+  const sp = SPRINGS.findIndex((id) => !s.meta.achievements[id]);
+  if (sp >= 0 && (sp === 0 || (s.meta.milestones?.[`ach:${SPRINGS[sp - 1]}`]?.run ?? Infinity) < s.meta.reckonings + 1)) return false;
+  const en = model.derive(s, C).ending;
+  return !en.next || en.next.need === 'room' || en.settled >= en.room;
+}
+
 /** --ending: the run is worth staying in for the first ending: not yet won this run, and four or more Industries
  *  settled, or two with a clear streak running in another, and room for all (Settlement does not survive a Reckoning). */
 function pursuing(s: GameState): boolean {
@@ -1093,8 +1106,16 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     // M4 balance: with --survey=board, a restraint player whose Fishing has reached Steady State unsurveyed (it cannot
     // be settled: SettleDef.requires) and has no Board seated pays for survey cruises, as a person reading the checklist
     // ("Fishing needs the stock surveyed") would
-    const needSurvey = SURVEY === 'board' && restraint && !x.stock.surveyed && (s.run.steadySectors?.[e] || d.ending.next?.sector === e && d.ending.next.need === 'requires');
+    // M4 polish: and when the spring survey is pending (achievements.ts SPRINGS) with the banks and the decades ready for it
+    const spI = SPRINGS.findIndex((id) => !s.meta.achievements[id]);
+    const springReady = spI >= 0 && x.stock.world >= SPRING_STEPS[spI].stock && (s.sectors[e].decadesWithin?.length ?? 0) >= 15;
+    const needSurvey = SURVEY === 'board' && restraint && !x.stock.surveyed && (s.run.steadySectors?.[e] || d.ending.next?.sector === e && d.ending.next.need === 'requires' || springReady);
     if ((SURVEY === 'cruise' && !x.stock.surveyed && s.sectors[e].crisesFired >= 1) || needSurvey) {
+      // M4 polish: the cruises are locked until a card unlocks them (Garstang's inquiry): buy it when it is offered
+      for (const l of surveyLevers(e)) {
+        const u = C.upgrades.find((x2) => (x2.effects ?? []).some((f) => f.type === 'unlock' && f.id === l.id));
+        if (u && !(s.upgrades[u.id] >= 1)) { const t = model.buyUpgrade(s, C, u.id); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `BUY ${u.id} (unlocks ${l.id})` }); } }
+      }
       for (const l of surveyLevers(e)) {
         const v = model.leverViews(s, C).find((y) => y.def.id === l.id);
         if (v?.canRaise && v.level < 1) { const t = model.setLever(s, C, l.id, 1); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `SURVEY ${e} (${l.id})` }); } }
@@ -1109,9 +1130,17 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
       const low = C.levers.some((l) => l.sector === e && l.kind === 'quota' && leverLevelDef(l, s.levers[l.id]?.level ?? 0)?.value === 0.6);
       const want = sp >= 0 && C.sectors[e].renewable ? (stockNow < SPRING_STEPS[sp].stock + (low ? 0.06 : 0.03) ? 0.6 : 0.9) : STEWARD ? 0.9 : 1;
       for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.def.kind === 'quota' && y.visible)) {
-        let best = 0, bv = Infinity;
-        for (let k = 1; k <= v.maxLevel; k++) { const lv = leverLevelDef(v.def, k); const val = lv?.value ?? NaN; if (Number.isFinite(val) && Math.abs(val - want) < bv) { bv = Math.abs(val - want); best = k; } }
-        if (best && v.level !== best) { const t = model.setLever(s, C, v.def.id, best); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `QUOTA ${v.def.id} → level ${best}` }); } }
+        // the level nearest `want`; M4 polish: if that one cannot be afforded yet, the next nearest that can (a quota at
+        // 90% now beats none while saving Mandate for 60%)
+        const ks: [number, number][] = [];
+        for (let k = 1; k <= v.maxLevel; k++) { const lv = leverLevelDef(v.def, k); const val = lv?.value ?? NaN; if (Number.isFinite(val)) ks.push([Math.abs(val - want), k]); }
+        ks.sort((a, b) => a[0] - b[0]);
+        for (const [, k] of ks) {
+          if (v.level === k) break;
+          const t = model.setLever(s, C, v.def.id, k);
+          if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `QUOTA ${v.def.id} → level ${k}` }); break; }
+          if (v.level >= 1) break; // already under a quota: wait for the Mandate
+        }
       }
       // the steward pairs the limits with the quota at once; M4 (finish): every restraint player does once the foreign
       // boats take more than 15% (the limits are offered then) and the survey quota is in force (it keeps the home fleet
@@ -1236,6 +1265,9 @@ function scanUnlocks(s: GameState): void {
   for (const id of SPRINGS) if (s.meta.achievements[id]) note(`ev:${id}`, `evidence ${id}`);
   const room = C.institutions.find((i) => i.effects.some((e) => e.type === 'settleSlotAdd'));
   if (room && (s.meta.institutions[room.id] ?? 0) >= 1) note('room:1', `room ${room.id} L1`);
+  // and the room used: the first time more Industries are settled at once than Parliament held before (settleMax)
+  const held = ORDER.filter((e) => s.sectors[e]?.open && s.sectors[e].settled && !s.sectors[e].capstoned).length;
+  if (typeof C.global.settleMax === 'number' && held > C.global.settleMax) note(`held:${held}`, `settled at once ${held}`);
 }
 function printUnlocks(): void {
   if (!UNLOCKS) return;
@@ -1596,6 +1628,9 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       // the human player calls the Reckoning once the next Industry waits on one and nothing has been decided for 150 s
       // (it does not sit through a dead stretch at the end of a run; QA's late run 1)
       if (mode === 'human' && s.time >= MIN_RUN && gated && !streaking && !opening && s.time - (decisionTimes[decisionTimes.length - 1] ?? 0) >= 150) { stopReason = 'nothing left to decide'; break; }
+      // M4 polish: nor through a stretch after the run's work is done: this run's spring survey passed (or none to pass),
+      // and every Industry it may settle settled (the rest wait on room) — the hours 8–15 the polish pass is about
+      if ((mode === 'human' || WORK_DONE) && s.time >= 3600 && !streaking && !opening && workDone(s)) { stopReason = "the run's work done"; break; }
       const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);
       if (s.time >= MAX_RUN && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e] || s.sectors[e]?.settled)) { stopReason = `every line steady after ${min(MAX_RUN).trim()} min`; break; }
     }
