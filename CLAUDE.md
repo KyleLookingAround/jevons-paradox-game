@@ -61,10 +61,20 @@ Screen install is unverified; in boom play most of a long absence is lost to the
 planned); the restraint player has a stretch of about three minutes with nothing to decide late in runs 1–2 (M3's
 dispatches address it); pacing figures come from scripted players, not people.
 
+**M3 (built on the working branch, 20 Nov 2026; not yet merged or live — the coordinator updates this section on
+merging).** Every Industry its own mechanic (seams, load, travel, the free price, the code stock), each a temptation
+whose trade is shown under a drawn line; levers that bite back; the cast and 62 letters; Histories; the Archive; the
+household return and the Proprietor's Day; the first ending: every Industry settled at once for fifty years, with
+Parliament holding three settlements until the Settlement Commission (Hindsight) makes room for five — measured at about
+18–19 h for `mixed`/`budget` and 15 h for the human-like player (`design/unlock-schedule.md`). Contract at save version 4
+(`design/m3-contract-notes.md`; the finishing additions are listed in the M3 finishing report and marked "M3 (finish)" in
+`src/types.ts`). `bun test` ≈ 70 s; `BAL_LONG=1 bun test src/balance.test.ts` ≈ 3 min; `BAL_LONG=1 bun test
+src/balance.long.test.ts` ≈ 5–20 min. Open: the letters do not yet reward the budget player's thoughtful answers over
+the defaults (see `design/roadmap.md`, M3).
+
 ## Next steps, in order
 
-1. **M3** every Industry its own mechanic, the cast and dispatches, the second reveal ("The Proprietor's Day"), a first
-   ending at 15–20 h; then stop and look. Contract first and alone, then lanes, balance last.
+1. **M3: stop and look.** Play the branch build, merge it, and decide the open letter target; then M4.
 2. **M4–M9** per `design/roadmap.md`.
 
 Working rules for parallel agents (contract first and alone, lanes own folders, balance last by one agent) are at the

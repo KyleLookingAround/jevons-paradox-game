@@ -240,3 +240,16 @@ Expected; the lanes fix it. `src/types.ts` itself is clean. `tools/` is outside 
 | `src/ui/game.ts` | 1 | an OrdersView literal lacks the M3 fields |
 
 `LeverState.bite`/`bitten` are optional precisely so that the many hand-built lever states in tests still compile.
+
+## 12. M3 finish (20 Nov 2026): what changed in the contract, additively (save version unchanged at 4)
+
+- **The first ending's rule** (doc change, no shape change): `GameState.steadyYearsAll` now counts years with every
+  Industry in `sectorOrder` open and settled; `flags.won` at `GlobalParams.endingYears` (new, default 50).
+  `Derived.ending` gains `settled`, `total`, `years`, `yearsNeeded`, `hold`, `nextHold`, `room` and `next` (the
+  checklist the page shows). `GlobalParams.settleMax` (new) and the effect `settleSlotAdd` (new) limit how many
+  Industries may be settled at once; `GlobalParams.settleHold` (new; content leaves it 0) prices holding several.
+- **The temptation's trade**: `AppDerived.wantedChange`, `UpgradeView.wantedChange`, `SeamsView.wantedChange`
+  (optional; `src/core/temptation.ts`).
+- **Small fixes**: `GameState.headlineUse` (headline variants least recently used first), `RunStats.historyCleared`
+  and `RunStats.returnPublished` (run flags; migrated from the news when absent).
+- **Effects the letter-writer asked for**: `leverCostMul`, `suspendOrder`, `leakMul`, `spillMul`.
