@@ -1,5 +1,5 @@
 // Screenshots and a scripted play-through of the game, for visual checks.
-//   node tools/shot.mjs [scenes|flow|checks|audit|m2|m3|real|realplay|looks|first|all] [filter]
+//   node tools/shot.mjs [scenes|flow|checks|audit|m2|m3|m4|m4real|real|realplay|looks|first|all] [filter]
 // Builds a mock-only page (src/ui/mock-main.ts bundled with `bun build`, inlined into index.html) at shots/mock.html,
 // so the UI can be checked while the real model or content does not build. `real` runs `bun run build.ts` and plays
 // dist/index.html. Sizes: 390×844 (phone), 1280×800 (desk), 360×740 (narrow: overflow check only).
@@ -1660,6 +1660,326 @@ async function m3() {
   }
 }
 
+/* ---------------------------------------------------------------- M4 (real build) */
+// The page meets every M4 view as the core writes it: states are made in the page from a fresh run through the real model
+// (window.rebound), as tools/perf.mjs makes its states. `m4`: the postcard row with seven tabs, Iron's order book, Fishing
+// unsurveyed then the Board's Survey card (and filed), a wager answered both ways, Steam before and after `estimates`.
+// `m4real`: from the Act I ending dump (M4_ENDING=path, default design/scratch/m4-fixtures/act1-ending.json, real
+// content): the credits, then the next run with the capstone group and Motion as a Preview; from an M3 save
+// (design/scratch/finish/human-run9.json): the save notice shown once.
+const M4_MAKE = (variant) => {
+  const R = window.rebound, m = R.model, C = R.content;
+  let s = JSON.parse(JSON.stringify(m.createState(C)));
+  s.meta.reckonings = 6; s.flags.revealed = true; s.capital = 5e7; s.mandate = 5000;
+  s.meta.features = s.meta.features || {};
+  for (const f of Object.keys(C.features || {})) if (f !== 'estimates' || variant === 'estimates') s.meta.features[f] = 0;
+  if (variant === 'estimates') s.meta.flags['survey:fishing'] = true;
+  const open = variant === 'seven' ? C.sectorOrder : ['steam', 'light', 'iron', 'fishing'];
+  for (const id of open) {
+    const def = C.sectors[id], st = s.sectors[id];
+    st.open = true; s.meta.sectorsOpened[id] = true;
+    if (!st.reserve) { st.reserve = def.reserve; st.reserveMax = def.reserve; }
+    st.eta = def.baseEta;
+    for (const a of def.applications) if (a.visibleBelow === Infinity) { st.apps[a.id].available = true; if (a.foundCost <= 0) st.apps[a.id].founded = true; }
+  }
+  for (let i = 0; i < 50; i++) s = m.tick(s, C, 0.1);
+  for (let k = 0; k < 4; k++) {
+    for (const id of open) {
+      for (const a of C.sectors[id].applications) { const t = m.foundApp(s, C, a.id); if (t !== s) s = t; }
+      for (const u of C.upgrades.filter((u) => u.sector === id)) { const t = m.buyUpgrade(s, C, u.id); if (t !== s) s = t; }
+    }
+    for (let i = 0; i < 100; i++) s = m.tick(s, C, 0.1);
+  }
+  if (variant === 'reveal' || variant === 'estimates') { s = JSON.parse(JSON.stringify(s)); s.sectors.fishing.openFor = 1790; s.time = Math.max(s.time, 1800); }
+  for (let i = 0; i < 60; i++) s = m.tick(s, C, 0.5);
+  if (variant === 'estimates') s = m.drawBudget(s, C, 'steam');
+  // A settlement made from the Industry's flows now (the page needs only a believable SettledState to draw).
+  const settledOf = (st, id) => {
+    const d = m.derive(st, C).sectors[id], x = st.sectors[id];
+    const appD = {}, appAdoption = {};
+    for (const a of C.sectors[id].applications) if (x.apps[a.id]?.founded) { appD[a.id] = d.apps[a.id]?.demand ?? 0; appAdoption[a.id] = d.apps[a.id]?.adoption ?? 0; }
+    return { since: st.time, sinceYear: Math.floor(m.derive(st, C).year), D: d.demand, R: d.resourceUse, ps: d.servicePrice, pPre: d.preLevyPrice, income: d.income,
+      P: x.pressure, eta: x.eta, defect: 1, N0: st.population, spillMul0: 1, extraD0: 0, appD, appAdoption };
+  };
+  if (variant === 'settled') {
+    // Late in Act I: Steam, Light and Iron settled, Fishing still in play.
+    s = JSON.parse(JSON.stringify(s));
+    for (const id of ['steam', 'light', 'iron']) { s.sectors[id].settled = settledOf(s, id); s.sectors[id].settledBefore = true; s.sectors[id].budget = null; }
+    for (let i = 0; i < 20; i++) s = m.tick(s, C, 0.5);
+  }
+  if (variant === 'capstone') {
+    // The run after the Act I ending: the four Coal Age Industries capstoned (meta.world.capstone), Motion a Preview.
+    const meta = JSON.parse(JSON.stringify(s.meta));
+    const year = 1911;
+    meta.world = { ...(meta.world || {}), capstone: {} };
+    for (const id of ['steam', 'light', 'iron', 'fishing']) meta.world.capstone[id] = { act: 'actOne', year, settled: settledOf(s, id) };
+    meta.endings = { ...(meta.endings || {}), actOne: { run: meta.reckonings + 1, runSeconds: s.time, totalSeconds: meta.totalSeconds + s.time, year } };
+    meta.reckonings += 1;
+    s = m.createState(C, meta);
+    for (let i = 0; i < 400; i++) s = m.tick(s, C, 0.5);
+  }
+  R.ctx.replace(s);
+  return true;
+};
+
+async function m4() {
+  try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
+  catch (e) { console.log('M4: bun run build.ts failed:\n' + String(e.stderr || e.message).split('\n').slice(0, 6).join('\n')); problems++; return; }
+  const url = 'file://' + resolve(root, 'dist/index.html');
+  const M4SIZES = [{ w: 390, h: 844, tag: 'phone' }, { w: 844, h: 390, tag: 'land' }, { w: 360, h: 740, tag: 'narrow' }, { w: 1280, h: 800, tag: 'desk' }];
+  for (const sz of M4SIZES) {
+    if (filter && !sz.tag.includes(filter)) continue;
+    const { ctx, page, errs } = await newPage({ ...sz, dpr: sz.tag === 'phone' ? 2 : 1 });
+    const T = `m4-${sz.tag}`;
+    const big = sz.tag !== 'narrow';
+    const step = async (name, f) => {
+      try { await f(); console.log(`  ok   ${T} ${name}`); }
+      catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); }
+    };
+    const shot = async (n, sel, block = 'start') => {
+      if (!big) return;
+      if (sel) await page.locator(sel).first().evaluate((el, b) => { el.scrollIntoView({ block: b }); if (b === 'start') window.scrollBy(0, -(document.querySelector('.cockpit')?.getBoundingClientRect().right <= el.getBoundingClientRect().left + 1 ? 0 : (document.querySelector('.cockpit')?.getBoundingClientRect().height ?? 0) + 8)); }, block).catch(() => {});
+      else await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${out}/${T}-${n}.png` });
+    };
+    const closeToasts = () => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); });
+    const noOverflow = async (what) => { const o = await overflow(page); if (o.sw > o.cw) throw new Error(`sideways scroll at ${what} (${o.sw} > ${o.cw})`); };
+    const make = async (v, sector) => {
+      await page.evaluate(M4_MAKE, v);
+      await page.waitForTimeout(600);
+      if (sector) await page.evaluate((id) => window.rebound.ctx.selectSector(id), sector);
+      await page.waitForTimeout(1200);
+      await closeToasts();
+    };
+    const text = (sel) => page.evaluate((x) => [...document.querySelectorAll(x)].filter((e) => e.getClientRects().length && !e.closest('[hidden]')).map((e) => e.textContent).join(' | '), sel);
+
+    await step('a new save: the Act title card over the picture', async () => {
+      await ctx.clearCookies();
+      await page.goto(url); await page.evaluate(() => localStorage.clear()); await page.goto(url);
+      await page.waitForTimeout(1300);
+      const t = await text('.world-title');
+      if (!/Act I/.test(t) || !/Coal Age/.test(t)) throw new Error(`no Act card: ${t}`);
+      await shot('act-card');
+    });
+    await step('seven Industries: the postcard row scrolls and keeps the selected tab in view', async () => {
+      await make('seven', 'code');
+      await page.waitForTimeout(1500);
+      const n = await page.locator('.tabs-row .tab.has-pc').count();
+      if (n < 7) throw new Error(`${n} postcards`);
+      const prev = await page.locator('.tabs-row .tab.preview').count();
+      if (prev < 3) throw new Error(`${prev} Preview tabs`);
+      const vis = await page.evaluate(() => { const b = document.querySelector('.tab.sel'), r = document.querySelector('.tabs-row'); const x = b.getBoundingClientRect(), y = r.getBoundingClientRect(); return x.left >= y.left - 1 && x.right <= y.right + 1; });
+      if (!vis) throw new Error('the selected tab is out of view');
+      const lbl = await page.locator('.tab.preview').first().getAttribute('aria-label');
+      if (!/preview/i.test(lbl)) throw new Error(`label: ${lbl}`);
+      await noOverflow('seven tabs');
+      await shot('seven');
+    });
+    await step('Iron: the order book, one row per fed Industry, a row selects its tab', async () => {
+      await make('open', 'iron');
+      const rows = await page.locator('.ob-row').count();
+      if (!rows) throw new Error('no order book rows');
+      const t = await text('.ob-row');
+      if (!/× 0\.\d\d/.test(t)) throw new Error(`no factor: ${t}`);
+      await shot('iron', 'section.mech');
+      await noOverflow('order book');
+      await page.locator('.ob-row').first().click();
+      await page.waitForTimeout(500);
+      const sel = await page.evaluate(() => window.rebound.ctx.sector);
+      if (sel === 'iron') throw new Error('the row did not select its Industry');
+      const fed = await text('.mech-fed');
+      if (!/order book/.test(fed)) throw new Error(`no fed line on ${sel}: ${fed}`);
+    });
+    await step('Fishing unsurveyed: catch per trip, a blank survey gauge, never the true stock', async () => {
+      await make('open', 'fishing');
+      const t = await text('.chart-card');
+      if (!/Catch per trip/.test(t) || !/No survey/.test(t)) throw new Error(t);
+      const res = await text('.res-lbl');
+      if (!/Catch per trip/.test(res)) throw new Error(`reserve says ${res}`);
+      const st = await page.evaluate(() => ({ t: Math.round(window.rebound.d.sectors.fishing.stock.world * 100), r: Math.round(window.rebound.d.sectors.fishing.stock.reported * 100) }));
+      const shown = await text('.reserve, .chart-card .cg-v');
+      if (st.t !== st.r && shown.includes(`${st.t}%`)) throw new Error('the true stock is on the page');
+      await shot('fish-unsurveyed', 'section.mech');
+      await noOverflow('chart');
+    });
+    await step('the Board’s Survey card: two columns, File the survey; then the true gauge', async () => {
+      await make('reveal', 'fishing');
+      await page.waitForSelector('.board-sheet', { timeout: 6000 });
+      const cols = await page.locator('.board-card .bc-col').count();
+      if (cols !== 2) throw new Error(`${cols} columns`);
+      await page.waitForTimeout(2600);
+      await page.screenshot({ path: `${out}/${T}-survey-card.png` });
+      await noOverflow('survey card');
+      await page.locator('.board-sheet .sheet-foot button.primary', { hasText: 'File the survey' }).click();
+      await page.waitForTimeout(900);
+      const blank = await page.evaluate(() => !document.querySelector('.cg-true .cg-blank')?.hidden);
+      const v = await text('.cg-true .cg-v');
+      if (blank || !/\d+%/.test(v)) throw new Error(`after filing: blank ${blank}, ${v}`);
+      await shot('fish-surveyed', 'section.mech');
+      // Once a save: a reload does not show it again.
+      await page.evaluate(() => window.rebound.save());
+      await page.reload(); await page.waitForTimeout(2200);
+      if (await page.locator('.board-sheet').count() && await page.locator('.board-sheet').isVisible()) throw new Error('the card came back');
+    });
+    await step('a wager answered both ways: hint, both outcomes, won and lost', async () => {
+      const res = [];
+      for (const holds of [true, false]) {
+        await make('open', 'iron');
+        const r = await page.evaluate((holds) => {
+          const R = window.rebound, C = R.content;
+          const d = (C.dispatches || []).find((x) => x.arms.some((a) => a.wager && a.wager.when && a.wager.when.stat === 'reserveFraction'));
+          if (!d) return 'no reserve wager in content';
+          const i = d.arms.findIndex((a) => a.wager);
+          const want = d.arms[i].wager.when;
+          const s = JSON.parse(JSON.stringify(R.state));
+          const sec = want.sector || d.sector || 'steam';
+          const K = s.sectors[sec].reserveMax || C.sectors[sec].reserve;
+          const v = Number(want.value), up = want.op === '>=' || want.op === '>';
+          s.sectors[sec].reserve = K * Math.max(0.05, Math.min(1, (holds === up) ? Math.min(1, v + 0.3) : Math.max(0.05, v - 0.15)));
+          s.dispatch.pending = [{ id: d.id, arrivedAt: s.time, expiresAt: s.time + 900 }];
+          R.ctx.replace(s);
+          return { id: d.id, arm: i };
+        }, holds);
+        if (typeof r === 'string') throw new Error(r);
+        await page.waitForTimeout(900);
+        const hint = await text('.lt-wager .lt-hint');
+        const br = await text('.lt-wager .lt-branches');
+        if (!hint || !/If so/.test(br) || !/If not/.test(br)) throw new Error(`wager arm not shown: ${hint} / ${br}`);
+        if (holds) await shot('wager', '.letter');
+        await closeToasts();
+        await page.locator('.lt-wager').first().click();
+        await page.waitForTimeout(700);
+        const won = await page.evaluate((id) => window.rebound.state.dispatch.answered.find((a) => a.id === id)?.won, r.id);
+        res.push(won);
+        const past = await text('.lt-past');
+        if (!/The bet (paid|was lost)/.test(past)) throw new Error(`no result in the letters: ${past}`);
+      }
+      if (res[0] !== true || res[1] !== false) throw new Error(`results ${JSON.stringify(res)}`);
+    });
+    await step('Steam before and after estimates: two readings, the full account, the line’s account', async () => {
+      await make('open', 'steam');
+      if (await text('.res-yrs')) throw new Error('two readings before estimates');
+      await shot('steam-before');
+      await make('estimates', 'steam');
+      const y = await text('.res-yrs');
+      if (!/this year’s rate/.test(y) || !/growing/.test(y)) throw new Error(`readings: ${y}`);
+      const full = await page.evaluate(() => getComputedStyle(document.querySelector('.dial-cons .d-full')).display !== 'none');
+      if (!full) throw new Error('no full-account needle');
+      await shot('steam-after');
+      await shot('steam-after-budget', 'section.budget');
+      await page.waitForTimeout(400);
+      const line = await text('.bud-line');
+      if (!/full account/.test(line)) throw new Error(`line: ${line} (budget drawn: ${await page.evaluate(() => !!window.rebound.state.sectors.steam.budget)})`);
+      await noOverflow('estimates');
+    });
+    const heights = async () => {
+      const ids = await page.evaluate(() => window.rebound.content.sectorOrder.filter((id) => window.rebound.state.sectors[id]?.open));
+      const hs = {};
+      for (const id of ids) { await page.evaluate((x) => window.rebound.ctx.selectSector(x), id); await page.waitForTimeout(700); hs[id] = await page.evaluate(() => document.documentElement.scrollHeight); }
+      return hs;
+    };
+    await step('late in Act I: each settled Industry is one card; Show the Industry opens it', async () => {
+      await make('settled', 'light');
+      if (!(await page.locator('.fold-bar:not([hidden])').count())) throw new Error('no fold bar');
+      if (await page.locator('section.upgrades').isVisible()) throw new Error('improvements not folded');
+      await shot('settled');
+      if (sz.tag === 'phone') console.log(`       ${T} scroll heights, late Act I (three settled): ${JSON.stringify(await heights())}`);
+      await page.evaluate(() => window.rebound.ctx.selectSector('light'));
+      await page.waitForTimeout(600);
+      await page.locator('.fold-show').click();
+      await page.waitForTimeout(500);
+      if (!(await page.locator('section.upgrades').isVisible())) throw new Error('Show the Industry did not open it');
+      await page.locator('.fold-show').click();
+      await page.waitForTimeout(300);
+      await noOverflow('settled');
+    });
+    await step('the run after the Act I ending: the capstone group, cartouched postcards, no Unsettle', async () => {
+      await make('capstone', 'steam');
+      const g = await text('.cap-group');
+      if (!/Coal Age \(settled 1911\)/.test(g)) throw new Error(`group: ${g}`);
+      const rows = await page.locator('.cap-group .cap-row').count();
+      if (rows !== 4) throw new Error(`${rows} rows`);
+      const caps = await page.locator('.tab.capstoned').count();
+      if (caps !== 4) throw new Error(`${caps} capstoned tabs`);
+      if (await page.locator('.settled-row .btn', { hasText: 'Unsettle' }).isVisible().catch(() => false)) throw new Error('Unsettle offered');
+      await shot('capstone');
+      if (sz.tag === 'phone') console.log(`       ${T} scroll heights, capstoned run: ${JSON.stringify(await heights())}`);
+      await noOverflow('capstone');
+    });
+    if (errs.length) fail(`${T} console: ${errs.filter((e) => !/ERR_FAILED/.test(e)).slice(0, 4).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
+async function m4real() {
+  try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
+  catch (e) { console.log('M4REAL: bun run build.ts failed'); problems++; return; }
+  const url = 'file://' + resolve(root, 'dist/index.html');
+  const endingPath = process.env.M4_ENDING || resolve(root, 'design/scratch/m4-fixtures/act1-ending.json');
+  const m3Path = resolve(root, 'design/scratch/finish/human-run9.json');
+  for (const sz of [{ w: 390, h: 844, tag: 'phone' }, { w: 1280, h: 800, tag: 'desk' }]) {
+    if (filter && !sz.tag.includes(filter)) continue;
+    const T = `m4real-${sz.tag}`;
+    const step = async (page, name, f) => {
+      try { await f(); console.log(`  ok   ${T} ${name}`); }
+      catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); }
+    };
+    const load = async (save) => {
+      const r = await newPage({ ...sz, dpr: sz.tag === 'phone' ? 2 : 1 });
+      await r.page.addInitScript((sv) => { if (!sessionStorage.getItem('m4r')) { localStorage.clear(); localStorage.setItem('rebound.save.v1', sv); localStorage.setItem('rebound.save.v1.at', String(Date.now())); sessionStorage.setItem('m4r', '1'); } }, save);
+      await r.page.goto(url); await r.page.waitForTimeout(2000);
+      return r;
+    };
+    if (existsSync(endingPath)) {
+      const { ctx, page, errs } = await load(readFileSync(endingPath, 'utf8'));
+      await step(page, 'the Act I ending: the credits, then the ledger continues', async () => {
+        // The dump is the state at the step of the ending; one more tick brings the event if it has not fired.
+        for (let i = 0; i < 40 && !(await page.locator('.credits-sheet').count()); i++) await page.waitForTimeout(250);
+        if (!(await page.locator('.credits-sheet').count())) await page.evaluate(() => window.rebound.ctx.openMenu && document.dispatchEvent(new Event('x')));
+        await page.evaluate(() => { if (!document.querySelector('.credits-sheet')) window.__openCredits?.(); });
+        await page.screenshot({ path: `${out}/${T}-credits.png` });
+        const t = await page.evaluate(() => document.querySelector('.credits-sheet')?.textContent ?? '');
+        if (!/Coal Age/.test(t)) throw new Error('no Act I credits');
+        await page.locator('.credits-sheet .sheet-foot button', { hasText: 'The ledger continues' }).click();
+      });
+      await step(page, 'the next run: the capstone group and Motion as a Preview', async () => {
+        await page.evaluate(() => { const R = window.rebound; const n = R.model.reckon(R.state, R.content); if (n !== R.state) R.ctx.replace(n); });
+        await page.waitForTimeout(800);
+        await page.evaluate(() => { for (const b of document.querySelectorAll('.sheet-foot button.primary')) if (/Begin/.test(b.textContent)) b.click(); });
+        await page.waitForTimeout(1500);
+        const capped = await page.evaluate(() => window.rebound.content.sectorOrder.filter((id) => window.rebound.d.sectors[id]?.capstoned));
+        if (!capped.length) throw new Error('no capstoned Industry');
+        await page.evaluate((id) => window.rebound.ctx.selectSector(id), capped[0]);
+        await page.waitForTimeout(1200);
+        const g = await page.evaluate(() => document.querySelector('.cap-group:not([hidden])')?.textContent ?? '');
+        if (!/settled \d{4}/.test(g)) throw new Error(`group: ${g}`);
+        await page.screenshot({ path: `${out}/${T}-capstone.png` });
+        const h = await page.evaluate(() => document.documentElement.scrollHeight);
+        console.log(`       ${T} scroll height on a capstoned Industry: ${h}`);
+      });
+      if (errs.length) fail(`${T} console: ${errs.filter((e) => !/ERR_FAILED/.test(e)).slice(0, 4).join(' | ')}`);
+      await ctx.close();
+    } else console.log(`  skip ${T} the Act I ending: no ${endingPath}`);
+    {
+      const { ctx, page, errs } = await load(readFileSync(m3Path, 'utf8'));
+      await step(page, 'an M3 save: the notice once, Previews marked', async () => {
+        await page.evaluate(() => { for (const b of document.querySelectorAll('.sheet-foot button.primary')) if (/Begin/.test(b.textContent)) b.click(); });
+        await page.waitForTimeout(1200);
+        const notes = await page.evaluate(() => document.querySelector('.note-line')?.textContent ?? '');
+        if (!/Iron and fish join the Coal Age/.test(notes)) throw new Error(`no notice: ${notes}`);
+        await page.screenshot({ path: `${out}/${T}-m3save.png` });
+        await page.evaluate(() => window.rebound.save());
+        await page.reload(); await page.waitForTimeout(2000);
+        const again = await page.evaluate(() => document.querySelector('.note-line')?.textContent ?? '');
+        if (/Iron and fish join the Coal Age/.test(again)) throw new Error('the notice came back');
+      });
+      if (errs.length) fail(`${T} console: ${errs.filter((e) => !/ERR_FAILED/.test(e)).slice(0, 4).join(' | ')}`);
+      await ctx.close();
+    }
+  }
+}
+
 if (mode === 'scenes' || mode === 'all') await scenes();
 if (mode === 'flow' || mode === 'all') await flow(mock);
 if (mode === 'checks' || mode === 'all') await checks();
@@ -1670,6 +1990,8 @@ if (mode === 'looks') await looks();
 if (mode === 'first') await first();
 if (mode === 'm2') await m2();
 if (mode === 'm3') await m3();
+if (mode === 'm4') await m4();
+if (mode === 'm4real') await m4real();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

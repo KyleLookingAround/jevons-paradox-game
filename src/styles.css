@@ -1747,3 +1747,15 @@ html[data-motion='reduce'] .cr-line { animation: none; }
 .cr-m3 { font-size: calc(12.5px * var(--ts)); text-align: center; margin: 0; }
 .arc-board { display: block; text-align: left; margin: 0 0 10px; font-size: calc(14px * var(--ts)); }
 @media (max-width: 360px) { .bc-fig { font-size: calc(13px * var(--ts)); } .cg-v { font-size: calc(21px * var(--ts)); } }
+.board-card .paper-head { font-size: calc(26px * var(--ts)); line-height: 1.1; }
+.res-yrs span { display: block; }
+/* The Commons: another Industry's projects fold under their heading; a project built to its last level is one line. */
+.cm-gh { margin: 0; }
+button.cm-gt { all: unset; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; width: 100%; cursor: pointer; font-family: var(--labelf); font-size: calc(12px * var(--ts)); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 2px 0; }
+button.cm-gt::before { content: '▾'; letter-spacing: 0; }
+.cm-g.folded button.cm-gt::before { content: '▸'; }
+button.cm-gt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cm-gn { letter-spacing: .02em; text-transform: none; }
+.cm-g.folded > .cm { display: none; }
+.cm.maxed { padding-top: 8px; padding-bottom: 8px; }
+.cm.maxed > :not(.up-h) { display: none; }

@@ -96,6 +96,8 @@ export interface SoundscapeDef {
   crisis: { recipe: string; gain: number; swell?: string };
   /** Layer ids that still sound, faint and distant, under later Industries (heritage). */
   trace: string[];
+  /** M4: the traces' level under other Industries, × this (default 1). */
+  traceGain?: number;
   /** Lever kind → recipe for its small signature (default 'lv.<kind>', else 'lv.generic'). */
   levers?: Record<string, string>;
 }
@@ -361,7 +363,7 @@ const iron: SoundscapeDef = {
   ],
   // The Orange Night: the roar swells and an alarm bell rings in key.
   crisis: { recipe: 'ironAlarm', gain: 0.18, swell: 'roarSwell' },
-  trace: ['hammer'],
+  trace: ['hammer'], traceGain: 0.75,
 };
 
 /* ------------------------------------------------------------------ */
@@ -405,7 +407,7 @@ const fishing: SoundscapeDef = {
       gain: 0.09, level: { add: [['tied', 1]] }, send: 0.3 },
   ],
   crisis: { recipe: 'fogHorn', gain: 0.12 },
-  trace: ['swell', 'buoy'],
+  trace: ['swell', 'buoy'], traceGain: 0.75,
 };
 
 /* ------------------------------------------------------------------ */

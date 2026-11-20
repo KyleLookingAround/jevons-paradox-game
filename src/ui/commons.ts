@@ -8,6 +8,7 @@ import { h, setText, setAttr, setFill, show, cls, syncChildren, reducedMotion } 
 import { fmt, money, num, lower } from './fmt';
 import { effectText, stamp } from './panels';
 import { sound } from './sound';
+import { isOpen, setOpen } from './prefs';
 
 interface Card { el: HTMLElement; update(v: CommonsView): void }
 
@@ -69,11 +70,21 @@ export function buildCommons(ctx: Ctx): Comp {
   const groups = new Map<string, HTMLElement>();
   let key = '';
 
+  // M4 folding: another Industry's projects fold to one line under their heading (tap to open, remembered per device);
+  // this Industry's and the general ones stand open. A project built to its last level is one line wherever it is.
+  const counts = new Map<string, HTMLElement>();
   function group(id: string): HTMLElement {
     let g = groups.get(id);
     if (!g) {
       const name = id === '' ? 'For everyone' : sectorDef(ctx, id)?.name ?? id;
-      g = h('div', { class: 'cm-g' }, h('h3', { class: 'cm-gt', text: name }));
+      const n = h('span', { class: 'cm-gn num' });
+      counts.set(id, n);
+      const btn = h('button', { class: 'cm-gt', type: 'button', 'aria-expanded': 'true', onclick: () => {
+        const open = g!.classList.contains('folded');
+        setOpen(`cm:${id}`, open);
+        cls(g!, 'folded', !open); setAttr(btn, 'aria-expanded', String(open));
+      } }, h('span', { text: name }), n);
+      g = h('div', { class: 'cm-g' }, h('h3', { class: 'cm-gh' }, btn));
       groups.set(id, g);
     }
     return g;
@@ -106,6 +117,16 @@ export function buildCommons(ctx: Ctx): Comp {
       if (!views.length) list.replaceChildren(h('p', { class: 'empty', text: 'No projects open yet.' }));
     }
     for (const v of views) cards.get(v.def.id)?.update(v);
+    for (const id of ids) {
+      const g = groups.get(id);
+      if (!g) continue;
+      const mine = views.filter((x) => gid(x) === id);
+      const built = mine.filter((x) => x.maxed).length;
+      const can = mine.filter((x) => x.canBuy).length;
+      setText(counts.get(id), ` · ${mine.length} project${mine.length === 1 ? '' : 's'}${built ? `, ${built} built` : ''}${can ? `, ${can} affordable` : ''}`);
+      const folded = !isOpen(`cm:${id}`, id === ctx.sector || id === '');
+      if (g.classList.contains('folded') !== folded) { cls(g, 'folded', folded); setAttr(g.querySelector('.cm-gt'), 'aria-expanded', String(!folded)); }
+    }
   }
   return { el, update };
 }

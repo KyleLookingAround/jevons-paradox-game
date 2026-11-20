@@ -7,7 +7,7 @@ import type { Ctx } from './ctx';
 import { sectorDef, sd } from './ctx';
 import type { SectorDerived, SectorId } from '../types';
 import { h, setText, show, cls, syncChildren, setAttr } from './dom';
-import { fmt, pct, num, lower } from './fmt';
+import { fmt, pct, num } from './fmt';
 
 /** "× 0.88" */
 export const factorText = (f: number): string => `× ${num(f, 1).toFixed(2)}`;
@@ -75,7 +75,6 @@ export function fedLine(ctx: Ctx, id: SectorId = ctx.sector): string {
   const e = sd(ctx, id), def = sectorDef(ctx, id);
   const f = e?.fed;
   if (!f || !def) return '';
-  const res = lower(def.resource.name);
-  const share = f.share != null && Number.isFinite(f.share) ? `; the feeds add ${pct(f.share, false)} to its ${res}` : '';
+  const share = f.share != null && Number.isFinite(f.share) ? `, which adds ${pct(f.share, false)} to its draw` : '';
   return `Fed by the order book: its machines ${factorText(f.factor)}${share}.`;
 }

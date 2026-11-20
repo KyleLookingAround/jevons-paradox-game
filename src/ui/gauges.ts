@@ -395,7 +395,13 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     const yl = e?.yearsLeft;
     const twoRates = !!yl && yl.flat != null && yl.growing != null;
     show(resYrs, twoRates);
-    if (twoRates && yl) setText(resYrs, `${estimatesText.yearsLeft.flat}: ${yrs(yl.flat as number)} · ${estimatesText.yearsLeft.growing}: ${yrs(yl.growing as number)}`);
+    if (twoRates && yl) {
+      const k = `${yrs(yl.flat as number)}|${yrs(yl.growing as number)}`;
+      if (resYrs.dataset.k !== k) {
+        resYrs.dataset.k = k;
+        resYrs.replaceChildren(h('span', { text: `${estimatesText.yearsLeft.flat}: ${yrs(yl.flat as number)}` }), h('span', { text: `${estimatesText.yearsLeft.growing}: ${yrs(yl.growing as number)}` }));
+      }
+    }
 
     // Population (the unfolding: shown once people matter: the first crisis, or a town grown by a third)
     const g = ctx.content.global;

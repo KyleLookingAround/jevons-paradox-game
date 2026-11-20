@@ -114,7 +114,7 @@ function boot(o: GameOpts): void {
   let away = 0;
   let unread: string | null = null;
   // M4: a save made before M4 (version 4 or older) meets Iron, Fishing and the Previews: say so once (boardSurvey.ts).
-  let preM4 = false;
+  let preM4 = false, noticeLater = false;
   if (persist) {
     const txt = lsGet(saveKey);
     if (txt) {
@@ -319,7 +319,7 @@ function boot(o: GameOpts): void {
       if (d.freshRun) ui.openShopBetweenRuns();
       return true;
     },
-    resume() { last = performance.now(); acc = 0; save(); },
+    resume() { last = performance.now(); acc = 0; save(); if (noticeLater) { noticeLater = false; ui.toast(m4SaveNotice.notice, undefined); } },
   });
 
   function writeBackup(): void {
@@ -396,7 +396,11 @@ function boot(o: GameOpts): void {
   viewsAfterPaint();
   // Storage blocked: say so once, at the start, in the note line (QA B21); the menu's save panel says it at length.
   if (persist && !storageWorks()) ui.toast('This browser is keeping nothing: storage is blocked.', { label: 'Save', run: () => ui.openMenu() });
-  if (preM4 && state.version >= 5 && !isOpen('notice:m4', false)) { setOpen('notice:m4', true); ui.toast(m4SaveNotice.notice, undefined); }
+  // (Between runs the shop covers the note line: the notice waits for the next run to begin.)
+  if (preM4 && state.version >= 5 && !isOpen('notice:m4', false)) {
+    setOpen('notice:m4', true);
+    if (d.freshRun && (state.meta?.reckonings ?? 0) >= 1 && unread == null) noticeLater = true; else ui.toast(m4SaveNotice.notice, undefined);
+  }
   if (unread != null) ui.unreadSave(unread);
   // A save made between runs (after a Reckoning, before the next run began) reopens between runs: the shop and the
   // Charter choice, with "Begin the next run", and no clock until then.

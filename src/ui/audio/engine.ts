@@ -667,7 +667,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         tr = { gain, lp, layers };
         g.traces.set(sid, tr);
       }
-      ramp(tr.gain.gain, h * 0.7 * m.world, 1.5);
+      ramp(tr.gain.gain, h * 0.7 * m.world * (def.traceGain ?? 1), 1.5);
       for (const rt of tr.layers) applyLayer(g, rt, { level: 1, density: rt.def.kind === 'hits' ? 0.6 * (m.frozen ? 0.1 : 1) : 0, pitch: m.frozen ? 0.85 : 1, tone: 1, blackout: false });
     }
     for (const [sid, tr] of g.traces) if (!(sid in m.traces)) ramp(tr.gain.gain, 0, 1.5);

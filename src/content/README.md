@@ -12,6 +12,8 @@ a value or an order (M2).
 | `helpers.ts` | `SectorContent` (one Industry's bundle); number series (`ladder`, `sig2`, `chain`), effect builders (`eta`, `sat`, …), `fork`, `lever`, and the shared lever tables (values, labels, the dividend catch). |
 | `sectors/<id>.ts` | One Industry: its `SectorDef` with applications and unlock, its upgrades, its levers and its own headlines (`Content.sectorHeadlines[id]`). Exports `<id>: SectorContent`. |
 | `ages.ts` | The Ages: calendar spans, themes, which Industries belong to each. |
+| `acts.ts` | M4: the Acts (Act I the Coal Age with its ending and capstone; Acts II and III Previews). |
+| `boardSurvey.ts` | M4: the Board's Survey card (`Content.surveyReveal`) and the page strings the contract has no slot for. |
 | `prestige.ts` | Know-how trees (and their display names, `knowhowTrees`) and Institutions. |
 | `charters.ts` | M2: the Charters, in content order (the order the deterministic draw indexes: append, never reorder). |
 | `commons.ts` | M2: the Commons projects, in display order. |

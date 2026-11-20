@@ -44,8 +44,8 @@ export interface Sources {
 }
 
 /**
- * M4 SceneView fields, as the scene lane's brief defines them (briefs/m4-scene.md). Read through this optional type so
- * the soundscape compiles and stays silent-safe before (and whether or not) the scene lane adds them to SceneView.
+ * M4 SceneView fields (scene/types.ts SceneStock, SceneFeed, SceneFedBy), read through this loose optional type so the
+ * soundscape stays silent-safe with views from before M4, hand-made views and partial objects.
  */
 export interface M4View {
   /** Fishing. The world (and so the sound) reads `truth`; the chart reads `reported` until `surveyed`. */
