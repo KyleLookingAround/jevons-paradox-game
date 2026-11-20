@@ -119,7 +119,7 @@ describe('M5 Chair: the pledge offer and polling day', () => {
     const camp = model.campaign(t, C, 100);
     expect(camp.chair!.confidence).toBeCloseTo(ch.confidence + 100 * C.chair!.confidence.campaignPerMandate, 9);
     // second loss → the Reckoning 'defeated'
-    let u = { ...t, chair: { ...t.chair!, confidence: 0 }, time: t.chair!.parliament.pollAt - 0.5 };
+    let u: GameState = { ...t, chair: { ...t.chair!, confidence: 0 }, time: t.chair!.parliament.pollAt - 0.5 };
     u = model.tick(u, C, 1);
     expect(model.derive(u, C).pendingReckoning?.cause).toBe('defeated');
     expect((u.events ?? []).some((e) => e.kind === 'ministryDefeated')).toBe(true);
