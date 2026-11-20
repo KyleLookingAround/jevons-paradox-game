@@ -12,7 +12,7 @@ import type { DispatchDef } from '../../types';
 import {
   AFTER_FIRST, BUDGET, SEAMS, absorb, all, answered, any, cash, cheaper, eta, income, intensity, mandate, mrate,
   owns, price, sat, sec, smoke, timed, wellbeing,
-} from './kit';
+stake, WAGER_WIN, WAGER_LOSE } from './kit';
 
 const S = 'steam';
 
@@ -62,8 +62,25 @@ export const steamDispatches: DispatchDef[] = [
       {
         label: 'Advise him to keep the wheel',
         outcome: 'Mr Hebden keeps the wheel for low water and the engine for droughts.',
-        price: 'The bigger contract',
-        modifier: timed(10, intensity(S, 0.925), income(0.94, S), wellbeing(1), absorb(S, 0.002)),
+        price: 'The bigger contract, and a little of the proprietor’s credit',
+        cost: { capitalSeconds: 10 },
+        /* M4 (finish): a wager. READS: the coal gauge (the reserve under half: coal will soon be dear). */
+        wager: {
+          when: sec('reserveFraction', S, '<', 0.5),
+          hint: 'Pays if more than half the coal is gone',
+          win: {
+            outcome: 'Coal was getting dear: the wheel saves Mr Hebden a fortune, and he says so in the Gazette.',
+            effects: [stake(WAGER_WIN)],
+            modifier: timed(10, intensity(S, 0.925), income(0.94, S), wellbeing(1), absorb(S, 0.002)),
+            reply: 'Hebden’s wheel turns through the dear winter; rivals undersold',
+          },
+          lose: {
+            outcome: 'Coal was still cheap: the wheel saves nothing, and a rival mill by the pit undersells him.',
+            effects: [stake(WAGER_LOSE)],
+            modifier: timed(10, income(0.94, S)),
+            reply: 'Hebden keeps his wheel; the pithead mill takes his orders',
+          },
+        },
       },
     ],
     rebound: 'The frontier: cheap power frees the mill from the river, and the mill goes where the coal is',
@@ -157,9 +174,25 @@ export const steamDispatches: DispatchDef[] = [
       {
         label: 'Run the Sunday excursions',
         outcome: 'Every Sunday the trains fill, and the town goes to the sea and back by coal.',
-        price: 'Sunday coal, and the chapel’s displeasure',
-        modifier: timed(12, sat(S, 1.05, 'steam.railways'), wellbeing(1), absorb(S, 0.002)),
-        reply: 'Sunday excursions to run weekly; the chapel preaches on the Sabbath',
+        price: 'Sunday coal, the chapel, and a guarantee',
+        cost: { capitalSeconds: 10 },
+        /* M4 (finish): a wager. READS: Steam's price (cheap power fills a shilling train). */
+        wager: {
+          when: { stat: 'servicePrice', sector: S, op: '<=', value: 0.15, label: 'Power under 0.15' },
+          hint: 'Pays if power is cheap: Steam’s price at 0.15 or under',
+          win: {
+            outcome: 'Power was cheap: the shilling trains fill every Sunday and pay for themselves.',
+            effects: [stake(WAGER_WIN)],
+            modifier: timed(12, sat(S, 1.05, 'steam.railways'), wellbeing(1), absorb(S, 0.002)),
+            reply: 'Sunday excursions to run weekly; the chapel preaches on the Sabbath',
+          },
+          lose: {
+            outcome: 'Power was dear: the excursions run half empty, and the guarantee is called.',
+            effects: [stake(WAGER_LOSE)],
+            modifier: timed(10, wellbeing(0.5)),
+            reply: 'Sunday excursions run half empty; the company counts the cost',
+          },
+        },
       },
       {
         label: 'Keep Sunday quiet',
@@ -318,16 +351,47 @@ export const steamDispatches: DispatchDef[] = [
         price: '£, and the next valley’s air',
         cost: { capitalSeconds: 35 },
         effects: [intensity(S, 0.85)],
-        modifier: timed(10, wellbeing(1), absorb(S, 0.002)),
         next: 'd.steam.nextValley',
-        reply: 'Three-hundred-foot chimney finished; the town sees the hills again',
+        /* M4 (finish): a wager. READS: Steam's smoke gauge (past half way to a fog, a tall chimney earns its keep). */
+        wager: {
+          when: sec('pressureFraction', S, '>=', 0.5),
+          hint: 'Pays if the smoke is past half way to a fog',
+          win: {
+            outcome: 'The smoke was thick: the chimney lifts it off the town, and the clubs subscribe to the cost.',
+            effects: [stake(WAGER_WIN)],
+            modifier: timed(10, wellbeing(1), absorb(S, 0.002)),
+            reply: 'Three-hundred-foot chimney finished; the town sees the hills again',
+          },
+          lose: {
+            outcome: 'The smoke was thin: the chimney lifts very little, and costs a great deal.',
+            effects: [stake(WAGER_LOSE)],
+            modifier: timed(10, wellbeing(0.5)),
+            reply: 'Three-hundred-foot chimney finished; the clubs ask what it was for',
+          },
+        },
       },
       {
         label: 'Require smokeless grates',
         outcome: 'The grates are fitted under protest and burn their own smoke.',
         price: 'Mandate, and the owners’ protest in the takings',
         cost: { mandate: 35 },
-        modifier: timed(15, intensity(S, 0.85), income(0.95, S)),
+        /* M4 (finish): a wager. READS: Steam's smoke gauge (a third of the way to the Black Fog). */
+        wager: {
+          when: sec('pressureFraction', S, '<', 0.33),
+          hint: 'Pays if the smoke is under a third of the way to a fog',
+          win: {
+            outcome: 'The smoke was still thin: the grates burn what there is, and the town sees the hills.',
+            effects: [stake(WAGER_WIN)],
+            modifier: timed(15, intensity(S, 0.85), income(0.95, S)),
+            reply: 'Smokeless grates fitted; the washing comes in white',
+          },
+          lose: {
+            outcome: 'The smoke was too thick: the grates choke on it, and the owners blame the Society.',
+            effects: [stake(WAGER_LOSE)],
+            modifier: timed(10, income(0.95, S)),
+            reply: 'Smokeless grates fitted; the smoke is as thick as before',
+          },
+        },
       },
     ],
     rebound: 'Displacement: a tall chimney exports the smoke it removes',

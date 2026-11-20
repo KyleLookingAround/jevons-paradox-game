@@ -7,7 +7,7 @@ import type { DispatchDef } from '../../types';
 import {
   AFTER_FIRST, BUDGET, COMMONS, FIRST_LETTER, absorb, all, answered, cash, forbidKind, growth, income, intensity,
   leak, leverCost, mandate, mrate, not, owns, people, price, rk, sat, smoke, suspendOrder, timed, wellbeing,
-} from './kit';
+stake, WAGER_WIN, WAGER_LOSE } from './kit';
 
 export const generalDispatches: DispatchDef[] = [
   /* ---- Run 2: the correspondent alone, two answers each, nothing that outlasts five minutes ---- */
@@ -208,8 +208,23 @@ export const generalDispatches: DispatchDef[] = [
         outcome: 'The savings bank opens in the chapel schoolroom, and the pennies stay put.',
         price: '£ to guarantee it, and a quieter market',
         cost: { capitalSeconds: 25 },
-        modifier: timed(12, sat('steam', 0.95), wellbeing(1), absorb('steam', 0.002)),
-        reply: 'Penny bank opens in the schoolroom; grocers report a quieter week',
+        /* M4 (finish): a wager. READS: the coal gauge (a saving keeps when coal is getting scarce). */
+        wager: {
+          when: { stat: 'reserveFraction', sector: 'steam', op: '<', value: 0.67, label: 'A third of the coal gone' },
+          hint: 'Pays if a third or more of the coal is gone',
+          win: {
+            outcome: 'Coal was getting scarce: the pennies stay saved for the dear winter, and the habit stays.',
+            effects: [stake(WAGER_WIN)],
+            modifier: timed(12, sat('steam', 0.95), wellbeing(1), absorb('steam', 0.002)),
+            reply: 'Penny bank opens in the schoolroom; grocers report a quieter week',
+          },
+          lose: {
+            outcome: 'Coal was still plentiful: the pennies go on coal, and the guarantee is called.',
+            effects: [stake(WAGER_LOSE)],
+            modifier: timed(10, wellbeing(-0.5)),
+            reply: 'Penny bank opens in the schoolroom; nobody comes',
+          },
+        },
       },
     ],
     rebound: 'Respending: the money saved on coal buys goods made with coal',

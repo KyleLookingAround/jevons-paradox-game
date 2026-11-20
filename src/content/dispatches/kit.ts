@@ -99,9 +99,9 @@ export const timed = (years: number, ...effects: EffectDef[]): NonNullable<Dispa
 
 /**
  * A share of the run's Hindsight, paid or forfeited at the Reckoning (EffectDef 'hindsightShare'; wager branches only,
- * the lint). Balance: a won wager is worth 3% of the run's Hindsight, a lost one costs 3%, the same in a short burning
+ * the lint). Balance: a won wager is worth 2.2% of the run's Hindsight, a lost one costs 2.2%, the same in a short burning
  * run as in a long held one; a player who reads the instrument the hint names wins (design/m4-design.md §8.2).
  */
 export const stake = (value: number): EffectDef => ({ type: 'hindsightShare', value });
-export const WAGER_WIN = 0.03;
-export const WAGER_LOSE = -0.03;
+export const WAGER_WIN = 0.022;
+export const WAGER_LOSE = -0.022;

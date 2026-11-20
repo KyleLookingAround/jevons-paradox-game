@@ -7,7 +7,7 @@ import type { DispatchDef } from '../../types';
 import {
   AFTER_FIRST, BUDGET, absorb, all, cash, eta, half, income, intensity, mandate, mrate, not, owns, sat, smoke, timed,
   wellbeing,
-} from './kit';
+stake, WAGER_WIN, WAGER_LOSE, sec } from './kit';
 
 const L = 'light';
 
@@ -282,10 +282,25 @@ export const lightDispatches: DispatchDef[] = [
       {
         label: 'Dim them all',
         outcome: 'The town is dim till spring, and in the spring it lights up brighter than before.',
-        price: 'A dim winter, and a bright spring after',
-        effects: [mandate(60)],
-        modifier: timed(15, sat(L, 0.88), wellbeing(-0.5)),
-        reply: 'Lamps dimmed for the winter by order; shopkeepers buy candles',
+        price: 'A dim winter, and Mandate to carry it',
+        cost: { mandate: 20 },
+        /* M4 (finish): a wager. READS: Steam's coal gauge (the Minister says coal is short; is it?). */
+        wager: {
+          when: sec('reserveFraction', 'steam', '<', 0.5),
+          hint: 'Pays if coal really is short: more than half of it gone',
+          win: {
+            outcome: 'Coal was short: the dim winter saves it, and the House thanks the proprietor.',
+            effects: [stake(WAGER_WIN), mandate(60)],
+            modifier: timed(15, sat(L, 0.88), wellbeing(-0.5)),
+            reply: 'Lamps dimmed for the winter by order; the coal lasts to spring',
+          },
+          lose: {
+            outcome: 'Coal was plentiful: the town sat in the dark for nothing, and the shopkeepers say so.',
+            effects: [stake(WAGER_LOSE)],
+            modifier: timed(10, sat(L, 0.95), wellbeing(-0.5)),
+            reply: 'Lamps dimmed by order; the coal yards are full',
+          },
+        },
       },
       {
         label: 'Ask for an exemption',
