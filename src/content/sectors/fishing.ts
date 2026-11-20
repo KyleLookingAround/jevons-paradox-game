@@ -15,7 +15,7 @@
  */
 import type { HeadlineKey, LeverDef, LeverLevelDef, SectorDef, UpgradeDef } from '../../types';
 import {
-  eta, capCost, margin, sat, half, chain, fork, ladder, lever, sig2, withStages, RECYCLE, CAP_LABEL, CAP_VALUES, CAP_LEAK,
+  eta, capCost, sat, half, chain, fork, ladder, lever, sig2, withStages, decadeSequence, RECYCLE, CAP_LABEL, CAP_VALUES, CAP_LEAK,
   SUFF_VALUES, DIVIDEND,
 } from '../helpers';
 import type { SectorContent } from '../helpers';
@@ -148,6 +148,19 @@ const sector: SectorDef = {
    * a few per cent of Steam's demand then; it is what the full account hands from Steam to Fishing). */
   spill: { to: 'light', rate: 0.1 },
   drawsOn: { sector: 'steam', perService: 0.05 },
+
+  /*
+   * Decade dividends: Fishing's own two pairs, interleaved with the global sequence (decadeSequence). The four dividends
+   * are defined in design/scratch/m4-registry-fishing.md for the Act lane to add to dividends.ts (not this lane's
+   * file); option 0 of each pair is the modest one. Clear skies use the global rule: depletion halved from the day the
+   * line was drawn and not rising, i.e. the stock has regrown (contract: SectorDef.pressureSource 'depletion').
+   */
+  steady: {
+    decadeChoices: decadeSequence([
+      ['div.fishing.closedMonth', 'div.fishing.newSlip'],
+      ['div.fishing.boardGrant', 'div.fishing.pennySupper'],
+    ]),
+  },
 
   /*
    * Opens in run 6 (≥ 5 Reckonings) with Settlement arrived, once Steam has the trawlers' engines and the fish train's
