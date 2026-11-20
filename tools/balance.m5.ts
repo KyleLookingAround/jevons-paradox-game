@@ -63,7 +63,6 @@ export function playMinistries(start: GameState, c: Content, name: string, minis
     if (profile) s = { ...s, meta: { ...s.meta, office: { ...s.meta.office!, profile } } };
     if (model.derive(s, c).treaty?.available) s = model.treaty(s, c);
     s = spendBetween(s, c);
-    s = { ...s, flags: { ...s.flags, revealed: true } };
     const polls: number[] = [];
     let treas = 0, t = 0;
     const cap = minutes * 60;

@@ -27,7 +27,11 @@ const ONE_OFF_TYPES = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populatio
 
 /** The dispatch may be drawn now (DispatchDef: feature, cast `when`, sector open, age, `when`, not offered this run, `once`). */
 export function eligible(state: GameState, content: Content, d: DispatchDef): boolean {
-  if (state.dispatch.offered.includes(d.id)) return false;
+  if (d.recur === 'parliament' && state.chair) { // M5 (amend): once per Parliament in a Ministry
+    if (state.dispatch.pending.some((p) => p.id === d.id)) return false;
+    const start = state.chair.parliament.start;
+    if (state.dispatch.answered.some((a) => a.id === d.id && a.t >= start)) return false;
+  } else if (state.dispatch.offered.includes(d.id)) return false;
   if (d.once && (state.meta.dispatches?.seen?.[d.id] ?? 0) > 0) return false;
   if (d.sector !== undefined && !state.sectors[d.sector]?.open) return false;
   if (d.age !== undefined && currentAge(state, content)?.id !== d.age) return false;
@@ -219,7 +223,7 @@ export function stepDispatch(next: GameState, content: Content, year: number, aw
         dispatch: {
           ...s.dispatch, draws: s.dispatch.draws + 1, queue: qi >= 0 ? s.dispatch.queue.filter((_, i) => i !== qi) : s.dispatch.queue,
           pending: [...s.dispatch.pending, { id: d.id, arrivedAt: end, expiresAt: end + expiryOf(d, content) }],
-          offered: [...s.dispatch.offered, d.id],
+          offered: s.dispatch.offered.includes(d.id) ? s.dispatch.offered : [...s.dispatch.offered, d.id], // M5 (amend): a recurring letter is listed once
         },
         meta: { ...s.meta, dispatches: { ...md, seen: { ...md.seen, [d.id]: (md.seen[d.id] ?? 0) + 1 } } },
       };

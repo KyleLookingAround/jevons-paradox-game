@@ -30,22 +30,30 @@ const RETURN_SHARE = 0.5;
 /** The return share never falls below this, whatever the cards: some water always soaks back. */
 const RETURN_FLOOR = 0.08;
 /** Each irrigation card's returnShareMul (multiplicative): pivot, dropped nozzles, drip, precision. 0.5 → 0.425 → 0.34
- *  → 0.17 → 0.153. Drip is the big step: it halves what soaks back (Grafton 2018: "reducing return flows"). */
+ *  → 0.136 → 0.122. Drip is the big step: it keeps two fifths of what soaked back (Grafton 2018: "reducing return
+ *  flows"). With the main crop saturated, drip's ×1.4 crop per drop cuts water applied and its return share raises
+ *  water consumed (criterion 15; the findings: in the elastic regime applied barely falls). */
 const PIVOT_RETURN = 0.85;
 const NOZZLE_RETURN = 0.8;
 const DRIP_RETURN = 0.4;
 const PRECISION_RETURN = 0.9;
-/** Drip's cost: chosen so that the default Pryce (payback limit 150 s) declines it unsubsidised when it comes up and
- *  takes it with the subsidy at level 2 (he pays 40%). See the progress note for the measured paybacks. */
+/** Drip's cost: the default Pryce (payback limit 150 s) declines it unsubsidised (payback about 240 s three minutes after
+ *  Plenty opens, about 360 s at the plateau) and takes it at once with the subsidy at level 2 (he pays 35%: about 85 s).
+ *  A patient Pryce (haste 0, limit 240 s) buys it anyway; a hasty one (limit 60 s) never. */
 const DRIP_COST = 400_000;
-/** The subsidy's levels: the Treasury's share of the targets' cost (0.3, 0.6). At 0.6 the default Pryce's payback on drip
- *  falls by 2.5×, inside his limit. */
+/** The subsidy's levels: the Treasury's share of the targets' cost. Level 1 (45%) brings dropped nozzles inside the
+ *  default Pryce's limit (payback 207 s → 114 s); level 2 (65%) brings drip too. Measured 600 s after enactment, against
+ *  no subsidy: level 1 applied −5%, consumed +10%; level 2 applied −13%, consumed +30%. */
 const SUBSIDY = [0.45, 0.65];
 /** The aquifer (acre-feet; SectorDef.reserve) and the pumping-cost exponent (p_r = p0 × (Q0 / Q)^alpha): the water
- *  table falls, the lift lengthens, pumping costs more. */
+ *  table falls, the lift lengthens, pumping costs more. Unopposed, 17% of it is gone 73 minutes after Plenty opens; with
+ *  the subsidy faster. Exhaustion ends the run, so it must not come inside a Ministry an abstainer can survive. */
 const RESERVE = 60_000_000;
 const ALPHA = 0.5;
-/** Nitrate per calorie (pressureSource 'service'): the first Green Tide 12–30 minutes after Plenty opens under abstain. */
+/** Nitrate per calorie (pressureSource 'service') and its washing out per second: the first Green Tide 12–30 minutes after
+ *  Plenty opens under abstain (measured 14.7); unopposed it plateaus at about 53 (no second crisis, no collapse), so the
+ *  later crises are the subsidy's and the dated uses'. The slow washing out (1/0.0015 s, about 11 minutes) is what puts
+ *  the first crisis a quarter of an hour after the growth. */
 const N_INTENSITY = 0.0000075;
 const N_ABSORPTION = 0.0015;
 /** Air freight and biofuels are dated on Plenty's own clock, not the run's (the run's calendar is past 2010 by the time
@@ -219,7 +227,9 @@ const ret = (value: number) => ({ type: 'returnShareMul' as const, sector: 'plen
  * patent US 2,604,359, granted 22 July 1952 (National Inventors Hall of Fame); hybrid maize in the Corn Belt in the
  * 1930s; semi-dwarf wheat from Mexico (Borlaug, from 1944) to the 1960s (sectors.md §1.1); drip, Blass's emitters sold in
  * the early 1960s (no single year printed); precision farming, satellite positioning on the combine in the 1990s.
- * Costs rise about ×1.9 a card; Pryce buys each when its payback is under his limit (150 s at the default profile).
+ * Costs are set on Pryce's payback (cost ÷ the running cost saved, limit 150 s at the default profile): the opening cards
+ * pay back inside a minute or two and go in the first seven minutes; dwarf wheat and the pumps just inside; nozzles
+ * and drip outside it unless subsidised; precision far outside (a late card for a later balance pass).
  */
 /* Two lines from the tractor: the seed (hybrid maize, dwarf wheat) and the water (pivot, then nozzles or drip, each needing
  * only the pivot, so a subsidy can bring drip forward without waiting on the seed); precision farming needs both. */
@@ -427,7 +437,8 @@ const plentyLevers: LeverDef[] = [
   /*
    * The water charge, two levers (the M5 kind 'charge' takes its basis per lever, not per level, so the choice of gauge is
    * a choice of lever; design §6.7): at the pump (cheap to meter, popular sooner) or on water consumed (the Board's
-   * accounts). A charge on applied water makes every efficient card pay sooner; a charge on consumed water does not.
+   * accounts). Neither changes what Pryce buys (his payback reads the price
+   * before the charge), so under the subsidy a charge prices the rebound and does not stop it; the caps hold a gauge.
    * Popularity (LeverDef.popularity, per level): −3 on the day, +5 after ten model years (findings: `after` must exceed
    * perPriceShare × the charge's share of the price, about +5 a level, for the term to turn with Treasury recycling).
    */

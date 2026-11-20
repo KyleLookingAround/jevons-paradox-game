@@ -2336,6 +2336,13 @@ export interface DispatchDef {
   weight?: number;
   /** At most once in the save. Default false (it may return once the eligible pool has all been seen as often). */
   once?: boolean;
+  /**
+   * M5 (amend): 'parliament': in a Ministry the letter may recur within a run, once per Parliament: it is eligible (its
+   * other conditions holding) while it is not pending and it was not answered or lapsed since the current Parliament
+   * began (GameState.dispatch.answered; an entry trimmed from that list no longer blocks). Outside a Ministry, as
+   * without it (not offered already this run). `once` still wins. Default: absent (never twice in a run).
+   */
+  recur?: 'parliament';
   headline: string;
   body: string;
   /** Two or three arms (lint). */
@@ -5237,6 +5244,7 @@ export interface ArticleView {
  * Entries:
  *   - AppDerived.waiting (new, optional): the label of a failing ApplicationDef.when, as LeverView.waiting.
  *   - ProspectusView doc: `every` is the mean interval among the card's purchases up to the last quoted item's time.
+ *   - DispatchDef.recur (new, optional): 'parliament' lets a letter recur once per Parliament in a Ministry.
  *   - LoopholeDef doc: rungs and feature 'loopholes' arriving mid-run (a lever raised before it opens its first rung at
  *     the first order tick after the arrival; its answer falls due).
  */

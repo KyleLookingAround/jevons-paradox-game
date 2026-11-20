@@ -30,10 +30,6 @@ writeFileSync(`${out}/office-offer.json`, model.serialize(s));
 console.log(`office-offer: run ${s.meta.reckonings + 1}, ${(s.meta.totalSeconds / 3600).toFixed(2)} h`);
 
 s = model.takeOffice(s, C);
-/* A core gap (design/scratch/m5-prestige-progress.md): takeOffice leaves flags.revealed false (every Institution is at
- * level 0 after the wipe), which hides every lever. The regulator harness (tools/balance.m5.ts) sets it by hand; so does
- * this fixture, so that it shows the Ministry as intended. Remove once the core sets it in a Ministry. */
-s = { ...s, flags: { ...s.flags, revealed: true } };
 const bot = GOV.steward;
 for (let t = 0; t < 600; t++) { s = bot(s, C, t); s = model.tick(s, C, 1); }
 writeFileSync(`${out}/ministry-1.json`, model.serialize(s));

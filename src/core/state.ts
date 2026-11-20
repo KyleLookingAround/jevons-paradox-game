@@ -156,7 +156,9 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
     dispatch: freshDispatch(content), modifiers: [], ambientLast: {}, orderLog: {}, historyLifted: false,
   };
   const chair = freshChair(content, m); // M5: a Ministry while office is taken
-  if (chair) s.chair = chair;
+  // M5 (follow-up 2): a Ministry is built revealed. Whoever took office had the reveal long ago; the wipe (Institutions at
+  // level 0, the reveal card's Industry capstoned) must not hide every lever of the Chair
+  if (chair) s = { ...s, chair, flags: { ...s.flags, revealed: true } };
   // M5 (follow-up): ApplicationDef.when gates the uses of the sectors open at the start
   if (ix.whenApps) {
     const gated = { ...s.sectors };
