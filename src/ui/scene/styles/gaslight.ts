@@ -16,7 +16,7 @@ export const gaslight: ArtStyle = {
 }
 
 .scn[data-look=gaslight]{--s-ink:#5a3a4c;--s-btxt:#f4e7c5}
-/* A printed dusk: prussian blue overhead, stepped down through plum and vermilion to an ochre and cream horizon. */
+${/* A printed dusk: prussian blue overhead, stepped down through plum and vermilion to an ochre and cream horizon. */ ''}
 .scn[data-look=gaslight] .scn-sky{background:linear-gradient(to bottom,#151a3c 0 13%,#22204a 13% 20%,#3a2550 20% 26%,#5e2c52 26% 30%,#93344a 30% 33.5%,#c9502f 33.5% 36.5%,#e48c38 36.5% 39%,#f0c56e 39% 41%,#f3e2b0 41% 42.5%,#2a1d33 42.5%)}
 .scn[data-look=gaslight] .scn-sky.smog{background:linear-gradient(to bottom,#1c1712 0 16%,#2a2018 16% 25%,#3a2a1c 25% 31%,#55391f 31% 35%,#7a4f26 35% 39%,#a46a33 39% 42.5%,#2a1d33 42.5%)}
 .scn[data-look=gaslight] .scn-sky.fresh{background:linear-gradient(to bottom,#0b1640 0 16%,#13235a 16% 25%,#1c3170 25% 31%,#284585 31% 36%,#3a5d96 36% 41%,#6a7fb0 41% 42.5%,#2a1d33 42.5%)}

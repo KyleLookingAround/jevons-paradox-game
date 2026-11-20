@@ -13,7 +13,7 @@
  * Fishing alone (design/scratch/m4-fishing-progress.md, "Calibration"), not with the core, which was being written at
  * the same time.
  */
-import type { HeadlineKey, LeverDef, LeverLevelDef, SectorDef, UpgradeDef } from '../../types';
+import type { Cond, HeadlineKey, LeverDef, LeverLevelDef, SectorDef, UpgradeDef } from '../../types';
 import {
   eta, capCost, sat, half, chain, fork, ladder, lever, sig2, withStages, decadeSequence, RECYCLE, CAP_LABEL, CAP_VALUES, CAP_LEAK,
   SUFF_VALUES, DIVIDEND,
@@ -99,11 +99,10 @@ const CAP_COST = 1;
 const ALPHA = 0.5;
 
 /**
- * The intended visibility of the fishery limits (design §5.7: the lever arrives when the foreign share passes 15%).
- * The contract cannot express it: LeverDef.requires takes ids and feature ids, not a Cond, and levers have no `when`
- * (reported as a contract gap). Exported so the contract or Act lane can wire it if LeverDef gains `when`.
+ * The visibility of the fishery limits (design §5.7: the lever arrives when the foreign share passes 15%). Wired as the
+ * lever's `when` (LeverDef.when, the M4 amendment; the Act lane).
  */
-export const FISHERY_LIMITS_WHEN = { stat: 'foreignShare', sector: 'fishing', op: '>=', value: 0.15 } as const;
+export const FISHERY_LIMITS_WHEN: Cond = { stat: 'foreignShare', sector: 'fishing', op: '>=', value: 0.15, label: 'Foreign boats take 15% of the catch' };
 
 /* ------------------------------------------------------------------ */
 /* FISHING: the Industry                                               */
@@ -470,7 +469,7 @@ const fishingLevers: LeverDef[] = [
    * is of the period: the North Sea Fisheries Convention, The Hague, 6 May 1882, gave each signatory's fishermen three
    * miles of their own coast, checked against the 1911 Britannica and Hansard, 14 March 1923). Visibility: meant to
    * wait for a 15% foreign share (FISHERY_LIMITS_WHEN), which the contract cannot express; until it can, the lever is
-   * visible when Fishing opens. No Tighten past two hundred miles (maxSteps 0).
+   * visible when Fishing opens. (M4 amendment: wired as LeverDef.when.) No Tighten past two hundred miles (maxSteps 0).
    */
   {
     id: 'fishing.limits', sector: 'fishing', kind: 'measure',
@@ -479,6 +478,7 @@ const fishingLevers: LeverDef[] = [
     catch: 'Foreign boats leave the banks. Your own fleet will want the room, unless the Board sets the catch.',
     levels: levels([1, 2, 3, 4], 250, 0.08, ['Close the bays', 'Twelve miles', 'Fifty miles', 'Two hundred miles'], 2, 1.6),
     repeat: { valueStep: 1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 0, label: 'Limits, step {n}' },
+    when: FISHERY_LIMITS_WHEN,
     effects: [{ type: 'foreignMul', sector: 'fishing', value: 0.55 }],
     sideEffects: {
       effects: [sat('fishing', 1.12)],

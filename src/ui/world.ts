@@ -13,6 +13,7 @@ import { archiveUnread } from './archive';
 import { getPrefs, type Detail } from './prefs';
 import { timed } from './prof';
 import { soundUpdate, soundSector, sound, soundUnlock, panOf } from './sound';
+import { previewText } from '../content/boardSurvey';
 
 /* ------------------------------------------------------------------ */
 /* Broadsheet                                                          */
@@ -297,14 +298,23 @@ export function buildWorld(ctx: Ctx): WorldComp {
     const def = sectorDef(ctx);
     if (!def) return;
     // Industries already open when the page loads have been seen before: only one opened since is a first visit.
+    const firstLook = sector === '';
     if (sector === '') for (const id of openSectors(ctx)) visited.add(id);
+    // M4: the Act title card, at the start of a new save's first run ("Act I · The Coal Age").
+    const act0 = ctx.content.acts?.[0];
+    if (firstLook && act0 && num(ctx.state.meta?.reckonings) === 0 && num(ctx.state.time) < 5 && !ctx.d?.pendingReckoning) {
+      setTimeout(() => titleCard(frame, act0.name, act0.title, ageOfSector(ctx.content, def.id)?.tagline ?? ''), 600);
+    }
     if (def.id !== sector) {
       const first = sector !== '' && !visited.has(def.id);
       sector = def.id; renderer?.setSector(def.id); soundSector(def.id); selected = null; markHand();
       prebuilt.add(def.id);
       visited.add(def.id);
       // A first visit to an Industry opened this session is an event: its name over the picture.
-      if (first) titleCard(frame, ageOfSector(ctx.content, def.id)?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
+      // M4: a Preview Industry's card says so, once (the one fourth-wall line; previewText).
+      const ag = ageOfSector(ctx.content, def.id);
+      if (first && ctx.d?.sectors?.[def.id]?.preview) titleCard(frame, previewText.card.title.replace('{age}', ag?.name ?? 'The Age'), def.name, previewText.card.body);
+      else if (first) titleCard(frame, ag?.name ?? 'A new Industry', def.name, `${def.years}. ${def.tagline}`);
     }
     {
       const sx = selected ? ctx.d?.sectors?.[def.id]?.apps?.[selected] : undefined;
@@ -364,7 +374,9 @@ export function buildWorld(ctx: Ctx): WorldComp {
     const ak = ab ? `${ab.time}|${ab.text}` : '';
     if (ageKey !== null && ak && ak !== ageKey && num(ctx.state.time) - num(ab!.time) < 10) {
       const age = ab!.sector ? ageOfSector(ctx.content, ab!.sector) : undefined;
-      if (age) titleCard(frame, 'A new Age', age.name, age.tagline);
+      const prev = !!age && (age.sectors || []).some((id) => ctx.d?.sectors?.[id]?.preview);
+      if (age && prev) titleCard(frame, 'A new Age', previewText.card.title.replace('{age}', age.name), previewText.card.body);
+      else if (age) titleCard(frame, 'A new Age', age.name, age.tagline);
     }
     ageKey = ak;
     const e = sd(ctx);

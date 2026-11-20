@@ -59,13 +59,20 @@ const SECTOR_SCOPED: StatKey[] = [
   'settled', 'clear', 'clearYears',
   /* M3 */
   'seamsSunk', 'loadFactor', 'travelHours', 'sprawl', 'bite',
+  /* M4 (and the M4 amendment's feedShare) */
+  'openFor', 'stockFraction', 'reportedStock', 'foreignShare', 'scarYears', 'surveyed', 'budgetHeadroom', 'feedFactor',
+  'arrears', 'feedShare',
 ];
+/** M4: sector stats that read FALSE unless the sector has the kind (renewable; foreign fleets). */
+const RENEWABLE_STATS: StatKey[] = ['stockFraction', 'reportedStock', 'scarYears'];
 const APP_SCOPED: StatKey[] = ['adoption', 'appDemand'];
 /** Every StatKey there is (an unknown key evaluates false in the core: a typo would silently never hold). */
 const ALL_STATS = new Set<string>([
   'time', 'year', 'wellbeing', 'population', 'capital', 'mandate', 'reckonings', 'steadyYearsAll', 'clicks',
   'decisions', 'automated', 'commonsLevels', 'sectorsSettled', 'leanDecades', 'fullDecades',
   'steadySectors', 'dispatchesAnswered', 'historiesCleared', 'totalHours', 'bankedSeconds',
+  /* M4 */
+  'capstoned',
   ...SECTOR_SCOPED, ...APP_SCOPED,
 ]);
 
@@ -96,6 +103,12 @@ function allEffects(): { where: string; e: EffectDef }[] {
     d.arms.forEach((a, i) => {
       for (const e of a.effects ?? []) out.push({ where: `${d.id}[${i}]`, e });
       for (const e of a.modifier?.effects ?? []) out.push({ where: `${d.id}[${i}].modifier`, e });
+      /* M4: a wager's two branches */
+      for (const k of ['win', 'lose'] as const) {
+        const b = a.wager?.[k];
+        for (const e of b?.effects ?? []) out.push({ where: `${d.id}[${i}].${k}`, e });
+        for (const e of b?.modifier?.effects ?? []) out.push({ where: `${d.id}[${i}].${k}.modifier`, e });
+      }
     });
   }
   return out;
@@ -127,6 +140,16 @@ function allConds(): { where: string; c: Cond }[] {
   for (const c of castDefs) if (c.when) walk(c.id, c.when);
   for (const d of dispatches) if (d.when) walk(d.id, d.when);
   for (const a of ambient) walk(a.id, a.when);
+  /* M4 (and the M4 amendment): settle.requires, wagers, lever and Institution conditions, the feeds known */
+  for (const s of sectorIds) {
+    const r = C.sectors[s].settle?.requires;
+    if (r) walk(`${s}.settle.requires`, r);
+    const k = C.sectors[s].mechanic?.feedsKnownWhen;
+    if (k) walk(`${s}.mechanic.feedsKnownWhen`, k);
+  }
+  for (const d of dispatches) d.arms.forEach((a, i) => { if (a.wager) walk(`${d.id}[${i}].wager`, a.wager.when); });
+  for (const l of C.levers) if (l.when) walk(`${l.id}.when`, l.when);
+  for (const i of C.institutions) if (i.when) walk(`${i.id}.when`, i.when);
   return out;
 }
 
@@ -141,6 +164,8 @@ const NON_TEXT_KEYS = new Set([
    * keep their own spelling and quotes). */
   'profile', 'defaultProfile', 'apps', 'subject', 'cast', 'next', 'leverKind', 'suspend', 'unlock', 'cosmetic',
   'figure', 'voice', 'cite', 'url', 'grade', 'key', 'direction', 'answered', 'returned', 'machine',
+  /* M4: an act's ages and ending id; the reveal variant's kind */
+  'ages', 'ending',
 ]);
 
 /** Every player-facing string (with a path for error messages). Headline keys and sector keys are not text. */
@@ -175,7 +200,9 @@ describe('ids', () => {
   });
 
   test('the v1 sector ids are kept (saves depend on them)', () => {
-    expect(C.sectorOrder).toEqual(['steam', 'light', 'motion', 'compute', 'code']);
+    // M4: Iron and Fishing join the Coal Age; the five v1 ids are unchanged (saves key sectors by id, not position)
+    expect(C.sectorOrder).toEqual(['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code']);
+    for (const id of ['steam', 'light', 'motion', 'compute', 'code']) expect(C.sectorOrder).toContain(id);
   });
 
   test('sector keys match their ids', () => {
@@ -202,16 +229,22 @@ describe('sectors and ages', () => {
     }
   });
 
-  test('firstYear sits inside its age and sectors open in calendar order', () => {
-    let last = -Infinity;
+  test('firstYear sits inside its age; the Ages open in calendar order', () => {
+    // M4 CHANGE: inside one Age, Industries may open out of calendar order (Iron, 1828, opens in run 4 after Light,
+    // 1870: design/m4-design.md §3; the calendar's catch-up handles an earlier year). Across Ages the order holds: every
+    // Industry of a later Age starts no earlier than every Industry of an earlier one, and sectorOrder keeps Ages together.
+    const ageOf = (s: string) => C.ages.findIndex((a) => a.sectors.includes(s));
+    const fyOf = (s: string) => C.sectors[s].firstYear ?? C.ages[ageOf(s)].yearSpan[0];
     for (const s of C.sectorOrder) {
-      const def = C.sectors[s];
-      const age = C.ages.find((a) => a.sectors.includes(s))!;
-      const fy = def.firstYear ?? age.yearSpan[0];
-      expect(fy).toBeGreaterThanOrEqual(age.yearSpan[0]);
-      expect(fy).toBeLessThanOrEqual(age.yearSpan[1]);
-      expect(fy).toBeGreaterThanOrEqual(last);
-      last = fy;
+      const age = C.ages[ageOf(s)];
+      expect(fyOf(s)).toBeGreaterThanOrEqual(age.yearSpan[0]);
+      expect(fyOf(s)).toBeLessThanOrEqual(age.yearSpan[1]);
+    }
+    const ixs = C.sectorOrder.map(ageOf);
+    for (let i = 1; i < ixs.length; i++) expect(ixs[i]).toBeGreaterThanOrEqual(ixs[i - 1]);
+    for (let a = 1; a < C.ages.length; a++) {
+      const prev = Math.max(...C.ages.slice(0, a).flatMap((x) => x.sectors.map(fyOf)));
+      for (const s of C.ages[a].sectors) expect(`${s} ${fyOf(s) >= prev}`).toBe(`${s} true`);
     }
   });
 
@@ -231,8 +264,10 @@ describe('sectors and ages', () => {
     });
   });
 
-  test('Reckonings gate the sectors 1, 2, 3, 4 in order', () => {
-    expect(C.sectorOrder.slice(1).map((s) => C.sectors[s].unlock!.minReckonings)).toEqual([1, 2, 3, 4]);
+  test('Reckonings gate the sectors: Act I 1, 3, 5; the Previews 2, 3, 4 (their own gate is the Act I ending)', () => {
+    // M4 CHANGE (design §3, §9): Light in run 2, Iron in run 4, Fishing in run 6. The Previews keep M3's floors so that a
+    // save which opened them under M3 is never held back; a fresh player meets them after the Act I ending.
+    expect(C.sectorOrder.slice(1).map((s) => C.sectors[s].unlock!.minReckonings)).toEqual([1, 3, 5, 2, 3, 4]);
   });
 
   test('spill and drawsOn point at real sectors', () => {
@@ -263,8 +298,12 @@ describe('sectors and ages', () => {
   });
 });
 
-/** Permanent flags content can set (the one-off metaFlag effect), which Cond { flag } may read. */
-const metaFlags = ['proprietor', ...allEffects().flatMap(({ e }) => (e.type === 'metaFlag' ? [e.flag] : []))];
+/** Permanent flags content can set (the one-off metaFlag effect), which Cond { flag } may read. M4: the core sets
+ *  'survey:<s>' at a renewable Industry's first survey (RenewableDef.firstSurvey). */
+const metaFlags = [
+  'proprietor', ...allEffects().flatMap(({ e }) => (e.type === 'metaFlag' ? [e.flag] : [])),
+  ...sectorIds.filter((s) => C.sectors[s].renewable?.firstSurvey).map((s) => `survey:${s}`),
+];
 
 describe('references resolve', () => {
   test('upgrades: sector, requires, excludes', () => {
@@ -394,6 +433,10 @@ describe('references resolve', () => {
         if (c.figure !== undefined) expect(FIG.includes(c.figure) && c.op !== undefined && c.value !== undefined ? '' : ctx).toBe('');
       }
       if ('feature' in c) expect((FEATURE_IDS as readonly string[]).includes(c.feature) ? '' : ctx).toBe('');
+      /* M4 */
+      if ('ending' in c) expect((C.acts ?? []).some((a) => a.ending?.id === c.ending) ? '' : ctx).toBe('');
+      if ('stat' in c && RENEWABLE_STATS.includes(c.stat)) expect(c.sector && C.sectors[c.sector]?.renewable ? '' : ctx).toBe('');
+      if ('stat' in c && c.stat === 'foreignShare') expect(c.sector && C.sectors[c.sector]?.renewable?.foreign ? '' : ctx).toBe('');
     }
   });
 });
@@ -421,6 +464,8 @@ describe('levers', () => {
       duty: [0, 0.999], cap: [0.05, 1.5], sufficiency: [0.05, 1], substitution: [0, 1], greenSpending: [0, 1],
       reviewGate: [0, 1], circularity: [0, 0.95], sharedLibs: [0, 0.95], deletion: [0, 0.9],
       measure: [0, Infinity],
+      /* M4: a share of the surveyed surplus; 0 is the moratorium */
+      quota: [0, 1],
     };
     for (const l of C.levers) {
       const vs = l.levels.map((x) => x.value);
@@ -1067,7 +1112,7 @@ describe('M2: words', () => {
   });
 
   test('{name} appears only where a name is given (commonsBuilt, charter; M3: seamSunk, biteBack, history), at the start or after a colon', () => {
-    const NAMED = ['commonsBuilt', 'charter', 'seamSunk', 'biteBack', 'history'];
+    const NAMED = ['commonsBuilt', 'charter', 'seamSunk', 'biteBack', 'history', /* M4: the act's title */ 'actEnding'];
     const SECTOR_NAMED = ['seamSunk', 'biteBack', 'history'];
     const bad: string[] = [];
     for (const [k, v] of Object.entries(C.headlines)) {
@@ -1107,13 +1152,16 @@ describe('volume floors (roadmap M2)', () => {
       .filter((p) => p.some((id) => effectSectors(dividends.find((d) => d.id === id)!.effects).length))
       .map((p) => p.join('|'))));
     expect(sectorPairs.size).toBeGreaterThanOrEqual(5);
-    expect(sectorPairs.size).toBeLessThanOrEqual(12);
+    // M4 CHANGE: the ceiling was 12 for five Industries (Steam three, the others two); Iron and Fishing bring two each,
+    // so the ceiling is now per Industry: at most three own pairs each, and two beside Steam's
+    expect(sectorPairs.size).toBeLessThanOrEqual(2 * sectorIds.length + 1);
   });
 
   test('8 Commons projects, 8 Charters, 5 settle blocks, 18 Institutions', () => {
     expect(commons.length).toBeGreaterThanOrEqual(8);
     expect(charters.length).toBeGreaterThanOrEqual(8);
-    expect(sectorIds.filter((s) => C.sectors[s].settle).length).toBe(5);
+    // M4 CHANGE: every Industry has a settle block (seven: the five of M2, Iron and Fishing)
+    expect(sectorIds.filter((s) => C.sectors[s].settle).length).toBe(sectorIds.length);
     expect(C.institutions.length).toBeGreaterThanOrEqual(18);
   });
 
@@ -1123,9 +1171,10 @@ describe('volume floors (roadmap M2)', () => {
     expect(C.achievements.filter((a) => a.hidden).length).toBeLessThanOrEqual(8);
   });
 
-  test('stages on 12–15 cards', () => {
+  test('stages on 12–21 cards (M4: Iron and Fishing add three each; at most three per Industry)', () => {
     const n = C.upgrades.filter((u) => u.stage).length;
-    expect(n >= 12 && n <= 15).toBe(true);
+    expect(n >= 12 && n <= 3 * sectorIds.length).toBe(true);
+    for (const s of sectorIds) expect(C.upgrades.filter((u) => u.sector === s && u.stage).length).toBeLessThanOrEqual(3);
   });
 
   test('about 450 headlines (M1’s 389 plus about 60)', () => {
@@ -1140,7 +1189,8 @@ describe('volume floors (roadmap M2)', () => {
 describe('the unfolding (Content.features)', () => {
   test('every feature is defined, with an intro in house style (but those introduced by their own first item) and a name', () => {
     // The reveal has its own card and headline; ambient news, letters and the bite are introduced by their first item.
-    const OWN_INTRO = ['reboundMeter', 'ambient', 'dispatches', 'sideEffects'];
+    // M4: the full account ('estimates') is introduced by the Board's Survey card and its follow-up headline.
+    const OWN_INTRO = ['reboundMeter', 'ambient', 'dispatches', 'sideEffects', 'estimates'];
     for (const id of FEATURE_IDS) {
       const f = C.features?.[id];
       expect(`${id} ${!!f}`).toBe(`${id} true`);
@@ -1386,23 +1436,24 @@ describe('M3: the feature schedule (the unfolding, continued)', () => {
     // ambient news first in run 2 (five minutes in, the first check after the Market): no time floor that would push it
     // into more levers' slot
     expect(`${rkFloor(F.ambient!.when)} ${timeFloor(F.ambient!.when)}`).toBe('1 0');
-    // the seams and the Industries' widgets: run 4 at the earliest (run 3 is the budget's own unfolding), then one run
-    // apart (balance lane, owner's direction "options should be unlocked more slowly": at most two arrivals a run from
-    // run 4, one at the Reckoning and one mid-run; design/unlock-schedule.md)
-    const floors = { seams: 3, load: 4, travel: 5, freeAtUse: 6, sideEffects: 7, archive: 6, survey: 5, histories: 6 } as const;
+    // M4 CHANGE (design/m4-design.md §9): the run floors follow the M4 schedule. Run 4 is the Commons and Iron; run 5
+    // Settlement and the seams; run 6 Fishing and the Board's Survey only; run 7 the household survey and the load
+    // curve; run 8 Histories and the Archive; run 9 the bite. The Previews' widgets wait on their Industries (rk floors
+    // are only their Industries' own).
+    const floors = { seams: 4, load: 6, archive: 7, sideEffects: 8, survey: 6, histories: 7, travel: 2, freeAtUse: 3 } as const;
     for (const [id, n] of Object.entries(floors)) expect(`${id} ${rkFloor(F[id as keyof typeof floors]!.when)}`).toBe(`${id} ${n}`);
-    // the mid-run arrivals share one window shorter than the gap between arrivals, so at most one of them arrives a run
-    // (the free price arrives at a Reckoning; the bite needs it and its window)
+    // the mid-run arrivals share one window shorter than the gap between arrivals, so at most one of them arrives a run.
+    // M4 CHANGE: the window is minutes 25 to 29 (Fishing reopens at minute 20 or later in every run from run 7).
     const gap = C.global.featureGapSeconds ?? 0;
     expect(leaves(F.sideEffects!.when).some((x) => 'feature' in x && x.feature === 'archive')).toBe(true);
-    for (const id of ['seams', 'load', 'travel', 'archive', 'sideEffects'] as const) {
+    for (const id of ['seams', 'load', 'archive', 'sideEffects'] as const) {
       const top = (F[id]!.when as { all: Cond[] }).all;
       const lo = timeFloor(F[id]!.when);
       const hi = Math.min(...top.flatMap((x) => ('stat' in x && x.stat === 'time' && x.op === '<' ? [x.value] : [])));
-      expect(`${id} ${lo} ${hi} ${hi - lo < gap}`).toBe(`${id} 1200 1440 true`);
+      expect(`${id} ${lo} ${hi} ${hi - lo < gap}`).toBe(`${id} 1500 1740 true`);
     }
     // the Reckoning arrivals: only the check in reckon() sees a run under two seconds old
-    for (const id of ['freeAtUse', 'survey', 'histories', 'settlement'] as const) {
+    for (const id of ['freeAtUse', 'travel', 'survey', 'histories', 'settlement'] as const) {
       expect(`${id} ${(F[id]!.when as { all: Cond[] }).all.some((x) => 'stat' in x && x.stat === 'time' && x.op === '<' && x.value <= 2)}`).toBe(`${id} true`);
     }
   });
@@ -1615,5 +1666,242 @@ describe('M3: the unfolding in words (a thing that names a system waits for it)'
       for (const f of named([h.name, h.blurb, h.goalLabel, h.rebound].join(' '))) if (!have.has(f)) bad.push(`${h.id}: names ${f}`);
     }
     expect(bad).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M4: the Act, the Previews, shared reserves and feeds, renewable stocks, the unfolding of the Coal Age complete     */
+/* ------------------------------------------------------------------ */
+
+const acts = C.acts ?? [];
+const actOfAge = (age: string) => acts.find((a) => a.ages.includes(age));
+const ageOfSector = (s: string) => C.ages.find((a) => a.sectors.includes(s))!.id;
+const previewSectors = sectorIds.filter((s) => actOfAge(ageOfSector(s))?.preview);
+/** Industries that open mid-run in some run (every one but sectorOrder[0]). */
+const midRunOpeners = C.sectorOrder.slice(1);
+
+describe('M4: the Acts and the Previews', () => {
+  test('acts: ids unique; real ages, each in exactly one act; ending sectors in the act, with a settle block', () => {
+    expect(acts.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(acts.map((a) => a.id)).size).toBe(acts.length);
+    for (const age of C.ages) expect(`${age.id} ${acts.filter((a) => a.ages.includes(age.id)).length}`).toBe(`${age.id} 1`);
+    for (const a of acts) {
+      for (const g of a.ages) expect(C.ages.some((x) => x.id === g) ? '' : `${a.id}: ${g}`).toBe('');
+      expect(a.name.length > 0 && a.title.length > 0 ? '' : a.id).toBe('');
+      if (a.preview) expect(a.ending ? `${a.id}: a Preview act has no ending` : '').toBe('');
+      if (a.capstone) {
+        expect(a.ending ? '' : `${a.id}: capstone without an ending`).toBe('');
+        const share = a.capstone.incomeShare ?? 0.25;
+        expect(share > 0 && share <= 1 ? '' : a.id).toBe('');
+      }
+      for (const s of a.ending?.sectors ?? []) {
+        expect(a.ages.includes(ageOfSector(s)) ? '' : `${a.id}: ${s} is not in the act`).toBe('');
+        expect(C.sectors[s].settle ? '' : `${a.id}: ${s} cannot be settled`).toBe('');
+      }
+    }
+  });
+
+  test('Act I is the Coal Age: Steam, Light, Iron and Fishing settled at once, then capstoned; Acts II and III are Previews', () => {
+    const one = acts[0];
+    expect(one.id).toBe('actOne');
+    expect(one.ages).toEqual(['coal']);
+    expect(one.ending).toEqual({ id: 'actOne', sectors: ['steam', 'light', 'iron', 'fishing'] });
+    expect(one.ending!.sectors).toEqual(C.ages.find((a) => a.id === 'coal')!.sectors);
+    expect(one.capstone?.incomeShare).toBe(0.25);
+    expect(acts.slice(1).every((a) => a.preview)).toBe(true);
+    expect(previewSectors).toEqual(['motion', 'compute', 'code']);
+  });
+
+  test('a Preview opens only after an ending (from the next run) or once opened before (owns itself)', () => {
+    const endings = new Set(acts.flatMap((a) => (a.ending ? [a.ending.id] : [])));
+    for (const s of previewSectors) {
+      const w = C.sectors[s].unlock?.when;
+      const top = w && 'all' in w ? w.all : [];
+      const gate = top.find((c) => 'any' in c);
+      expect(gate ? '' : `${s}: no Preview gate`).toBe('');
+      if (!gate || !('any' in gate)) continue;
+      const ls = leaves(gate);
+      expect(ls.some((x) => 'ending' in x && endings.has(x.ending)) ? '' : `${s}: no ending leaf`).toBe('');
+      // not in the run that reached the ending (flags.won holds for the rest of it): from the next run, the capstone's
+      expect(ls.some((x) => 'flag' in x && x.flag === 'won') ? '' : `${s}: opens in the ending's own run`).toBe('');
+      expect(gate.any.some((x) => 'owns' in x && x.owns === s) ? '' : `${s}: an older save loses it`).toBe('');
+      // its opening conditions may not need a card in a capstoned (settled) Coal Age Industry
+      const coal = new Set(C.upgrades.filter((u) => !previewSectors.includes(u.sector)).map((u) => u.id));
+      expect(top.flatMap(leaves).filter((x) => 'owns' in x && coal.has(x.owns)).map((x) => `${s}: ${JSON.stringify(x)}`)).toEqual([]);
+    }
+  });
+
+  test('one Preview a run: each after the first waits for the widget that arrives at the Reckoning after the one before', () => {
+    const top = (s: string) => { const w = C.sectors[s].unlock!.when!; return 'all' in w ? w.all : [w]; };
+    expect(top('compute').some((x) => 'feature' in x && x.feature === 'travel')).toBe(true);
+    expect(top('code').some((x) => 'feature' in x && x.feature === 'freeAtUse')).toBe(true);
+    for (const [f, s] of [['travel', 'motion'], ['freeAtUse', 'compute']] as const) {
+      const w = C.features![f]!.when;
+      expect(leaves(w).some((x) => 'owns' in x && x.owns === s)).toBe(true);
+      expect(leaves(w).some((x) => 'stat' in x && x.stat === 'time' && x.op === '<' && x.value <= 2)).toBe(true);
+    }
+  });
+});
+
+describe('M4: shared reserves, feeds and renewable stocks', () => {
+  test('resourceStock names a stock sector that draws from no other; the drawer is a stock sector too', () => {
+    for (const s of sectorIds) {
+      const o = C.sectors[s].resourceStock;
+      if (!o) continue;
+      expect(o !== s && C.sectors[o] ? '' : `${s}: ${o}`).toBe('');
+      expect(C.sectors[o]?.resourceKind === 'stock' && !C.sectors[o]?.resourceStock ? '' : `${s}: owner ${o}`).toBe('');
+      expect(C.sectors[s].resourceKind === 'stock' ? '' : `${s}: not a stock sector`).toBe('');
+    }
+  });
+
+  test('feeds name real targets with capCostMul in (0, 1); feeds, spill and drawsOn together have no cycle', () => {
+    const edges = new Map<string, Set<string>>(sectorIds.map((s) => [s, new Set<string>()]));
+    for (const s of sectorIds) {
+      const d = C.sectors[s];
+      if (d.spill) edges.get(s)!.add(d.spill.to);
+      if (d.drawsOn) edges.get(s)!.add(d.drawsOn.sector);
+      for (const a of d.applications) {
+        for (const f of a.feeds ?? []) {
+          expect(f.capCostMul > 0 && f.capCostMul < 1 ? "" : `${a.id}: ${f.capCostMul}`).toBe("");
+          if (f.sector === '*') { for (const t of sectorIds) if (t !== s) edges.get(s)!.add(t); continue; }
+          expect(sectorIds.includes(f.sector) && f.sector !== s ? '' : `${a.id}: ${f.sector}`).toBe('');
+          edges.get(s)!.add(f.sector);
+        }
+      }
+    }
+    // only edges that start at a feed source can close a cycle through it: check every source
+    const reaches = (from: string, to: string, seen = new Set<string>()): boolean => {
+      for (const n of edges.get(from) ?? []) {
+        if (n === to) return true;
+        if (!seen.has(n)) { seen.add(n); if (reaches(n, to, seen)) return true; }
+      }
+      return false;
+    };
+    const sources = sectorIds.filter((s) => C.sectors[s].applications.some((a) => (a.feeds ?? []).length));
+    expect(sources.filter((s) => reaches(s, s))).toEqual([]);
+    expect(sources).toEqual(['iron']);
+  });
+
+  test('a renewable sector has its stock, pressure from depletion, and its last crisis at the threshold (1 − θ)', () => {
+    for (const s of sectorIds) {
+      const d = C.sectors[s];
+      const isR = d.resourceKind === 'renewable';
+      expect(`${s} ${isR} ${!!d.renewable}`).toBe(`${s} ${isR} ${isR}`);
+      if (!isR) { expect(d.pressureSource === 'depletion' ? `${s}: depletion without a stock` : '').toBe(''); continue; }
+      const r = d.renewable!;
+      expect(d.pressureSource).toBe('depletion');
+      expect(Math.abs(d.crisisAt[d.crisisAt.length - 1] - (1 - r.threshold)) < 1e-9 ? '' : `${s}: last crisis ${d.crisisAt[d.crisisAt.length - 1]}`).toBe('');
+      expect(r.threshold > 0 && r.threshold < 0.5 && r.beta > 0 && r.beta < 1 ? '' : s).toBe('');
+      // the Board's free first survey: the moment comes at least five minutes after the Industry opens (by clock)
+      if (r.firstSurvey) expect(r.firstSurvey.afterSeconds).toBeGreaterThanOrEqual(300);
+    }
+  });
+
+  test('quota levers only on renewable sectors, and only once the budget has arrived', () => {
+    for (const l of C.levers.filter((x) => x.kind === 'quota')) {
+      expect(C.sectors[l.sector].resourceKind === 'renewable' ? '' : l.id).toBe('');
+      expect(l.requires ?? []).toContain('budget');
+      expect(l.repeat!.valueStep).toBeLessThan(0);
+    }
+  });
+
+  test('Fishing settles only surveyed; the full account arrives with the Board’s Survey (the core reads the flag)', () => {
+    expect(leaves(C.sectors.fishing.settle!.requires!).some((x) => 'stat' in x && x.stat === 'surveyed')).toBe(true);
+    expect(leaves(C.features!.estimates!.when).some((x) => 'flag' in x && x.flag === 'survey:fishing')).toBe(true);
+    expect(C.surveyReveal ? ['small', 'large', 'failed'].map((k) => C.surveyReveal!.variants.filter((v) => v.when === k).length) : []).toEqual([1, 1, 1]);
+  });
+});
+
+describe('M4: the Industry kit (Iron & Steel, Fishing)', () => {
+  const M4_SECTORS = ['iron', 'fishing'];
+  test('six uses (the first free), five or more efficiency cards, two forks, a research card, five levers, one that bites back', () => {
+    for (const s of M4_SECTORS) {
+      const d = C.sectors[s];
+      const ups = C.upgrades.filter((u) => u.sector === s);
+      const forks = new Set(ups.flatMap((u) => (u.excludes ?? []).map((x) => [u.id, x].sort().join('|'))));
+      const levers = C.levers.filter((l) => l.sector === s);
+      expect([
+        `${s} apps ${d.applications.length >= 6}`, `${s} free ${d.applications[0].foundCost === 0}`,
+        `${s} efficiency ${ups.filter((u) => u.kind === 'efficiency').length >= 5}`, `${s} forks ${forks.size >= 2}`,
+        `${s} research ${ups.some((u) => u.kind === 'research')}`, `${s} levers ${levers.length >= 5}`,
+        `${s} bites ${levers.some((l) => l.sideEffects)}`, `${s} mechanic ${!!d.mechanic}`, `${s} settle ${!!d.settle}`,
+      ]).toEqual([
+        `${s} apps true`, `${s} free true`, `${s} efficiency true`, `${s} forks true`, `${s} research true`,
+        `${s} levers true`, `${s} bites true`, `${s} mechanic true`, `${s} settle true`,
+      ]);
+    }
+  });
+
+  test('sixty sector headlines each', () => {
+    for (const s of M4_SECTORS) {
+      const n = Object.values(C.sectorHeadlines?.[s] ?? {}).flat().length;
+      expect(`${s} ${n >= 60}`).toBe(`${s} true`);
+    }
+  });
+
+  test('Iron draws Steam’s coal; Fishing draws Steam’s power and is renewable', () => {
+    expect(C.sectors.iron.resourceStock).toBe('steam');
+    expect(C.sectors.fishing.drawsOn?.sector).toBe('steam');
+    expect(C.sectors.fishing.resourceKind).toBe('renewable');
+  });
+
+  test('what serves an M4 Industry waits for it: its Institutions (when), Charters (requires) and its levers’ conditions', () => {
+    const waits = (c: Cond | undefined, s: string) => !!c && leaves(c).some((x) => 'owns' in x && x.owns === s);
+    for (const i of C.institutions) {
+      const named = new Set(effectSectors([...i.effects, ...(i.nextLevels ?? []).flatMap((l) => l.effects)]).concat(
+        [...i.effects, ...(i.nextLevels ?? []).flatMap((l) => l.effects)].flatMap((e) => (e.type === 'startLever' ? [C.levers.find((l) => l.id === e.lever)!.sector] : []))));
+      for (const s of M4_SECTORS) if (named.size === 1 && named.has(s)) expect(waits(i.when, s) ? '' : `${i.id}: waits for ${s}`).toBe('');
+    }
+    for (const c of charters) if (c.sector && M4_SECTORS.includes(c.sector)) expect(waits(c.requires, c.sector) ? '' : `${c.id}: waits for ${c.sector}`).toBe('');
+    // the fishery limits wait for the foreign fleets (design §5.7)
+    const lim = C.levers.find((l) => l.id === 'fishing.limits')!;
+    expect(lim.when && leaves(lim.when).some((x) => 'stat' in x && x.stat === 'foreignShare')).toBe(true);
+    // the order book's lines wait for Jevons's chapter on iron
+    expect(waits(C.sectors.iron.mechanic?.feedsKnownWhen, 'iron.economyOfFuel')).toBe(true);
+  });
+});
+
+describe('M4: the unfolding of the Coal Age complete (design §9)', () => {
+  const F = C.features ?? {};
+  const PREVIEW_FEATURES = ['travel', 'freeAtUse'];
+  const isGuard = (c: Cond) => 'not' in c && 'ending' in c.not && c.not.ending === 'actOne';
+
+  test('nothing of Act I arrives after the Act I ending: every Act I feature carries the guard at its top level', () => {
+    for (const id of FEATURE_IDS) {
+      if (id === 'bank' || PREVIEW_FEATURES.includes(id)) continue;
+      const w = F[id]!.when;
+      const top = 'all' in w ? w.all : [w];
+      expect(`${id} ${top.some(isGuard)}`).toBe(`${id} true`);
+    }
+    // the Previews' widgets wait on their Industries, which wait on the ending (or an older save's own opening)
+    for (const id of PREVIEW_FEATURES) expect(leaves(F[id as 'travel']!.when).some((x) => 'owns' in x && previewSectors.includes(x.owns))).toBe(true);
+  });
+
+  test('Iron opens mid-run in run 4, clear of the Commons; Fishing in run 6, twenty minutes in, after Settlement', () => {
+    const iron = C.sectors.iron.unlock!;
+    const fishing = C.sectors.fishing.unlock!;
+    expect(`${iron.minReckonings} ${timeFloor(iron.when!) >= 600}`).toBe('3 true');
+    expect(`${fishing.minReckonings} ${timeFloor(fishing.when!) >= 1200}`).toBe('5 true');
+    expect(leaves(fishing.when!).some((x) => 'feature' in x && x.feature === 'settlement')).toBe(true);
+    expect(rkFloor(F.commons!.when)).toBe(3);
+  });
+
+  test('run 6 is Fishing’s and the Survey’s: no other feature has run 6 as its floor; the Survey needs no Reckoning', () => {
+    const at6 = FEATURE_IDS.filter((id) => id !== 'bank' && rkFloor(F[id]!.when) === 5);
+    expect(at6).toEqual([]);
+    expect(rkFloor(F.estimates!.when)).toBeNull();
+  });
+
+  test('every mid-run feature keeps five minutes clear of any Industry opening (StatKey openFor)', () => {
+    for (const id of ['seams', 'load', 'archive', 'sideEffects'] as const) {
+      const guarded = new Set(leaves(F[id]!.when).flatMap((x) => ('stat' in x && x.stat === 'openFor' && x.op === '<' && x.value >= 300 && x.sector ? [x.sector] : [])));
+      expect(`${id} ${midRunOpeners.filter((s) => !guarded.has(s)).join(',')}`).toBe(`${id} `);
+    }
+  });
+
+  test('the Archive by run 8, the bite by run 9, the household survey a run after the Board’s Survey', () => {
+    expect(rkFloor(F.archive!.when)).toBeLessThanOrEqual(7);
+    expect(rkFloor(F.sideEffects!.when)).toBeLessThanOrEqual(8);
+    expect(rkFloor(F.survey!.when)).toBe(6);
   });
 });

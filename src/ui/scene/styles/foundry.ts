@@ -25,7 +25,7 @@ export const foundry: ArtStyle = {
 .scn[data-look=foundry] .smh{stroke:none}
 .scn[data-look=foundry] .lane{fill:#4a3d30;stroke:#15100d;stroke-width:calc(.5px*var(--sw))}
 .scn[data-look=foundry] .wl{stroke:var(--s-lit);opacity:.55}
-.scn[data-look=foundry] .wg{fill:#e9dcc0;font:700 7px/1 var(--labelf,system-ui,sans-serif);letter-spacing:.04em}
+.scn[data-look=foundry] .wg{fill:#e9dcc0;font:700 5.6px/1 var(--labelf,system-ui,sans-serif)}
 .scn[data-look=foundry] .wgb{fill:#2a201b;stroke:#e9dcc0;stroke-width:calc(.5px*var(--sw))}
 .scn[data-look=foundry] .cs{fill:rgba(0,0,0,.35)}
 .scn[data-look=foundry] .smk i{background:rgba(var(--s-smk),var(--smk-a,.35));box-shadow:inset 0 -.6px 0 .3px rgba(243,146,51,.35)}
@@ -34,6 +34,7 @@ export const foundry: ArtStyle = {
 .scn[data-look=foundry] .scn-stage{outline:1px solid var(--s-frame);outline-offset:3px;margin:4px 0 8px}
 .scn[data-look=foundry] .scn-emb{font:italic 11px/1.3 var(--f-serif,Georgia,serif);letter-spacing:.08em;text-transform:none;font-variant:small-caps;background:#e9dcc0;color:#15100d}
 .scn[data-look=foundry] .flm{fill:#f6a344;stroke:none}
+.scn[data-look=foundry] .fig .d,.scn[data-look=foundry] .fig .b,.scn[data-look=foundry] .fig .b2{stroke:#eaa24e;stroke-width:.7px}
 .scn[data-look=foundry] .hl1{fill:var(--s-hill);stroke:var(--s-ink)}.scn[data-look=foundry] .hl2{fill:#2c2420;stroke:var(--s-ink)}
 .scn[data-look=foundry] .dx,.scn[data-look=foundry] .sx{fill:#7a6650!important}`,
   defs: (p) => engravingHatches(p) + glowDefs(p) + dots(p, 'stip1', 2.4, 0.5, '#0e0a08', 0.6) + dots(p, 'stip2', 3.2, 0.42, '#0e0a08', 0.45),

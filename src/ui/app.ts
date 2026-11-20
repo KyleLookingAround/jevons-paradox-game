@@ -30,6 +30,9 @@ import { buildSurvey } from './survey';
 import { creditsSheet } from './ending';
 import { archiveSheet } from './archive';
 import { dur } from './fmt';
+import { buildFold } from './fold';
+import { pendingReveal, surveyCardSheet } from './boardcard';
+import { capstoneText } from '../content/boardSurvey';
 
 export interface UI {
   /** Patch the page. `quick` (straight after a tap): only what the tap changes and the cockpit; the rest follows in
@@ -102,6 +105,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const mech = buildMechanics(ctx);
   const letters = buildLetters(ctx);
   const survey = buildSurvey(ctx);
+  // M4: folding of what is finished (a settled Industry as one card; the capstone group), fold.ts.
+  const fold = buildFold(ctx, () => update());
 
   const afford = createAfford(ctx);
   // The unfolding: a "New" mark on whatever a feature has just opened (unfold.ts).
@@ -153,7 +158,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
   // improvements (the affordable chip by the sell button covers the rest).
   // M3: the mechanic's instrument sits under its picture; a waiting letter under the paper; the survey after the orders.
-  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, bankRow, onboard, world.el, mech.el, news.el, letters.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, survey.el, foot);
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, bankRow, onboard, world.el, fold.el, mech.el, news.el, letters.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, survey.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, live);
   fitLayout(cockpit, feed, gauges.el, gauges.more);
 
@@ -164,7 +169,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     replay(cockpit, 'm-crisis', 2400);
   });
 
-  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey]];
+  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey], ['fold', fold]];
   // Panels of the feed that only draw (no notes, sounds or moments from their update): while far from the screen they
   // are not patched; one comes up to date as it nears the screen, and all of them before a jump to a card (perf pass 2).
   // (Not the improvements, whose cards other parts of the page find and point at, nor the survey, whose reveal is a
@@ -337,9 +342,17 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
         }
         case 'returnPublished': sound('survey'); toasts.push('The Statistics Office prints the household survey.', { label: 'Read it', run: () => { const el = document.querySelector<HTMLElement>('section.survey'); el?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' }); } }, 9000); break;
         case 'stageReached': if (e.label && e.sector !== ctx.sector) toasts.push(`New machines in ${nameOf(e.sector)}: ${e.label}.`, goThere(e.sector)); break;
+        /* --- M4 (the scene plays its own moments for these) --- */
+        case 'surveyed': sound('surveyed', { sector: e.sector, label: e.label, first: e.first }); break;
+        case 'thresholdCrossed': sound('thresholdCrossed', { sector: e.sector }); break;
+        case 'arrears':
+          sound('arrears', { sector: e.sector });
+          toasts.push(`${def?.name ?? 'An Industry'}: ${capstoneText.arrears}`, goThere(e.sector), 12000);
+          break;
+        case 'arrearsCleared': toasts.push(`${def?.name ?? 'An Industry'}: ${capstoneText.arrearsCleared}`, goThere(e.sector), 7000); break;
         case 'ending':
           endingNow = true;
-          sound('ending');
+          sound(ctx.content.acts?.length ? 'actEnding' : 'ending');
           // The credits wait for any sheet the player is in, and never cover a pending Reckoning.
           setTimeout(() => { if (!ctx.d?.pendingReckoning) ui.openCredits(); }, reducedMotion() ? 0 : 1200);
           break;
@@ -348,6 +361,20 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     }
     // Standing orders acted: one quiet pulse on the affordable signal (or on Capital when it is hidden).
     if (automated) pulse(chip.hidden ? topbar.el.querySelector('.tb-cap') : chip, 'm-auto', 1400);
+  }
+
+  /** M4: the Board's first survey has a card. On its Industry's page it opens (after the vessel has put out in the
+   *  picture); elsewhere a note offers it. Never over a sheet already open or a Reckoning. */
+  let revealNoted = '';
+  function surveyCheck(): void {
+    const r = pendingReveal(ctx);
+    if (!r || ctx.d?.pendingReckoning || sheets.kind()) return;
+    const k = `${r.sector}|${r.variant}|${r.reported}`;
+    const open = () => surveyCardSheet(ctx, sheets, r, true, () => { mech.drain(); sound('ledgerContinues'); });
+    if (r.sector === ctx.sector) { revealNoted = k; open(); return; }
+    if (revealNoted === k) return;
+    revealNoted = k;
+    toasts.push(r.headline, { label: 'Read it', run: () => { ctx.selectSector(r.sector); setTimeout(() => { if (pendingReveal(ctx)) open(); }, 300); } }, 15000);
   }
 
   /** Bring a newly arrived feature's place into view (below the pinned header on a phone). */
@@ -416,6 +443,13 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       timed('ui.' + n, () => c.update());
     }
     marks.update();
+    // M4: a settled Industry folds its own panels away until "Show the Industry" (fold.ts); a capstoned one shows its
+    // group instead of the budget panel.
+    const folded = fold.folded();
+    cls(feed, 'folded-ind', folded);
+    cls(feed, 'capped-ind', folded && !!ctx.d?.sectors?.[ctx.sector]?.capstoned);
+    // M4: the Board's Survey card, once a save, over the Fishing panel (boardcard.ts); elsewhere, a note with the way.
+    if (!quick) surveyCheck();
 
     // The chip: how many offers are news (afford.ts holds the no-nag rule), and where the first one is.
     const items = afford.state.items;

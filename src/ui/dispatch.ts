@@ -54,6 +54,18 @@ function makeLetter(ctx: Ctx, v0: PendingDispatchView): Letter {
     h('span', { class: 'lt-price' }, h('span', { class: 'lt-pk', text: 'Price: ' }), a.price, costEl),
     fx ? h('span', { class: 'lt-fx num', text: fx }) : null,
     why);
+    // M4: a wager arm (PendingDispatchView arms[].wager): the hint under the label, both outcomes, and a small mark.
+    // The view never says which way it would go, and neither does the page.
+    const w = a.wager;
+    if (w) {
+      cls(b, 'lt-wager', true);
+      b.querySelector('.lt-label')?.after(
+        h('span', { class: 'lt-bet', text: 'A bet on the state of things' }),
+        h('span', { class: 'lt-hint', text: w.hint }),
+        h('span', { class: 'lt-branches' },
+          h('span', { class: 'lt-br win' }, h('span', { class: 'lt-bk', text: 'If so: ' }), w.win),
+          h('span', { class: 'lt-br lose' }, h('span', { class: 'lt-bk', text: 'If not: ' }), w.lose)));
+    }
     return { b, costEl, why };
   });
   const from = h('p', { class: 'lt-from' },
@@ -155,8 +167,10 @@ export function buildLetters(ctx: Ctx): LettersComp {
         const d = ctx.content.dispatches?.find((x) => x.id === a.id);
         const writer = ctx.content.cast?.find((c) => c.id === d?.cast)?.name;
         const arm = d?.arms[a.arm]?.label ?? '';
+        // M4: a wager answered: won or lost, in the paper's words.
+        const bet = a.won === true ? ' The bet paid.' : a.won === false ? ' The bet was lost.' : '';
         return h('li', null, h('span', { class: 'lp-h', text: d?.headline ?? a.id }),
-          h('span', { class: 'lp-a muted' }, `${writer ? writer + ': ' : ''}${a.by === 'player' ? 'answered' : a.by === 'dispatch' ? 'a standing reply' : 'left; taken as'} “${arm}”`));
+          h('span', { class: 'lp-a muted' }, `${writer ? writer + ': ' : ''}${a.by === 'player' ? 'answered' : a.by === 'dispatch' ? 'a standing reply' : 'left; taken as'} “${arm}”.${bet}`));
       }));
     }
     show(past.el, answered.length > 0);
@@ -179,7 +193,13 @@ export function buildLetters(ctx: Ctx): LettersComp {
         sound('letter', { sector: e.sector, cast: e.label });
         ctx.toast(`A letter from ${writer?.name ?? 'a correspondent'}.`, { label: 'Read it', run: showLetter });
       } else if (e.kind === 'dispatchAnswered') {
-        sound('answer', { sector: e.sector, by: e.by });
+        sound('answer', { sector: e.sector, by: e.by, label: e.label, outcome: e.label === 'won' || e.label === 'lost' ? e.label : undefined });
+        // M4: a wager is settled at the answer: say how it went, with the outcome that came.
+        if (e.label === 'won' || e.label === 'lost') {
+          const w = d?.arms[num(e.n)]?.wager;
+          const o = e.label === 'won' ? w?.win.outcome : w?.lose.outcome;
+          ctx.toast(`${e.label === 'won' ? 'The bet pays' : 'The bet is lost'}${o ? `: ${o.replace(/\.$/, '')}` : ''}.`, undefined);
+        }
         // A letter left to lapse is reported once, quietly, with what was taken.
         if (e.by === 'default' && d) ctx.toast(`${writer?.name ?? 'The'}${writer ? '’s' : ''} letter lapsed: “${d.arms[num(e.n)]?.label ?? ''}” was taken.`);
       }

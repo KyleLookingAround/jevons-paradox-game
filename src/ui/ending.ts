@@ -17,11 +17,18 @@ export function creditsSheet(ctx: Ctx, sheets: Sheets, lapse: Lapse | null): voi
   sheets.open('credits', (b, close) => {
     const lines = cr?.lines ?? ['Every Industry settled at its sink line, for fifty years.'];
     const facts = rec ? `Run ${fmt(rec.run)} · ${(num(rec.totalSeconds) / 3600).toFixed(1)} hours of play · ${Math.floor(num(rec.year))}` : '';
+    // M4: with Acts, the credits are the Act's (Derived.ending.act); a record made under M3's rule (meta.endings
+    // .steadyAll) is shown under its own template (the retrospective's 'won' line), never as this Act's.
+    const act = ctx.d?.ending?.act ?? null;
+    const m3 = act ? ctx.state.meta?.endings?.steadyAll : undefined;
+    const m3Tpl = ctx.content.ending?.retrospective?.find((t) => t.key === 'won')?.headline;
+    const m3Line = m3 && m3Tpl ? m3Tpl.replace('{year}', String(Math.floor(num(m3.year)))).replace('{run}', fmt(m3.run)).replace('{hours}', (num(m3.totalSeconds) / 3600).toFixed(1)) : '';
     b.append(h('div', { class: 'paper credits' },
-      h('div', { class: 'paper-mast' }, h('span', { text: 'Late final' }), h('span', { class: 'num', text: rec ? String(Math.floor(num(rec.year))) : '' })),
+      h('div', { class: 'paper-mast' }, h('span', { text: act ? `${act.name} · Late final` : 'Late final' }), h('span', { class: 'num', text: rec ? String(Math.floor(num(rec.year))) : '' })),
       h('h1', { class: 'paper-head', text: cr?.title ?? 'Steady State' }),
       facts ? h('p', { class: 'cr-facts num', text: facts }) : null,
       h('div', { class: 'cr-lines' }, ...lines.map((l, i) => h('p', { class: 'cr-line', style: `--i:${i}`, text: l }))),
+      m3Line ? h('p', { class: 'cr-m3 muted num', text: m3Line }) : null,
       lapseBlock(ctx, lapse, cr?.title ?? 'Steady State')),
     h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => retrospectiveSheet(ctx, sheets, lapse) }, 'Read the retrospective'),

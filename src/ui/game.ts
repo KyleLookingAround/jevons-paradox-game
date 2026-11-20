@@ -10,7 +10,8 @@ import { mountUI, type UI } from './app';
 import { showFatal, hideFatal } from './sheets';
 import { lsGet, lsSet, lsDel, download, requestPersist, storageWorks } from './store';
 import { dur, money } from './fmt';
-import { applyPrefs, getPrefs, setPrefs } from './prefs';
+import { applyPrefs, getPrefs, setPrefs, isOpen, setOpen } from './prefs';
+import { m4SaveNotice } from '../content/boardSurvey';
 import { startEdition } from './edition';
 import { installKeys } from './keys';
 import type { BackupInfo } from './sheets';
@@ -71,8 +72,10 @@ function boot(o: GameOpts): void {
   const mockOpts = dm ? dm.parseMockHash(location.hash) : null;
   const mock = !!dm && (!!mockOpts || !o.realModel || !contentIsM1(o.realContent));
   if (!mock && (!o.realModel || !contentIsM1(o.realContent))) throw new Error('The model or content is missing or not in the M1 shape.');
-  const model: ModelApi = mock ? dm!.makeMockModel(mockOpts ?? {}) : o.realModel!;
-  const content: Content = mock ? dm!.mockContent : o.realContent!;
+  // M4: `#mock:core` runs the real core on the real content (or the core's M4 fixtures) inside the mock entry.
+  const core = dm?.coreSetup?.(mockOpts) ?? null;
+  const model: ModelApi = core ? core.model : mock ? dm!.makeMockModel(mockOpts ?? {}) : o.realModel!;
+  const content: Content = core ? core.content : mock ? dm!.mockContent : o.realContent!;
   const persist = !mock || !!mockOpts?.persist;
   const saveKey = mock ? MOCK_KEY : SAVE_KEY, atKey = saveKey + '.at';
   // The rolling backup: one slot, rewritten at each Reckoning with the fresh run that follows it.
@@ -110,9 +113,13 @@ function boot(o: GameOpts): void {
   let state: GameState | undefined;
   let away = 0;
   let unread: string | null = null;
+  // M4: a save made before M4 (version 4 or older) meets Iron, Fishing and the Previews: say so once (boardSurvey.ts).
+  let preM4 = false;
   if (persist) {
     const txt = lsGet(saveKey);
     if (txt) {
+      const ver = /"version"\s*:\s*(\d+)/.exec(txt.slice(0, 200));
+      preM4 = !!ver && Number(ver[1]) < 5 && Array.isArray(content.acts);
       const s = guard('deserialize', () => model.deserialize(txt, content));
       if (s) {
         state = s;
@@ -389,6 +396,7 @@ function boot(o: GameOpts): void {
   viewsAfterPaint();
   // Storage blocked: say so once, at the start, in the note line (QA B21); the menu's save panel says it at length.
   if (persist && !storageWorks()) ui.toast('This browser is keeping nothing: storage is blocked.', { label: 'Save', run: () => ui.openMenu() });
+  if (preM4 && state.version >= 5 && !isOpen('notice:m4', false)) { setOpen('notice:m4', true); ui.toast(m4SaveNotice.notice, undefined); }
   if (unread != null) ui.unreadSave(unread);
   // A save made between runs (after a Reckoning, before the next run began) reopens between runs: the shop and the
   // Charter choice, with "Begin the next run", and no clock until then.

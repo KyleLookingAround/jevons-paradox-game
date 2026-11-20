@@ -14,8 +14,8 @@ import { render, layOut, settle, cut, needed, contentGate, PREROLL_S, SEARCH_S, 
 import { trimOneShot, normalise, peakOf, rmsOf, type Voice } from './loop';
 
 export const ROOT = 'rebound-audio';
-export const EXPORT_INDUSTRIES = ['steam', 'light', 'motion', 'compute', 'code'];
-export const AGES: [string, string[]][] = [['The Coal Age', ['steam', 'light']], ['The Great Acceleration', ['motion']], ['The Attention Age', ['compute', 'code']]];
+export const EXPORT_INDUSTRIES = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
+export const AGES: [string, string[]][] = [['The Coal Age', ['steam', 'light', 'iron', 'fishing']], ['The Great Acceleration', ['motion']], ['The Attention Age', ['compute', 'code']]];
 export const STATE_NAMES = [...PRESET_NAMES, 'clearing'] as const;
 export type StateName = (typeof STATE_NAMES)[number];
 export const LENGTHS = [15, 30, 60, 120, 240];
@@ -43,12 +43,12 @@ export const seedOf = (take: number) => (take <= 1 ? 0x5eed : (0x5eed ^ Math.imu
 /** A state to export: an Industry and a view held still. */
 export interface Source { sector: string; state: string; view: SceneView }
 
-const EARLIER = ['steam', 'light', 'motion', 'compute'];
+const EARLIER = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute'];
 /** The demo's heritage for an Industry (earlier ones at 0.8), as its Industry menu sets it. */
 export function heritageFor(sector: string): Record<string, number> | undefined {
   if (sector === 'steam') return undefined;
   const i = EARLIER.indexOf(sector);
-  return Object.fromEntries(EARLIER.slice(0, i === -1 ? 4 : i).map((s) => [s, 0.8]));
+  return Object.fromEntries(EARLIER.slice(0, i === -1 ? EARLIER.length : i).map((s) => [s, 0.8]));
 }
 /** A named state of an Industry as the demo plays it ('clearing': on the way to Steady State, levers in, haze lifting). */
 export function stateView(sector: string, state: StateName): SceneView {
@@ -191,7 +191,11 @@ export const ONESHOT_ABOUT: Record<string, string> = {
   ending: 'the first ending: a bell, a slow chord, the arpeggio, a bird (the sting alone; the bed that follows it is ending-credits)',
   'ending-credits': "the first ending's credits bed alone: a held chord that breathes, a bell every 7–12 s, for 75 s, then a 6 s fade",
   ledgerContinues: '"The ledger continues": a pen stroke (a key in later Ages) and one note', arrived: 'a new system unlocks: one small "something has arrived" cue per Age',
-  history: 'a History cleared: a line ruled off, a small cadence', 'world-crisis': "the world's own crisis moment (a low fog swell and the Age's alarm), alone",
+  history: 'a History cleared: a line ruled off, a small cadence',
+  'wager-won': 'a wager answered and won: a coin on the counter, then one note on the fifth', 'wager-lost': 'a wager answered and lost: the coin, then the note a fifth lower',
+  actEnding: "an Act's ending (Act I): the first ending's shape, slower and lower (the sting alone; the bed is actEnding-credits)",
+  'actEnding-credits': "an Act's credits bed alone: the held chord, its bells less often than the first ending's, for 110 s, then a 6 s fade",
+  arrears: 'a capstoned Industry falls into arrears: a muffled toll, twice', 'world-crisis': "the world's own crisis moment (a low fog swell and the Age's alarm), alone",
 };
 
 export interface Shot { what: string; about: string; dur: number; events: [number, SoundEventKind, SoundEventDetail?][]; variant?: number; gate?: (s: string) => boolean; view?: (t: number) => SceneView | null; trim?: boolean }
@@ -222,6 +226,11 @@ function shotsAt0(sector: string): Shot[] {
   L.push({ what: 'ending', about: ONESHOT_ABOUT.ending, dur: 14, events: [[0, 'ending']], gate: (s) => s !== 'credits' });
   L.push({ what: 'ending-credits', about: ONESHOT_ABOUT['ending-credits'], dur: 86, events: [[0, 'ending']], gate: (s) => s === 'credits' });
   one('ledgerContinues', 6); one('arrived', 6); one('history', 6);
+  // M4
+  one('wager', 5, { outcome: 'won' }, 'wager-won'); one('wager', 5, { outcome: 'lost' }, 'wager-lost');
+  L.push({ what: 'actEnding', about: ONESHOT_ABOUT.actEnding, dur: 16, events: [[0, 'actEnding']], gate: (s) => s !== 'credits' });
+  L.push({ what: 'actEnding-credits', about: ONESHOT_ABOUT['actEnding-credits'], dur: 122, events: [[0, 'actEnding']], gate: (s) => s === 'credits' });
+  one('arrears', 8);
   const base = stateView(sector, 'late');
   L.push({ what: 'world-crisis', about: ONESHOT_ABOUT['world-crisis'], dur: 18, events: [], view: (t) => (t < 1 ? base : { ...base, crises: base.crises + 1 }), gate: (s) => s === 'crisis' });
   return L;
@@ -321,7 +330,7 @@ export function readme(kind: Kind, s: Settings, ledger: Ledger, started: string)
   p('FOLDERS AND NAMES');
   p('-----------------');
   wrap('rebound-audio/<industry>/loops (held states as heard), stems/<state>_<length>/ (stems, their full mix, and dry/ if asked), oneshots/ (interface and event sounds), runs/ (whole runs as the demo plays them).', '  ');
-  wrap('Names read: industry_state_what_bars_length_key_tempo_format. Key: Ddor = D dorian, Gmix = G mixolydian, Clyd = C lydian, Emin/Bmin = E/B aeolian (natural minor). 48k24 = 48 kHz 24-bit, 48k32f = 48 kHz 32-bit float. "loop-seamless" loops cleanly; "loop-xfade" is whole bars and crossfaded but something crosses the seam (see LOOPS); "excerpt" is a straight cut. "-beds" holds only continuous layers; "-pulse" continuous layers and the rhythm on the beat, no events.', '  ');
+  wrap('Names read: industry_state_what_bars_length_key_tempo_format. Key: Ddor = D dorian, Gmix = G mixolydian, Amin = A aeolian (Iron), Cmaj = C ionian (Fishing), Clyd = C lydian, Emin/Bmin = E/B aeolian (natural minor). 48k24 = 48 kHz 24-bit, 48k32f = 48 kHz 32-bit float. "loop-seamless" loops cleanly; "loop-xfade" is whole bars and crossfaded but something crosses the seam (see LOOPS); "excerpt" is a straight cut. "-beds" holds only continuous layers; "-pulse" continuous layers and the rhythm on the beat, no events.', '  ');
   p();
   p('LEVELS');
   p('------');

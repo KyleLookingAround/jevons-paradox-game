@@ -22,6 +22,10 @@ import { archive as realArchive } from '../content/archive';
 import { proprietor as realProprietor } from '../content/proprietor';
 import { ending as realEnding } from '../content/ending';
 import { features as realFeatures } from '../content/features';
+// M4: the real core, the real content and the core's M4 fixtures, for `#mock:core` (mock entry only).
+import { model as realModel } from '../core';
+import { content as realContent } from '../content';
+import { fixtureM4, fixtureM4Acts } from '../core/fixture';
 import {
   START_YEAR, YEARS_PER_SECOND, STEADY_STATE_YEARS, BUDGET_TOLERANCE, MAX_TICK_SECONDS, CALENDAR_LATE_RATE, EVENTS_MAX, PENDING_DIVIDENDS_MAX,
   OPENING_MAX, RUN_HISTORY_MAX, FEATURE_IDS,
@@ -1157,6 +1161,17 @@ export interface MockOpts {
   survey?: 'none' | 'filed' | 'up' | 'down' | 'flat';
   /** M3: at the brink of the first ending (credits and the retrospective a few seconds in). */
   ending?: boolean;
+  /** M4: run the REAL core (src/core) on the real content ('real') or on the core's M4 test fixtures ('m4', 'm4acts'),
+   *  so the page meets every M4 view as the core writes it. States are then made through the console handle
+   *  (window.rebound) or loaded as saves. */
+  core?: 'real' | 'm4' | 'm4acts';
+}
+
+/** M4: the real core and content (or fixture) for `#mock:core[=m4|m4acts]`; null otherwise. */
+export function coreSetup(o: MockOpts | null): { model: ModelApi; content: Content } | null {
+  if (!o?.core) return null;
+  const content = o.core === 'm4' ? fixtureM4 : o.core === 'm4acts' ? fixtureM4Acts : realContent;
+  return { model: realModel, content };
 }
 
 /** `#mock` or `#mock:rich,reveal,all,budget,pending,won,persist,smog=0.8,sector=compute,m2,away=held,fresh,late`. */
@@ -1175,8 +1190,10 @@ export function parseMockHash(hash: string): MockOpts | null {
     else if (k === 'ending') { o.ending = true; o.m3 = true; }
     else if (k === 'letter') o.letter = Number(v) || 0;
     else if (k === 'survey' && ['none', 'filed', 'up', 'down', 'flat'].includes(v)) o.survey = v as MockOpts['survey'];
+    else if (k === 'core') o.core = v === 'm4' || v === 'm4acts' ? v : 'real';
     else if ((k === 'sector' || k === 'era') && mockContent.sectors[v]) o.sector = v;
   }
+  if (o.core) return o;
   if (o.m3) o.m2 = true;
   if (o.m2) { o.all = true; o.budget = true; }
   if (o.all) { o.rich = true; o.reveal = true; }

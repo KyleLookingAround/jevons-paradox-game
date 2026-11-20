@@ -24,7 +24,8 @@ const VB = '0 0 600 400';
 const W = 600, H = 400;
 const BANDS: Band[] = ['far', 'mid', 'near'];
 const MAX_LIVE_SMOKE = 10, MAX_LIVE_SMOKE_LOW = 4;
-const MAX_CACHED = 6, MAX_SCAFFOLDS = 3;
+// M4: seven Industries in Act I and its Previews: keep a world for each, so a tab switch is always a re-attach.
+const MAX_CACHED = 7, MAX_SCAFFOLDS = 3;
 let instances = 0;
 
 interface FxSpec { kind: FxKind; x: number; y: number; size: number; markup?: string }

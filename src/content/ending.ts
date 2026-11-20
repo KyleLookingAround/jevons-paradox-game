@@ -57,11 +57,10 @@ export const ending: EndingText = {
     { key: 'ending:actOne', headline: '{year}: the Coal Age settled and held fifty years, at hour {hours}' },
     { key: 'capstone', headline: '{year}: run {run} opens on a settled Coal Age' },
     /*
-     * The Act I firsts the design lists (§7.2). The contract does not yet name milestone keys for them; these are the
-     * keys proposed to the core lane (design/scratch/m4-text-progress.md). A template whose key is never written is
-     * inert.
+     * The Act I firsts the design lists (§7.2), under the milestone keys the contract names (MetaState.milestones, the
+     * M4 amendment). 'feed:<source>' is keyed by the SOURCE (Iron), so {sector} is Iron (Act lane's correction).
      */
-    { key: 'feed:*', headline: '{year}: cheap iron makes {sector}’s machines cheaper, and busier' },
+    { key: 'feed:*', headline: '{year}: {sector} fills its first order for other Industries’ machines' },
     { key: 'crisis:fishing', headline: '{year}: a poor season on the banks; the catch per trip holds' },
     { key: 'threshold:*', headline: '{year}: the banks fail, and {sector} ties up the fleet' },
     { key: 'surveyed:*', headline: '{year}: the Board’s first survey of {sector}; the skippers dispute it' },

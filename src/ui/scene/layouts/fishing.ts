@@ -49,7 +49,7 @@ export const fishing: Layout = {
   bands: [190, 282],
   depth: [118, 0.42, 358, 1.1],
   chart: [20, CY + 4, 560, 36],
-  surveyRun: [504, 318, 660, 214],
+  surveyRun: [522, 306, 670, 280],
   card: [100, 150, 400, 250],
 
   backdrop(c) {

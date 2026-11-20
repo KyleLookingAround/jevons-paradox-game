@@ -146,6 +146,8 @@ const sector: SectorDef = {
     name: 'The order book',
     rebound: 'Embodied',
     blurb: 'Each use of iron makes another Industry’s machines cheaper to build. The coal is burnt where the machines are.',
+    /* M4 amendment (wired by the Act lane): the order book's lines are shown once Jevons's chapter on iron is read. */
+    feedsKnownWhen: { owns: 'iron.economyOfFuel', label: 'Read Of the Economy of Fuel' },
   },
 
   /*

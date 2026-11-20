@@ -134,7 +134,7 @@ export const homeGlyph: Prop = () => P('M-3.4 0H3.4L2.4 1.2H-2.4Z', 'chs') + L(0
 /** A scar: blank grey water over the bank, lettered in the chart's italic. */
 export const scarPatch: Prop = (a) => {
   const w = a.w || 120;
-  return P(`M${f(-w / 2)} -2Q${f(-w / 2.4)} -15 ${f(-w / 6)} -16Q${f(w / 4)} -18 ${f(w / 2)} -8Q${f(w / 2.2)} 2 0 1Q${f(-w / 2.6)} 3 ${f(-w / 2)} -2Z`, 'scr') +
+  return P(`M${f(-w / 2)} -2Q${f(-w / 2.4)} -15 ${f(-w / 6)} -16Q${f(w / 4)} -18 ${f(w / 2)} -8Q${f(w / 2.2)} 2 0 1Q${f(-w / 2.6)} 3 ${f(-w / 2)} -2Z`, 'chx') +
     `<text x="0" y="-5" text-anchor="middle" class="cht">No fish found</text>`;
 };
 /** The survey's track over the banks: a grid of dotted lines, the Board's vessel at its end. */

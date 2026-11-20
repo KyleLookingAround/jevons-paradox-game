@@ -75,6 +75,48 @@ paper boy runs through with the news). New exports: `viewFromSummary(baseView, r
 a run's end, or its first morning, rebuilt from `RunSummary` for the before-and-after pictures) and
 `spot(key, look, opts?)` (an engraved spot illustration per `HeadlineKey`, an SVG string; see "Spots" below).
 
+### M4 additions (all optional; every M1–M3 call above still works)
+
+`sceneViewFrom` fills these from the M4 contract, each **absent while the core reports nothing** (a host before M4 draws
+the M3 picture; checked pixel for pixel against the M3 strips).
+
+| Field | Type | Meaning (the audio lane reads the same) |
+|---|---|---|
+| `feeds` | `{ to: string; factor: number }[]` | On Iron (a feed source): the order book, per Industry it feeds now (`SectorDerived.feeds`): the target's id and the product of Iron's feed factors into it (≤ 1; 0.85 = that Industry's machines 15% cheaper). |
+| `fedBy` | `{ from: string; app: string; share: number }[]` | On a fed Industry: each founded application of another Industry whose feeds name this one (or `'*'`), and its adoption 0–1. Drawn by a layout's `driver: 'fed'` plots matching `app`: Steam's second track, engine shed and extra train (`iron.rails`), iron hulls in its harbour (`iron.shipPlate`); Light's steel-framed gasholder (`iron.girders`); Fishing's iron trawlers (`iron.shipPlate`) and cannery (`iron.tinplate`). |
+| `stock` | `{ reported; truth; surveyed; foreign; scar; crossed; moratorium }` | Fishing's stock, fractions 0–1. `reported` = catch per trip; `truth` = the true Q/K (`SectorDerived.stock.world`, for the world only, never a gauge); `surveyed` = a survey in force; `foreign` = the foreign fleets' share; `scar` = a scar lasts; `crossed` = below the threshold this run; `moratorium` = the quota lever at a level whose value is 0. **The rule:** the chart's stipple reads `reported` until `surveyed`, then `truth`; the living sea (gulls, porpoises, surface shoals, boats out) always reads `truth`. Captions and the text alternative speak of an unsurveyed stock only as reported. |
+| `capstoned` | `{ year: number \| null; arrears: boolean }` | A capstoned Industry: the Act ending's year (`meta.world.capstone[s].year`) for the cartouche "Settled {year}"; in arrears the held wash withdraws (root class `arrears`) and the smoke, or the empty sea, returns with the pressure. |
+| `preview` | `boolean` | A Preview Industry: a small "Preview" mark in the picture's corner. |
+
+New drivers for plots (`layout.ts`): `fed`, `chart`, `world`, `boats`, `tied` (moratorium or a failed bank), `foreign`,
+`surveyed`, `scar`, `crises` (a mark that stays for the run once the crisis count passes the slot). New `Layout` fields:
+`crisisNames` (Iron's second crisis is lettered The Slag Slide), `chart` and `surveyRun` (Fishing's survey beat), `card`
+(the postcard crop). `MAX_CACHED` is 7 (Act I's four Industries and three Previews: a switch is always a re-attach).
+
+New moments (nothing loops; reduced motion gets the after): `surveyed` (the Board's vessel puts out from the harbour
+mouth; with label `reveal`, the Board's first survey, the chart's stipple that the fleet's figure showed and the truth
+does not fades out left to right, once: copies of the vanished shoals as composited sprites over a drawing that
+already shows the truth), `thresholdCrossed` (a veil sweeps the chart), `scarHealed` (gulls fly in), `capstoned` (the
+cartouche stamps), `arrears` (a dark wave, "In arrears"). Without events they are found by comparing views.
+
+New art: `foundry` (Iron & Steel, Plate III, "Ravensdale, by night": a two-colour lithograph, furnace orange over a
+heavy ink, the glow plates a hair out of register; the furnaces blow in as the works fill; stoves at stage 1, the
+converter's flame cone at stage 2, the open-hearth shop at stage 3; the goods yard's lettered wagons leave the frame
+for each Industry fed; slag heaps on the ground over Steam's seam section, which both draws hollow) and `harbour`
+(Fishing, Plate IV, a ledger variant at dawn: the quay, market hall, smokehouses, fish train, piers and lighthouse,
+and the Admiralty chart in the near band 358–400: banks, stipple shoals, foreign sails as pennant-coloured glyphs,
+the home fleet's marks, the survey's track, a scar as grey water "No fish found"; soundings only on the wide picture).
+Figures `pryceElder` (frock coat, a sample of rail), `skipper` (gansey), `naturalist` (sampling jar). Spots for the
+six new headline keys (`banks`, `survey`, `sails`, `gulls`, `cartouche`; `arrears` uses `chimneys`).
+
+`postcard(view, { standalone?, width?, height?, marks? })` (`postcard.ts`, exported) is a tab's static crop (64 × 40
+by default) built as a string from the layout's scenery and the founded landmarks, with the settled wash, the
+capstone's cartouche, and (unless `marks: false`) the Preview corner and the warning dot; `postcardKey(view)` says
+when it must be redrawn. Standalone inlines only the drawing classes and that look's tokens (for an `<img>`).
+
+Measure: `node tools/scene-shot.mjs [industries] --m4` (the strip `#strip=<id>&m4`), `--perf --m4`, `--switch --m4`,
+`--trace --m4` (busiest: `crisisM4`); `#cards` shows every Industry's postcards.
+
 `sceneViewFrom` (in `adapter.ts`) is the only code that reads the contract. It is pure and total (never throws) and
 holds no game rules: it reads `Content`, `GameState` and `Derived` and maps them to cosmetic fractions (`SceneView`
 in `types.ts`). The scene ships its own CSS (`css.ts`, injected once as `<style id="scn-css">`), reading the page's
@@ -108,6 +150,8 @@ an Age reuses its Age's style with a new layout (`Layout.look` names the style).
 | Style id | Idiom | Used by |
 |---|---|---|
 | `ledger` | Steel engraving from an illustrated paper, 1840s: hatch by depth, stipple sky, plate border, legend | Steam |
+| `foundry` | Two-colour lithograph at night (M4): furnace orange over heavy ink, glow plates off register, Plate III | Iron & Steel |
+| `harbour` | The ledger at dawn with an Admiralty chart for a cut-away (M4), Plate IV | Fishing |
 | `gaslight` | Chromolithograph poster, 1890s: keylined flat shapes, stepped sky, halftone glow, lettered title and fascias | Light |
 | `chrome` | Travel poster / airbrushed advert, 1950s–60s: gradient hills and sky, haloed sun, headline, contrails | Motion |
 | `terminal` | Vector display / early CAD: phosphor wireframe, scanlines, isometric faces, text-mode labels, HUD | Compute |

@@ -88,9 +88,10 @@ const sector: SectorDef = {
     when: {
       all: [
         {
-          /* M4: a Preview (Act II/III): after the Act I ending, from the next run (one built with the capstone), or in any
+          /* M4: a Preview (Act II/III): after the Act I ending, from the next run (not in the run that reached it: flags.won
+           * holds for the rest of that run), or in any
            * save that has opened Compute before (meta.sectorsOpened), which keeps it in every run (design/m4-design.md §7.4). */
-          any: [{ all: [{ ending: 'actOne' }, { stat: 'capstoned', op: '>=', value: 1 }] }, { owns: 'compute' }],
+          any: [{ all: [{ ending: 'actOne' }, { not: { flag: 'won' } }] }, { owns: 'compute' }],
           label: 'The Coal Age settled',
         },
         { feature: 'travel', label: 'Travel time measured' },

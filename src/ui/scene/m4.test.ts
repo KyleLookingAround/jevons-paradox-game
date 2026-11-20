@@ -12,8 +12,8 @@ import { figureArt } from './props/figures';
 import { hash, rng } from './svg';
 import type { Content, GameState, Derived } from '../../types';
 import type { SceneView } from './types';
-import { sectorContent as ironContent } from '../../content/sectors/iron';
-import { sectorContent as fishingContent } from '../../content/sectors/fishing';
+import { iron as ironContent } from '../../content/sectors/iron';
+import { fishing as fishingContent } from '../../content/sectors/fishing';
 
 const content = {
   sectors: {
@@ -61,7 +61,7 @@ describe('M4 adapter fields', () => {
     expect(sceneViewFrom(content, state(), d, 'iron').fedBy).toBeUndefined();
   });
   test('feeds (the order book) on Iron; Iron shows the seams of the reserve it draws on', () => {
-    const d = { sectors: { iron: { feeds: [{ to: 'steam', factor: 0.873, rAdded: 3, lineShare: null }] }, steam: { seams: { sunk: 1, total: 3, ladder: [{}, {}, { reachable: true }] } } } } as unknown as Derived;
+    const d = { sectors: { iron: { feeds: [{ to: 'steam', factor: 0.873, rAdded: 3, lineShare: null }] }, steam: { seams: { sunk: 1, total: 3, ladder: [{}, { reachable: true }, {}] } } } } as unknown as Derived;
     const v = sceneViewFrom(content, state(), d, 'iron');
     expect(v.feeds).toEqual([{ to: 'steam', factor: 0.87 }]);
     expect(v.seams).toEqual({ sunk: 1, total: 3, next: true });
@@ -116,7 +116,7 @@ describe('M4 layouts', () => {
       expect(hasLayout(id)).toBe(true);
       const l = layoutFor(id, 6);
       expect(l.look).toBe(look);
-      const apps = (c as unknown as { sector: { applications: { id: string; icon: string }[] } }).sector.applications;
+      const apps = (c as unknown as { def: { applications: { id: string; icon: string }[] } }).def.applications;
       expect(apps.length).toBeGreaterThan(4);
       for (const a of apps) expect(l.plots.some((p) => (p.driver ?? 'app') === 'app' && (p.match ?? []).includes(a.icon))).toBe(true);
     }

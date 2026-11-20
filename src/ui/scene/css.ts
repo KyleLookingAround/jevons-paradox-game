@@ -15,7 +15,7 @@ const BASE = `
 .scn-stage>.scn-places:not(.act){display:none}
 .scn-bw{position:absolute;inset:0;width:100%;height:100%}
 .scn-noise{opacity:0}
-/* The signal noise is a dense SVG: kept on its own layer so its opacity (which follows pressure) never repaints it. */
+${/* The signal noise is a dense SVG: kept on its own layer so its opacity (which follows pressure) never repaints it. */ ''}
 .scn[data-look=cyberpunk] .scn-noise{will-change:opacity}
 .scn-extra{overflow:hidden}
 .scn-legend{margin:2px 0 4px;text-align:center;font:italic 13px/1.3 var(--f-serif,Georgia,serif);letter-spacing:.06em;color:var(--muted,#6f5f4a);font-variant:small-caps}
@@ -37,11 +37,11 @@ const BASE = `
 .scn.crisis .scn-fog{animation:scn-fog 7s ease-in-out forwards}
 @keyframes scn-fog{0%{opacity:0;transform:translateX(-30%)}25%{opacity:.88;transform:translateX(0)}70%{opacity:.7}100%{opacity:0;transform:translateX(12%)}}
 .scn.halt .scn-world{filter:grayscale(.75) contrast(.92);transition:filter 2.5s}
-/* Settled: a held wash (the style's --s-held), never the frozen grey of a Reckoning. */
+${/* Settled: a held wash (the style's --s-held), never the frozen grey of a Reckoning. */ ''}
 .scn-held{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 3s;background:linear-gradient(to bottom,rgba(var(--s-held,236,226,190),.0),rgba(var(--s-held,236,226,190),.16) 45%,rgba(var(--s-held,236,226,190),.1));mix-blend-mode:normal}
 .scn[data-look=gaslight]{--s-held:246,206,140}.scn[data-look=chrome]{--s-held:214,236,226}.scn[data-look=terminal]{--s-held:110,210,130}.scn[data-look=cyberpunk]{--s-held:120,190,255}
-/* Clear skies, before Steady State: the weather has gone (each style's sky2 fades in with clearProgress). The night
-   city shows its first stars and the rain thins. */
+${/* Clear skies, before Steady State: the weather has gone (each style's sky2 fades in with clearProgress). The night
+   city shows its first stars and the rain thins. */ ''}
 .scn[data-look=cyberpunk].clear svg .stdy{display:inline;opacity:.55}
 .scn[data-look=cyberpunk].clear .rain.r2,.scn[data-look=cyberpunk].settled .rain{display:none}
 .scn[data-look=cyberpunk].settled svg .stdy{display:inline}
@@ -49,7 +49,7 @@ const BASE = `
 .scn.settled .smk i{background:rgba(var(--s-smk),.16)!important}
 .scn.live.settled .spin.on>b{animation-duration:9s}.scn.live.settled .rock.on>b{animation-duration:6s}
 .scn.settled .blink.on>b{animation:none}
-/* One-off moments: a flash layer (opacity only, composited). */
+${/* One-off moments: a flash layer (opacity only, composited). */ ''}
 .scn-flash{position:absolute;inset:0;pointer-events:none;opacity:0}
 .scn-flash.on.fl-decade{background:radial-gradient(90% 70% at 50% 35%,rgba(255,250,225,.55),rgba(255,250,225,0) 70%);animation:scn-fl 2.6s ease-out forwards}
 .scn-flash.on.fl-stage{background:radial-gradient(80% 60% at 50% 70%,rgba(255,255,240,.4),rgba(255,255,240,0) 70%);animation:scn-fl 1.6s ease-out forwards}
@@ -64,7 +64,7 @@ const BASE = `
 .scn.backfire .smk i{background:rgba(var(--s-smk),.7)!important}
 .scn-world.opening{animation:scn-open 2.4s ease-out}
 @keyframes scn-open{0%{opacity:0}100%{opacity:1}}
-/* The settled emblem and the highlight ring. */
+${/* The settled emblem and the highlight ring. */ ''}
 .scn-emb{position:absolute;right:3%;bottom:4%;padding:2px 7px;font:600 10px/1.4 var(--labelf,var(--body,system-ui));letter-spacing:.14em;text-transform:uppercase;
   color:var(--s-ink);background:var(--s-paper);border:1px solid var(--s-ink);box-shadow:0 0 0 2px var(--s-paper),0 0 0 3px var(--s-ink);opacity:0;transition:opacity 2s;pointer-events:none}
 .scn-emb.on{opacity:.9}
@@ -78,7 +78,7 @@ const BASE = `
 .scn.halt *{animation-play-state:paused!important}
 .scn.paused *{animation-play-state:paused!important}
 
-/* --- drawing classes (every look styles these through its tokens) --- */
+${/* --- drawing classes (every look styles these through its tokens) --- */ ''}
 .scn svg *{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
 .scn .b{fill:var(--s-b);stroke:var(--s-ink);stroke-width:calc(.9px*var(--sw))}
 .scn .b2{fill:var(--s-b2);stroke:var(--s-ink);stroke-width:calc(.9px*var(--sw))}
@@ -117,13 +117,13 @@ const BASE = `
 .scn .svk{fill:none;stroke:var(--s-ink);stroke-width:calc(1.2px*var(--sw))}
 .scn .svfl{fill:var(--s-sv);stroke:none}
 
-/* --- appearance: slots grow out of the ground; ghosts are faint dashed hints --- */
+${/* --- appearance: slots grow out of the ground; ghosts are faint dashed hints --- */ ''}
 .scn .sl0{display:none}
 .scn .sl0.on{display:inline}
-/* The slot's own origin is its foot (bottom centre), so grow from 0 0 in view-box terms: no fill-box needed (Safari). */
+${/* The slot's own origin is its foot (bottom centre), so grow from 0 0 in view-box terms: no fill-box needed (Safari). */ ''}
 .scn .gr{transform-box:view-box;transform-origin:0 0}
 .scn.live .sl0.on>.gr{animation:scn-rise .9s cubic-bezier(.2,.9,.3,1.15) both}
-/* M3: things lit by the hour come on and go off without the rise (and without repainting their band each frame). */
+${/* M3: things lit by the hour come on and go off without the rise (and without repainting their band each frame). */ ''}
 .scn.live .sl0.nr.on>.gr{animation:none}
 .scn .sl0.fd{display:inline;opacity:0;transition:opacity 2.2s cubic-bezier(.6,0,.9,.4)}
 .scn .sl0.fd.on{opacity:1;transition:opacity .8s ease-out}
@@ -141,29 +141,29 @@ const BASE = `
 .scn.live .build>.gr{animation:scn-rise 1.8s .3s cubic-bezier(.2,.9,.3,1.05) both!important}
 .scn.live .evolve>.gr{animation:scn-evolve 1.6s .35s cubic-bezier(.2,.9,.3,1.1) both}
 @keyframes scn-evolve{0%{opacity:0;transform:scaleY(.2)}55%{opacity:1}100%{transform:none}}
-/* The old machine sinks away as the new one rises (a stage change). */
+${/* The old machine sinks away as the new one rises (a stage change). */ ''}
 .scn .outgoing{pointer-events:none}
 .scn.live .outgoing>.gr{animation:scn-out 1.3s ease-in forwards}
 .scn.rm .outgoing{display:none}
 @keyframes scn-out{0%{opacity:1;transform:none}100%{opacity:0;transform:scaleY(.15)}}
-/* The Market's scaffold: up, held, down; no player highlight. */
+${/* The Market's scaffold: up, held, down; no player highlight. */ ''}
 .scn .scaf.mkt.on{animation:scn-scaf2 3.8s ease forwards}
 .scn.live .scaf.mkt.on>.sgr{transform-box:view-box;transform-origin:0 0;animation:scn-scafr 3.8s ease forwards}
 @keyframes scn-scaf2{0%{opacity:0}12%{opacity:.9}78%{opacity:.9}100%{opacity:0}}
 @keyframes scn-scafr{0%{transform:scaleY(.1)}30%{transform:none}75%{transform:none}100%{transform:scaleY(.3)}}
 .scn.rm .scaf.mkt.on{opacity:.8}
 .scn .scaf.mkt .scf{stroke-width:calc(1.2px*var(--sw));opacity:1}
-/* A sign of restraint going up; a landmark's kick at the first backfire. */
+${/* A sign of restraint going up; a landmark's kick at the first backfire. */ ''}
 .scn.live .raise>.gr{animation:scn-rise 1.4s cubic-bezier(.2,.9,.3,1.15) both}
 .scn.live .kick>.gr{animation:scn-kick 1.3s ease-out both}
 @keyframes scn-kick{0%{transform:none}12%{transform:scale(1.06,.94)}30%{transform:scale(.97,1.05)}55%{transform:none}}
-/* Commons and a Charter's landmark: always shown once built. */
+${/* Commons and a Charter's landmark: always shown once built. */ ''}
 .scn .cmn{display:none}.scn .cmn.on{display:inline}
 .scn.live .cmn.build>.gr{animation:scn-rise 1.8s .2s cubic-bezier(.2,.9,.3,1.05) both}
 
-/* --- fx: smoke, spin, rock, blink, flow, drift, movers ---
+${/* --- fx: smoke, spin, rock, blink, flow, drift, movers ---
    Sprites (HTML) in a 600×400 px plane scaled to the stage; every animation is transform/opacity on an HTML element
-   so it runs on the compositor. Keyframes hold no var(): per-sprite values are inline or Web Animations. */
+   so it runs on the compositor. Keyframes hold no var(): per-sprite values are inline or Web Animations. */ ''}
 .scn-fxl{position:absolute;left:0;top:0;width:600px;height:400px;transform-origin:0 0;transform:scale(var(--k,1));pointer-events:none;overflow:visible}
 .scn-fxl>.fx{position:absolute;width:1px;height:1px;transform-origin:0 0}
 .scn .fx{display:none}
@@ -208,16 +208,16 @@ const BASE = `
 .scn .starf{opacity:calc(1 - var(--light,0)*1.15 - var(--pf2,0))}
 .scn .sunf{opacity:calc(1 - var(--pf2,0)*.85)}
 .scn .rst{display:none}.scn .rst.on{display:inline}
-/* M3: the seam ladder (props/strata.ts): shafts and galleries where sunk, the next seam's shaft dotted, the worked-out
-   seams hollow, the one being worked hollowing from the shaft with the reserve. */
+${/* M3: the seam ladder (props/strata.ts): shafts and galleries where sunk, the next seam's shaft dotted, the worked-out
+   seams hollow, the one being worked hollowing from the shaft with the reserve. */ ''}
 .scn .sm .shf,.scn .sm .gal,.scn .sm .nxs,.scn .sm .pp{display:none}
 .scn .sm.sunk .shf,.scn .sm.work .gal,.scn .sm.next .nxs,.scn .sm.out .pp{display:inline}
 .scn .sm .sx{transform-box:fill-box;transform:scaleX(0);transition:transform 1.5s}
 .scn .sm.work .sx{transform:scaleX(var(--dep,0))}
 .scn .sm.out .sx{transform:scaleX(1)}
 .scn .sm .gal.gl{opacity:.75}
-/* M3: the sprites over the drawing. Light's day clock (a poster roundel: the day's load round a 24-hour dial, the
-   night shaded, a hand walking the day); the cast in the foreground; the proprietor's watch. */
+${/* M3: the sprites over the drawing. Light's day clock (a poster roundel: the day's load round a 24-hour dial, the
+   night shaded, a hand walking the day); the cast in the foreground; the proprietor's watch. */ ''}
 .scn-m3{z-index:0}
 .scn .dial .dlr{fill:var(--s-paper);stroke:var(--s-ink);stroke-width:calc(1px*var(--sw))}
 .scn .dial .dln{fill:var(--s-ink);fill-opacity:.32;stroke:none}
@@ -238,13 +238,13 @@ const BASE = `
 .scn.settled .fig .warm{animation:none}
 @keyframes scn-watch{0%,64%{transform:rotate(0)}74%,88%{transform:rotate(-150deg)}96%,100%{transform:rotate(0)}}
 .scn .m3t{display:none}.scn .m3t.on{display:inline}
-/* M3 spots (spots.ts): the broadsheet's small pictures. */
+${/* M3 spots (spots.ts): the broadsheet's small pictures. */ ''}
 .scn-spot{display:block;overflow:hidden}
 .scn-spot *{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
 .scn-spot .spbg{fill:var(--s-sky0)}
 .scn-spot .spfr{fill:none;stroke:var(--s-frame);stroke-width:1px}
 .scn-spot .sm.work .sx{transform:scaleX(.5)}
-/* M3 moments: a seam sunk (the shaft sinks, steam puffs at the head), the ending (the fresh sky held). */
+${/* M3 moments: a seam sunk (the shaft sinks, steam puffs at the head), the ending (the fresh sky held). */ ''}
 .scn.live .sm.sinking .shf{transform-box:fill-box;transform-origin:50% 0;animation:scn-sink 1.8s cubic-bezier(.3,.7,.4,1) both}
 @keyframes scn-sink{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 .scn.live .sm.sinking .gal{animation:scn-fl 2s ease-out}
@@ -259,7 +259,7 @@ const BASE = `
 .scn .sgn{fill:#f3ead2;stroke:#0e3a38;stroke-width:calc(.8px*var(--sw))}
 .scn .sgt{fill:#0e3a38;font:700 6px/1 var(--labelf,system-ui,sans-serif)}
 .scn .bcab .cab{fill:none;stroke:var(--s-sv);stroke-width:calc(.9px*var(--sw));stroke-dasharray:3 2;opacity:.85}
-/* M4: the capstone's cartouche (stamped once), the Preview mark, the sea's moments (sprites: opacity and transform). */
+${/* M4: the capstone's cartouche (stamped once), the Preview mark, the sea's moments (sprites: opacity and transform). */ ''}
 .scn-emb.cart{border-radius:2px;padding:3px 12px;box-shadow:0 0 0 2px var(--s-paper),0 0 0 3px var(--s-ink),0 0 0 5px var(--s-paper),0 0 0 5.6px var(--s-ink)}
 .scn.live .scn-emb.stamp{animation:scn-stamp 1.4s cubic-bezier(.3,1.4,.5,1) both}
 @keyframes scn-stamp{0%{opacity:0;transform:scale(1.8)}60%{opacity:1;transform:scale(.94)}100%{opacity:.9;transform:none}}
@@ -273,7 +273,7 @@ const BASE = `
 .scn .stdy{display:none}.scn.steady .stdy{display:inline}
 .scn .nosteady{display:inline}.scn.steady .nosteady{display:none}
 
-/* --- places: tap targets over the picture --- */
+${/* --- places: tap targets over the picture --- */ ''}
 .scn-places{pointer-events:none}
 .scn-place{position:absolute;pointer-events:auto;margin:0;padding:0;border:0;background:transparent;cursor:pointer;
   border-radius:4px;-webkit-tap-highlight-color:transparent;min-width:44px;min-height:44px}
@@ -296,7 +296,7 @@ const BASE = `
 .scn-toast.on{opacity:.95;transform:none}
 .scn.crisis.rm .scn-fog{opacity:.62}
 
-/* --- the card under the picture --- */
+${/* --- the card under the picture --- */ ''}
 .scn-card{min-height:44px;padding:6px 2px 0;font-size:14px;line-height:1.35;border-top:1px solid var(--rule,rgba(0,0,0,.12));margin-top:6px}
 .scn-cap{color:var(--muted,#6f5f4a)}
 .scn:not(.wide) .scn-emb{font-size:9px;padding:1px 5px;right:2.5%;bottom:3%}

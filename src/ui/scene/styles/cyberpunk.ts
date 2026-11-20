@@ -138,16 +138,16 @@ export const cyberpunk: ArtStyle = {
 .scn .cbplh{fill:none;stroke:#3ef2ff;stroke-width:3px;stroke-opacity:.28;vector-effect:none}
 .scn .emgm{display:none}.scn .emr{fill:#ff2a3a}.scn .emp{fill:#ff2a3a;opacity:.1}
 .scn[data-look=cyberpunk].stress .emgm,.scn[data-look=cyberpunk].halt .emgm{display:inline}
-/* Under strain the grid sheds load: towers' machine light goes out block by block, in turn; signs fail. */
+${/* Under strain the grid sheds load: towers' machine light goes out block by block, in turn; signs fail. */ ''}
    The engine steps a phase class (ph0–ph2) on the mid band every four seconds while under strain (one restyle and
    one repaint of that band per step), instead of a CSS animation inside the drawing, which repainted it every frame. */
 .scn[data-look=cyberpunk].stress .bw-mid.ph0 .ov:nth-child(3n),.scn[data-look=cyberpunk].stress .bw-mid.ph1 .ov:nth-child(3n+1),
 .scn[data-look=cyberpunk].stress .bw-mid.ph2 .ov:nth-child(3n+2){opacity:.06}
-/* fixed losses */
+${/* fixed losses */ ''}
 .scn[data-look=cyberpunk].stress .band-mid .ov:nth-child(5n){opacity:.06}
 .scn[data-look=cyberpunk].stress .band-near .sg.nv,.scn[data-look=cyberpunk].stress .band-near .nt.nv{fill:#3a3450;stroke:#39334f}
 .scn[data-look=cyberpunk].stress .nh.nv{opacity:0}
-/* A Reckoning here is a blackout: the machine light gone, neon dead, only the emergency red and any warm room. */
+${/* A Reckoning here is a blackout: the machine light gone, neon dead, only the emergency red and any warm room. */ ''}
 .scn[data-look=cyberpunk].halt .scn-world{filter:saturate(.55) brightness(.85)}
 .scn[data-look=cyberpunk].halt .ov,.scn[data-look=cyberpunk].halt .cbwin,.scn[data-look=cyberpunk].halt .cbwin2,.scn[data-look=cyberpunk].halt .cbwin3{opacity:.05}
 .scn[data-look=cyberpunk].halt .nh{opacity:0}.scn[data-look=cyberpunk].halt .nt{stroke:#3a3356}.scn[data-look=cyberpunk].halt .sg{fill:#3a3450}

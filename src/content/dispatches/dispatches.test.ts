@@ -4,14 +4,16 @@
 // @ts-ignore
 import { describe, expect, test } from 'bun:test';
 import { content } from '../index';
-import { cast } from '../cast';
 import { dispatches } from './index';
-import { ambient } from '../news/ambient';
 import { headlines } from '../news/fallback';
 import type { Cond, DispatchDef, EffectDef, StatKey } from '../../types';
 import { FEATURE_IDS } from '../../types';
 
 const C = content;
+/* M4: the registered cast and ambient news (M3's plus the text lane's M4 additions, folded in by the registry). */
+const cast = C.cast ?? [];
+const ambient = C.ambient ?? [];
+const coalSectors = new Set(C.ages.find((a) => a.id === 'coal')!.sectors);
 const sectorIds = Object.keys(C.sectors);
 const ageIds = C.ages.map((a) => a.id);
 const apps = sectorIds.flatMap((s) => C.sectors[s].applications.map((a) => ({ id: a.id, sector: s })));
@@ -30,15 +32,23 @@ const GLOBAL_STATS: StatKey[] = [
   'time', 'year', 'wellbeing', 'population', 'capital', 'mandate', 'reckonings', 'steadyYearsAll', 'clicks',
   'decisions', 'automated', 'commonsLevels', 'sectorsSettled', 'leanDecades', 'fullDecades',
   'steadySectors', 'dispatchesAnswered', 'historiesCleared', 'totalHours', 'bankedSeconds',
+  /* M4 */
+  'capstoned',
 ];
 const SECTOR_STATS: StatKey[] = [
   'etaFold', 'rFold', 'frontierFold', 'peakRFold', 'rebound', 'resourceUse', 'demand', 'servicePrice',
   'serviceDelivered', 'reserveFraction', 'pressureFraction', 'crises', 'steadyYears', 'budgetDecades',
   'withinBudget', 'appsFounded', 'settled', 'clear', 'clearYears', 'leanDecades', 'fullDecades',
   'seamsSunk', 'loadFactor', 'travelHours', 'sprawl', 'bite',
+  /* M4 (and the amendment's feedShare) */
+  'openFor', 'stockFraction', 'reportedStock', 'foreignShare', 'scarYears', 'surveyed', 'budgetHeadroom', 'feedFactor',
+  'arrears', 'feedShare',
 ];
 const APP_STATS: StatKey[] = ['adoption', 'appDemand'];
-const FRACTION_STATS: StatKey[] = ['reserveFraction', 'pressureFraction', 'rebound', 'adoption', 'loadFactor', 'withinBudget'];
+const FRACTION_STATS: StatKey[] = ['reserveFraction', 'pressureFraction', 'rebound', 'adoption', 'loadFactor', 'withinBudget',
+  /* M4 */ 'reportedStock', 'stockFraction', 'foreignShare', 'feedFactor', 'feedShare'];
+/** M4: the act endings a { ending } leaf may name. */
+const endingIds = new Set((C.acts ?? []).flatMap((a) => (a.ending ? [a.ending.id] : [])));
 
 function condProblems(where: string, c: Cond | undefined, out: string[]) {
   if (!c) return;
@@ -51,6 +61,8 @@ function condProblems(where: string, c: Cond | undefined, out: string[]) {
   // M3 (added by the content-mechanics lane): { feature } is true once that feature has arrived
   if ('feature' in c) { if (!(FEATURE_IDS as readonly string[]).includes(c.feature)) out.push(`${where}: feature ${c.feature}`); return; }
   if ('returned' in c) return;
+  /* M4 */
+  if ('ending' in c) { if (!endingIds.has(c.ending)) out.push(`${where}: ending ${c.ending}`); return; }
   if ('stat' in c) {
     if (GLOBAL_STATS.includes(c.stat)) return;
     if (SECTOR_STATS.includes(c.stat)) { if (!c.sector || !sectorIds.includes(c.sector)) out.push(`${where}: ${c.stat} needs a real sector`); return; }
@@ -78,6 +90,8 @@ const FEATURE_RK: Record<string, number> = {
   market: 1, moreLevers: 1, ambient: 1, dispatches: 1, charters: 2, budget: 2, leverRepeat: 2, dividendChoice: 2,
   budgetPace: 2, clearSkies: 2, commons: 3, steadyState: 3, archive: 3, seams: 3, load: 3, travel: 3, sideEffects: 3,
   freeAtUse: 3, survey: 3, histories: 3, settlement: 4,
+  /* M4: the full account arrives with the Board's Survey in run 6 */
+  estimates: 5,
 };
 const hasFeature = (c: Cond, ...ids: string[]) => implies(c, (l) => 'feature' in l && ids.includes(l.feature));
 /** Does the condition contain this leaf (as a conjunct along `all` paths, or in every branch of an `any`)? */
@@ -103,7 +117,7 @@ function effectProblems(where: string, e: EffectDef, out: string[]) {
   if (e.type === 'forbid' && e.id && !(upgradeIds.has(e.id) || appIds.has(e.id) || commonsIds.has(e.id) || leverIds.has(e.id))) out.push(`${where}: forbid ${e.id}`);
   /* magnitudes */
   const v = (e as { value?: number }).value;
-  const mul = ['etaMul', 'capCostMul', 'satMul', 'halfPriceMul', 'popGrowthMul', 'mandateRateMul', 'costMul', 'resourcePriceMul', 'intensityMul', 'incomeMul', 'costMulOf', 'commonsYieldMul'];
+  const mul = ['etaMul', 'capCostMul', 'satMul', 'halfPriceMul', 'popGrowthMul', 'mandateRateMul', 'costMul', 'resourcePriceMul', 'intensityMul', 'incomeMul', 'costMulOf', 'commonsYieldMul', /* M4 */ 'foreignMul'];
   if (mul.includes(e.type) && (v! < 0.8 || v! > 1.25)) out.push(`${where}: ${e.type} ${v} outside [0.8, 1.25]`);
   if (e.type === 'mandateAdd' && Math.abs(v!) > 150) out.push(`${where}: mandateAdd ${v}`);
   if (e.type === 'capitalAdd' && Math.abs(v!) > 90) out.push(`${where}: capitalAdd ${v}`);
@@ -129,7 +143,7 @@ function adverse(e: EffectDef): boolean {
     case 'intensityMul': case 'costMul': case 'costMulOf': case 'capCostMul': return v > 1;
     case 'satMul': case 'halfPriceMul': case 'resourcePriceMul': case 'popGrowthMul': return v !== 1;
     case 'forbid': case 'suspendOrder': return true;
-    case 'leakMul': case 'spillMul': return v > 1;
+    case 'leakMul': case 'spillMul': case 'foreignMul': return v > 1;
     case 'leverCostMul': return (e.cost ?? 1) > 1 || (e.upkeep ?? 1) > 1;
     default: return false;
   }
@@ -137,7 +151,7 @@ function adverse(e: EffectDef): boolean {
 
 const words = (t: string) => t.replace(/\{[a-z]+\}/g, '');
 const SYSTEM_WORDS: { re: RegExp; gate: (c: Cond) => boolean; name: string }[] = [
-  { name: 'budget', re: /\b(budget|the line|decade within|decades within|lean decade|full decade)\b/i, gate: (c) => hasFeature(c, 'budget', 'leverRepeat', 'dividendChoice', 'budgetPace', 'clearSkies', 'steadyState', 'settlement') },
+  { name: 'budget', re: /\b(budget|the line|its line|their lines|decade within|decades within|lean decade|full decade)\b/i, gate: (c) => hasFeature(c, 'budget', 'leverRepeat', 'dividendChoice', 'budgetPace', 'clearSkies', 'steadyState', 'settlement') },
   { name: 'Commons', re: /\bCommons\b/, gate: (c) => hasFeature(c, 'commons') },
   { name: 'Charter', re: /\bcharters?\b(?! (flights?|fares?|more flights))/i, gate: (c) => hasFeature(c, 'charters') },
   { name: 'Steady State', re: /\bSteady State\b/, gate: (c) => hasFeature(c, 'steadyState', 'settlement') || implies(c, (l) => 'owns' in l && l.owns === 'steadyState') },
@@ -227,7 +241,7 @@ describe('dispatches: shape and references', () => {
       const strings = [d.headline, d.body, ...d.arms.flatMap((a) => [a.label, a.outcome, a.price, a.reply ?? ''])];
       for (const t of strings) {
         if (/!|"|'| - | – /.test(t)) out.push(`${d.id}: punctuation: ${t}`);
-        if (/\b(sector|sectors|era|eras|ironically|smog)\b/i.test(words(t)) && !(/\bsmog\b/i.test(t) && d.sector && !['steam', 'light'].includes(d.sector))) out.push(`${d.id}: banned word: ${t}`);
+        if (/\b(sector|sectors|era|eras|ironically|smog)\b/i.test(words(t)) && !(/\bsmog\b/i.test(t) && d.sector && !coalSectors.has(d.sector))) out.push(`${d.id}: banned word: ${t}`);
         for (const m of t.matchAll(/\{([a-z]+)\}/gi)) {
           if (!OK.has(m[1])) out.push(`${d.id}: placeholder {${m[1]}}`);
           if (['sector', 'resource', 'service'].includes(m[1]) && !d.sector) out.push(`${d.id}: {${m[1]}} without a sector`);
@@ -330,7 +344,7 @@ describe('ambient news', () => {
     expect(out).toEqual([]);
   });
   test('the Coal Age never says smog, and no ambient line repeats another headline', () => {
-    const coal = new Set(['steam', 'light']);
+    const coal = coalSectors;
     expect(ambient.filter((a) => a.sector && coal.has(a.sector) && a.text.some((t) => /\bsmog\b/i.test(t))).map((a) => a.id)).toEqual([]);
     const existing = new Set([...Object.values(C.headlines).flat(), ...Object.values(C.sectorHeadlines ?? {}).flatMap((h) => Object.values(h).flat() as string[])]);
     const seen = new Set<string>();
@@ -353,5 +367,67 @@ describe('the nine M3 headline keys', () => {
     expect(H.seamSunk.every((h) => h.includes('{name}'))).toBe(true);
     expect(H.biteBack.every((h) => h.includes('{name}'))).toBe(true);
     expect(H.history.every((h) => h.includes('{name}'))).toBe(true);
+  });
+});
+
+/* M4: wager arms (DispatchArm.wager; design/m4-design.md §8.2; rules from the text lane, design/scratch/m4-registry-text.md). */
+describe('M4: wager arms', () => {
+  const wagerArms = dispatches.flatMap((d) => d.arms.map((a, i) => ({ d, a, i })).filter((x) => x.a.wager));
+  const sentence = (w: string, t: string, max: number, out: string[]) => {
+    if (!t || t.length > max) out.push(`${w}: ${t?.length} > ${max}: ${t}`);
+    if (!/\.$/.test(t ?? '') || ((t ?? '').match(/\. [A-Z]/g) ?? []).length) out.push(`${w}: one sentence: ${t}`);
+  };
+
+  test('there are wagers (twelve of the twenty-four M4 letters), and a wager is never the default arm', () => {
+    expect(wagerArms.length).toBeGreaterThanOrEqual(12);
+    expect(wagerArms.filter(({ d, i }) => i === (d.defaultArm ?? 0)).map(({ d }) => d.id)).toEqual([]);
+  });
+
+  test('hint ≤ 70 characters in the house form ("Pays …", no full stop); the condition resolves; staked', () => {
+    const out: string[] = [];
+    for (const { d, a, i } of wagerArms) {
+      const w = `${d.id}[${i}]`;
+      const x = a.wager!;
+      if (x.hint.length > 70) out.push(`${w}: hint ${x.hint.length}`);
+      if (!/^Pays /.test(x.hint) || /[.?!]$/.test(x.hint)) out.push(`${w}: hint form: ${x.hint}`);
+      condProblems(`${w}.wager`, x.when, out);
+      if (!(a.cost?.mandate || a.cost?.capitalSeconds)) out.push(`${w}: a wager is staked (a cost)`);
+    }
+    expect(out).toEqual([]);
+  });
+
+  test('both branches: one sentence ≤ 120, an effect or a modifier, effects within the arms’ bounds, replies as headlines', () => {
+    const out: string[] = [];
+    for (const { d, a, i } of wagerArms) {
+      for (const k of ['win', 'lose'] as const) {
+        const w = `${d.id}[${i}].${k}`;
+        const b = a.wager![k];
+        sentence(w, b.outcome, 120, out);
+        const effs = [...(b.effects ?? []), ...(b.modifier?.effects ?? [])];
+        if (!effs.length) out.push(`${w}: no effect`);
+        for (const e of effs) effectProblems(w, e, out);
+        if (b.modifier && (b.modifier.years < 5 || b.modifier.years > 15)) out.push(`${w}: modifier ${b.modifier.years} years`);
+        if (b.reply && (b.reply.length > 70 || /[.?]$/.test(b.reply) || /\byou(r|rs)?\b/i.test(b.reply))) out.push(`${w}: reply: ${b.reply}`);
+      }
+    }
+    expect(out).toEqual([]);
+  });
+
+  test('hint and branch texts follow the house style and name no system before its feature', () => {
+    const out: string[] = [];
+    for (const { d, a, i } of wagerArms) {
+      const x = a.wager!;
+      const texts = [x.hint, x.win.outcome, x.lose.outcome, x.win.reply ?? '', x.lose.reply ?? ''];
+      for (const t of texts) {
+        if (/!|"|'| - | – /.test(t)) out.push(`${d.id}[${i}]: punctuation: ${t}`);
+        if (/\b(sector|sectors|era|eras|ironically)\b/i.test(words(t))) out.push(`${d.id}[${i}]: banned word: ${t}`);
+        if (/\bsmog\b/i.test(t) && (!d.sector || coalSectors.has(d.sector))) out.push(`${d.id}[${i}]: smog: ${t}`);
+        if (/\b[a-z]+iz(e|es|ed|ing|ation)\b/i.test(t) && !/\b(size|sizes|sized|prize|prizes|seize|seized|seizes)\b/i.test(t)) out.push(`${d.id}[${i}]: -ize: ${t}`);
+      }
+      const g = gateOf(d);
+      const all = words(texts.join(' '));
+      for (const s of SYSTEM_WORDS) if (s.re.test(all) && !s.gate(g)) out.push(`${d.id}[${i}]: names ${s.name}`);
+    }
+    expect(out).toEqual([]);
   });
 });

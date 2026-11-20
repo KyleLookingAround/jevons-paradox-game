@@ -1,6 +1,10 @@
 // Pinned top bar (year and age, capital, mandate, wellbeing, menu) and the industry tabs.
 import type { Ctx, Comp } from './ctx';
-import { sectorDef, sectorWarning, openSectors, sectorIndex, roman, ageDef, lookFor, leversVisible } from './ctx';
+import { sectorDef, sectorWarning, openSectors, sectorIndex, roman, ageDef, lookFor, leversVisible, shownPressure } from './ctx';
+import { sceneNow } from './sceneRt';
+import { sceneViewFrom } from './scene/adapter';
+import { timed } from './prof';
+import { previewText, capstoneText } from '../content/boardSurvey';
 import type { SectorId } from '../types';
 import { h, svg, setText, setStyle, setFill, show, cls, setAttr, syncChildren } from './dom';
 import { fmt, money, num, clamp } from './fmt';
@@ -88,20 +92,57 @@ export function buildTabs(ctx: Ctx): Comp {
   const locks = new Map<SectorId, { b: HTMLButtonElement; name: HTMLElement; sub: HTMLElement }>();
   let key = '';
   let shown = '';
+  // M4: postcards. Each open Industry's tab is a static 64 × 40 crop of its picture (the scene's postcard(), a lazy part),
+  // drawn once per change of what it shows (founded uses, settled, capstoned, arrears, Preview, a warning, the weather
+  // in four steps), never per tick. Until the scene has arrived, the tab is its name alone.
+  const pcs = new Map<SectorId, { img: HTMLImageElement; key: string }>();
+  let pcAt = -1e9, pcSet = '';
 
   function tabFor(id: SectorId): HTMLButtonElement {
     let b = btns.get(id);
     if (!b) {
       const def = sectorDef(ctx, id);
-      b = h('button', { class: 'tab', type: 'button', 'data-look': lookFor(ctx.content, id), onclick: () => ctx.selectSector(id) },
+      const img = h('img', { class: 'tab-pc', alt: '', width: '64', height: '40', decoding: 'async', hidden: true }) as HTMLImageElement;
+      pcs.set(id, { img, key: '' });
+      b = h('button', { class: 'tab', type: 'button', 'data-look': lookFor(ctx.content, id), 'data-name': def?.name ?? id, onclick: () => ctx.selectSector(id) },
+        img,
         h('span', { class: 'tab-num', text: roman(sectorIndex(ctx.content, id)) }),
         h('span', { class: 'tab-txt' }, h('span', { class: 'tab-name', text: def?.name ?? id })),
+        h('span', { class: 'tab-prev', 'aria-hidden': 'true', text: previewText.mark }),
         h('span', { class: 'tab-dot', 'aria-hidden': 'true', text: '!' }),
         h('span', { class: 'tab-buy', 'aria-hidden': 'true' }),
         h('span', { class: 'tab-div num', 'aria-hidden': 'true' }));
       btns.set(id, b);
     }
     return b;
+  }
+
+  /** What a postcard shows, coarsely, from the views (equal keys draw the same card). */
+  function pcKey(id: SectorId): string {
+    const e = ctx.d?.sectors?.[id];
+    if (!e) return '';
+    let f = '';
+    for (const k in e.apps) if (e.apps[k]?.founded) f += k.length + k.charAt(k.length - 1);
+    return `${lookFor(ctx.content, id)}|${f}|${e.settled ? 's' : ''}|${e.capstoned ? 'c' : ''}${e.arrears ? 'a' : ''}|${e.preview ? 'p' : ''}|${sectorWarning(ctx, id) ? 'w' : ''}|${Math.round(clamp(shownPressure(e), 0, 1) * 4)}|${ctx.d?.ending?.record?.year ?? ''}`;
+  }
+  function postcards(ids: SectorId[]): void {
+    const rt = sceneNow();
+    if (!rt || typeof rt.postcard !== 'function') return;
+    for (const id of ids) {
+      const pc = pcs.get(id);
+      if (!pc) continue;
+      const k = pcKey(id);
+      if (!k || k === pc.key) continue;
+      pc.key = k;
+      timed('ui.postcard', () => {
+        try {
+          const svgTxt = rt.postcard(sceneViewFrom(ctx.content, ctx.state, ctx.d, id), { standalone: true, width: 64, height: 40 });
+          pc.img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgTxt);
+          show(pc.img, true);
+          cls(btns.get(id), 'has-pc', true);
+        } catch { show(pc.img, false); cls(btns.get(id), 'has-pc', false); }
+      });
+    }
   }
   function lockFor(id: SectorId) {
     let l = locks.get(id);
@@ -125,6 +166,9 @@ export function buildTabs(ctx: Ctx): Comp {
       syncChildren(row, [...ids.map(tabFor), ...next.map((n) => lockFor(n.id).b)]);
       queueEdges();
     }
+    // Postcards: their keys are read about once a second (or at once when the set of tabs changed), drawn on change.
+    const nowMs = performance.now();
+    if (k !== pcSet || nowMs - pcAt > 1000) { pcSet = k; pcAt = nowMs; postcards(ids); }
     const pend = Array.isArray(ctx.state.pendingDividends) ? ctx.state.pendingDividends : [];
     const cmBuy = new Set((ctx.cms || []).filter((v) => v?.canBuy && v.def.sector).map((v) => v.def.sector as string));
     for (const id of ids) {
@@ -142,10 +186,17 @@ export function buildTabs(ctx: Ctx): Comp {
       const dv = b.querySelector('.tab-div');
       setText(dv, nd ? String(nd) : '');
       cls(b, 'has-div', nd > 0);
-      const settled = !!ctx.d?.sectors?.[id]?.settled;
+      const e = ctx.d?.sectors?.[id];
+      const settled = !!e?.settled;
       cls(b, 'settled', settled);
+      // M4: capstoned (settled for good with its Age), in arrears, and Preview: marks that do not rest on colour.
+      const capped = !!e?.capstoned, arrears = !!e?.arrears, prev = !!e?.preview;
+      cls(b, 'capstoned', capped);
+      cls(b, 'arrears', arrears);
+      cls(b, 'preview', prev);
+      const yr = capped ? ctx.d?.ending?.record?.year : undefined;
       const nm = sectorDef(ctx, id)?.name ?? id;
-      setAttr(b, 'aria-label', `${nm}${settled ? ', settled' : ''}${warn ? ', under strain' : ''}${buy ? ', something affordable' : ''}${nd ? `, ${nd} dividend${nd === 1 ? '' : 's'} to choose` : ''}`);
+      setAttr(b, 'aria-label', `${nm}${capped ? `, ${capstoneText.cartouche.replace('{year}', yr != null ? String(Math.floor(yr)) : '').trim().toLowerCase()}` : settled ? ', settled' : ''}${arrears ? ', in arrears' : ''}${prev ? `, ${previewText.mark.toLowerCase()}` : ''}${warn ? ', under strain' : ''}${buy ? ', something affordable' : ''}${nd ? `, ${nd} dividend${nd === 1 ? '' : 's'} to choose` : ''}`);
     }
     // Keep the selected tab in view when the row scrolls sideways (many industries on a phone).
     // Read layout in the next frame, not here: right after a change of look this read would force the whole page's

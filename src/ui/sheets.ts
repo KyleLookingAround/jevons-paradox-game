@@ -18,6 +18,8 @@ import { historyPicker } from './history';
 import { archiveSheet, archiveUnread } from './archive';
 import { surveyFiler } from './survey';
 import { surveyDisclosure } from '../content/proprietor';
+import { estimatesText, fishingGaugeText } from '../content/boardSurvey';
+import { yrs } from './gauges';
 
 type Updater = (() => void) | void;
 interface OpenOpts { label: string; full?: boolean; blocking?: boolean; dismissable?: boolean; cls?: string }
@@ -168,6 +170,13 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
       cBase: ['c, plant at full use', (e) => (e.load ? `£${fmtPrice(e.load.capCostBase)}/${unitS}` : '—')],
       cEff: ['c with idle plant', (e) => (e.load ? `£${fmtPrice(e.load.capCostEff)}/${unitS} (load factor ${pct(e.load.factor, false)})` : '—')],
       seam: ['seams', (e) => (e.seams ? `pᵣ ×${e.seams.priceMul.toFixed(2)} (${e.seams.sunk} sunk)` : '—')],
+      // M4: the order book on a fed Industry's c; the full account; the two readings of years left.
+      fed: ['c, fed by the order book', (e) => (e.fed ? `× ${num(e.fed.factor, 1).toFixed(2)}` : '—')],
+      full: [estimatesText.fullAccount.label, (e) => (e.fullR != null ? `${fmt(e.fullR)} ${unitRs}/s` : '—')],
+      emb: ['of which from others', (e) => (e.embodied?.length ? e.embodied.map((x) => `${ctx.content.sectors[x.from]?.name ?? x.from} ${fmt(x.R)}`).join(' · ') : '—')],
+      yFlat: [estimatesText.yearsLeft.flat, (e) => (e.yearsLeft?.flat != null ? yrs(e.yearsLeft.flat) : '—')],
+      yGrow: [estimatesText.yearsLeft.growing, (e) => (e.yearsLeft?.growing != null ? yrs(e.yearsLeft.growing) : '—')],
+      catchR: [fishingGaugeText.reported, (e) => (e.stock ? pct(e.stock.reported, false) : '—')],
     };
     const pick: Record<FormulaKind, string[]> = {
       eff: ['eta', 'fold', 'pr', 'c', 'ps', 'D', 'R'],
@@ -190,11 +199,16 @@ export function formulaSheet(ctx: Ctx, sheets: Sheets, kind: FormulaKind): void 
     const e0 = sd(ctx);
     if (kind === 'price' && e0?.load) { pick.price.splice(pick.price.indexOf('c') + 1, 0, 'cBase', 'cEff'); lines.price.push('c with idle plant = c × ((1 − k) + k ÷ load factor)'); }
     if (kind === 'price' && e0?.seams) { pick.price.splice(1, 0, 'seam'); }
+    const extra: string[] = [];
+    if (kind === 'price' && e0?.fed) { pick.price.splice(pick.price.indexOf('c') + 1, 0, 'fed'); }
+    if (kind === 'cons' && e0?.fullR != null) { pick.cons.push('full'); if (e0.embodied?.length) pick.cons.push('emb'); extra.push(estimatesText.fullAccount.note); }
+    if (kind === 'cons' && e0?.yearsLeft?.growing != null) { pick.cons.push('yFlat', 'yGrow'); extra.push(estimatesText.yearsLeft.flatNote, estimatesText.yearsLeft.growingNote); }
+    if (kind === 'cons' && e0?.stock && !e0.stock.surveyed) { pick.cons.push('catchR'); extra.push(fishingGaugeText.reportedNote); }
     b.append(h('div', { class: 'formula' }, ...lines[kind].map((l) => h('div', { class: 'f-line', text: l }))));
     const rows = pick[kind].map((k) => { const v = h('dd', { class: 'num' }); return { v, row: R[k] }; });
     const dl = h('dl', { class: 'f-vals' });
     for (const r of rows) dl.append(h('div', null, h('dt', { text: r.row[0] }), r.v));
-    b.append(dl, h('p', { class: 'f-note', text: notes[kind] }));
+    b.append(dl, h('p', { class: 'f-note', text: notes[kind] }), ...extra.map((t) => h('p', { class: 'f-note', text: t })));
     return () => {
       const e = sd(ctx);
       if (!e) return;

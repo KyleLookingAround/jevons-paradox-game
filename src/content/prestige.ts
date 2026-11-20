@@ -343,7 +343,8 @@ export const institutions: InstitutionDef[] = [
    * is open"; Fishing cannot be settled unsurveyed, so the Act I ending needs it or a survey cruise or a letter). Priced
    * as a mid-shop Institution, about the Civil Service's: bought in run 7 or 8 with a run's Hindsight, so the seat is a
    * real choice against the Commission and the Civil Service rather than a second wait. Level 2 also holds the catch
-   * to the surveyed surplus from the start (the survey quota at its first level, 90%). Shown once Fishing has opened.
+   * to the surveyed surplus from the start (the survey quota at its first level, 90%). Shown once Fishing has opened
+   * (InstitutionDef.when, the M4 amendment); the Inspector once Iron has.
    *
    * The Inspector of Furnaces: Iron's smoke inspector (clean smelting) at level 1 from minute one; levels as the other
    * lever Institutions. A cheaper seat than the Board: Iron's smoke is a nuisance, not the ending's gate.
@@ -351,7 +352,7 @@ export const institutions: InstitutionDef[] = [
   {
     id: 'inst.fisheryBoard', name: 'The Fishery Board',
     blurb: 'A Board with a survey vessel and two naturalists, counting the banks every spring from minute one.',
-    cost: 150, effects: [{ type: 'survey', sector: 'fishing' }],
+    cost: 150, when: { owns: 'fishing', label: 'Fishing has opened' }, effects: [{ type: 'survey', sector: 'fishing' }],
     nextLevels: levels(150, [
       { effects: [startLever('fishing.surveyQuota', 1)], label: 'The survey quota at 90% of the surplus from the start' },
     ], [2.5]),
@@ -359,6 +360,6 @@ export const institutions: InstitutionDef[] = [
   leverInstitution({
     id: 'inst.inspectorFurnaces', name: 'Inspector of Furnaces',
     blurb: 'An inspector with the right to enter any works, and a preference for charcoal and scrap wherever they still pay.',
-    cost: 120, lever: 'iron.smokeInspector', leverName: 'Clean smelting', maxLevel: 3,
+    cost: 120, when: { owns: 'iron', label: 'Iron & Steel has opened' }, lever: 'iron.smokeInspector', leverName: 'Clean smelting', maxLevel: 3,
   }),
 ];

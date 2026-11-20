@@ -332,6 +332,76 @@ const m3: AchievementDef[] = [
 ];
 list.push(...m3);
 
+/*
+ * M4 (design §12): eight for the Coal Age complete. Each is a thing the Act teaches, stated as a condition the core can
+ * check; the numbers are the lesson's own (the threshold is Fishing's θ; "half" is the clear level's neighbourhood).
+ */
+const FISHING_THRESHOLD = 0.2; // sectors/fishing.ts THRESHOLD (θ): below it the banks have failed
+const m4: AchievementDef[] = [
+  {
+    /* The ending itself. */
+    id: 'ach.m4.coalAgeSettled', name: 'The Coal Age, Settled', feature: 'settlement',
+    blurb: 'Steam, Light, Iron and Fishing settled at once and held for fifty years. The ledger continues.',
+    when: { ending: 'actOne' },
+  },
+  {
+    /* The order book's lesson: the feeds' share of Steam's burn at a third, i.e. Steam burns half as much again as it
+     * would without them (rAdded / R = 1/3 ⇔ R = 1.5 × (R − rAdded)). StatKey 'feedShare' (the M4 amendment). */
+    id: 'ach.m4.embodied', name: 'Embodied',
+    blurb: 'Iron’s order book made Steam’s engines so cheap that Steam burnt half as much coal again. None of it in Iron.',
+    when: { stat: 'feedShare', sector: 'steam', op: '>=', value: 1 / 3 },
+  },
+  {
+    /* Huxley's 1883 address: the great sea fisheries inexhaustible. Hidden: the lesson is to be met, not hunted. */
+    id: 'ach.m4.huxleyWasWrong', name: 'Huxley Was Wrong', hidden: true,
+    blurb: 'Fished the banks below the line from which they recover. The catch per trip said nothing until it was too late.',
+    when: { stat: 'stockFraction', sector: 'fishing', op: '<', value: FISHING_THRESHOLD },
+  },
+  {
+    /* A scar healed: after a failure in some run, the stock back above half with no scar left. */
+    id: 'ach.m4.gullsCameBack', name: 'The Gulls Came Back',
+    blurb: 'Brought the banks back above half their natural size after they had failed. It took longer than the failing did.',
+    when: {
+      all: [
+        { owns: 'ach.m4.huxleyWasWrong' },
+        { stat: 'scarYears', sector: 'fishing', op: '<=', value: 0 },
+        { stat: 'stockFraction', sector: 'fishing', op: '>=', value: 0.5 },
+      ],
+    },
+  },
+  {
+    /* The fishery limits, and then the home fleet held to the surveyed surplus (design §5.4: the space fills). */
+    id: 'ach.m4.twoHundredMiles', name: 'Two Hundred Miles',
+    blurb: 'Shut the foreign fleets out of the banks, and then held the home fleet to the survey’s quota as well.',
+    when: {
+      all: [
+        { owns: 'fishing.limits' },
+        { stat: 'foreignShare', sector: 'fishing', op: '<=', value: 0.05 },
+        { owns: 'fishing.surveyQuota' },
+      ],
+    },
+  },
+  {
+    /* Fishing settled (which needs the stock surveyed: settle.requires). */
+    id: 'ach.m4.countedEverySpring', name: 'Counted Every Spring', feature: 'settlement',
+    blurb: 'Settled Fishing: the banks fished to what they bear, and surveyed every spring to be sure of it.',
+    when: { stat: 'settled', sector: 'fishing', op: '>=', value: 1 },
+  },
+  {
+    /* The M4 moment (the Board's first survey). */
+    id: 'ach.m4.boardSurvey', name: 'Filed: the Board’s Survey', feature: 'estimates',
+    blurb: 'Read the skippers’ report beside the Board’s survey, and filed the survey.',
+    when: { flag: 'survey:fishing' },
+  },
+  {
+    /* The Previews: a later Age's Industry opened over the capstone. */
+    id: 'ach.m4.ledgerContinues', name: 'The Ledger Continues', feature: 'settlement',
+    blurb: 'Opened an Industry of a later Age, in preview, over a settled Coal Age.',
+    when: { all: [{ stat: 'capstoned', op: '>=', value: 1 }, { owns: 'motion' }] },
+  },
+];
+list.push(...m4);
+
 /**
  * The unfolding (QA): an achievement that names a system the player has not met is listed as hidden until that system
  * arrives (AchievementDef.feature; display only). Matched by id prefix.

@@ -3,6 +3,7 @@
 // title until opened (the text and its sources are built on the first open). Notes not yet found are greyed titles,
 // folded at the end of their Industry. Read marks are the page's own (prefs.archiveRead), never in the save.
 import type { Ctx } from './ctx';
+import { keptCard, surveyCardSheet } from './boardcard';
 import { sectorIds } from './ctx';
 import type { ArchiveDef, ArchiveView, Content, SectorId } from '../types';
 import { chunkKnown, loadChunk } from './chunks';
@@ -86,6 +87,10 @@ function archiveSheetNow(ctx: Ctx, sheets: Sheets, onChange?: () => void): void 
     const read = new Set(getPrefs().archiveRead);
     const found = views.filter((v) => v.unlocked);
     b.append(h('p', { class: 'arc-lead', text: 'The real history behind the things in this game, filed by the Gazette as each is first met. Every note gives its sources.' }));
+    // M4: the Board's Survey card, kept on this device once filed (boardcard.ts), heads the Archive.
+    const kept = keptCard();
+    if (kept) b.append(h('button', { class: 'arc-board linkish', type: 'button', onclick: () => surveyCardSheet(ctx, sheets, kept, false) },
+      `The Board’s survey${kept.year ? `, ${kept.year}` : ''}: ${kept.headline}`));
     if (!textIn && textTried) b.append(h('p', { class: 'muted small', text: 'The notes could not be fetched just now: they will be here when the page is next online.' }));
     const q = h('input', { class: 'arc-q', type: 'search', placeholder: 'Search the archive', 'aria-label': 'Search the archive', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
     const count = h('p', { class: 'arc-count num muted' });

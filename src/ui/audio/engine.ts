@@ -717,7 +717,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   }
 
   function birdsReturn(g: Graph): void {
-    const rt = g.layers.find((l) => l.def.kind === 'hits' && (l.def as HitsDef).recipe === 'bird') ?? g.layers.find((l) => l.def.id === 'night');
+    // The quiet's own voice: birds; Code's owl; M4: Iron's nightjar, Fishing's gulls (only hit layers: Iron's 'night' is a bed).
+    const voice = (r: string) => g.layers.find((l) => l.def.kind === 'hits' && (l.def as HitsDef).recipe === r);
+    const rt = voice('bird') ?? voice('owl') ?? voice('nightjar') ?? voice('gull');
     if (!rt) return;
     for (let i = 0; i < 3; i++) playHit(g, rt, now() + 0.8 + i * 0.9 + rt.rng() * 0.4, 1.4);
   }

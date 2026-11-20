@@ -21,6 +21,9 @@ export interface PostcardOptions {
   /** Output size in CSS pixels (default 64 × 40). The crop fills it. */
   width?: number;
   height?: number;
+  /** Draw the Preview corner and the warning dot (default true). A host that letters its tab with its own marks passes
+   *  false; the settled wash and the capstone's cartouche are part of the picture and always drawn. */
+  marks?: boolean;
 }
 
 /** What a postcard shows, coarsely: equal keys draw the same card (re-render only when it changes). */
@@ -47,14 +50,14 @@ export function postcard(v: SceneView, o: PostcardOptions = {}): string {
   let bd: ReturnType<typeof l.backdrop> = {};
   try { bd = l.backdrop(c); } catch { bd = {}; }
   // The landmark of each founded application, where the picture has it.
-  let marks = '';
+  let lands = '';
   const used = new Set<unknown>();
   for (const a of v.apps) {
     if (a.status !== 'founded') continue;
     const p = l.plots.find((q) => (q.driver ?? 'app') === 'app' && !used.has(q) && (q.match ?? []).some((m) => m === a.icon || m === a.id));
     if (!p?.anchor) continue;
     used.add(p);
-    marks += place(p.anchor, l, look, v.look, stage, pf, hl);
+    lands += place(p.anchor, l, look, v.look, stage, pf, hl);
   }
   const pfv = clamp(v.pressureFraction, 0, 1) * (v.settled && !v.capstoned?.arrears ? 0.2 : 1);
   const held = v.settled && !v.capstoned?.arrears;
@@ -68,17 +71,18 @@ export function postcard(v: SceneView, o: PostcardOptions = {}): string {
       `<rect x="${f(x + k)}" y="${f(y + k)}" width="${f(w - 2 * k)}" height="${f(h - 2 * k)}" rx="${f(h / 2 - k)}" style="fill:none;stroke:var(--s-ink)" stroke-width="${f(k * 0.35)}"/>` +
       `<text x="${f(cx + cw / 2)}" y="${f(y + h * 0.68)}" text-anchor="middle" style="fill:var(--s-ink);font:italic ${f(5.2 * k)}px Georgia,serif">Settled ${esc(String(v.capstoned.year ?? ''))}</text>`;
   }
-  if (v.preview) {
+  const marks = o.marks !== false;
+  if (v.preview && marks) {
     const s = 12 * k;
     over += `<path d="M${cx} ${cy}h${f(s)}L${cx} ${f(cy + s)}Z" style="fill:var(--s-paper);stroke:var(--s-ink)" stroke-width="${f(k * 0.5)}" stroke-dasharray="${f(k)} ${f(k * 0.8)}"/>` +
       `<text x="${f(cx + s * 0.28)}" y="${f(cy + s * 0.42)}" text-anchor="middle" style="fill:var(--s-ink);font:italic 700 ${f(4.6 * k)}px Georgia,serif">P</text>`;
   }
-  if (warning(v)) over += `<circle cx="${f(cx + cw - 5 * k)}" cy="${f(cy + 5 * k)}" r="${f(3 * k)}" style="fill:var(--bad,#b3261e);stroke:var(--s-paper)" stroke-width="${f(k * 0.8)}"/>`;
+  if (marks && warning(v)) over += `<circle cx="${f(cx + cw - 5 * k)}" cy="${f(cy + 5 * k)}" r="${f(3 * k)}" style="fill:var(--bad,#b3261e);stroke:var(--s-paper)" stroke-width="${f(k * 0.8)}"/>`;
   const w = o.width ?? 64, h = o.height ?? 40;
   const css = o.standalone ? `<style>${(drawingCss() + st.css).replace(/<\/style/gi, '')}\n.scn-pc .scn{--sw:.55}.scn-pc *{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}</style>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" class="scn-pc" viewBox="${cx} ${cy} ${cw} ${ch}" width="${f(w)}" height="${f(h)}" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">${css}` +
     `<g class="scn" data-look="${look}"><defs>${st.defs(pf)}</defs><rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" style="fill:var(--s-sky0)"/>` +
-    `${bd.sky ?? ''}${bd.far ?? ''}${bd.mid ?? ''}${bd.near ?? ''}${bd.cut ?? ''}${marks}${over}</g></svg>`;
+    `${bd.sky ?? ''}${bd.far ?? ''}${bd.mid ?? ''}${bd.near ?? ''}${bd.cut ?? ''}${lands}${over}</g></svg>`;
 }
 
 function place(sl: Slot, l: ReturnType<typeof layoutFor>, look: string, pageLook: string, stage: number, pf: string, hl: (s: number) => number): string {
