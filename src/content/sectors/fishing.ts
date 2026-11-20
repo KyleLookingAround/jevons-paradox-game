@@ -26,22 +26,22 @@ import type { SectorContent } from '../helpers';
 
 /**
  * K, the banks' natural size in tons (SectorDef.reserve). With REGEN it sets the most the banks can bear,
- * MSY = REGEN × K / 4. M4 balance: 96,000 (MSY 120 tons a second); the Fishing lane's toy model gave 1,200,000 (MSY
+ * MSY = REGEN × K / 4. M4 balance: 107,000 (MSY 80 tons a second at REGEN 0.003); the Fishing lane's toy model gave 1,200,000 (MSY
  * 1,500), but in the real game Fishing opens at about 80 tons a second and the burning player reaches only about 350
  * thirty minutes later and 820 by the end of a three-hour run, so at 1.2 M nobody's stock ever fell below 70% and the
  * lesson never landed. At 96,000 the burning player passes MSY within minutes of the capital cards and crosses θ in its
  * first Fishing run; a restraint line drawn at today's landings (about 90) holds under MSY until the foreign share,
  * which grows with the home fleet's cheapness, takes the total over it (the over-allocation the design wants taught).
  */
-const K = 96_000;
+const K = 107_000;
 /**
- * r, regrowth per second (RenewableDef.regen): 0.005/s = 0.1 per model year (about a third of a cod stock's real
- * intrinsic rate, slowed so that a season can be watched). 1/r ≈ 3 minutes: the stock follows the catch with a lag of
- * a few minutes, so the decline is a slope the player could see, if anything on the page measured it. Recovery from
- * θ to half K, unscarred and unfished, takes about 5 minutes; under the scar (× SCAR_MUL) about 30, so
- * the next run's stock at minute 20 is ≤ 0.4 K even with nothing caught (logistic from 0.2 at r × 0.15: 0.38 K).
+ * r, regrowth per second (RenewableDef.regen). M4 balance: 0.003/s = 0.06 per model year (the Fishing lane's 0.005
+ * with K = 1.2 M). 1/r ≈ 5.5 minutes: the stock follows the catch with a lag of several minutes, so a fleet fishing at
+ * 1.2 × MSY from a full bank takes about ten minutes to reach a poor season, a slope the player could see if anything
+ * on the page measured it. Recovery from θ to the clear level (three quarters of K), unscarred and unfished, about
+ * fourteen minutes; under the scar (× SCAR_MUL) about ninety.
  */
-const REGEN = 0.005;
+const REGEN = 0.003;
 /** θ, the threshold as a share of K: below it regrowth collapses (design: about 0.2). The 1 − θ crisis is The Banks Fail. */
 const THRESHOLD = 0.2;
 /** Regrowth below θ as a share of the logistic (depensation: the remnant cannot find itself; design about 0.1). */

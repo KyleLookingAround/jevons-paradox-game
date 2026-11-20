@@ -39,12 +39,13 @@ const sector: SectorDef = {
   autoEtaRate: 0,
 
   resourceKind: 'stock',
-  /* M4 balance: 570,000 (M2/M3: 380,000). Without Motion, Compute and Code the first Steady State must be Steam's, and
+  /* M4 balance: 760,000 (M2/M3: 380,000). Without Motion, Compute and Code the first Steady State must be Steam's, and
    * Iron's coke now comes out of the same coal: at 380,000 a restraint run with Iron open ended by exhaustion at 35–45
    * minutes in every run from run 3 (a line drawn at today's use burns the rest in twenty), so no Steady State was ever
    * held and Settlement, the seams and Fishing never came (design/scratch/m4-balance-progress.md). The burning player's
-   * run 1 now ends by its smoke (The Black Fog, about 34 minutes) a little before its coal would have. */
-  reserve: 570_000,
+   * run 1 now ends by its smoke (The Black Fog, about 33 minutes) a little before its coal would have. 570,000 still left `budget`'s run 4
+   * and `mixed`'s runs 4–18 exhausted at about 78 minutes, short of a held Steady State. */
+  reserve: 760_000,
   alpha: 0.25,
 
   pressureSource: 'resource',
@@ -92,7 +93,7 @@ const sector: SectorDef = {
   },
 
   /*
-   * M3: the seams (SeamDef). Below the workings the run starts on (`reserve`, 570,000 tons since M4; 380,000 in M2 and M3) lie six seams of
+   * M3: the seams (SeamDef). Below the workings the run starts on (`reserve`, 760,000 tons since M4; 380,000 in M2 and M3) lie six seams of
    * the Durham sequence, top to bottom, together six times the opening reserve. Each is dearer to raise (priceMul: the
    * deepest seam sunk prices all the coal) and reachable only once pumping is cheap enough (reachBelow, a service
    * price): the condenser brings the first two within reach, the Cornish engine the Hutton. Sinking is the player's

@@ -80,7 +80,7 @@ const sector: SectorDef = {
    */
   resourceKind: 'stock',
   resourceStock: 'steam',
-  reserve: 570_000, // ignored (Steam's reserve is used)
+  reserve: 760_000, // ignored (Steam's reserve is used)
   alpha: 0.25,      // ignored (Steam's p_r is used)
 
   pressureSource: 'resource',

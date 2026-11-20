@@ -1039,7 +1039,11 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     if (x.stock.crossed) M4R.crossed[e] = true;
     if (x.stock.surveyed && M4R.surveyedMin[e] === undefined) M4R.surveyedMin[e] = s.time / 60;
     if (x.settled) continue;
-    if (SURVEY === 'cruise' && !x.stock.surveyed && s.sectors[e].crisesFired >= 1) {
+    // M4 balance: with --survey=board, a restraint player whose Fishing has reached Steady State unsurveyed (it cannot
+    // be settled: SettleDef.requires) and has no Board seated pays for survey cruises, as a person reading the checklist
+    // ("Fishing needs the stock surveyed") would
+    const needSurvey = SURVEY === 'board' && restraint && !x.stock.surveyed && (s.run.steadySectors?.[e] || d.ending.next?.sector === e && d.ending.next.need === 'requires');
+    if ((SURVEY === 'cruise' && !x.stock.surveyed && s.sectors[e].crisesFired >= 1) || needSurvey) {
       for (const l of surveyLevers(e)) {
         const v = model.leverViews(s, C).find((y) => y.def.id === l.id);
         if (v?.canRaise && v.level < 1) { const t = model.setLever(s, C, l.id, 1); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `SURVEY ${e} (${l.id})` }); } }
