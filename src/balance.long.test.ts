@@ -236,6 +236,22 @@ describe.skipIf(!LONG)('the mechanics as temptation (long; BAL_LONG=1)', () => {
     expect(gain(all, noSeams, 'steam')).toBeGreaterThanOrEqual(0.15);
     expect(gain(all, noLoad, 'light')).toBeGreaterThanOrEqual(0.15);
   }, 1_800_000);
+  test('criterion 5 (M4 finish): the order book bites: Steam’s coal use ≥ 1.15× with Iron’s feeds than without, in the same state', async () => {
+    // the burner from this start, twenty minutes in (Rails founded, about a quarter adopted), derived twice: with the
+    // content's feeds, and with Iron's feeds taken out. The demand feeds (ApplicationDef.feeds[].satMul: Rails widen the
+    // railways, Ship plate the steamers) carry it; the capital-cost part alone moved it under 1%. Measured 20 Nov 2026: 1.25×
+    await probes;
+    const { model } = await import('./core');
+    const { C, play } = await import('./balance.kit');
+    // @ts-ignore — node types are not installed; Bun provides node:fs
+    const fs = require('node:fs');
+    const C2 = { ...C, sectors: { ...C.sectors, iron: { ...C.sectors.iron, applications: C.sectors.iron.applications.map((a) => ({ ...a, feeds: undefined })) } } };
+    const s0 = model.deserialize(fs.readFileSync(STATE, 'utf8'), C)!;
+    const s = play(s0, 'efficiency', { stopAt: 20 * 60 }).s;
+    expect(s.sectors.iron?.apps['iron.rails']?.founded).toBe(true);
+    const r1 = model.derive(s, C).sectors.steam!.resourceUse, r0 = model.derive(s, C2).sectors.steam!.resourceUse;
+    expect(r1 / r0).toBeGreaterThanOrEqual(1.15);
+  }, 1_800_000);
   test('criterion 6: engaging the order book is a temptation in Iron’s own income (≥ 3× a minute)', async () => {
     // target: ≥ 15% more income across Iron AND the Industries it feeds. MISSED: measured from this start −6% a minute
     // across all four (Iron's income ×5, but the extra coke ends the run three minutes sooner and Steam and Light earn a
@@ -250,12 +266,8 @@ describe.skipIf(!LONG)('the mechanics as temptation (long; BAL_LONG=1)', () => {
 });
 
 // Withdrawn or missed M4 criteria (design/m4-design.md §15), with the reason (20 Nov 2026, the balance lane):
-// - 5 (Steam's R ≥ 1.15× with the order book engaged, 30 minutes after Iron opens): WITHDRAWN as worded. A feed is a
-//   multiplier on the fed Industry's capital cost (the contract: ApplicationDef.feeds.capCostMul), and by run 4 Steam's
-//   capital cost is under a tenth of its price and its uses are saturated: Rails at ×0.85 (or even ×0.3) moves Steam's R
-//   by under 1% in the burner's run 4. The embodied rebound shows instead on the full account (criterion 23: Steam's line
-//   1.43× its chimney at the Survey) and as the shared coal running out sooner (criterion 6's note). A feed that acts on
-//   demand would need a contract change.
+// - 5: MET in the finishing pass (ApplicationDef.feeds[].satMul, a feed that widens the fed Industry's demand; tested
+//   above). Before it, a feed only cheapened the target's capital and moved Steam's coal by under 1%.
 // - 8, for `budget` (crosses unsurveyed in its first Fishing run): WITHDRAWN for the restraint player. The Board's free
 //   survey comes at the first poor season (half the bank gone), and a player who reads it holds the catch under the sink
 //   line before the threshold: the lesson lands as the gap on the card (catch per trip 0.81 against a true 0.50), not as a

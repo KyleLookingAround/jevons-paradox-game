@@ -1579,6 +1579,12 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       if (s.time >= MAX_RUN && !opening && budgeted.length && budgeted.every((e) => s.run.steadySectors[e] || s.sectors[e]?.settled)) { stopReason = `every line steady after ${min(MAX_RUN).trim()} min`; break; }
     }
   }
+  // M4 (finish): the run can be called the moment the ending is reached (past the time cap), before m4Actions' next
+  // five-second look: write the Act I ending fixture here too
+  if (M4C && DUMP_ENDING !== 'false' && !dumped.has('act1-ending.json')) {
+    const act = C.acts?.find((a) => a.ending);
+    if (act?.ending && s.meta.endings?.[act.ending.id] && s.flags.won) { dumped.add('act1-ending.json'); writeFileSync(`${DUMP_DIR}/act1-ending.json`, model.serialize(s)); log(`  state written to ${DUMP_DIR}/act1-ending.json`); }
+  }
   if (series[series.length - 1] !== sampleRow(s, open(), extra)) pushSample();
   check(s, `run ${idx} end`);
 
