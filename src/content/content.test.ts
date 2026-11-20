@@ -2125,7 +2125,7 @@ describe('M5: levers from the Chair, loopholes and pledges', () => {
 describe('M5: Statecraft, Institutions and the Treaty', () => {
   const sc = C.knowhow.filter((k) => k.tree === 'statecraft');
 
-  test('Statecraft: about ten nodes in three tiers, each waiting for the feature; priced to the Ministry (tier 3 ≤ 3.5× tier 1)', () => {
+  test('Statecraft: about ten nodes in three tiers, each waiting for the feature; priced to the Ministry (tier 3 ≤ 5× the cheapest tier 1)', () => {
     expect(sc.length >= 8 && sc.length <= 12).toBe(true);
     expect(new Set(sc.map((k) => k.tier ?? 1))).toEqual(new Set([1, 2, 3]));
     for (const k of sc) expect(k.when && 'feature' in k.when && k.when.feature === 'statecraft' ? '' : k.id).toBe('');

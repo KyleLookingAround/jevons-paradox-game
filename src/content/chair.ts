@@ -120,13 +120,14 @@ export const chair: ChairDef = {
   /* Default amendment (a rung without its own `amend`): Mandate and five model years of drafting (design §6.2). */
   amend: { mandateCost: 80, years: 5 },
   /**
-   * Hindsight in a Ministry (design §9.2; target: abstain ≤ 0.4× the steward). Decades kept are worth five times Act I's
-   * (perBudgetDecade 5 → 25); wellbeing-years two thirds (0.03 → 0.02) and divided by the burn (intensity exponent 0 →
-   * 1), so the abstainer's high wellbeing is divided by Pryce's high intensity; a small term for Parliaments won (the
-   * abstainer wins most of them: findings put perParliamentWon 2 at 0.50× the steward against 0.4, 0 at 0.46×).
-   * Measured on real content (design/scratch/m5-prestige/q-*.txt, 40-minute Ministries): abstain 96 Hindsight, the
-   * steward bot 179–278 (0.35–0.53×; the bot keeps one to four decades a Ministry). Statecraft is priced against the
-   * steward's figure (prestige.ts SC_MINISTRY). Move perBudgetDecade first: it is the term only restraint earns.
+   * Hindsight in a Ministry (design §9.2; findings: the abstainer poor in Hindsight, target ≤ 0.4× the steward). Decades
+   * kept are worth six times Act I's (perBudgetDecade 5 → 30): the term only restraint earns; wellbeing-years two fifths
+   * (0.03 → 0.012) and divided by the burn (intensity exponent 0 → 1), so the abstainer's high wellbeing is divided by
+   * Pryce's high intensity; a small term for Parliaments won (the abstainer wins most of them: findings put
+   * perParliamentWon 2 at 0.50× the steward against 0.4, 0 at 0.46×). Measured on real content, 40-minute Ministries
+   * (design/scratch/m5-prestige/q6-*.txt): abstain 60–62 a Ministry; the steward bot 124–232 and the human-like bot
+   * 124–255 (abstain 0.27–0.50×; the bots keep one to four decades a Ministry). Statecraft is priced against the
+   * steward's figure (prestige.ts SC_MINISTRY). Move perBudgetDecade first.
    */
   hindsight: { perWellbeingYear: 0.012, perBudgetDecade: 30, intensityExponent: 1, perParliamentWon: 1 },
   /**

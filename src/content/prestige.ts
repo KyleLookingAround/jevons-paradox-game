@@ -16,7 +16,7 @@ import { eta, capCost, reserve, absorb, sat, half, startLever, sig2 } from './he
  * or smaller families, a seat at the table or a heavier purse).
  */
 /** M5: the median Ministry's Hindsight that Statecraft is priced against (see statecraft() below). */
-export const SC_MINISTRY = 180;
+export const SC_MINISTRY = 150;
 
 export const knowhow: KnowhowDef[] = [
   /* ---- Steam tree ---- */
@@ -141,9 +141,10 @@ export const knowhow: KnowhowDef[] = [
  * lint asks every tier of every tree for one, so tier 2 forks the costs of office (compensation or the courts) and tier
  * 3 two ways of making a clerical error dear (fines or a register of lobbyists). Priced to the Ministry
  * (criterion 19, design §9.1): tier 1 about a third of a median Ministry's Hindsight, tier 3 about one, so every Ministry
- * buys two to four things. SC_MINISTRY is that median: the steward bot's 40-minute Ministries paid 179–278
- * Hindsight on real content under chair.ts's overlay (design/scratch/m5-prestige/q-steward.txt); the balance lane moves
- * it with the overlay, and every price with it. One level each but the fines and the drafting: no node is worth saving for.
+ * buys two to four things. SC_MINISTRY is that median: the steward bot's 40-minute Ministries paid 124–232
+ * Hindsight on real content under chair.ts's overlay, the human-like bot 124–255, the abstainer 60–62
+ * (design/scratch/m5-prestige/q6-*.txt): tier 1 50, Polling 38, tier 2 90, tier 3 150. The balance lane moves it with
+ * the overlay, and every price with it. One level each but the fines and the drafting: no node is worth saving for.
  */
 function statecraft(): KnowhowDef[] {
   const when = { feature: 'statecraft' as const, label: 'Statecraft' };
