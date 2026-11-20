@@ -10,6 +10,8 @@ import { h, s as sv, svg, setText, setAttr, setStyle, setFill, show, cls, syncCh
 import { fmt, fmtPrice, money, pct, num, clamp, lower, unitOne } from './fmt';
 import { sound } from './sound';
 import { tradeText } from './trade';
+import { orderBookPart, hasOrderBook, fedLine } from './orderbook';
+import { chartPart, type ChartPart } from './chart';
 
 /** "1 h 04 min", "52 min" (hours given as a fraction of an hour). */
 export function hm(hours: number): string {
@@ -18,13 +20,14 @@ export function hm(hours: number): string {
   return hh ? `${hh} h ${String(mm).padStart(2, '0')} min` : `${mm} min`;
 }
 
-type Kind = 'seams' | 'load' | 'travel' | 'free' | 'upkeep';
+// M4: 'feeds' (Iron's order book) and 'stock' (Fishing's chart).
+type Kind = 'seams' | 'load' | 'travel' | 'free' | 'upkeep' | 'feeds' | 'stock';
 const kindOf = (e: SectorDerived | undefined): Kind | null =>
-  !e ? null : e.seams ? 'seams' : e.load ? 'load' : e.travel ? 'travel' : e.free ? 'free' : e.upkeep ? 'upkeep' : null;
+  !e ? null : e.stock ? 'stock' : hasOrderBook(e) ? 'feeds' : e.seams ? 'seams' : e.load ? 'load' : e.travel ? 'travel' : e.free ? 'free' : e.upkeep ? 'upkeep' : null;
 
 interface Part { el: HTMLElement; update(e: SectorDerived): void }
 
-export function buildMechanics(ctx: Ctx): Comp {
+export function buildMechanics(ctx: Ctx): Comp & { drain(): void } {
   const title = h('h2', { class: 'sec-t' });
   const tag = h('span', { class: 'mech-tag' });
   const lead = h('p', { class: 'mech-lead' });
@@ -32,15 +35,23 @@ export function buildMechanics(ctx: Ctx): Comp {
   const body = h('div', { class: 'mech-body' });
   // M3 finish: under a drawn line, one sentence on what the mechanic is doing to it now (figures from the views)
   const line = h('p', { class: 'mech-line', hidden: true });
+  // M4: on an Industry fed by the order book (SectorDerived.fed), one line from its side.
+  const fed = h('p', { class: 'mech-fed', hidden: true });
   const el = h('section', { class: 'mech', 'aria-label': 'This Industry’s mechanic', hidden: true },
-    h('header', { class: 'sec-h' }, title, tag), lead, body, line, see);
+    h('header', { class: 'sec-h' }, title, tag), lead, body, line, fed, see);
   let key = '';
   let part: Part | null = null;
+  let chart: ChartPart | null = null;
 
   function update(): void {
     const e = sd(ctx), def = sectorDef(ctx);
     const k = kindOf(e);
+    const fl = k !== 'feeds' ? fedLine(ctx) : '';
+    show(fed, !!fl);
+    if (fl) setText(fed, fl);
+    // A settled Industry's instrument folds away with the rest of it (fold.ts); its picture still shows it.
     show(el, !!k && !!def);
+    show(body, !!k);
     if (!k || !e || !def) { key = ''; return; }
     const kk = `${def.id}:${k}`;
     if (kk !== key) {
@@ -51,7 +62,8 @@ export function buildMechanics(ctx: Ctx): Comp {
       show(tag, !!def.mechanic?.rebound);
       setText(lead, def.mechanic?.blurb ?? '');
       show(lead, !!def.mechanic?.blurb);
-      part = k === 'seams' ? seamsPart(ctx) : k === 'load' ? loadPart(ctx) : k === 'travel' ? travelPart(ctx) : k === 'free' ? freePart(ctx) : upkeepPart(ctx);
+      chart = k === 'stock' ? chartPart(ctx) : null;
+      part = chart ?? (k === 'feeds' ? orderBookPart(ctx) : k === 'seams' ? seamsPart(ctx) : k === 'load' ? loadPart(ctx) : k === 'travel' ? travelPart(ctx) : k === 'free' ? freePart(ctx) : upkeepPart(ctx));
       body.replaceChildren(part.el);
       el.setAttribute('data-kind', k);
     }
@@ -60,12 +72,13 @@ export function buildMechanics(ctx: Ctx): Comp {
     show(line, !!t);
     if (t) setText(line, t);
   }
-  return { el, update };
+  return { el, update, drain: () => chart?.drain() } as Comp & { drain(): void };
 }
 
 /** M3 finish: the mechanic's effect on the player's line, in one sentence; '' when there is nothing to say. */
 function lineFor(k: Kind, e: SectorDerived, def: NonNullable<ReturnType<typeof sectorDef>>): string {
   const res = lower(def.resource.name), svc = lower(def.service.name);
+  if (k === 'feeds' || k === 'stock') return '';
   if (k === 'seams' && e.seams) {
     const v = e.seams;
     return v.sunk === 0 ? `Under the line: no seam sunk; when the old workings give out, so does the run.`
