@@ -1690,7 +1690,9 @@ const M4_MAKE = (variant) => {
     }
     for (let i = 0; i < 100; i++) s = m.tick(s, C, 0.1);
   }
-  if (variant === 'reveal' || variant === 'estimates') { s = JSON.parse(JSON.stringify(s)); s.sectors.fishing.openFor = 1790; s.time = Math.max(s.time, 1800); }
+  if (variant === 'reveal' || variant === 'revealLarge' || variant === 'estimates') { s = JSON.parse(JSON.stringify(s)); s.sectors.fishing.openFor = 1790; s.time = Math.max(s.time, 1800); }
+  // The large gap: the banks fished down to about a third before the Board's vessel puts out.
+  if (variant === 'revealLarge') s.sectors.fishing.reserve = 0.34 * (s.sectors.fishing.reserveMax || C.sectors.fishing.reserve);
   for (let i = 0; i < 60; i++) s = m.tick(s, C, 0.5);
   if (variant === 'estimates') s = m.drawBudget(s, C, 'steam');
   // A settlement made from the Industry's flows now (the page needs only a believable SettledState to draw).
@@ -1821,6 +1823,14 @@ async function m4() {
       await page.evaluate(() => window.rebound.save());
       await page.reload(); await page.waitForTimeout(2200);
       if (await page.locator('.board-sheet').count() && await page.locator('.board-sheet').isVisible()) throw new Error('the card came back');
+      // The other variant: a large gap between the catch per trip and the stock.
+      await make('revealLarge', 'fishing');
+      await page.waitForSelector('.board-sheet', { timeout: 6000 });
+      const vr = await page.evaluate(() => document.querySelector('.board-card')?.getAttribute('data-variant'));
+      if (vr === 'small') throw new Error('the large variant came out small');
+      await page.waitForTimeout(2600);
+      await page.screenshot({ path: `${out}/${T}-survey-card-${vr}.png` });
+      await page.locator('.board-sheet .sheet-foot button.primary').click();
     });
     await step('a wager answered both ways: hint, both outcomes, won and lost', async () => {
       const res = [];

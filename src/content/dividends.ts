@@ -261,11 +261,12 @@ const sectorDividends: DividendDef[] = [
     effects: [capCost('fishing', 0.95)], // the rebound arm: cheaper catching
   },
   {
-    id: 'div.fishing.boardGrant', name: 'A grant to the Board',
-    blurb: 'The decade’s savings voted to the Fishery Board for a vessel. The banks are counted for the rest of the run.',
-    // surveyed while held (the run): one honest way to pay for the truth (a decade forgone). Balance may prefer a
-    // wellbeingAdd (the Fishing lane's fallback: "A seamen’s mission", same id).
-    effects: [{ type: 'survey', sector: 'fishing' }],
+    /* The Fishing lane's fallback, taken by the Act lane: a survey here (its first draft, "A grant to the Board") put a
+     * survey in force before the Board's first, free survey, and the core skips the free one while any survey holds, so
+     * the M4 moment (and the full account with it) was lost in that run. Same id. */
+    id: 'div.fishing.boardGrant', name: 'A seamen’s mission',
+    blurb: 'The decade’s savings build a mission hall on the quay: a bed, a stove and a reading room for the crews ashore.',
+    effects: [{ type: 'wellbeingAdd', value: 0.6 }],
   },
   {
     id: 'div.fishing.pennySupper', name: 'The penny supper',

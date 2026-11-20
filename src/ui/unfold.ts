@@ -34,6 +34,8 @@ const TARGET: Partial<Record<FeatureId, string>> = {
   survey: 'section.survey > .sec-h',
   histories: '.histories > h3',
   bank: '.bank-row',
+  // M4 (The Survey): the full account arrives on the consumption dial and the two readings of years left.
+  estimates: '.dial-cons .dial-head',
 };
 /** Seconds a mark must have been on screen before it clears. */
 const LOOKED = 1500;
