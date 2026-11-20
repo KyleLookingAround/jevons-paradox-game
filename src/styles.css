@@ -1759,3 +1759,5 @@ button.cm-gt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2p
 .cm-g.folded > .cm { display: none; }
 .cm.maxed { padding-top: 8px; padding-bottom: 8px; }
 .cm.maxed > :not(.up-h) { display: none; }
+/* A short screen keeps the pinned header within a third: the postcards are cropped lower. */
+@media (max-height: 640px) { .tab-pc { height: 30px; } }
