@@ -9,8 +9,27 @@ scripted browser run can check. The order buys the most play per unit of work:
 
 1. Make restraint a game and run 2 different (M2).
 2. Give every Industry its own identity, the broadsheet a cast, and the game a first ending (M3). **Stop and look.**
-3. Complete Act I (M4).
-4. Then the shifts, one per milestone: the Other Chair (M5–M6), the Objectives (M7), Unbuilding (M8).
+3. Complete Act I as a shift of its own, The Survey (M4).
+4. Then one shift per milestone: the Other Chair (M5), the Second Ledger (M6), the Inheritance (M7, the prestige
+   shift), the Objectives (M8), Unbuilding (M9), Enough (M10, the post-game).
+
+**Revised 20 Nov 2026** (M4 design revision, on the owner's direction "each one should be a paradigm shift" and "there
+should also eventually be a paradigm shift in the prestige"): every milestone from M4 on must change what the player
+understands the game to be. Abroad and the two ledgers move from M5 to M6; a new M7, The Inheritance, is inserted; the
+old M7–M9 become M8–M10. Older documents (`long-game.md`, `paradigm-shifts.md` before its revision note, the M3 notes)
+use the old numbers: their M7 is now M8, M8 is M9, M9 is M10.
+
+| Milestone | Shift | Before → after (what the player believes) | The moment |
+|---|---|---|---|
+| M4 | **The Survey** | The gauges show the world, and what I burn is mine → every gauge is somebody's estimate, and my burn is shared and burnt elsewhere | The Board's Survey: the skippers' report and the survey printed side by side |
+| M5 | **The Other Chair** | I make the choices → someone paid to grow makes them, and I write rules he finds his way round | Take office: Pryce's prospectus quoting the player's own first-run times |
+| M6 | **The Second Ledger** | When my figures fall the world's fall → my figures can fall because the burning moved abroad | The first consumption ledger: home gauge down, consumption up, a ship leaving for the horizon |
+| M7 | **The Inheritance** (prestige) | A Reckoning wipes the slate → each run is a generation that receives what the last left and owes the next | Hand over: the next run opens on the same unwashed valley; "The books are closed. The world is not." |
+| M8 | **You Write the Objectives** | I act, and acting well is enough → I specify, and get exactly what I measured | The first agent's report: target met to the decimal, the scene showing how |
+| M9 | **Unbuilding** | Progress is what I add → progress is what I take away while wellbeing holds | The first retirement: a pit sealed, its tab reprinted in riso |
+| M10 | **Enough** | More play is more game → the ledger is closed, and stopping is a move | The last household return: "The ledger is closed. You may stop." |
+
+Details: `design/m4-design.md` §14.1 (the table and its reasons) and §18 (The Inheritance).
 
 Sizes are agent-days (one focused agent, one day): rough, for ordering, not promises. S ≤ 1, M 2–4, L a week or more.
 
@@ -220,36 +239,38 @@ it becomes the Act I ending.
 
 ---
 
-## M4 — "Act I complete" (Iron & Steel, Fishing, the Act I ending, re-gating)
+## M4 — "The Survey" (the Coal Age complete: Iron & Steel, Fishing, the Act I ending, the capstone, Previews)
 
-**Contract:** shared stocks (`SectorDef.resourceStock: SectorId`, so Iron draws Steam's coal); `SectorDef.feeds` for
-inputs; a renewable resource kind (`resourceKind: 'renewable'` with `regen`, `threshold`, `scarRuns`) and
-`MetaState.scars`; `SectorDerived.reportedStock` (Fishing's lying gauge) and a survey effect; a foreign-fleet share;
-`UpgradeDef.unlockWhen` for revivals; `Content.acts` and the capstone rule (`MetaState.actsComplete`; settled
-Industries at run start).
+Designed in `design/m4-design.md` (revised 20 Nov 2026); contract `design/m4-contract-notes.md` (save version 5);
+lanes `briefs/m4-*.md`; decisions `design/m4-open-questions.md` (Q1–Q7 decided on the owner's delegation).
 
-**Core** (≈ 5 days): shared stocks and inputs; the renewable stock with threshold and scar; hyperstability and the
-survey; foreign fleets and the EEZ; revivals; the capstone; re-gating with grandfathering.
+**The shift.** The Survey: the instruments stop being true and the stock stops being yours. Fishing's catch per trip
+stays healthy while the stock falls; the Board's first survey (free, once, in the run Fishing opens) prints the
+skippers' report against the truth. It reaches back (Steam's "years of coal left" was always "at this year's rate";
+every Industry's consumption gains the coal in its machines, from Iron's order book) and changes every later run
+(budget lines on the full account; the survey costs a seat or Mandate).
 
-**Content** (≈ 6 days): Iron & Steel and Fishing to the kit; revivals (steel boilers into Steam); the Act I ending;
-4 more Charters; 10 more Histories; 2 more cast; 36 dispatches.
+**Contract:** Acts, the ending per Act and the capstone (settled for good, in arrears when undefended); Previews (an
+Act flag); the shared reserve (`resourceStock`); feeds; the renewable stock (threshold, scar, reported stock, survey,
+foreign fleets, depletion pressure); the `quota` lever; `settle.requires`; wager arms; the free first survey, the
+`estimates` feature, the full account and years left; `MetaState.world` and one carry-over function (foresight for M7).
 
-**UI** (≈ 3 days): Industry tabs beyond five (a scrolling chip row of postcards, visual-direction item 7); the
-Fishing chart widget with the two gauges (catch per trip and, once surveyed, the stock); the Act title card.
+**Core** (≈ 10 days, including the revision's 2). **Content** (≈ 8: Iron, Fishing, the Act). **Text** (≈ 5: 24 letters,
+12 of them wagers; 3 cast; the Board's Survey card; Archive). **UI** (≈ 6.5: postcards, folding, order book, chart,
+wagers, the reveal card, the readings). **Scene** (≈ 6.5: foundry, harbour with the chart, the moment). **Audio** (≈ 2).
+**Balance** (≈ 5).
 
-**Scene** (≈ 5 days): the foundry lithograph style and Iron's layout; the harbour engraving with the chart cut-away and
-the scar; the Age dissolve (item 10).
+**Re-gating (D3, decided for M4).** Motion, Compute and Code open after the Act I ending as Previews (labelled; the
+industrialist's rules) until their Acts' rules ship; saves that opened them keep them as Previews, not counted towards
+the Act I ending.
 
-**Balance** (≈ 3 days).
+**Exit criteria:** `design/m4-design.md` §15 (25 criteria), among them: the Act I ending at 14–17 h for `mixed`; ≤ 2 new
+things a run from run 4; the Board's Survey met by every scripted player by hour 8.5; unsurveyed players cross the
+threshold in their first Fishing run, a surveying one does not; the scar survives Reckonings; Iron's feeds raise Steam's
+R ≥ 1.15×; letters: thoughtful ≥ 1.05× default ≥ random; the CLAUDE.md performance budgets on the real page.
 
-**Re-gating (owner decision D3).** Motion moves behind the Treaty and Compute and Code behind the Long Now. v1 and M1–M3
-saves keep access as "Previews" (playable, not counted toward the Act endings), and the broadsheet says so.
-
-**Exit criteria:** the Act I ending at 14–17 h for `mixed`; nothing-new gaps ≤ 2 h to the ending; Fishing's scar
-persists for the configured number of runs; a Fishing strategy without the Survey earns ≤ 0.6× one with it; Iron's
-inputs raise Steam's R in `efficiency` play (the embodied rebound is visible).
-
-**Size:** about 22 agent-days.
+**Size:** about 43 agent-days (41 as first designed, +6.5 for the shift, −4.5 of cuts: no new Histories or Commons, no
+Age dissolve, six fewer letters, two revivals, four achievements).
 
 ---
 
@@ -259,13 +280,12 @@ Designed in `paradigm-shifts.md` §1.
 
 **Contract:** `ChairDef`, `RivalDef`, `RivalProfile`, `ResponseDef`, `LoopholeDef`, `PledgeDef`, `ArticleDef`; new
 lever kinds (`standard`, `ban`, `quota`, `borderAdjust`, `charge`); `GameState.chair`; `SectorDerived.reportedR`,
-`abroadR`, `consumptionR`; `MetaState.precedent`, `articles`, `treaties`, `playbooks`; `ModelApi.takeOffice`,
+(`abroadR`, `consumptionR` move to M6); `MetaState.precedent`, `articles`, `treaties`, `playbooks`; `ModelApi.takeOffice`,
 `treaty`, `buyArticle`, `inspect`, `amend`, `choosePledges`, `campaign`, `setIndependence`; Plenty's land stock and two
 water gauges (`water applied`, `water consumed`).
 
 **Core** (≈ 10 days): the rival bot (the `efficiency` strategy moved into `src/core/chair/rival.ts`, with the response
-table); profiles from `meta.opening`; elections and Opposition; loophole ladders; inspection and concealment; Abroad
-and the two ledgers; the Treaty reset and the Know-how transfer; Plenty's mechanic.
+table); profiles from `meta.opening`; elections and Opposition; loophole ladders; inspection and concealment; the Treaty reset and the Know-how transfer; Plenty's mechanic.
 
 **Content** (≈ 8 days): Pryce and his voice; the prospectus; Plenty to the kit; loophole ladders for Plenty's levers;
 20 pledges; 8 Articles; 3 playbooks; the Statecraft tree; 30 dispatches (20 Pryce).
@@ -274,21 +294,29 @@ and the two ledgers; the Treaty reset and the Know-how transfer; Plenty's mechan
 manifesto sheet; the Articles shop; the two-ledger gauge; Take office.
 
 **Scene** (≈ 5 days): the seed-catalogue style and Plenty's layout; Pryce's hoardings and bunting; exempt things;
-Abroad's skyline valley; the window frame.
+the window frame. (Abroad's skyline valley moves to M6.)
 
 **Balance** (≈ 4 days): regulator bots `naive`, `hawk`, `steward`, `abstain` against rival profiles (`efficiency`,
 `budget`, a seeded grid of 20).
 
 **Exit criteria:** `steward` ≥ 1.5× `naive` and ≥ 3× `abstain` Precedent per hour against every profile; `hawk` loses an
-election within three Parliaments in ≥ 80% of profiles; no single lever kind holds the consumption ledger for a
+election within three Parliaments in ≥ 80% of profiles; no single lever kind holds the ledger for a
 decade alone; the first Ministry reaches an election within 4 minutes and a loophole within 6; Take office in the
 Playwright run shows the prospectus with the player's own times.
 
-**Size:** about 34 agent-days.
+**Size:** about 29 agent-days (Abroad and the two ledgers, about 5, moved to M6).
 
 ---
 
-## M6 — "The Great Acceleration" (Motion reworked, Comfort, Freight & Flight, the Act II ending)
+## M6 — "The Second Ledger" (Abroad, offshoring, Motion reworked, Comfort, Freight & Flight, the Act II ending)
+
+**The shift.** The Second Ledger: when my figures fall, the world's need not. Abroad (one unregulated neighbour on the
+skyline), offshoring and the two ledgers move here from M5, so that M5 is the Other Chair alone and M6 has a shift of its
+own. The moment: the first consumption ledger, printed beside the home gauge the moment Pryce first offshores; the home
+gauge turns down, the new one turns up, a ship leaves for the horizon and a chimney rises on Abroad's skyline. The Act II
+ending is scored on the consumption ledger, so the Act ends on its own lesson. Contract adds (from M5): `SectorDerived
+.abroadR`, `consumptionR`, the `offshore` response, `chair/abroad.ts`, Abroad's skyline in the scene. Size grows by
+about 5 agent-days moved from M5.
 
 **Contract:** `ApplicationDef.ratchet`; offshoring generalised (`SectorDef.offshore`); `drawsOn` to many targets; the
 travel-time budget inside the Chair.
@@ -304,11 +332,37 @@ revival (factory trawlers); 4 more Articles; 3 playbooks; 10 more Histories; the
 
 **Exit criteria:** the Act II ending at 46–55 h for `steward`; a Treaty every 6–10 h; a new Industry every ≤ 8 h.
 
-**Size:** about 31 agent-days.
+**Size:** about 36 agent-days (31, plus Abroad from M5).
 
 ---
 
-## M7 — "The Attention Age" (layer 3: the Long Now as You Write the Objectives)
+## M7 — "The Inheritance" (layer 3's reset: the Long Now as generations; the prestige shift)
+
+Designed in `design/m4-design.md` §18 and `paradigm-shifts.md` §5. **The shift.** A Reckoning stops resetting the
+world: from the first Long Now ("Hand over", the Act II ending's reset, about hour 52) each run is a **generation** that
+starts in the world the last one left (reserves, decayed pressure, sprawl, ratchets, scars, founded uses at a share,
+settled and capstoned Industries; levers lapse; Know-how inherited whole), is played for **Bequest** (earned only for what
+is handed on: reserve in the ground, skies under their sinks, stocks above their clear level, wellbeing per head at least
+what was received; spent on permanent Endowments), and ends on the world's schedule (a fixed span; a Will at the end).
+The rebound across time: what one generation leaves unlocked the next burns, faster. The moment: the next run opens on
+the same unwashed valley; "The books are closed. The world is not."
+
+**Contract:** `MetaState.world` extended (reserves, pressure, lockIn, founded, population, generation, endowments);
+`ReckoningCause` 'generation'; Bequest and `EndowmentDef`; `GlobalParams.generation` (span, interregnum, carry shares);
+`inherit.ts` extended. **Core** (≈ 7). **Content** (≈ 5: Compute extended, Endowments, the Will). **UI** (≈ 5: the
+handover ledger, the generation card). **Scene** (≈ 4: inherited states drawn; the interregnum). **Balance** (≈ 4).
+
+**Exit criteria (sketch):** a generation's Bequest from `steward`-like play ≥ 2× a burning generation's; the heir of a
+saving generation that does not seal burns the saved reserve ≥ 30% faster (the rebound across time is visible); runs
+started in an inherited world reach their first decision within 30 s; no Act I replay.
+
+**Size:** about 25 agent-days.
+
+---
+
+## M8 — "The Attention Age" (the Objectives: agents under briefs)
+
+(Was M7. The Long Now's reset is now M7's; the agents arrive here, in the second generation of Act III.)
 
 Designed in `paradigm-shifts.md` §2.
 
@@ -335,11 +389,13 @@ than half the Industries; the best briefs beat "Maximise Output" ≥ 2× and nee
 Industries; biggest-drift-first triage beats oldest-first by ≥ 20%; Proof-of-Work's R moves less than 2% across its
 whole efficiency chain.
 
-**Size:** about 32 agent-days.
+**Size:** about 30 agent-days (32, less the Long Now reset, now M7's).
 
 ---
 
-## M8 — "Unbuilding" (the Transition and the true ending)
+## M9 — "Unbuilding" (the Transition and the true ending)
+
+(Was M8. It needs M7: retiring and sealing only mean something in a world that is not reset.)
 
 Designed in `paradigm-shifts.md` §4.
 
@@ -366,7 +422,10 @@ the Playwright run reaches the final plate from a fixture save.
 
 ---
 
-## M9 — "The Long Now" (post-game)
+## M10 — "Enough" (post-game; was M9 "The Long Now")
+
+**The shift.** Enough: the ledger is closed, and stopping is a move the game counts (the close of The Game Rebounds on
+You). The moment: the last household return, every generation's hours on one page: "The ledger is closed. You may stop."
 
 The History ladder (stacking, capped at 30), the weekly Almanac (the seed comes from the UI; the core stays pure),
 records, Archive completion, the Archive plate (every scene reprinted small on one sheet, the player's peaks marked),
@@ -383,14 +442,15 @@ banked time, PWA, run history, the Steady Century epilogue (designed to be playe
 | M1 v1, honest | Five Industries that teach the right lesson | 3–5 (built) | — |
 | M2 Restraint has a game | Decades in run 1, clear skies, Settlement, Commons, the Market, Charters | 8–10 | 24 |
 | M3 Every Industry its own | Mechanics, cast, Histories, the second reveal, a first ending | 15–20 | 31 |
-| M4 Act I complete | Iron & Steel, Fishing, the Act I ending | 16–20 (Act I) | 22 |
-| M5 The Other Chair | Government, Pryce, Plenty | 25–30 | 34 |
-| M6 The Great Acceleration | Motion, Comfort, Freight & Flight, the Act II ending | 50–55 | 31 |
-| M7 The Attention Age | Objectives, Proof-of-Work, Code | 75–80 | 32 |
-| M8 Unbuilding | The Transition, the true ending | 95–105 | 29 |
-| M9 The Long Now | Post-game | 100–200+ | 12 |
+| M4 The Survey | Iron & Steel, Fishing, the Act I ending, the capstone, Previews | 16–20 (Act I) + Previews | 43 |
+| M5 The Other Chair | Government, Pryce, Plenty | 25–30 | 29 |
+| M6 The Second Ledger | Abroad, Motion, Comfort, Freight & Flight, the Act II ending | 50–55 | 36 |
+| M7 The Inheritance | Generations, Bequest, Endowments, Compute extended | 58–62 | 25 |
+| M8 The Attention Age | Objectives, Proof-of-Work, Code | 75–80 | 30 |
+| M9 Unbuilding | The Transition, the true ending | 95–105 | 29 |
+| M10 Enough | Post-game | 100–200+ | 12 |
 
-About 215 agent-days, a third of it writing. A dedicated text lane from M3 keeps it off the critical path, and a scene
+About 259 agent-days (215 before the 20 Nov revision added the M4 shift, the Previews and M7), a third of it writing. A dedicated text lane from M3 keeps it off the critical path, and a scene
 lane from M4 does the same for the art.
 
 ### What can run in parallel without file conflicts
@@ -399,11 +459,12 @@ lane from M4 does the same for the art.
 |---|---|---|
 | M2 | the split; then the contract | core (`steady.ts`, `orders.ts`, `commons.ts`, `charters.ts`: four owners) · content per Industry · prestige content · UI panels (sparkline, dividends, settle, Commons, orders, Charter) · scene (weather, settled look) · tools (`market`, `charter`, decision log) |
 | M3 | contract | core (mechanics per Industry module, `dispatch.ts`, `history.ts`) · text (dispatches, Archive, news) · content per Industry · UI panels · scene (spots, Reckoning, before-and-after) |
-| M4 | contract | Iron and Fishing content (two agents) · core (stocks, renewable) · scene (foundry, harbour: two agents) · UI |
-| M5 | contract; then the rival core module (others depend on its interface) | `chair/elections.ts`, `chair/loopholes.ts`, `chair/inspect.ts`, `chair/abroad.ts` · Plenty content · Pryce text · UI window and sheets · scene (window, Plenty, hoardings) · regulator bots |
-| M6 | contract | three Industries (three agents) · scene (three styles) · UI |
-| M7 | contract; then `agents.ts` | metrics and gaming content · incidents text · Proof-of-Work · UI brief and queue · overlay art |
-| M8 | contract | `unbuild.ts` · assets content · riso style and afterlives (two agents) · UI ledger |
+| M4 | contract | core (`inherit`, `acts`, `renewable`, `feeds`, `survey`) · Iron, Fishing, Act and text content (four agents) · UI · scene (foundry, harbour) · audio |
+| M5 | contract; then the rival core module (others depend on its interface) | `chair/elections.ts`, `chair/loopholes.ts`, `chair/inspect.ts` · Plenty content · Pryce text · UI window and sheets · scene (window, Plenty, hoardings) · regulator bots |
+| M6 | contract | `chair/abroad.ts` · three Industries (three agents) · scene (three styles, Abroad) · UI |
+| M7 | contract | `inherit.ts`, `bequest.ts` · Compute and Endowments content · UI handover ledger · scene inherited states |
+| M8 | contract; then `agents.ts` | metrics and gaming content · incidents text · Proof-of-Work · UI brief and queue · overlay art |
+| M9 | contract | `unbuild.ts` · assets content · riso style and afterlives (two agents) · UI ledger |
 
 Balance is last in every milestone, by one agent.
 
@@ -422,7 +483,8 @@ start ("Pryce has read your notebooks"). Act I is never replayed: the Coal Age o
 is seeded from the player's own first-run opening (game actions and game time only), quoted once in the prospectus;
 saves without one use the balancer's `efficiency` profile.
 
-**D3. The twelve-Industry roster, and re-gating Motion, Compute and Code.**
+**D3. The twelve-Industry roster, and re-gating Motion, Compute and Code.** *Re-gating decided for M4 (20 Nov 2026,
+by the coordinator on the owner's delegation): Motion, Compute and Code open after the Act I ending as Previews.*
 
 The roster: Steam, Iron & Steel, Light & Current, Fishing (the Coal Age); Plenty, Motion, Comfort, Freight & Flight
 (the Great Acceleration); Compute, Proof-of-Work, Code (the Attention Age); Transition (the Transition). Today Motion,

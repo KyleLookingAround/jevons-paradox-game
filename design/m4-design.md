@@ -1,8 +1,10 @@
-# M4 — "The Coal Age complete" (design)
+# M4 — "The Survey": the Coal Age complete (design)
 
 Design lead's document, 20 Nov 2026, written while the M3 finishing agent lands M3. It designs what the roadmap calls
 M4 ("Act I complete": Iron & Steel, Fishing, the Act I ending, re-gating) on the game **as M3 actually built it**, and
-amends the roadmap where the measurements argue for it (§14). Companions: `design/m4-contract-notes.md` (the proposed
+amends the roadmap where the measurements argue for it (§14). **Revised the same day** after the owner's decisions
+(`design/m4-open-questions.md`): M4 is now designed as a paradigm shift, The Survey (§2A), and the prestige shift the
+owner asked for is designed for M7 (§18). Companions: `design/m4-contract-notes.md` (the proposed
 `src/types.ts` changes and save v5), `briefs/m4-*.md` (one per lane), `design/m4-open-questions.md` (the owner's
 decisions, with what this document assumes meanwhile).
 
@@ -25,6 +27,12 @@ the Act I ending the Coal Age is **settled for good** (the capstone: defended, n
 Code, re-gated out of Act I, open as **Previews** of the later Ages under the industrialist's rules until M5 and M7 give
 them their own. M4 also mends what M3 measured and missed: letters that reward reading the instruments, the restraint
 player's quiet hours 6–14, systems that arrived after the ending, and a page that scrolls too far.
+
+**The shift (§2A).** M4 is The Survey: the moment the player learns that a gauge is somebody's estimate and that a
+resource is not theirs alone. It has a moment every player meets (the Board's first survey, printed against the
+skippers' report), it reaches back (Steam's "years of coal left" turns out to assume nobody burns more next year;
+every Industry's consumption gains the coal in its machines), and it changes every later run (budget lines are drawn
+on the full account, so Iron's uses cost every fed Industry's line; the truth about the sea costs a seat or Mandate).
 
 ---
 
@@ -87,6 +95,116 @@ ready), banked time (off), the History rules (kept), Wirth's law (M7, not here).
 9. **No Take office in M4, and no Pryce acquisition beat.** [J] The credits close on the settled Coal Age and "The ledger
    continues". The acquisition and the Prime Minister's invitation (`paradigm-shifts.md` §1) are M5's opening: printing
    them now would promise a chair the game cannot yet offer. (Open question Q3.)
+10. **M4 is a paradigm shift, The Survey** (§2A), added in the revision pass; and the prestige shift is designed now
+   for M7 (§18), with M4 seeding it and leaving it room.
+
+---
+
+## 2A. The shift: The Survey
+
+*Added in the revision pass (20 Nov 2026), on the owner's direction that every milestone from M4 on be a paradigm shift.*
+
+M4 as first designed added two Industries with good mechanics. Judged honestly against "each one should be a paradigm
+shift", it was two more tabs: the player's idea of what the game *is* did not change, because the lying gauge lived in
+one tab and the order book was a line on Iron's cards. The coordinator's steer names the shift, and I agree with it:
+until now every gauge was honest and every resource was the player's alone. M4 makes the player learn, once and
+memorably, that both were assumptions, and then makes every later run be played knowing it.
+
+**Name: The Survey.** *Before:* the gauges show the world as it is, and what I burn is mine and shows in my own tab.
+*After:* every gauge is somebody's estimate, made on somebody's assumption, and what I burn is shared with people I do
+not control and burnt in places I was not looking.
+
+Why this and not another shift [J]: it is the shift the Coal Age's last two Industries teach by themselves (hysteresis,
+hyperstability, the commons, the embodied rebound); it does not pull the Other Chair forward (the player is still the
+industrialist); and it is the bridge Act II needs, because the Other Chair's inspection, concealment and two ledgers
+are this lesson made into a government's verbs. A player who has had The Survey arrives in Act II already distrusting
+a clean official gauge.
+
+### 2A.1 The moment: the Board's Survey
+
+**Guaranteed, once.** Every player meets it in the run Fishing opens (run 6, about hour 6–7.5): the Fishery Board makes
+its **first survey free** (a ten-model-year survey, by rule) at Fishing's first poor season, or thirty minutes after
+Fishing opens, whichever is first. The player does not have to buy the truth the first time; they have to buy it every
+time after. (Contract: `RenewableDef.firstSurvey`.)
+
+**On screen before.** The Fishing tab as it has been for twenty or thirty minutes: "Catch per trip" at, say, 74% and
+green; the chart thick with stipple; the cheap supper selling; foreign sails on the banks; the sparkline with no sink
+line. In the picture the gulls over the fleet have thinned and the surface shoals have gone. Nothing on the page has
+said anything is wrong, because nothing on the page measures the sea.
+
+**The beat** (about eight seconds; the game keeps running behind it, as the Proprietor's Day card does):
+
+1. A small survey vessel puts out from the harbour in the scene; the paper prints the first line.
+2. A card opens over the panel, in the harbour engraving's frame, set as two columns of one page:
+
+   | The skippers' report | The Board's survey |
+   |---|---|
+   | Catch per trip: **74%** of the old figure | The stock: **19%** of its natural size |
+   | "The shoals have never been thicker" | Young fish: few in the samples |
+
+3. On the chart behind it the stipple drains from the reported density to the surveyed one, left to right, once.
+4. The card's footer, the reach backwards (§2A.2), in the paper's voice.
+5. One button: **File the survey**. The card closes; the true gauge stands beside catch per trip; the sink line is drawn
+   on the sparkline, below where the fleet has been fishing.
+
+**The text** (house tone; numbers from the state; the template chosen by the size of the gap):
+
+- Headline: "Board's survey finds the banks at a fifth of their former stock"
+- Next headline, a step later: "Skippers dispute the survey; the catch per trip, they say, is excellent"
+- Card body: "The Board's vessel has trawled the banks on a grid, as the skippers do not. Where the fleet finds fish it
+  finds them as easily as ever: the shoals that are left are where the fleet goes. Between them the sea is empty."
+- Footer: "The Statistics Office, asked how its own figures were made, publishes two notes. Coal will in future be counted
+  where it is used as well as where it is burnt: the coke in a mile of rails is the railway's. And ‘years of coal left’
+  has always meant years at this year's rate."
+- If the gap is small (a careful fleet): "Board's survey finds the banks somewhat below the skippers' figure", and the
+  body's last sentence becomes "The difference is not large. The Board notes that it will grow."
+- If the banks have already failed: "Board's survey confirms what the fleet will not: the banks are empty", and the
+  body ends "The Board does not expect a season soon."
+
+After ten model years the free survey lapses: the true gauge goes blank again, lettered "No survey since {year}". Having
+seen the truth once and had it taken away is the reason to pay for it.
+
+### 2A.2 What reaches backwards (feature `estimates`, arriving with the moment)
+
+Nothing that was on screen before was false, and the game must not pretend otherwise; but two things the player already
+trusted were figures on an assumption, and the moment says so. Both are cheap and both are honest.
+
+1. **"Years of coal left" splits in two** (every stock Industry: Steam's coal, and Iron's share of it). The gauge the
+   player has read since minute one becomes "At this year's rate: 140 years · At the rate it is growing: 31 years". The
+   first figure is the old one, unchanged: it always assumed nobody would burn more next year, and the formula sheet now
+   says so. The historical anchor: the Royal Commission on Coal Supplies (reported 1871) found coal "abundant", and a
+   1901 retrospective put its main error down to assuming exports would stay flat [S, `research/energy.md` §1.5]; British
+   output then nearly tripled to its 1913 peak [S]. (Contract: `SectorDerived.yearsLeft`.)
+2. **Every Industry's consumption gains the full account.** The consumption gauge in every Industry gains a second,
+   fainter needle: "counting the coal in its machines" (the coke Iron burnt for the rails, plate and girders it was fed,
+   by Iron's order book) and the power it draws (Fishing's trawlers on Steam's coal). Iron's own needle falls by what it
+   hands on; Steam's rises; the totals agree. The order book stops being a line on Iron's cards and becomes a figure on
+   every tab. (Contract: `SectorDerived.fullR`, `embodied`.)
+
+### 2A.3 What the player does differently afterwards, in every run
+
+- **Every new budget line is drawn on the full account** (feature `estimates` on). Steam's line now holds Steam's chimney
+  *and* the coke in its rails; Light's holds the steel in its gasholders. So from that moment Iron's uses are a cost on
+  every fed Industry's line, in every run: the player chooses which uses of iron to found knowing whose line pays, or
+  settles Iron first to freeze its feeds, or draws Steam's line Severe to make room. Lines drawn before the moment keep
+  the account they were drawn on (labelled). Clear skies, which are about the local sky, are unchanged. (Contract:
+  `BudgetState.account`.)
+- **The truth costs a seat or Mandate in every run once Fishing is open**: the Fishery Board competes for a loadout seat
+  with everything else, or survey cruises carry Mandate upkeep, or a letter buys a season. Fishing cannot be settled
+  without it, so the Act I ending needs it.
+- **Lines are drawn earlier**: the growing-rate figure (31 years, not 140) is the first thing on Steam's panel in a new
+  run. [J: a soft change; the full account is the hard one.]
+- **Wager letters read differently**: Tench's "full holds" letter is a bet the player now knows how to read (§8).
+
+### 2A.4 Cost and placement
+
+About **+6.5 agent-days** (contract 0.5, core 2, content and text 1, UI 1.5, scene 0.5, balance 1). Paid for by cuts in §13
+(the four new Histories, the Age dissolve, six letters, the three Commons projects, two revivals, four achievements:
+about −4.5), so M4 grows from about 41 to about 43 agent-days.
+
+The moment lands in run 6, which then brings Fishing (mid-run) and the moment (at least five minutes later) and nothing
+else: the household survey and the Proprietor's Day move one run later, to run 7 (about hour 8–9; `long-game.md` said
+"about hour 7"). The two reveals are kin (the instruments' figures; then your own) and are better a run apart.
 
 ---
 
@@ -103,9 +221,9 @@ New to M4 in **bold**. Runs 1–3 are M3's, less Motion.
 | 1.3–2.4 | 3 | Charters; the budget and its unfolding (line, Tighten, dividends, pace, clear skies) in Steam and Light. **No Industry opens.** | Charters · the budget |
 | 2.4–3.5 | 4 | The Commons at the Reckoning. **Iron & Steel opens at 10–20 min**: Hot blast is its first card; the order book shows that founding Rails makes Steam's engines cheaper and Steam's coal rise. First Steady State (Steam or Light) late in the run. | Commons · **Iron** |
 | 3.5–5.5 | 5 | Settlement at the Reckoning (three at once). Seams at minute 20. **Iron's revivals** appear in Steam (Steel boilers, Steel rails) once Bessemer is owned. **Pryce the elder** writes from his ironworks. | Settlement · seams |
-| 5.5–8 | 6 | The household survey at the Reckoning (hour ≥ 6); the Proprietor's Day minutes later once a return is filed. **Fishing opens at about minute 20**: fresh fish by rail, fried fish shops; "Catch per trip" is the only stock gauge; Huxley's card. Foreign sails on the chart as fishing power grows; the fishery limits lever. **The first season usually crosses the threshold**: "The banks fail". The Archive's first Fishing note is Garstang (1900). | survey · **Fishing** |
-| 8–10 | 7 | **The Fishery Board** is in the Hindsight shop (the standing survey). Fishing opens **scarred**: the stock does not regrow for about an hour of open play whatever the quota. The load curve at minute 20. Steam, Light and Iron settled; room for the fourth needs the Settlement Commission (first sitting). | Histories · load |
-| 10–13 | 8 | With the survey seated the true stock gauge and the honest sink line appear; the **quota from the survey** holds catch under regrowth; the fishery limits bite back unless the quota is in force. The scar heals; the stock regrows towards its clear level. The Archive at minute 20. | (Fishery Board) · Archive |
+| 5.5–8 | 6 | **Fishing opens at about minute 20**: fresh fish by rail, fried fish shops; "Catch per trip" is the only stock gauge; Huxley's card. Foreign sails on the chart as fishing power grows; the fishery limits lever. **The first season usually crosses the threshold**: "The banks fail". **The Board's Survey** (the free first survey) at the first poor season or 30 minutes in: the skippers' report against the survey; Steam's years-left splits; every Industry gains the full account. The Archive's first Fishing note is Garstang (1900). | **Fishing** · **the Board's Survey** |
+| 8–10 | 7 | The household survey at the Reckoning; the Proprietor's Day minutes later once a return is filed. **The Fishery Board** is in the Hindsight shop (the standing survey). Fishing opens **scarred** if the banks failed: the stock does not regrow for about an hour of open play whatever the quota. The load curve at minute 20. Steam, Light and Iron settled; room for the fourth needs the Settlement Commission (first sitting). New lines on the full account: Iron's Rails now cost Steam's line. | survey · load |
+| 10–13 | 8 | Histories at the Reckoning. With the survey seated the true stock gauge and the honest sink line appear; the **quota from the survey** holds catch under regrowth; the fishery limits bite back unless the quota is in force. The scar heals; the stock regrows towards its clear level. The Archive at minute 20. | Histories · Archive |
 | 13–17 | 9 (long) | Fishing reaches Steady State; all four settled; fifty years held. **The Act I ending**: credits, the retrospective Gazette, "The ledger continues". Levers that bite back may arrive mid-run if a lever has bitten. | bite |
 | 17– | 10+ | **The capstone**: every run opens with the Coal Age settled. **Motion opens as a Preview** within minutes, with the travel dial; Compute, with the free price, a run later; Code after. Capstone defences against Motion's spill into Light. | Previews, one a run |
 
@@ -217,8 +335,7 @@ feed factor as a line ("Iron & Steel: rails, × 0.88").
   on a real disaster with deaths; D4.)
 - **Revivals (new cards in older Industries, `UpgradeDef.when`):** in Steam, **Steel boilers** (when Iron owns the
   Siemens furnace: Steam η × 1.15) and **Steel rails** (when Iron owns Bessemer: Railways' saturation up, Steam c down);
-  in Light, **Steel gas mains** (when Iron owns Bessemer: Light c down); in Fishing, **Steel trawlers** (Fishing c down).
-  Each is a card the Market may buy: so the embodied rebound arrives in the older Industry by itself unless the player
+  (Steel gas mains in Light and Steel trawlers in Fishing were cut in the revision.) Each is a card the Market may buy: so the embodied rebound arrives in the older Industry by itself unless the player
   turns the Market off there.
 
 ### 4.4 Example text
@@ -479,15 +596,15 @@ Design targets for wagers [J, made measurable in §15]: a win should be worth ab
 over the letter's horizon (ten model years), a loss about the same in the other direction; a wager's condition should
 hold about half the time for a player who does not look.
 
-### 8.3 Thirty letters (the text lane writes them; sketches here)
+### 8.3 Twenty-four letters (the text lane writes them; sketches here; six cut in the revision)
 
 | Writer | Count | Examples (wagers marked W) |
 |---|---|---|
-| **Mr Josiah Pryce**, ironmaster at Ravensdale (new; the founder of the family whose company buys the Works in Act II; genial, always in favour of the cheaper thing) | 8 | "A joint line of rails to the coast" (W: pays if Steam has 10% headroom under its line; else Steam's railways grow into the line) · "A Belgian price for pig iron, if the coke duty were halved" · "Ravensdale will found a mechanics' institute, if the licences are eased" |
-| **Skipper Ewart Tench**, trawler skipper, Grimsby (new; proud, practical, trusts catch per trip) | 7 | "Full holds off the Dogger" (W: "Buy the second boat": pays if the true stock is above half; else it finds the last shoals) · "The lads want a closed season like a hole in the head" |
-| **Miss Isbister**, naturalist to the Fishery Board (new; precise, underfunded, right) | 6 | "A survey vessel for the summer" (capital: ten years surveyed) · "The young fish are missing from the samples" (W on the stock being above the threshold: a quota now pays; if already below it, nothing helps and the paper says so) |
-| The correspondent, Mr Whitlow, Mrs Fenwick (existing) | 6 | the cheap supper and the ports' poor (Fenwick); the order book in the *Economist*'s style (Whitlow); the Act's last letters before the credits (the correspondent) |
-| The Minister (existing) | 3 | the fishery limits; foreign boats; "the House would like a settlement it can explain" |
+| **Mr Josiah Pryce**, ironmaster at Ravensdale (new; the founder of the family whose company buys the Works in Act II; genial, always in favour of the cheaper thing) | 7 | "A joint line of rails to the coast" (W: pays if Steam has 10% headroom under its line; else Steam's railways grow into the line) · "A Belgian price for pig iron, if the coke duty were halved" · "Ravensdale will found a mechanics' institute, if the licences are eased" |
+| **Skipper Ewart Tench**, trawler skipper, Grimsby (new; proud, practical, trusts catch per trip) | 6 | "Full holds off the Dogger" (W: "Buy the second boat": pays if the true stock is above half; else it finds the last shoals) · "The lads want a closed season like a hole in the head" |
+| **Miss Isbister**, naturalist to the Fishery Board (new; precise, underfunded, right) | 5 | "A survey vessel for the summer" (capital: ten years surveyed) · "The young fish are missing from the samples" (W on the stock being above the threshold: a quota now pays; if already below it, nothing helps and the paper says so) |
+| The correspondent, Mr Whitlow, Mrs Fenwick (existing) | 4 | the cheap supper and the ports' poor (Fenwick); the order book in the *Economist*'s style (Whitlow); the Act's last letters before the credits (the correspondent) |
+| The Minister (existing) | 2 | the fishery limits; foreign boats; "the House would like a settlement it can explain" |
 
 All carry M3's rules (a price on every arm, expiring defaults, no standing effects on defaults) plus the wager lint.
 Pryce the elder's letters move Pryce out of Motion's run 3 (M3) into Iron's run 4; the younger Pryce's Motion letters
@@ -513,9 +630,9 @@ Rules (data in `src/content/features.ts`; the core rule is unchanged):
 | 3 | Charters | budget (then Tighten, dividends, pace, clear skies, each on a decade) | Motion removed |
 | 4 | Commons | **Iron opens**; Steady State (when earned) | |
 | 5 | Settlement (after the first Steady State) | seams | |
-| 6 | household survey (hour ≥ 6, Civil Service owned) | **Fishing opens** | Proprietor's Day minutes after a return |
-| 7 | Histories (hour ≥ 8, a Steady State held) | load curve | Fishery Board in the shop |
-| 8 | — | Archive | |
+| 6 | — | **Fishing opens**; then **the Board's Survey** (feature `estimates`) ≥ 5 min later | the shift's moment |
+| 7 | household survey (Civil Service owned) | load curve | Proprietor's Day minutes after a return; Fishery Board in the shop |
+| 8 | Histories (a Steady State held) | Archive | |
 | 9 | — | levers that bite back (once a lever has bitten 0.3) | |
 | post-Act I | — | Motion (travel), then Compute (free price), then Code | Previews |
 
@@ -542,8 +659,10 @@ Targets: Fishing opens by hour 8 for every scripted player; the Archive before h
 - **Wager arms** show the hint and both outcomes; a small "Bet on the state of things" label in the Age's type.
 - **The Act title card** (M2's Age card, for an Act): "Act I · The Coal Age" at the start of a new save's first run, and
   the credits at its end.
-- **The Age dissolve** (`visual-direction.md` item 10) when Iron and Fishing open (Steam's valley dissolving into
-  Ravensdale at night; into the harbour at dawn).
+- **The Board's Survey card** (§2A.1): two columns, the footer, "File the survey"; shown once a save, kept in the
+  Archive afterwards. **The full account and years-left readings** (§2A.2) on every Industry's consumption and reserve
+  gauges once `estimates` is on; each budget line labelled with its account ("on the full account" / "chimney only").
+- (The Age dissolve was cut in the revision.)
 
 ---
 
@@ -581,7 +700,7 @@ hands" moment in the game.
 
 ### 11.3 Shared work
 
-- Postcards (static crops), the Age dissolve, the capstone look (settled wash and cartouche "Settled {year}"; in arrears,
+- Postcards (static crops), the capstone look (settled wash and cartouche "Settled {year}"; in arrears,
   the wash withdrawn and smoke returning), the Previews' "Preview" corner mark, the new figures (Pryce the elder in a
   frock coat with a sample of rail; Skipper Tench in a gansey; Miss Isbister with a sampling jar), spots for the new
   headline keys.
@@ -610,16 +729,15 @@ hands" moment in the game.
 - **Charters (4):** The Black Country (Iron: Rails founded from the start, margin up) · The Fish Trains (Fishing: the
   fish train from the start) · The Ironmasters' Ring (Iron margin up, coke duty forbidden this run) · **The Fishery
   Board** (an institutionLoan of the Fishery Board level 1: surveyed for one run; offered only once Fishing has opened).
-- **Histories (4), to the M3 History rules:** *Free Trade in Iron* (no levers in Iron; goal: Steady State in Iron) ·
+- **Histories: none new** (cut in the revision; the four sketched were: *Free Trade in Iron* (no levers in Iron; goal: Steady State in Iron) ·
   *No Bessemer* (Bessemer forbidden; goal: Iron at its sink line by 1900) · *The Cod Wars* (foreign share starts at 40%,
   fishery limits forbidden until the second crisis; goal: the stock above 60% of its natural size in 1914) · *The Whale
-  Fishery* (Fishing's stock small and slow to regrow; goal: hold it above half for a century). Rewards: locked Commons
-  projects and Charters only.
-- **Commons (3):** Seamen's mission and lifeboat (Fishing) · Allotments on the old tips (Iron) · The fish market hall
-  (Fishing; a covered market that cuts spoilage: its intensity rebound is cheaper fish, named in its blurb).
+  Fishery* (Fishing's stock small and slow to regrow; goal: hold it above half for a century). Kept here for M9's post-game ladder.)
+- **Commons: none new** (cut in the revision; the Seamen's mission, Allotments on the old tips and the fish market hall
+  wait for a later pass).
 - **Institutions (2 new):** the **Fishery Board** (L1 surveyed; L2 also starts the survey quota at level 1) and the
   **Inspector of Furnaces** (Iron's smoke inspector at level 1 from minute one).
-- **Achievements (12)**, among them: The Coal Age, Settled; Embodied (Iron's feeds add 50% to Steam's coal); Huxley Was
+- **Achievements (8)**, among them: The Coal Age, Settled; Embodied (Iron's feeds add 50% to Steam's coal); Huxley Was
   Wrong (the banks fail; hidden); The Gulls Came Back (a scar heals); Two Hundred Miles (and then the home fleet);
   Counted Every Spring (Fishing settled).
 - **Archive notes (about 40)**, every one sourced: hot blast and Jevons's Scottish figure; Bessemer's "without fuel"
@@ -635,8 +753,10 @@ hands" moment in the game.
 
 | Cut or deferred | Why |
 |---|---|
-| Six of the roadmap's "10 more Histories" (4 kept) | Histories arrive around hour 9–10 and are optional; the M3 measurement does not show them filling gaps. Text effort goes to the letters, which the player meets every three minutes. [J] |
-| Six of the roadmap's 36 dispatches (30 kept) | Fewer, better: twelve of the thirty are wagers, which need more care than a two-arm trade. [J] |
+| All ten of the roadmap's new Histories (revision: the four first kept are cut too) | Histories arrive around hour 9–10 and are optional; the M3 measurement does not show them filling gaps. Text effort goes to the letters, which the player meets every three minutes. [J] |
+| Twelve of the roadmap's 36 dispatches (24 kept; six more cut in the revision) | Fewer, better: twelve of the twenty-four are wagers, which need more care than a two-arm trade. [J] |
+| The Age dissolve (`visual-direction.md` item 10) | Cut in the revision to pay for The Survey; a nicety beside a moment. |
+| Three Commons projects, two revivals (Light, Fishing), four achievements | Cut in the revision to pay for The Survey. |
 | Iron's tariff protection lever | Its rebound needs Abroad (M5). The scrap bounty rebounds now, and is sourced. |
 | A second supplier for Iron (foreign steel) | M5's Abroad. |
 | A separate "Fishing reveal" research card that changes the rules | The lying gauge is the reveal; the survey shows it. A second reveal mechanic would be a second thing at once. |
@@ -648,23 +768,43 @@ hands" moment in the game.
 
 ---
 
-## 14. Proposed amendments to `design/roadmap.md` (for the coordinator; not applied here)
+## 14. Amendments to `design/roadmap.md` (applied in the revision pass, 20 Nov 2026)
 
-1. **M4's name:** "The Coal Age complete" (Act I's four Industries and its ending).
-2. **M4's contract list** becomes the one in `design/m4-contract-notes.md`: Acts and the capstone (with arrears);
-   shared reserve; feeds; the renewable stock (threshold, scar, reported stock, survey, foreign fleets); the `quota`
-   lever kind; `settle.requires`; wager arms; new Cond leaves and StatKeys; save v5. ("`UpgradeDef.unlockWhen`" is
-   M3's `UpgradeDef.when`.)
-3. **Re-gating:** Motion, Compute and Code open after the Act I ending as **Previews** (an Act flag), and saves that
-   opened them keep them as Previews. Add: "In M5, Act II's flag turns off and Motion becomes Pryce's".
-4. **The capstone** is "settled for good; never unsettled; in arrears when undefended". Add to D2.
-5. **Content counts:** 4 Histories (not 10), 30 dispatches (not 36) of which 12 wagers, 4 Charters, 2 Institutions, 3
-   Commons, 3 cast (Pryce the elder, Tench, Isbister; Pryce's Act I letters move from Motion to Iron).
-6. **Exit criteria:** replace the M4 list with §15 below.
-7. **Sizes:** about 41 agent-days, not 22 (Fishing is the largest single mechanic since Settlement; the postcards,
-   folding and the Previews are new UI; two styles and the dissolve are a week of scene work).
-8. **The long-game table** (`long-game.md`, "Progression map"): Iron at 2.4–3.5 h (run 4), Fishing at 5.5–8 h (run 6),
-   the Act I ending at 15–17 h, Previews from 17 h; the "Motion 20–28 h" row stays for M6.
+The coordinator, on the owner's delegation, accepted the design (open questions Q1–Q7 decided) and asked for one
+paradigm shift per milestone. The amendments below are now **applied** to `design/roadmap.md` and
+`design/paradigm-shifts.md`:
+
+1. **M4's name:** "The Survey" (the Coal Age complete: Iron & Steel, Fishing, the Act I ending, the capstone, the
+   Previews).
+2. **M4's contract list** is `design/m4-contract-notes.md`.
+3. **Re-gating:** Motion, Compute and Code open after the Act I ending as Previews (an Act flag); saves that opened them
+   keep them as Previews. In M5 Act II's flag turns off.
+4. **The capstone** is "settled for good; never unsettled; in arrears when undefended" (D2).
+5. **Content counts** (after the revision's cuts): no new Histories, 24 letters of which 12 wagers, 4 Charters, 2
+   Institutions, no new Commons projects, 3 cast.
+6. **Exit criteria:** §15.
+7. **Size:** about 43 agent-days.
+8. **Abroad, the two ledgers and offshoring move from M5 to M6**, which becomes the Second Ledger shift; M5 is the Other
+   Chair alone (and lighter).
+9. **A new M7, The Inheritance** (the Long Now as generations; §18); You Write the Objectives becomes M8, Unbuilding M9,
+   the post-game M10.
+
+### 14.1 One shift per milestone, M4 to M10
+
+| Milestone | Shift | Before → after (what the player believes) | The moment |
+|---|---|---|---|
+| **M4** | **The Survey** | The gauges show the world, and what I burn is mine → every gauge is somebody's estimate, and my burn is shared and burnt elsewhere | The Board's Survey: the skippers' report and the survey printed side by side; the chart drains |
+| **M5** | **The Other Chair** | I make the choices → someone paid to grow makes them, and I can only write rules he will find his way round | Take office: Pryce's prospectus, quoting the times of the player's own first run |
+| **M6** | **The Second Ledger** (was inside M5 and M6: Abroad, offshoring, Freight & Flight) | When my figures fall the world's fall → my figures can fall because I moved the burning abroad, and the world's rise | The first consumption ledger: the home gauge turns down as the consumption gauge, printed for the first time, turns up; a ship leaves for the horizon and a chimney rises on Abroad's skyline |
+| **M7** | **The Inheritance** (the prestige shift) | A Reckoning wipes the slate → each run is a generation that receives what the last left and owes the next | Hand over: the next run opens on the same unwashed valley; "The books are closed. The world is not." |
+| **M8** | **You Write the Objectives** | I act, and acting well is enough → I specify, and get exactly what I measured | The first agent's report: its target met to the decimal, and the scene showing how it was met |
+| **M9** | **Unbuilding** | Progress is what I add → progress is what I take away while wellbeing holds | The first retirement: a pit sealed and its tab reprinted in riso |
+| **M10** | **Enough** (post-game; the end of The Game Rebounds on You) | More play is more game → the ledger is closed, and stopping is a move the game counts | The last household return, every generation's hours on one page: "The ledger is closed. You may stop." |
+
+Notes. Shift 3 (The Game Rebounds on You) had its moment in M3 (the Proprietor's Day) and its close in M10. M6 had no
+shift of its own (three Industries inside the Other Chair); moving Abroad there gives it one and lightens M5, the
+largest milestone. M10 is honestly a coda: if the owner prefers, its moment folds into M9's true ending and M10 stays
+optional content with no claim to be a shift.
 
 ---
 
@@ -721,6 +861,16 @@ Times are active play; "scripted players" are `mixed`, `budget` and `human` with
     Industry in arrears unseen.
 17. Motion opens in the first post-Act-I run within ten minutes; Compute and Code follow, one a run at most.
 
+**The Survey (the shift)**
+
+22. Every scripted player meets the Board's Survey in the run Fishing opens, by hour 8.5; the card shows both figures and
+    the reported figure is ≥ the surveyed one (always, by construction: β < 1).
+23. After the moment, new lines are drawn on the full account: with Rails founded, Steam's full-account R is ≥ 1.1× its
+    chimney R, and Iron's falls by the same amount (totals agree to 1e−9).
+24. Steam's "at the rate it is growing" years-left is shorter than "at this year's rate" whenever its trend is positive.
+25. Behaviour changes in every run: `budget` founds at least one fewer feeding Iron use, or settles Iron earlier, in the
+    runs after the moment than in the runs before (report which; a soft check).
+
 **Save, page, performance (Playwright at 390 × 844 on the real build, and the CLAUDE.md budgets)**
 
 18. An M3 save before the ending, and one after it, load with Iron and Fishing closed and openable, Motion, Compute and
@@ -750,8 +900,10 @@ Times are active play; "scripted players" are `mixed`, `budget` and `human` with
 | **The capstone's start-of-run wellbeing spike** (settled service at full per-head level from minute one) | medium · medium | Scaled to population; income at a share; measured in criterion 16; knobs in `ActDef.capstone`. |
 | **Wagers feel like gambling** | low · medium | They are deterministic bets on visible (or deliberately invisible) state, with the condition printed; no randomness anywhere. |
 | **Seven tabs and two new scenes regress performance** | medium · high | Postcards are static crops; lanes measure on the real page at 390 × 844 with `tools/perf.mjs --check`, never only in a demo (an earlier milestone regressed that way). |
-| **Text volume** (30 letters, 120 headlines, 40 notes) | high · medium | One text lane, started on day one from this document's sketches; facts only from the research files or checked. |
+| **Text volume** (24 letters, 120 headlines, 40 notes) | high · medium | One text lane, started on day one from this document's sketches; facts only from the research files or checked. |
 | **Migration surprises** for M3 saves (grandfathered Previews, the old ending record) | medium · medium | Contract notes §9 specify every step; criterion 18. |
+| **The Survey reads as one tab's gimmick** | medium · high | The moment's footer and the two readings put it on every tab; full-account lines make it bite in every run. |
+| **The full account makes the Act I ending harder** (Steam's line now carries Iron's coke) | medium · medium | Balance knob; settling Iron first freezes the feeds, which is the lesson. |
 | **Pacing from bots, not people** | certain · unknown | The owner plays the M4 build at the Act I ending fixture and at hour 6 before balance is final. |
 
 ---
@@ -764,16 +916,114 @@ Times are active play; "scripted players" are `mixed`, `budget` and `human` with
 | Core | acts, capstone, arrears; shared reserve; feeds; renewable stock, scar, reported stock, survey, foreign fleets; quota; wagers; StatKeys; migration; balancer strategies | 8 |
 | Content: Iron | the kit, revivals | 3 |
 | Content: Fishing | the kit, levers, unfolding | 4 |
-| Text | 30 letters, 3 cast, 120 headlines, ambient, 40 Archive notes, credits and retrospective | 5 |
+| Text | 24 letters, 3 cast, 120 headlines, ambient, 40 Archive notes, credits and retrospective | 5 |
 | Prestige content | Charters, Histories, Institutions, Commons, achievements, features table | 1 |
 | UI | postcards, folding, order book, chart, wagers, Act card, Previews, capstone rows, migration notices | 5 |
-| Scene | `foundry`, `harbour` with the chart, feeds in Steam/Light, dissolve, postcards, capstone look, figures, spots | 7 |
+| Scene | `foundry`, `harbour` with the chart, feeds in Steam/Light, postcards, capstone look, figures, spots | 7 |
 | Audio | two soundscapes, wager and arrears sounds | 2 |
 | Balance | the criteria above, retuning the Act without Motion and Compute | 4 |
-| **Total** | | **≈ 41** |
+| Revision: The Survey | the moment, two readings, full-account lines (contract 0.5, core 2, content 1, UI 1.5, scene 0.5, balance 1) | +6.5 |
+| Revision: cuts | Histories, dissolve, six letters, Commons, two revivals, four achievements | −4.5 |
+| **Total** | | **≈ 43** |
 
 The roadmap's 22 was written before the Previews, folding and wager arms existed; a lean M4 that drops the Previews
 (Q1, option B) and the folding (not recommended) is about 33.
+
+---
+
+## 18. The prestige shift: The Inheritance (designed now; lands in M7)
+
+*Added in the revision pass, on the owner's direction: "there should also eventually be a paradigm shift in the
+prestige, so future runs after that point are massively effected".* Not built in M4; M4 seeds it and leaves room for it
+(contract notes §14).
+
+### 18.1 Before and after
+
+- **Before.** A Reckoning is an ending the player chooses (or exhaustion or collapse forces). The world is rebuilt
+  fresh: full reserves, a clean sky, population 1, nothing founded. Hindsight carries knowledge, which makes the next run
+  faster and hits the wall sooner. Runs are attempts.
+- **After.** There is no fresh world. A run is a **generation**: it starts in the world the last one left, it is played
+  for what it hands on, and it ends on the world's schedule, not the player's.
+- **Name: The Inheritance.** *Before:* a Reckoning wipes the slate and each run is a fresh world. *After:* each run is a
+  generation that receives what the last one left and owes the next one; what one generation saves, the next can spend.
+
+### 18.2 The candidates, weighed
+
+| Candidate | Change of kind? | Verdict |
+|---|---|---|
+| The Reckoning stops resetting the world; damage carries over (smoke, scar, sprawl) | yes: a run starts differently | **the core of it** |
+| A second currency earned only by what is left standing or in the ground | yes: a run is played for a different reason | **joined to it** (Bequest; it is what `long-game.md` already called Legacy, now defined) |
+| The Reckoning on the world's schedule | yes: a run ends differently | **joined to it** (a generation is a fixed span) |
+| The capstone generalised (each finished Act changes every later run) | partly: it changes starting worlds Act by Act, but runs between Acts still reset | **the seed** (M4's capstone and M6's second capstone lead to it) |
+
+One mechanic carries all three changes the owner asked for: a run starts differently (in the inherited world), is
+played for a different reason (Bequest, paid only for what is handed on), and ends differently (at the generation's end,
+with a will). It is a change of kind, not a multiplier.
+
+### 18.3 What every run looks like afterwards
+
+- **It starts** in the world as left, after a 25-model-year interregnum: reserves where they were; pressure stocks
+  decayed by their own absorption over the interval (Code's stock not at all); sprawl, ratchets and scars standing;
+  founded uses and machines standing at a share of their adoption (the heirs keep the railways); settled and capstoned
+  Industries standing; population and capital carried at a share. **Levers lapse** unless made permanent: rules are not
+  inherited, the world is. Know-how is inherited whole and automatically (the heir knows everything the parent learnt).
+- **It is played for Bequest**, earned only at the handover and only for what is handed on: reserve in the ground (more
+  if sealed), pressure under each sink, stocks above their clear level, Industries settled, Ground (M9), and wellbeing per
+  head at least what was received (the "day drawn" rule of M2, at the scale of a lifetime: nobody worse off than on the
+  day you inherited). Nothing is paid for anything done during the generation. Bequest buys **Endowments**: permanent
+  changes to every later world (a reserve sealed for ever; a sink protected; a Commons endowed; an Institution chartered
+  beyond repeal). Hindsight remains, for in-generation Institutions.
+- **It ends on the world's schedule**: a generation is a fixed span (content: about 75 model years, 25 active minutes);
+  it cannot be called early or prolonged; collapse ends it early and the heir inherits the collapse. At the end, **the
+  Will**: the handover ledger line by line (received, left), one Endowment chosen, and (from M8) the agents' briefs that
+  pass on.
+- **The rebound across time.** What one generation leaves in the ground the next can burn, and burns faster, because it
+  inherits all the Know-how: Jevons across generations, and Sinn's green paradox (a resource left but not locked is
+  extracted later, and faster). The only bequest the heir cannot spend is one made permanent. That is the argument the
+  game has made about efficiency and about rules, now made about time.
+
+### 18.4 The moment: Hand over
+
+The first Long Now (the Act II ending's reset). The Reckoning screen shows the frozen grey valley, as it always has.
+Then, where every run so far has opened on a washed valley, the next run opens on **the same picture**: the smoke still
+in the sky, the pit still hollow, the estates standing, grey water where the banks failed. A card: "Generation II.
+Received: …" in two columns (what the last generation was given; what it left), and one line in the paper:
+
+> "The books are closed. The world is not."
+
+### 18.5 Where it lands, and why there
+
+**M7, as the Long Now's reset** (the third prestige layer, at the Act II ending, about hour 52), in its own milestone,
+with "You Write the Objectives" moved to M8 (roadmap renumbered; §14):
+
+- the Long Now is the game's generational frame by name, and its currency (Legacy) was already defined by what is left
+  (Ground, wellbeing per ton): The Inheritance is what that layer always meant;
+- about half the game's hours (52 to 100) are then played under it, which is "future runs massively affected";
+- **Unbuilding (M9) needs it**: retiring, sealing and rewilding only mean something in a world that is not reset every
+  run; Ground accumulates across generations;
+- **the agents (M8) need it**: a brief that passes to the next generation is a will; a world that persists is what
+  agents are worth running;
+- it should not come earlier: Act II's Treaty already teaches persistence of *rules* (Articles survive Treaties), and
+  stacking a world that persists on top of the Other Chair would be two shifts at once.
+
+Its relation to the four shifts: it generalises the Other Chair's precedent (rules persist) to the world; it is the
+precondition of Unbuilding; it gives You Write the Objectives its stake (briefs as wills); and it completes The Game
+Rebounds on You: the one thing never inherited is the player's own time, which the Statistics Office's last return
+counts across all generations.
+
+### 18.6 Seeds, so it reads as inevitable
+
+| Milestone | Seed |
+|---|---|
+| M4 | **The scar**: the first damage that crosses a Reckoning. **The capstone and arrears**: the first world that persists and can decay. Foreshadow in two lines only: Fishing's scar line after a Reckoning, "The Reckoning closes the books; it does not restock the sea", and the capstone's cartouche. |
+| M5 | Articles and Precedent persist across Treaties (rules persist); Pryce's prospectus reads a past run back to the player. |
+| M6 | Sprawl and ratchets that do not go back; the Second Ledger (burning moved, not removed); the Act II capstone. |
+| M7 | The Inheritance. |
+
+### 18.7 What M4 must not block (contract foresight; contract notes §14)
+
+World-scoped records under one object (`MetaState.world`), all carry-over in one core function (`inherit`), no M4 code
+that assumes a run starts with full reserves or population 1, and an open `ReckoningCause`.
 
 ---
 

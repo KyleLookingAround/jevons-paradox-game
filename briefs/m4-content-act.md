@@ -34,7 +34,7 @@ numbers the Act needs), `prestige.ts` (the two Institutions), `charters.ts`, `hi
    once Fishing has opened); the Inspector of Furnaces (`startLever` Iron's smoke inspector at 1). The Settlement
    Commission: first sitting is Act I's fourth room; keep its second sitting for the Previews; check its cost against the
    new Hindsight economy with the balance lane.
-5. **Charters (4)**, **Histories (4)**, **Commons (3)**, **achievements (12)** as in design §12, each with its numbers'
+5. **Charters (4)** and **achievements (8)** as in design §12 (no new Histories or Commons: cut in the revision), each with its numbers'
    intent in a comment. The Fishery Board Charter (an institutionLoan) is offered only once Fishing has opened.
 6. **The lint (`content.test.ts`)**: acts reference real ages and sectors, each age in at most one act, ending sectors
    all in the act; feeds acyclic with spill and drawsOn; `resourceStock` names a stock sector with no resourceStock of its
@@ -55,3 +55,12 @@ numbers the Act needs), `prestige.ts` (the two Institutions), `charters.ts`, `hi
 
 The schedule as data and as measured; the prestige numbers' intent; lint rules added; anything the Industry lanes still
 owe you.
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+- Feature `estimates` (`when: { flag: 'survey:fishing' }`, intro: the reveal's follow-up line or none, since the card is the
+  introduction).
+- The revised schedule (design §9): run 6 brings Fishing and then the Board's Survey; the household survey moves to run 7
+  at the Reckoning; Histories to run 8. Test: the moment comes at least five minutes after Fishing opens and nothing else
+  arrives in run 6.
+- Revival cards in Light and Fishing are cut; achievements include one for the moment ("Filed: the Board's Survey").

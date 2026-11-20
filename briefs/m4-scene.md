@@ -53,8 +53,9 @@ lane reads them)
    moratorium or a failed bank. **Design it at 390 px first**: soundings legible or omitted, never noise.
 3. **Feeds in other pictures**: Steam (a second track and new engine house for Rails; iron hulls for Ship plate), Light
    (a steel gasholder frame for Girders), Fishing (iron hulls). From `fedBy`, as `heritage` does.
-4. **The Age dissolve** (item 10): two scene instances for about a second on `sectorOpened` for Iron and Fishing, along
-   the shared horizon; reduced motion: a cut.
+4. (The Age dissolve is cut in the revision.) **The Board's Survey moment** instead: on 'surveyed' with label 'reveal',
+   the survey vessel puts out, and the chart's stipple drains from the reported density to the true one left to right,
+   once (composited; reduced motion: a still of the after).
 5. **Postcards** (item 7): `postcard(sectorId, view)` → a static 64 × 40 crop, rendered once per layout change; the
    settled wash, the capstone cartouche "Settled {year}", the Preview corner mark, the warning dot.
 6. **Capstone look and arrears**: the settled wash and an engraved cartouche; in arrears the wash withdraws and smoke (or

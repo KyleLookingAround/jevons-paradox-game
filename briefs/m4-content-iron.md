@@ -1,7 +1,7 @@
 # Brief: M4 CONTENT lane — Iron & Steel
 
-You write Iron & Steel, the Coal Age's third Industry, to the Industry kit, and its revivals in Steam, Light and
-Fishing. The design is `design/m4-design.md` §4 (identity, the order book, the kit, text examples) and §6. Other lanes
+You write Iron & Steel, the Coal Age's third Industry, to the Industry kit, and its revivals in Steam.
+The design is `design/m4-design.md` §4 (identity, the order book, the kit, text examples) and §6. Other lanes
 work at the same time: core, Fishing, text (letters, Archive, headlines beyond the kit), Act and prestige, UI, scene,
 audio; balance comes after and owns the final numbers.
 
@@ -21,9 +21,8 @@ writes.
 
 - `src/content/sectors/iron.ts` (new): the SectorDef, applications with `feeds`, upgrades, levers, `settle`,
   `mechanic`, sector headlines (60, Iron's own paper: the iron market report).
-- Revival cards only, appended to `src/content/sectors/steam.ts` (Steel boilers, Steel rails), `light.ts` (Steel gas
-  mains) and, after the Fishing lane lands, `fishing.ts` (Steel trawlers: send the Fishing lane the card, or append it
-  with their agreement). Each with `when` on the Iron card it needs. Touch nothing else in those files.
+- Revival cards only, appended to `src/content/sectors/steam.ts` (Steel boilers, Steel rails), each with `when` on the
+  Iron card it needs. Touch nothing else in that file. (Light's and Fishing's revivals were cut in the revision.)
 
 ## Work
 
@@ -44,7 +43,7 @@ writes.
    design's source list); Smoke inspector (substitution). Every lever a `catch` (and `catchAfter` where it names a later
    system), repeat tables from the helpers.
 5. **Settle** dividend and blurb.
-6. **Revivals** (4 cards, as above), each a card the Market may buy.
+6. **Revivals** (2 cards, as above), each a card the Market may buy.
 7. Hand the Act lane: the registry line, the `ages.ts` change (Iron in the Coal Age's `sectors`), and Iron's features
    needs (none).
 
@@ -63,3 +62,8 @@ writes.
 
 The card and lever list with numbers' intent; facts checked and their sources; anything left out for want of a source;
 what the balance lane should tune first (the feed multipliers, Iron's wellbeing weight, the coke draw).
+
+## Revision (20 Nov 2026)
+
+After the Board's Survey (feature `estimates`) new lines are drawn on the full account, so each feeding use's card
+also reads as a cost on the fed Industry's line; write the use blurbs so they stay true under both accounts.

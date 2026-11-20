@@ -72,3 +72,11 @@ paper: harbour notes and landings).
 
 Constants and why; facts checked and sources; what was left undated; the measurements above; what balance should tune
 first (r and θ for the first-run crossing; scar years for the ending's hour).
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+- Add `renewable.firstSurvey` (atCrisis 1, afterSeconds 1800, years 10; balance tunes) so every player meets the Board's
+  Survey in the run Fishing opens.
+- The survey cruises lever's catch line now says what the player has already seen once ("The Board's vessel again, for
+  as long as the House will pay for her").
+- Revival "Steel trawlers" is cut.

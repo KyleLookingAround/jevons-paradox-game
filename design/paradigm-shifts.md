@@ -23,6 +23,46 @@ Rules that every shift obeys, from the pillars in `long-game.md`:
 
 Sizes: S ≤ 1 agent-day, M 2–4, L a week or more.
 
+**Revised 20 Nov 2026** (M4 design revision). The owner: "each one should be a paradigm shift", and "there should also
+eventually be a paradigm shift in the prestige, so future runs after that point are massively effected". Two shifts are
+added to the four above, and the milestones are renumbered (`design/roadmap.md`):
+
+| Shift | Milestone | Before → after | The moment |
+|---|---|---|---|
+| 0. **The Survey** (§0) | M4 | The gauges show the world, and what I burn is mine → every gauge is somebody's estimate, and my burn is shared and burnt elsewhere | The Board's Survey: the skippers' report and the survey side by side |
+| 1. The Other Chair | M5 | I make the choices → someone paid to grow makes them | Take office: the prospectus with the player's own times |
+| 1b. **The Second Ledger** (Abroad, below, now its own milestone) | M6 | When my figures fall the world's fall → mine can fall because the burning moved | The first consumption ledger printed beside the home gauge |
+| 5. **The Inheritance** (§5; the prestige shift) | M7 | A Reckoning wipes the slate → each run is a generation that receives what the last left | Hand over: the next run opens on the same unwashed valley |
+| 2. You Write the Objectives | M8 | I act → I specify, and get what I measured | The first agent's report, target met to the decimal |
+| 4. Unbuilding | M9 | Progress is adding → progress is what I remove while wellbeing holds | The first retirement: a pit sealed, the tab reprinted in riso |
+| 3. The Game Rebounds on You | M3 (moment) and M10 (close: "Enough") | The world's savings are re-spent → so are mine; and stopping is a move | The Proprietor's Day; the last return: "You may stop." |
+
+In the sections below, "M5" for the Other Chair stays right; "M7" for the Objectives now means M8, and "M8" for
+Unbuilding means M9.
+
+---
+
+## 0. The Survey (M4)
+
+Designed in full in `design/m4-design.md` §2A. In short:
+
+- **The idea.** Until the end of the Coal Age every gauge was honest and every resource the player's alone. Fishing's
+  catch per trip stays healthy while the stock falls (hyperstability: catch per unit effort = q·A^β with β < 1; Harley,
+  Myers & Dunn 2001), foreign fleets fish the same banks, and a threshold crossed leaves a scar that outlives the
+  Reckoning. Iron's coal is burnt for other Industries' machines. **Rebound named:** hysteresis and the embodied rebound.
+- **The moment.** The Board's first survey, free and once, in the run Fishing opens: a card with two columns, "The
+  skippers' report" (catch per trip 74%) and "The Board's survey" (the stock 19%), while the chart's stipple drains.
+  "Board's survey finds the banks at a fifth of their former stock." Then: "Skippers dispute the survey; the catch per
+  trip, they say, is excellent."
+- **It reaches back.** The Statistics Office publishes two notes: Steam's "years of coal left" was always "at this
+  year's rate" (now shown beside "at the rate it is growing"), and every Industry's consumption gains the coal burnt for
+  its machines (the full account).
+- **It changes every later run.** New budget lines are drawn on the full account, so each use of iron costs the line of
+  the Industry it feeds; the truth about the sea costs a seat or Mandate in every run.
+- **It is the bridge to Act II.** Inspection, concealment and the second ledger are this lesson as a government's verbs.
+
+---
+
 ---
 
 ## 1. The Other Chair
@@ -152,6 +192,10 @@ It must be at least as busy as Act I. The verbs, in order of frequency:
 screen is the Reckoning as before, with the government's ledger.
 
 ### Abroad, and what became of the regions
+
+*Revised 20 Nov 2026: Abroad and the two ledgers land in M6, as their own shift, **The Second Ledger** (the moment: the
+first consumption ledger printed beside the home gauge as Pryce first offshores). M5 is the Other Chair without them;
+until M6 a Ministry is scored on the home ledger, and the Offshore response is not in the table.*
 
 The first pass planned three to six regions run by scripts. That was the most expensive and least legible part of
 the plan, and the audit asked for one neighbour until it is proven fun. The Other Chair needs only one:
@@ -810,6 +854,34 @@ election or breaks wellbeing within the first hour; the Transition with no cap s
 
 ---
 
+## 5. The Inheritance (the prestige shift, M7)
+
+Designed in full in `design/m4-design.md` §18.
+
+- **The idea.** Until the Long Now, a Reckoning rebuilds a fresh world and carries only knowledge. From the first Long
+  Now ("Hand over", at the Act II ending) it stops: each run is a **generation** that starts in the world the last one
+  left (reserves, decayed pressure, sprawl, ratchets, scars, standing works, settled and capstoned Industries; levers
+  lapse; Know-how inherited whole), is played for **Bequest** (earned only for what is handed on: reserve in the ground,
+  skies under their sinks, stocks above their clear level, wellbeing per head at least what was received), and ends on the
+  world's schedule with a Will (one permanent Endowment; from M8 the agents' briefs that pass on). Hindsight remains for
+  in-generation Institutions. **Rebound named:** intergenerational (what one generation saves the next can spend, and,
+  knowing more, spends faster; Sinn's green paradox across time). The only bequest the heir cannot spend is one made
+  permanent.
+- **The moment.** The Reckoning's frozen grey valley, and then, where every run so far opened washed clean, the same
+  picture: smoke in the sky, the pit hollow, the estates standing. "Generation II. Received: …" and "The books are closed.
+  The world is not."
+- **Why M7.** The Long Now is the generational frame by name, and its currency (Legacy, now Bequest) was always defined
+  by what is left; half the game's hours are then played under it; the agents (M8) need a world worth running and a brief
+  is a will; Unbuilding (M9) needs a world that is not reset; earlier, it would stack on the Other Chair.
+- **Seeds.** M4: the scar (the first damage across a Reckoning) and the capstone with arrears (the first world that
+  persists and decays), with one foreshadowing line ("The Reckoning closes the books; it does not restock the sea"). M5:
+  Articles and Precedent persist across Treaties. M6: sprawl and ratchets that do not go back; the Act II capstone.
+- **Relation to the others.** It generalises the Other Chair's precedent from rules to the world, gives the Objectives
+  their stake, is Unbuilding's precondition, and completes the Game Rebounds on You: the one thing never inherited is the
+  player's own time.
+
+---
+
 ## How the four fit together
 
 | | Act I | Act II | Act III | Act IV |
@@ -819,6 +891,9 @@ election or breaks wellbeing within the first hour; the Transition with no cap s
 | The binding resource | capital | Confidence | Attention | Ground and wellbeing |
 | The named rebound added | direct, frontier, economy-wide, embodied, utilisation, hysteresis | evasion, leakage, the green paradox | measurement | additionality, replacement |
 | Shift 3 (threaded) | decisions counted (M2) | the reveal (about hour 7) | real attention spent on reviews | the last return at the ending |
+
+With the 20 Nov additions: Act I ends on **The Survey** (the gauge and the stock were never simply yours), Act II gains
+**The Second Ledger** (M6), and Act III opens on **The Inheritance** (M7): the reset itself stops.
 
 The thread is the same argument each time: whatever you make cheaper, someone spends. In Act I it is coal; in Act II
 it is your rules; in Act III it is your metrics; in the thread it is your own time; in Act IV you finally take things

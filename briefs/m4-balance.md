@@ -2,7 +2,7 @@
 
 You tune M4's numbers so that its exit criteria hold, and encode them as tests so later milestones cannot break them.
 You run after the core, content, UI, scene and audio lanes have landed. The criteria are `design/m4-design.md` §15
-(numbered 1–21; this brief refers to them by number); the knobs are named in the content lanes' reports.
+(numbered 1–25, 22–25 added in the revision for the Survey shift; this brief refers to them by number); the knobs are named in the content lanes' reports.
 
 Do NOT edit `src/types.ts`, `src/core/**` (report core bugs; the coordinator routes them), `src/ui/**`, `build.ts`,
 `DESIGN.md`, `CLAUDE.md`, `design/roadmap.md`. Balancing changes numbers in content, never logic, never text.
@@ -56,3 +56,8 @@ fresh, mid, late, `act1`; `node tools/shot.mjs m4` and `m4real` at 390 × 844. Y
 
 A table of every criterion: target, measured before, measured after, test name. Every number changed and why. Criteria
 not met and why. Fragile targets (sensitivity to the bots' Reckoning rule and to `--survey`). Contract or core issues.
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+The full account changes the Act I ending's difficulty (Steam's line carries Iron's coke after the moment): measure it
+first after the unfolding, and tune with Iron's feeds and the ending's own knobs, never by turning the account off.

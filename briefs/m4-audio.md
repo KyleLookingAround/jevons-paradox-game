@@ -45,3 +45,8 @@ kinds), `views.ts` (hand-made M4 views), NOTES; `tools/audio-industry.js` batche
 
 The two soundscapes' layers and drivers; every measurement against its target; what the owner should listen for first
 (the gulls going quiet while the catch is still good).
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+Add a `surveyReveal` interface sound for the moment: no sting; the world's sea life, which has been honest all along,
+comes up a few decibels for two seconds under the card, then settles.

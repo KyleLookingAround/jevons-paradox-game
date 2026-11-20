@@ -25,7 +25,7 @@ wrong or missing something, work around it locally and say so in your report.
 `src/core/**` (modules, README, tests, `fixture.ts`) and `tools/balance.ts` with `tools/strategies/*`. You alone own
 `src/core/step.ts`, `index.ts`, `derive.ts` this milestone; one line per mechanic in `step.ts`.
 
-New modules: `acts.ts`, `renewable.ts` (with the foreign share, or `foreign.ts`), `feeds.ts`. Extended: `settlement.ts`,
+New modules: `inherit.ts` (the one carry-over step), `survey.ts`, `acts.ts`, `renewable.ts` (with the foreign share, or `foreign.ts`), `feeds.ts`. Extended: `settlement.ts`,
 `flows.ts`, `solver.ts`, `contentIndex.ts`, `levers.ts`, `policy.ts`, `effects.ts`, `dispatch.ts`, `conditions.ts`,
 `offline.ts`, `hindsight.ts`, `temptation.ts`, `serialise.ts`. Keep the README's layering (no cycles) and update its
 table.
@@ -134,3 +134,22 @@ bun run tools/balance.ts budget 2 --summary            # real content, before an
 Every rule in the contract implemented and tested as above; real content without M4 fields byte-identical to M3; the
 balancer runs every strategy and flag on the fixture; speed targets met. Final report: modules and README table, every
 contract gap and your workaround, constants chosen, test counts, µs per step before and after, what balance must know.
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+Add, after step 9 of the work list, and before wagers:
+
+- **`inherit.ts`**: move every carry-over into one function used by `reckon` and `createState(content, meta)`; the capstone
+  and the scar are applied there and nowhere else; world records live in `meta.world` (contract notes §14).
+- **The Survey** (`survey.ts`; contract notes §15): the free first survey (once per save per sector, at `atCrisis` or
+  `afterSeconds`, never inside fastForward); `Derived.surveyReveal` with its variant; the full account (attribution that
+  conserves totals, including settled sectors and drawsOn); `BudgetState.account` and every R-against-line test reading
+  `fullR` on a 'full' line, with a cap pricing only own R; `yearsLeft` flat and growing; all gated on feature `estimates`.
+
+Tests to add: (15) the first survey fires once per save, at the first of its two triggers, not offline, and its modifier
+lapses after `years`; the reveal's variant by gap and crossing; (16) Σ fullR = Σ R to 1e−9 in states with feeds, drawsOn
+and a settled source; a 'full' line counts received R; a 'full' cap prices own R only; old lines keep 'own'; (17)
+yearsLeft.growing < flat when the trend is positive, equal when not; (18) a run started from a meta with a non-full
+reserve and population 5 (a hand-built "inherited" fixture) satisfies every M4 rule (foresight: no code assumes a fresh
+world); an unknown `ReckoningCause` in a save does not throw. Balancer: `--unlocks` logs the Board's Survey as a first;
+summary column "account" per line.

@@ -49,3 +49,11 @@ so). No git writes; the coordinator commits.
 
 `bunx tsc -p .` (types.ts clean); the coordinator's read of the diff against the notes; no runtime change (no `src/`
 file other than `types.ts` touched), so `bun test` is unchanged except compile errors listed.
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+Also write `design/m4-contract-notes.md` §14 (foresight for The Inheritance: `MetaState.world` holding `capstone` and
+`scars`; `ReckoningCause` documented as open) and §15 (the Survey: `RenewableDef.firstSurvey`, `Content.surveyReveal`,
+`Derived.surveyReveal`, FeatureId `'estimates'` after `'survey'`, `SectorDerived.fullR` / `embodied` / `yearsLeft`,
+`BudgetState.account`, 'surveyed' with first and label 'reveal'). These supersede the first version's top-level
+`meta.capstone` and `meta.scars`.

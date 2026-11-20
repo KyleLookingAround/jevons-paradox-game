@@ -1,45 +1,27 @@
-# M4 — open questions for the owner
+# M4 — open questions for the owner: decided
 
-Short on purpose: everything I could reasonably decide is decided in `design/m4-design.md`. Each question gives my
-recommendation and what the documents assume until you answer. The roadmap's D2–D6 are still open too; M4 works to
-their recommendations (D2: the capstone; D3: the twelve Industries and re-gating in M4; D4: the editorial line, which
-Fishing's moratorium now touches; D5: three endings; D6: the play ledger as built).
+**Decided by the coordinator on the owner's delegation, 20 Nov 2026.** The owner: "do the full. I'll take your steer.
+each one should be a paradigm shift", and later: "there should also eventually be a paradigm shift in the prestige, so
+future runs after that point are massively effected". The documents now work to these decisions. The roadmap's D2–D6
+remain open except where these settle them (D3's re-gating is settled for M4 by Q1; D2's capstone by the design).
 
-**Q1. Re-gate Motion, Compute and Code out of Act I now?** (D3, made concrete)
-- *Recommendation:* yes, as the design says: Act I becomes the four Coal Age Industries, and the three open as Previews
-  after the Act I ending (saves that already have them keep them, marked Preview).
-- *Why:* today all five Industries are open by about hour 3 and nothing new opens in hours 3–15 (measured); the Act I
-  ending needs a set that belongs to one period.
-- *Alternative B:* keep Motion as a Preview inside Act I runs for everyone until M5 (less change, more Hindsight early,
-  a muddier Act). *Assumed:* the recommendation.
+| # | Question | Decision |
+|---|---|---|
+| Q1 | Re-gate Motion, Compute and Code out of Act I now? | **Yes.** Act I is the Coal Age's four; the three open after the Act I ending as Previews; saves that opened them keep them, marked Preview. |
+| Q2 | May the game say "Preview"? | **Yes**: one line on the Age title card and a mark on the tab. |
+| Q3 | Tease Act II at the Act I credits? | **No**, not until Take office exists (M5). |
+| Q4 | Is a lying gauge acceptable? | **Yes**, on the three conditions: labelled as the skippers' report; the formula sheet says it is not a survey; the world and the game's rules use the truth. |
+| Q5 | Banked time? | **Off** in M4. |
+| Q6 | Fishing's people (the ports named, no jobs-lost figure as a score)? | **Approved.** |
+| Q7 | The size? | **The full M4.** After the revision (the Survey shift, paid for by cuts) about 43 agent-days. |
+| Q8 | Play it before balance closes | **Stands as a request to the owner**: play the hour-6 fixture (Fishing opening and the Board's Survey) and the Act I ending fixture before the balance lane finalises. |
 
-**Q2. May the game say "Preview"?** One line on the Age title card and a small mark on the tab: "The Great Acceleration
-— in preview: the Industries as an industrialist would run them. The Age's own rules are in preparation."
-- *Recommendation:* yes; it is honest and it is one line. The alternative is to say nothing, and players will think
-  Motion is finished as it is. *Assumed:* yes.
+## Added by the revision
 
-**Q3. Tease Act II at the Act I credits?** (the Pryce acquisition headline and the Prime Minister's invitation)
-- *Recommendation:* no, not until Take office exists (M5). The credits end on "The ledger continues". *Assumed:* no.
-
-**Q4. Is a lying gauge acceptable in a game that prides itself on honest instruments?**
-- *Recommendation:* yes, on three conditions the design keeps: the gauge is labelled as the skippers' report, the
-  formula sheet says it is not a survey, and the world (gulls, shoals, sound) and the game's own rules use the truth.
-  If your first play finds it unfair, the fallback is to show the true stock faintly on the chart from the first poor
-  season. *Assumed:* yes.
-
-**Q5. Banked time** (M3 built it, off).
-- *Recommendation:* leave it off in M4; the offline hold now also covers the capstone's arrears. Turn it on when you
-  want it (one number). *Assumed:* off.
-
-**Q6. Fishing's people** (D4 extended): the moratorium's catch line names the ports ("Grimsby's fleet is laid up and its
-men with it"); no figure of jobs lost is used as a score.
-- *Recommendation:* approve. *Assumed:* yes.
-
-**Q7. The size.** About 41 agent-days against the roadmap's 22 (Fishing, the Previews, folding and postcards, wager
-letters, two styles and the dissolve). A lean M4 without the Previews (Q1 B) and with fewer letters is about 33.
-- *Recommendation:* the full M4; the folding and postcards answer your playtest note and the letters answer M3's one
-  clear miss. *Assumed:* the full M4.
-
-**Q8. Play it before balance closes.** Pacing is from scripted players. *Request:* play a build at the Fishing opening
-(hour 6 fixture) and at the Act I ending fixture before the balance lane finalises; the lying gauge and the scar are
-the two places where a person's reaction matters more than a bot's numbers.
+- **Every milestone a paradigm shift.** M4 is **The Survey** (`design/m4-design.md` §2A). The table of shifts M4–M10 is
+  in §14.1 of the design and in `design/roadmap.md`.
+- **The prestige shift** is **The Inheritance**, designed for M7 (§18); M4 seeds it (the scar, the capstone, one
+  foreshadowing line) and leaves its save shape room (`design/m4-contract-notes.md` §14).
+- **Still the owner's, when convenient** (assumed meanwhile as stated): whether M10 ("Enough") is a shift or a coda
+  (assumed: a shift, small); whether a generation's length in M7 should be counted in active time only (assumed: active
+  time, with offline counting toward it as it does toward everything else).

@@ -37,7 +37,7 @@ Do NOT edit `src/types.ts`, `src/core/**`, `src/ui/**`, the Industry files, `ind
 
 ## Work
 
-1. **Thirty letters** as in the design's table (Pryce the elder 8, Tench 7, Isbister 6, existing cast 6, the Minister 3).
+1. **Twenty-four letters** as in the design's table (Pryce the elder 7, Tench 6, Isbister 5, existing cast 4, the Minister 2).
    Every arm with a `price`; defaults safe and modest, never a wager; at least **twelve wagers** whose conditions read:
    Steam's headroom under its line, Iron's feed share of Steam's line, a sky clear or not, Mandate in hand, the true
    stock (for Tench and Isbister: the lesson letters). Each wager's `hint` names the condition plainly in the paper's
@@ -68,3 +68,15 @@ Do NOT edit `src/types.ts`, `src/core/**`, `src/ui/**`, the Industry files, `ind
 
 The cast and letter list (wagers marked, with their conditions), Archive notes with their sources, anything withheld
 for want of a source.
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+- Write `Content.surveyReveal` (contract notes §15.1): the three variants (small, large, failed), the two column heads, the
+  footer (the Statistics Office's two notes), the button, the follow-up headline, from `design/m4-design.md` §2A.1. This is
+  the milestone's moment: draft it first and show it to the coordinator.
+- The formula-sheet lines for the two readings: "At this year's rate assumes nobody burns more next year." and "Counting
+  the coal in its machines: the coke Iron burnt for what it was fed, and the power it draws." Plus an Archive note on the
+  Royal Commission on Coal Supplies (1871) and its flat-exports assumption ([S], `research/energy.md` §1.5).
+- The one foreshadowing line for The Inheritance (design §18.6), printed in Fishing's panel after a Reckoning while
+  scarred: "The Reckoning closes the books; it does not restock the sea." Nothing more about it.
+- No new Commons projects (cut).

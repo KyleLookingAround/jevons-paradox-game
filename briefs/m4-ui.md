@@ -58,6 +58,12 @@ milestone); new `orderbook.ts`, `chart.ts`, `fold.ts`; and `tools/shot.mjs` mode
     Fishing needs the stock surveyed").
 11. **Save notices** for saves that meet M4 (the text lane's strings), shown once.
 12. `devmock.ts` and the dev page brought to the M4 views.
+13. **The Board's Survey card** (design §2A.1; `Derived.surveyReveal`, `Content.surveyReveal`): over the Fishing panel, in
+    the harbour frame, two columns, the footer, "File the survey"; once a save (own "seen" key); the game runs behind it;
+    kept as an Archive entry. **The two readings** once `estimates` is on: every Industry's consumption gauge gains the
+    fainter full-account needle with `embodied` in its formula sheet; Steam's reserve shows "At this year's rate · At the
+    rate it is growing" from `yearsLeft`; each budget line is labelled with its account. **Unknown reckoning causes**
+    (foresight for M7) get a default label, never a throw.
 
 ## Budgets (exit criteria for this lane)
 
@@ -79,3 +85,8 @@ dark and light themes.
 ## Final report
 
 What changed per file; screenshots' paths; budget figures before and after; contract gaps.
+
+## Revision (20 Nov 2026): The Survey and foresight
+
+The Age dissolve is cut. Add to the `m4` shot mode: the reveal card at 390 × 844 (both variants from fixtures), and Steam's
+panel before and after `estimates`.
