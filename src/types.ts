@@ -50,6 +50,18 @@
  * retrospective, and optional banked time. Every M3 system is GATED by the feature mechanism of M2.1 (Content.features,
  * Derived.features): each names an M3FeatureId below, and nothing it adds is visible, and no action of it is accepted,
  * before that feature is on. Until the M2.1 contract is merged, "feature f is on" reads as true.
+ *
+ * M4 ("The Coal Age complete"; the shift is The Survey): search for "M4:" for what M4 adds and "M4 CHANGE" for
+ * semantics that differ from M3 (every M4 CHANGE applies only when content uses the new field, so content without the
+ * M4 fields, such as the test fixture, plays exactly as M3). design/m4-contract-notes.md is the specification and
+ * design/m4-design.md the reasons; the lane briefs are briefs/m4-*.md. In one paragraph: Acts with an ending each and a
+ * capstone afterwards (ActDef, MetaState.world.capstone, arrears), Preview Industries; a shared reserve
+ * (SectorDef.resourceStock) and the order book (ApplicationDef.feeds); a renewable stock with a threshold, a scar, a
+ * lying gauge and foreign fleets (RenewableDef, ForeignDef, pressureSource 'depletion'); the survey (EffectDef
+ * 'survey', the Board's free first survey, Content.surveyReveal) and the full account it brings (feature 'estimates':
+ * SectorDerived.fullR / embodied / yearsLeft, BudgetState.account); the 'quota' lever kind and settle.requires; wager
+ * arms on letters. World-scoped records live under MetaState.world so that M7's prestige shift (The Inheritance) is a
+ * migration, not a rewrite; ReckoningCause is open (M7 adds 'generation').
  */
 
 /** M1 CHANGE: was the five-member union EraId. Ids are content-defined, e.g. 'steam'. */
@@ -119,6 +131,29 @@ export const MILESTONES_MAX = 200;
 export type M3FeatureId =
   | 'seams' | 'load' | 'travel' | 'freeAtUse' | 'sideEffects' | 'dispatches' | 'ambient' | 'histories' | 'archive'
   | 'survey' | 'bank';
+/* --- M4 constants --- */
+/** M4: default ActDef.capstone.incomeShare: the share of a capstoned Industry's recorded (per-head scaled) income paid. */
+export const CAPSTONE_INCOME_SHARE = 0.25;
+/** M4: a capstoned Industry in arrears never collapses the run: its pressure is held below this fraction of collapseAt. */
+export const ARREARS_COLLAPSE_HOLD = 0.99;
+/** M4: a renewable stock's step is split into substeps when |dQ| over the step exceeds this fraction of K … */
+export const RENEWABLE_SUBSTEP_SHARE = 0.05;
+/** M4: … into n = ceil(|dQ| / (RENEWABLE_SUBSTEP_SHARE × K)) substeps, at most this many (deterministic). */
+export const RENEWABLE_SUBSTEPS_MAX = 8;
+/** M4: a renewable stock never falls below this fraction of K (it never exhausts; see SectorDef.resourceKind). */
+export const RENEWABLE_FLOOR = 1e-6;
+/** M4: default ForeignDef.announceAt: the foreign share at which the 'foreignFleets' headline is printed (once a run). */
+export const FOREIGN_ANNOUNCE_AT = 0.15;
+/** M4: the survey reveal's variant is 'small' when reported − true < this (Content.surveyReveal). */
+export const SURVEY_SMALL_GAP = 0.15;
+/**
+ * M4: the feature id M4 adds (merged into FEATURE_IDS after 'survey').
+ *   'estimates'   the full account and the growing-rate years left: while off, SectorDerived.fullR, embodied and
+ *                 yearsLeft.growing read null and every budget line is drawn on the 'own' (chimney) account
+ *                 (BudgetState.account). Content's `when` is { flag: 'survey:fishing' }: it arrives with the Survey.
+ * Nothing else M4 adds is feature-gated: the order book and the stock chart arrive with their Industries.
+ */
+export type M4FeatureId = 'estimates';
 /**
  * Save format version. M2 CHANGE: 3. M3 CHANGE: 4 (the v3 → v4 steps are at the end of this comment).
  * Migration rule (implemented in ModelApi.deserialize; versions chain: 1 → 2 → 3):
@@ -202,8 +237,31 @@ export type M3FeatureId =
  *   dispatch.pending / queue / answered / offered (unknown dispatch ids dropped), meta.returns (re-validated as
  *   fileReturn validates; an invalid return is dropped), meta.archive, meta.histories, meta.unlocks (ids no longer in
  *   content dropped), meta.history (unknown → null), orders.dispatch.cast (unknown cast ids dropped).
+ *
+ * M4 CHANGE: 5. Version 4 → 5 (versions chain 1 → 2 → 3 → 4 → 5; a version > 5 → null). Applied to a JSON copy, in this
+ * order; the deep merge from a fresh state supplies every other M4 field (all optional or with fresh defaults):
+ *   1. MetaState: world { capstone: {}, scars: {} }.
+ *   2. Every SectorState (open or closed): nothing (crossed, capstoned, arrears absent = false). Sectors in content but
+ *      not in the save (Iron, Fishing) are rebuilt closed by the existing rule.
+ *   3. The M3 ending record: meta.endings.steadyAll, if present, is kept as is (the retrospective prints it under its own
+ *      template: "Everything settled, under the earlier rule"). It does NOT count as 'actOne': the Act I ending needs
+ *      Iron and Fishing, which no v4 save has.
+ *   4. flags.won in a loaded mid-run state that won under the M3 rule: kept true for the rest of that run (it is the
+ *      run's history), but steadyYearsAll is reset to 0 so that the Act I streak starts from the new rule's first step.
+ *   5. Previews: nothing to migrate: Motion, Compute and Code stay openable through { owns: '<id>' } (ActDef.preview).
+ *   6. Dispatches: answered lists keep their entries; AnsweredDispatch.won absent on old entries.
+ *   7. Validation (element by element, invalid entries dropped): meta.world.capstone (unknown sectors or acts dropped; a
+ *      record whose SettledState fails the M2 validation dropped), meta.world.scars (unknown or non-renewable sectors
+ *      dropped; yearsLeft finite and ≥ 0).
+ *   No event is replayed. Round trip v5 lossless; a v4 save from before the M3 finish (with steadyAll under the earlier
+ *   rule) loads the same way. The Survey adds nothing to migrate: BudgetState.account absent = 'own';
+ *   meta.flags['survey:<s>'] absent; feature 'estimates' locked until the moment (a save that already reached it keeps
+ *   its flag). The other optional M4 state fields (SectorState.minStock, lastSurvey, foreignAnnounced, feedPeak;
+ *   GameState.surveyReveal) are absent = none and need no step; a v5 save's are validated as their types say (non-finite
+ *   numbers and unknown sector ids dropped). Modifier validation keeps a source 'survey:<s>' (arm 0) when s is a
+ *   renewable sector with RenewableDef.firstSurvey (see ActiveModifier).
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /* ------------------------------------------------------------------ */
 /* CONDITIONS (data-only "when X")                                     */
@@ -234,6 +292,18 @@ export type CmpOp = '<' | '<=' | '>' | '>=';
  * M3, sector: 'seamsSunk' (SectorState.seamsSunk); 'loadFactor' (SectorDerived.load.factor; FALSE without `load`);
  *   'travelHours' (SectorDerived.travel.hoursPerHead; FALSE without `travel`); 'sprawl' (SectorDerived.travel.sprawl;
  *   FALSE without `travel`); 'bite' (the largest LeverState.bite among the sector's levers, 0 if none).
+ * M4, sector (FALSE, as other sector stats, when the sector is absent or closed, and where marked):
+ *   'openFor'        SectorState.openFor (seconds since it opened this run);
+ *   'stockFraction'  Q / K, the TRUE stock (renewable only; FALSE otherwise);
+ *   'reportedStock'  (Q / K)^beta, catch per trip (renewable only; FALSE otherwise);
+ *   'foreignShare'   the foreign share now (renewable with RenewableDef.foreign; FALSE otherwise);
+ *   'scarYears'      meta.world.scars[s]?.yearsLeft ?? 0 (renewable only; FALSE otherwise);
+ *   'surveyed'       1 while a survey effect is in force on the sector (SectorDerived.stock.surveyed), else 0;
+ *   'budgetHeadroom' 1 − R / budgetR, on the line's own account (FALSE without a line);
+ *   'feedFactor'     Π of every feed factor into this sector now (1 if none; SectorDerived.feeds of the sources);
+ *   'arrears'        1 or 0 (SectorState.arrears).
+ * M4, global: 'capstoned' (count of sectors with SectorState.capstoned this run).
+ * M4: a sector stat read on a capstoned sector reads its settled (scaled) values, as on any settled sector.
  */
 export type StatKey =
   | 'time' | 'year' | 'wellbeing' | 'population' | 'capital' | 'mandate' | 'reckonings' | 'steadyYearsAll' | 'clicks'
@@ -246,7 +316,10 @@ export type StatKey =
   | 'settled' | 'clear' | 'clearYears'
   /* --- M3 --- */
   | 'steadySectors' | 'dispatchesAnswered' | 'historiesCleared' | 'totalHours' | 'bankedSeconds'
-  | 'seamsSunk' | 'loadFactor' | 'travelHours' | 'sprawl' | 'bite';
+  | 'seamsSunk' | 'loadFactor' | 'travelHours' | 'sprawl' | 'bite'
+  /* --- M4 --- */
+  | 'openFor' | 'stockFraction' | 'reportedStock' | 'foreignShare' | 'scarYears' | 'surveyed' | 'budgetHeadroom'
+  | 'feedFactor' | 'arrears' | 'capstoned';
 
 /**
  * A data-only condition, evaluated by the core against a state (and the flows it derives).
@@ -273,6 +346,11 @@ export type StatKey =
  *   - { answered: dispatchId }: that dispatch has been answered (by anyone, default included) in any run
  *     (meta.dispatches.arms[id] or the run's answered list). `arm`: only answers with that arm index. `run: true`: this
  *     run only (GameState.dispatch.answered). `by: 'player'`: only answers the player chose.
+ * M4:
+ *   - { ending: id }: true once meta.endings[id] exists (an Act's ending reached in any run; 'actOne'). The M3 record
+ *     'steadyAll' is a valid id too, but content should not gate on it.
+ *   - `owns` with a sector id is unchanged ("opened in any run"), which is what keeps the Previews of a save that already
+ *     opened them (ActDef.preview).
  */
 export type Cond = (
   | { stat: StatKey; sector?: SectorId; app?: string; op: CmpOp; value: number }
@@ -283,6 +361,9 @@ export type Cond = (
   | { answered: string; arm?: number; run?: boolean; by?: 'player' }
   /** True once the feature is unlocked (Derived.features[id]; a feature not listed in Content.features is always on). */
   | { feature: FeatureId }
+  /* --- M4 --- */
+  /** M4: true once meta.endings[ending] exists (see above). */
+  | { ending: string }
   | { all: Cond[] }
   | { any: Cond[] }
   | { not: Cond }
@@ -321,12 +402,17 @@ export type Cond = (
  *   'settlement'     Settlement: SectorDerived.canSettle and settle() need it.
  * A feature absent from Content.features is always unlocked, so content without `features` (the test fixture) plays
  * exactly as before.
+ * M4: 'estimates' (see M4FeatureId), placed after 'survey'. (M3's 'survey' is the household return; M4's survey of a
+ * stock is an effect, EffectDef 'survey', not a feature.)
  */
 export const FEATURE_IDS = [
   'reboundMeter', 'levers', 'population', 'market', 'moreLevers', 'charters', 'budget', 'leverRepeat', 'dividendChoice',
   'budgetPace', 'clearSkies', 'steadyState', 'commons', 'settlement',
   // M3 (every M3FeatureId), in the order of their intended arrival (design/m3-contract-notes.md §0).
-  'archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey', 'histories', 'bank',
+  'archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey',
+  // M4 (M4FeatureId), inserted after 'survey' (design/m4-contract-notes.md §15.2).
+  'estimates',
+  'histories', 'bank',
 ] as const;
 export type FeatureId = typeof FEATURE_IDS[number];
 
@@ -427,6 +513,67 @@ export interface Content {
   /** M3: the first ending's credits and retrospective templates (EndingText). Default: absent (the UI shows a plain
    *  "Steady State" card with the core's retrospective items untitled). */
   ending?: EndingText;
+  /* --- M4 (all optional; absent = the M3 game) --- */
+  /** M4: the Acts, in order (ActDef). Default: absent (the M3 game: one implicit ending over sectorOrder, no capstone). */
+  acts?: ActDef[];
+  /**
+   * M4: the Board's Survey card (the M4 moment; see RenewableDef.firstSurvey and Derived.surveyReveal). Placeholders,
+   * formatted by the core: {reported} (catch per trip, integer per cent), {true} (the stock, integer per cent),
+   * {sector}, {year}, plus the usual. The variant is chosen by the gap g = reported − true at the moment: 'failed' when
+   * the sector has crossed its threshold this run (SectorState.crossed), else 'small' when g < SURVEY_SMALL_GAP (0.15),
+   * else 'large'. Lint: one variant of each kind. Default: absent (no card; the 'surveyed' headline falls back to
+   * Content.headlines.surveyed).
+   */
+  surveyReveal?: {
+    variants: { when: 'small' | 'large' | 'failed'; headline: string; body: string }[];
+    /** Column heads: "The skippers' report" / "The Board's survey". */
+    columns: { reported: string; surveyed: string };
+    /** The reach-back paragraph (the Statistics Office's two notes). */
+    footer: string;
+    /** "File the survey". */
+    button: string;
+    /** The headline printed on the step after the reveal ("Skippers dispute the survey…"), key 'surveyed'. Default: none. */
+    followUp?: string;
+  };
+}
+
+/**
+ * M4: an Act (Content.acts): a run of Ages with one ending, after which its Industries are settled for good (the
+ * capstone). Acts are in order; the CURRENT act is the first whose ending has not been reached (meta.endings[ending.id]
+ * absent; an act with no `ending` is never "reached", so it stays current once it is the first such), or null once
+ * every act's has. Content without `acts` plays as M3 (the first ending is every Industry in sectorOrder settled; no
+ * capstone). Lint: ids unique; each age in at most one act; ending.sectors belong to the act's ages and have `settle`.
+ */
+export interface ActDef {
+  /** 'actOne'. Also the EndingRecord key of its ending when ending.id is the same (content's choice). */
+  id: string;
+  /** On screen: "Act I". */
+  name: string;
+  /** "The Coal Age". Shown on the Act title card with `name`. */
+  title: string;
+  /** Ages in this act, in order (each age in at most one act). */
+  ages: AgeId[];
+  /**
+   * The ending: every sector in `sectors` open and settled (a capstoned sector counts as settled) at a step's start and
+   * end, held GlobalParams.endingYears model years (GameState.steadyYearsAll). Reaching it writes meta.endings[id] and,
+   * if `capstone`, meta.world.capstone (CapstoneRecord). Absent: this act has no ending (its Industries are never
+   * capstoned; a Preview act).
+   */
+  ending?: { id: string; sectors: SectorId[] };
+  /**
+   * The capstone (after the ending): every sector in ending.sectors opens settled at the start of every later run.
+   *   incomeShare  share of the recorded settled income paid while capstoned, 0–1. Default CAPSTONE_INCOME_SHARE (0.25).
+   *   hindsight    whether capstoned sectors count in perSectorReached and perSettledSector. Default false.
+   * Absent: no capstone.
+   */
+  capstone?: { incomeShare?: number; hindsight?: boolean };
+  /**
+   * This act's own rules are not built yet: its sectors play under Act I's rules and are labelled "Preview"
+   * (SectorDerived.preview). They are never part of an act's ending set. Content sets it on Acts II and III in M4; M5
+   * removes it from Act II. Default false. Re-gating the Previews is content only: their unlock.when becomes
+   * { all: [ { any: [ { ending: 'actOne' }, { owns: '<self>' } ] }, …opening conditions… ] }.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -508,6 +655,10 @@ export interface GlobalParams {
    *   perSectorReached   × (sectors open at the Reckoning − 1)
    *   perSteadySector    × sectors that reached Steady State this run
    *   perSettledSector   M2: × sectors settled (SectorState.settled ≠ null) at the moment of the Reckoning. Default 0.
+   * M4: capstoned sectors (SectorState.capstoned) are left out of perSectorReached and perSettledSector unless their
+   * act's capstone.hindsight is true; they count in wellbeing-years and in the intensity like any sector. perUnburnt
+   * counts every open 'renewable' sector as Q / K (the true stock), ramped by yearsAtTarget as stock sectors are; a
+   * sector with resourceStock is not counted (its reserve is the owner's, counted once).
    */
   hindsight: {
     perWellbeingYear: number;
@@ -532,6 +683,8 @@ export interface GlobalParams {
    *   holdBefore  what fastForward will not cross unseen. 'crisis': it stops one step before a step that would fire a
    *               crisis (any sector), collapse a sector or exhaust a stock; 'collapse': before a collapse or an
    *               exhaustion; null: it holds nothing (M1 behaviour: a run can end offline). See ModelApi.fastForward.
+   *               M4: 'crisis' and 'collapse' also stop one step before a step that would put a capstoned sector into
+   *               arrears (OfflineReport.heldBy 'arrears'). A depletion sector's crises are crises like any other.
    *   hindsightRate  M2 (offline fix): the rate, 0–1, at which Hindsight accrues inside fastForward. Default 1 (full
    *               rate). Everything else a catch-up does counts in full (capital, Mandate, population, the reserve and
    *               pressure, decades and their decadeEffects, the streaks, Steady State, unlocks); only the Hindsight a
@@ -642,6 +795,7 @@ export interface GlobalParams {
    * once, without a break, for this long (see GameState.steadyYearsAll). Default STEADY_STATE_YEARS (50 model years,
    * 1000 s of run time: long enough that every settlement has to be defended through it, so the ending is a held
    * achievement rather than the instant the fifth Industry settles). ≥ 0; 0 means the moment all are settled.
+   * M4: with Content.acts, the same length applies to every act's ending (over ActDef.ending.sectors).
    */
   endingYears?: number;
   /**
@@ -835,6 +989,17 @@ export interface CharterDef {
  * stock is a new resourceKind; Iron's shared stock points at Steam's (seams then live on the owner of the stock);
  * Plenty's second gauge is a second stock; Comfort's ratchet is ApplicationDef.ratchet beside lockInDecay;
  * Proof-of-Work's difficulty is its own solve path.
+ *
+ * M4 kinds (each optional, absent = M3 behaviour):
+ *   - feeds (ApplicationDef.feeds): a factor on the TARGET's c, joined before step 3 (load's c_eff multiplies whatever c
+ *     results). A feed is an edge source → target in the solve order, beside spill and drawsOn.
+ *   - the shared reserve (SectorDef.resourceStock): the drawer's p_r is the owner's (after step 4 on the owner) × the
+ *     drawer's own resourcePriceMul.
+ *   - the renewable stock (resourceKind 'renewable', RenewableDef): p_r = basePrice × reported^(−alpha) × Π
+ *     resourcePriceMul, reported = (Q/K)^beta, in place of the stock price (seams do not apply). Q is state, not part
+ *     of the fixed point. Foreign fleets (ForeignDef) drain Q outside the solve.
+ * The shadow solve sees the feeds into a sector (they are not that sector's efficiency) and the owner's / reported
+ * resource price as the live solve does.
  */
 
 /** M3: one seam of a stock sector's ladder (SectorDef.seams), sunk in order with ModelApi.sinkSeam. */
@@ -910,6 +1075,82 @@ export interface TravelDef {
   apps?: string[];
 }
 
+/**
+ * M4: a renewable stock (SectorDef.renewable; required with resourceKind 'renewable', which requires pressureSource
+ * 'depletion': lint). K = SectorDef.reserve (the natural size; reserveAdd effects do not change it), reserveMax = K,
+ * SectorState.reserve = Q.
+ *   G(Q) = regen × Q × (1 − Q/K) × d × s      d = collapsed if Q < threshold × K, else 1; s = scar.mul while scarred, else 1
+ * THE STEP for an open, unsettled renewable sector (module renewable.ts; one line in step.ts), per step of dt:
+ *   1. R_home from the solve (as any sector); R_foreign by ForeignDef (0 without one).
+ *   2. Q ← Q + (G(Q) − R_home × (1 − circularity share) − R_foreign) × dt, explicit; when |dQ| over the step exceeds
+ *      RENEWABLE_SUBSTEP_SHARE × K the step is split into n = min(RENEWABLE_SUBSTEPS_MAX, ceil(|dQ| /
+ *      (RENEWABLE_SUBSTEP_SHARE × K))) equal substeps (G and R_foreign re-evaluated per substep at the new Q, R_home held
+ *      at the step's solve); Q is clamped to [RENEWABLE_FLOOR × K, K] after each.
+ *   3. If Q < threshold × K and not SectorState.crossed: crossed = true; the scar is written; 'thresholdCrossed' event
+ *      and 'threshold' headline.
+ *   4. P = (1 − Q/K) × collapseAt (derived; pressureSource 'depletion'), crises at crisisAt as usual.
+ *   5. The scar's yearsLeft decremented (see `scar`).
+ * Settled (and capstoned): Q frozen, not stepped. In arrears: Q stepped with the arrears R (see SettledState).
+ */
+export interface RenewableDef {
+  /** r: intrinsic regrowth rate per second (see G). > 0. */
+  regen: number;
+  /** θ: threshold as a fraction of K, 0–1. Below it d = collapsed; at or above it d = 1. */
+  threshold: number;
+  /** d below the threshold, 0–1 (depensation: the remnant cannot regrow). */
+  collapsed: number;
+  /** β of the reported stock (catch per unit effort = q × A^β; β < 1 is hyperstability). 0 < beta ≤ 1. */
+  beta: number;
+  /**
+   * The scar written the first time Q falls below θK in a run (that step: 'thresholdCrossed' event and 'threshold'
+   * headline; SectorState.crossed = true): meta.world.scars[s] = { yearsLeft: years, since: meta.totalSeconds }
+   * (replacing an existing scar only if its yearsLeft is shorter). While a scar has yearsLeft > 0: s = mul in G (0–1);
+   * yearsLeft −= the step's model years on every step the sector is open and unsettled (tick, fastForward and useBank
+   * alike; not while settled or capstoned, not while closed); when it reaches 0 the scar is removed ('scarHealed' event
+   * and headline).
+   */
+  scar: { mul: number; years: number };
+  /**
+   * The stock a run starts with (and the stock when the sector opens mid-run): K, unless scarred
+   * (meta.world.scars[s] present), in which case min(K, startScarred × K): the bank does not refill between runs while
+   * the scar lasts. Read in the carry-over step (inherit.ts), never assumed K. Default: `threshold`.
+   */
+  startScarred?: number;
+  /** Foreign fleets (ForeignDef). Default: none. */
+  foreign?: ForeignDef;
+  /**
+   * M4 (The Survey): the Board's first survey. Once per save per sector (meta.flags['survey:<s>'] absent), on the first
+   * LIVE step (tick; never inside fastForward or useBank: it waits for the first live step after, as a letter does) at
+   * which this sector, open and unsettled, has SectorState.crisesFired ≥ atCrisis OR openFor ≥ afterSeconds, the core:
+   * adds a timed modifier { source: 'survey:<s>', arm: 0, since: time, until: time + years / YEARS_PER_SECOND } whose
+   * effects are [{ type: 'survey', sector: s }] (ActiveModifier sources beginning 'survey:' are resolved by the core,
+   * not looked up in dispatches; ModifierView.label = `label`); sets meta.flags['survey:<s>'] = true; stores
+   * GameState.surveyReveal; emits 'surveyed' with first: true and label 'reveal' (and the reveal headline, see
+   * Content.surveyReveal). Default: none (no free survey).
+   *   label  the modifier's name on the page. Default "The Board's survey".
+   */
+  firstSurvey?: { atCrisis: number; afterSeconds: number; years: number; label?: string };
+}
+
+/**
+ * M4: foreign fleets (RenewableDef.foreign). Rivals on the same stock whose fishing power follows the home fleet's
+ * cheapness:
+ *   share = clamp(share0 × (basePs / p_s)^growth × Π foreignMul, 0, cap)    (basePs: SectorState.basePs; share0 before
+ *                                                                           the baseline exists)
+ *   R_foreign = R_home × share / (1 − share)                                 (share is the foreign part of the TOTAL catch)
+ * R_foreign drains Q and earns nothing; it is not on the home budget line, not in fullR, not in Hindsight's intensity,
+ * not in spill. A settled (or capstoned) sector has no foreign catch (the settlement is a treaty as well as a quota).
+ * cap < 1 (lint).
+ */
+export interface ForeignDef {
+  share0: number;
+  growth: number;
+  cap: number;
+  /** The share at which the 'foreignFleets' headline is printed, the first time it passes it in a run (no event;
+   *  SectorState.foreignAnnounced). Default FOREIGN_ANNOUNCE_AT (0.15). */
+  announceAt?: number;
+}
+
 /** M1 CHANGE (was EraDef): one service + resource economy. On screen: an "Industry". */
 export interface SectorDef {
   id: SectorId;
@@ -968,8 +1209,14 @@ export interface SectorDef {
    * 'flow' : a renewable capacity per second (Code's attention). p_r = basePrice × (1 / (1 − u))^alpha
    *          where u = min(0.98, R / usableCapacity). Never runs out; just gets scarce; service above u = 0.98 is rationed.
    *          M3 CHANGE: × Π resourcePriceMul.
+   * M4: 'renewable': a stock Q that regrows (RenewableDef, required). K = `reserve` (the natural size, not changed by
+   *          reserveAdd), reserveMax = K, SectorState.reserve = Q. Never exhausts (no forced Reckoning; Q floors at
+   *          RENEWABLE_FLOOR × K). p_r = basePrice × reported^(−alpha) × Π resourcePriceMul, reported = (Q / K)^beta
+   *          (the fleet's cost follows catch per trip, not the stock). Seams are ignored. Requires pressureSource
+   *          'depletion' (lint). SectorDerived.reserveFraction reports the TRUE Q / K (the core's rules read it) and
+   *          secondsLeft Infinity; the page reads SectorDerived.stock instead.
    */
-  resourceKind: 'stock' | 'flow';
+  resourceKind: 'stock' | 'flow' | 'renewable';
   /** Q0 for 'stock'; capacity per second for 'flow'. Increased by reserveAdd effects (see EffectDef). */
   reserve: number;
   alpha: number;
@@ -979,8 +1226,20 @@ export interface SectorDef {
    * 'resource': P += R × intensity × dt  (smog, carbon)
    * 'service' : P += D × (1 − substituted share) × intensity × dt  (Code: every shipped feature adds to the code stock)
    * intensity = pressureIntensity × (1 − sharedLibs share). Then P decays: P ×= exp(−absorption × dt).
+   * M4: 'depletion' (resourceKind 'renewable' only): P is not stepped; it is DERIVED each step as
+   *   P = (1 − Q/K) × collapseAt.
+   * absorption and pressureIntensity are ignored. Crises fire at crisisAt fractions as usual. collapseAt is never
+   * crossed while Q > 0, so a depletion sector never collapses the run; its last crisis should sit at 1 − θ (lint) so
+   * that crossing the threshold is a named crisis.
+   * Clear skies and the sink line use the ordinary rules (SteadyParams.clearBelow × p0, clearFloor, clearCeiling): with
+   * P derived, the net pressure rate is −collapseAt / K × dQ/dt (dQ/dt = G − R_home × (1 − circularity) − R_foreign),
+   * so the Industry is clear when depletion has fallen to the clear level and the stock is not falling.
+   * sinkR for a depletion sector: the home catch that holds the stock at its clear level Q_clear = K × (1 − clearP /
+   * collapseAt), i.e. the R_home solving R_home × (1 − circularity) + R_foreign(R_home) = G(Q_clear) with today's foreign
+   * share: sinkR = G(Q_clear) / ((1 − circularity) + share / (1 − share)). It is the TRUE value; SectorDerived.sinkR and
+   * clearP read null while the sector is not surveyed (SectorDerived.stock).
    */
-  pressureSource: 'resource' | 'service';
+  pressureSource: 'resource' | 'service' | 'depletion';
   pressureIntensity: number;
   /** Fraction of P absorbed per second (plus absorptionAdd effects). 0 for Code (code never rots away on its own). */
   absorption: number;
@@ -1054,7 +1313,16 @@ export interface SectorDef {
    *   freeExcess      excess tolerated without upkeep. Default 0.05.
    *   blurb           one line for the Settle ceremony. Default ''.
    */
-  settle?: { dividend: EffectDef[]; upkeepPerSpill: number; freeExcess?: number; blurb?: string };
+  settle?: {
+    dividend: EffectDef[]; upkeepPerSpill: number; freeExcess?: number; blurb?: string;
+    /**
+     * M4: settling also needs this (Fishing: { stat: 'surveyed', sector: 'fishing', op: '>=', value: 1, label: 'The
+     * stock surveyed' }). SectorDerived.canSettle and settle() test it; while the sector is at Steady State and it fails,
+     * SectorDerived.settleBlocked is its label and Derived.ending.next.need is 'requires'. Once settled it is not
+     * re-tested (a lapsed survey does not unsettle). Default: none.
+     */
+    requires?: Cond;
+  };
 
   /* --- M3 mechanics (see "M3 MECHANICS" above; each optional, absent = M2 behaviour) --- */
   /** M3: the seam ladder ('stock' sectors only; ignored on 'flow'). Feature 'seams'. Default: none. */
@@ -1069,6 +1337,25 @@ export interface SectorDef {
    * Required by the lint for every Industry from M3; Code's names its existing mechanic. Default: absent (no heading).
    */
   mechanic?: { name: string; rebound: string; blurb: string };
+
+  /* --- M4 (each optional, absent = M3 behaviour) --- */
+  /**
+   * M4: this sector draws its resource from another stock sector's reserve (Iron's coke from Steam's coal). Requires
+   * resourceKind 'stock' on both and names a sector that has no resourceStock of its own (lint). Then:
+   *   - this sector's p_r is the owner's p_r (seams, depletion and resourcePriceMul OF THE OWNER; this sector's own
+   *     resourcePriceMul multiplies on top), and its own `reserve`, `alpha`, `basePrice` and `seams` are ignored (its
+   *     SectorState.reserve / reserveMax mirror the owner's and are not stepped);
+   *   - each step the owner's reserve is drained by R_owner × (1 − circ_owner) + Σ over open, unsettled drawers of
+   *     R × (1 − circ of that drawer);
+   *   - exhaustion is the owner's ('exhausted' names the owner; RunSummary.causeSector = the owner);
+   *   - this sector's SectorDerived.reserveFraction and secondsLeft report the owner's;
+   *   - a settled drawer drains nothing (as a settled owner: SettledState's simplification); a closed drawer nothing.
+   * Budget lines stay per sector (this sector's R on its own line). reserveAdd effects naming the drawer are ignored
+   * (lint: name the owner). Default: absent (its own reserve).
+   */
+  resourceStock?: SectorId;
+  /** M4: the renewable stock (required with resourceKind 'renewable'; ignored otherwise). Default: none. */
+  renewable?: RenewableDef;
 
   applications: ApplicationDef[];
 }
@@ -1122,6 +1409,21 @@ export interface ApplicationDef {
    * max(F_a, S_a / (1 + (flat / P_a)^k_a))). Feature 'freeAtUse' (display only). Default: absent (p_a = p_s).
    */
   priceSeen?: { share: number; flat?: number };
+  /* --- M4 --- */
+  /**
+   * M4: inputs (the order book). While this application is founded, each target sector's capital cost per unit is
+   * multiplied by
+   *   f = 1 − (1 − capCostMul) × a,    a = this app's AppDerived.adoption (0–1) in the same solve
+   * `sector` is a sector id, or '*' for every OTHER open sector (not this app's own). Several feeds into one sector
+   * multiply. A feed acts only while both are open; a SETTLED source feeds its settled adoption
+   * (SettledState.appAdoption); a settled target is not solved, so it is not fed. The factor joins c before load's
+   * c_eff (c_eff multiplies whatever c results). Solve order: a feed is an edge source → target in contentIndex's
+   * topological order, beside spill and drawsOn ('*' expands to every other sector); the lint refuses a cycle. The
+   * shadow solve of the TARGET sees the same factor (it is not efficiency of the target, so it is not frozen out): the
+   * target's rebound meter stays its own direct rebound, and the feed shows in its frontierFold, as spill does.
+   * capCostMul in (0, 1] (lint). Default: none.
+   */
+  feeds?: { sector: SectorId | '*'; capCostMul: number }[];
 }
 
 /**
@@ -1236,7 +1538,16 @@ export type EffectDef =
    *  (multiplicative; `sector` is the source). */
   | { type: 'spillMul'; sector: SectorId; value: number }
   /** M3 (finish): standing: GlobalParams.settleMax + Σ value Industries may be settled at once (an Institution's). */
-  | { type: 'settleSlotAdd'; value: number };
+  | { type: 'settleSlotAdd'; value: number }
+  /* --- M4 (standing) --- */
+  /** M4: the sector is surveyed while in force (SectorDerived.stock.surveyed): the true stock, the true depletion and
+   *  the sink line are shown, 'quota' levers are visible, and settle.requires may test it (stat 'surveyed'). Sources: a
+   *  seated Institution, a measure lever's effects (while held), a timed modifier (a survey letter; the Board's first
+   *  survey, RenewableDef.firstSurvey), a Charter's institutionLoan. Several in force = one. Meaningful on 'renewable'
+   *  sectors only (ignored elsewhere). */
+  | { type: 'survey'; sector: SectorId }
+  /** M4: the sector's foreign share (ForeignDef) × value (multiplicative across effects; the fishery limits). */
+  | { type: 'foreignMul'; sector: SectorId; value: number };
 
 export interface UpgradeDef {
   id: string;              // 'steam.condenser'
@@ -1313,7 +1624,15 @@ export type LeverKind =
   /** M3: a policy acting through effects: LeverDef.effects are standing effects applied with times = the current level's
    *  `value` (multiplicative effects to the power value, additive ones × value). Range 0–∞ (repeat bounded by maxSteps).
    *  A fuel-economy standard (etaMul), a road programme (travelMul roads), a scrappage scheme. value2 unused. */
-  | 'measure';
+  | 'measure'
+  /** M4: a cap on the TRUE sustainable catch: capR = value × sinkR (the depletion sector's sink line; see SectorDef
+   *  .pressureSource) instead of value × budgetR. Visible only while the sector is surveyed (LeverView.visible needs
+   *  SectorDerived.stock.surveyed, besides the usual gates); while unsurveyed a HELD quota acts on the last surveyed
+   *  sinkR (SectorState.lastSurvey.sinkR, the Board's last figure; nothing if there is none). Otherwise exactly a 'cap'
+   *  (permit price, leak via value2, squeeze limit, levy, recycle). value 0 = a moratorium (D held at the price-proof
+   *  floors only). Range 0–1. Requires a budget line as a cap does (drawn at today's R if absent). The tightest of the
+   *  sector's caps and quotas applies. */
+  | 'quota';
 
 /**
  * M1: where a levy's revenue goes (meaningful for 'duty' and 'cap' only).
@@ -1351,6 +1670,8 @@ export interface LeverDef {
    *   an institution id → SEATED this run (M1 CHANGE: was "owned"; M2: or loaned by an institutionLoan in force);
    *   a FeatureId       → that feature unlocked (MetaState.features; always met if the feature is not in content);
    * any other string is treated as met (the content lint flags it).
+   * M4: a 'quota' lever is also hidden while its sector is not surveyed (see LeverKind 'quota'); a capstoned sector's
+   * levers are hidden as a settled sector's are.
    * Independently of `requires`, every lever is hidden until flags.revealed and the 'levers' feature, unless a seated
    * institution starts it (startLever), and hidden while `locked` and not unlocked. M2: every lever of a SETTLED sector is hidden and
    * unraisable (settle sets them to 0; see ModelApi.settle).
@@ -1366,6 +1687,7 @@ export interface LeverDef {
    * A repeat level exists only while its value stays inside the kind's range (M3: measure 0–∞; duty 0–0.999, cap 0.05–∞, sufficiency
    * 0.05–1, substitution/greenSpending/reviewGate 0–1, circularity/sharedLibs 0–0.95, deletion 0–0.9) and k ≤ maxSteps.
    * For a cap, valueStep is negative (each Tighten lowers the cap as a fraction of the budget). Default: no repeat.
+   * M4: quota 0–1 (valueStep negative, as a cap's).
    */
   repeat?: {
     valueStep: number;
@@ -1526,7 +1848,16 @@ export type HeadlineKey =
   | 'history'         // a History is cleared ({name} = the History)
   | 'return'          // the household return is published (text from Content.proprietor)
   | 'returnWithdrawn' // the household return is withdrawn ("…discontinued for want of funding")
-  | 'ending';         // the first ending, beside 'steadyAll' ({year}; printed once ever, in the run that reached it)
+  | 'ending'          // the first ending, beside 'steadyAll' ({year}; printed once ever, in the run that reached it)
+  /* --- M4 (Content.headlines must list each key; an empty array falls back to the core's one-line default) --- */
+  | 'threshold'       // a renewable stock first falls below its threshold this run (event 'thresholdCrossed')
+  | 'scarHealed'      // a scar heals (event 'scarHealed')
+  | 'surveyed'        // a sector is first surveyed this run (event 'surveyed'); the Board's first survey prints
+                      //   Content.surveyReveal's variant headline instead, and its followUp on the next step
+  | 'arrears'         // a capstoned Industry goes into arrears (event 'arrears')
+  | 'foreignFleets'   // the foreign share first passes ForeignDef.announceAt this run (no event)
+  | 'actEnding';      // an Act's ending is reached ({name} = ActDef.title, {year}); with Content.acts it replaces
+                      //   M3's 'ending' headline (printed once ever per act, after 'steadyAll')
 
 /* ------------------------------------------------------------------ */
 /* M3 CONTENT: the cast, dispatches, ambient news, Histories, Archive  */
@@ -1574,6 +1905,36 @@ export interface DispatchArm {
   /** A follow-up queued to come next (GameState.dispatch.queue), if eligible then. Default: none. */
   next?: string;
   /** The paper's line when this arm is chosen (headline 'answered'), ≤ 70 characters. Default: no item. */
+  reply?: string;
+  /* --- M4 --- */
+  /**
+   * M4: a wager. When this arm is answered, `when` is evaluated on the TRUE state at that moment (after `cost` is paid,
+   * before any effect): if it holds, `win` is applied, else `lose`. Order of application: the cost; the arm's own
+   * `effects`, `modifier` and `reply`, if any; then the branch's effects (one-offs at once, standing ones for the rest of
+   * the run, once per answer, as an arm's own: GameState.dispatch.standing records [id, arm] and the core resolves the
+   * branch from AnsweredDispatch.won), its modifier (an ActiveModifier with source = the dispatch id, arm = this arm and
+   * branch 'win' | 'lose', beside the arm's own modifier if it has one) and its reply (a second 'answered' item, after
+   * the arm's own reply).
+   * `hint` is the condition in the paper's words, shown under the label with both outcomes ("Pays if the shoals are as
+   * thick as the catch says"). AnsweredDispatch.won records the result; the 'dispatchAnswered' event carries n = arm and
+   * label 'won' | 'lost'. Lint: a wager arm is never the default arm; win and lose each have at least one effect or a
+   * modifier; `when` resolves; hint ≤ 70 characters; each outcome ≤ 120 characters. Default: none (an ordinary arm).
+   */
+  wager?: {
+    when: Cond;
+    hint: string;
+    win: WagerBranch;
+    lose: WagerBranch;
+  };
+}
+
+/** M4: one outcome of a wager arm (DispatchArm.wager). */
+export interface WagerBranch {
+  /** What happens, in the paper's words (≤ 120 characters). */
+  outcome: string;
+  effects?: EffectDef[];
+  modifier?: { effects: EffectDef[]; years: number; label?: string };
+  /** ≤ 70 characters (headline 'answered'). */
   reply?: string;
 }
 
@@ -1753,6 +2114,15 @@ export interface GameState {
    * (Superseded: M1 counted years in which every open sector decoupled; M2 counted wellbeing at the target with every
    * open sector settled or within budget and clear. A save mid-streak under the old rule keeps its number and loses
    * it on the first step that does not meet the new rule; no migration is needed, the shape is unchanged.)
+   * M4 RULE (with Content.acts; without them the M3 (finish) rule above, unchanged): let A = the current act (ActDef).
+   * If A has an `ending`, a step counts (steadyYearsAll += the step's model years) when every sector in A.ending.sectors
+   * is open and settled (SectorState.settled ≠ null; a capstoned sector counts) at the step's start and end; any other
+   * step resets it to 0. flags.won is set when steadyYearsAll ≥ endingYears; at that step the core writes
+   * meta.endings[A.ending.id] (an EndingRecord), the milestone 'ending:<id>', a 'won' event then an 'ending' event
+   * (id = A.ending.id), a 'steadyAll' headline then an 'actEnding' headline ({name} = A.title), and, if A.capstone,
+   * meta.world.capstone (CapstoneRecord, one per sector of A.ending.sectors). If A has no ending (a Preview act), or
+   * there is no current act, steadyYearsAll stays 0. flags.won stays true for the rest of the run, as in M3, and no
+   * second ending is reached in that run; the NEXT run's current act is the following act. Not gated by any feature.
    */
   steadyYearsAll: number;
   news: NewsItem[];        // newest first, capped at 40
@@ -1869,6 +2239,18 @@ export interface GameState {
    * afresh). A Reckoning clears it (a fresh run has none). Not shown anywhere.
    */
   headlineUse?: Record<string, number>;
+  /* --- M4 --- */
+  /**
+   * M4 (The Survey): the reveal recorded at the Board's first survey (RenewableDef.firstSurvey), so that the card shows
+   * the figures of that moment however long it waits to be read: reported = (Q/K)^beta and true = Q/K at that step
+   * (fractions 0–1), the variant (Content.surveyReveal), the calendar year (integer), and whether the follow-up
+   * headline has been printed (it is printed on the next step, then followed = true). Derived.surveyReveal is built
+   * from it. Absent or null = none this run; a Reckoning clears it.
+   */
+  surveyReveal?: {
+    sector: SectorId; reported: number; true: number; variant: 'small' | 'large' | 'failed'; year: number;
+    followed: boolean;
+  } | null;
 }
 
 /** M3: a dispatch waiting for an answer (GameState.dispatch.pending). */
@@ -1880,10 +2262,25 @@ export interface PendingDispatch {
 }
 
 /** M3: an answered dispatch (GameState.dispatch.answered). `t` is run time; `by` 'player', 'default' or 'dispatch'. */
-export interface AnsweredDispatch { id: string; arm: number; t: number; by: Actor }
+export interface AnsweredDispatch {
+  id: string; arm: number; t: number; by: Actor;
+  /** M4: for a wager arm, whether `when` held at the answer (win) or not (lose). Absent for ordinary arms and on
+   *  entries saved before M4. */
+  won?: boolean;
+}
 
-/** M3: a timed modifier (GameState.modifiers). `source` is the dispatch id; effects = that dispatch's arms[arm].modifier. */
-export interface ActiveModifier { source: string; arm: number; since: number; until: number }
+/**
+ * M3: a timed modifier (GameState.modifiers). `source` is the dispatch id; effects = that dispatch's arms[arm].modifier.
+ * M4: with `branch`, effects = arms[arm].wager[branch].modifier instead; the stacking rule's "same source and arm" means
+ * same source, arm and branch. A source beginning 'survey:' is the Board's first survey of sector <s> (arm 0, no
+ * branch): effects = [{ type: 'survey', sector: s }], label = RenewableDef.firstSurvey.label ?? "The Board's survey"
+ * (resolved by the core, never looked up in Content.dispatches).
+ */
+export interface ActiveModifier {
+  source: string; arm: number; since: number; until: number;
+  /** M4: the wager branch whose modifier this is (see above). Absent = the arm's own modifier. */
+  branch?: 'win' | 'lose';
+}
 
 /** M2: who took an action or caused an event. 'default' = the rules themselves (a lapse, an overflow, an offline hold).
  *  Later: 'dispatch' (M3), 'rival' (M5), 'agent' (M7). */
@@ -1949,6 +2346,21 @@ export interface PendingDividend {
  * ('modifierEnded', default 'dispatchAnswered'), then a draw ('dispatchArrived'), then 'biteBack', then
  * 'historyCleared', then 'archiveUnlocked', then (if orders tick) the standing orders' events. Two thresholds crossed in
  * one step emit two events, in that order (as crises do).
+ * M4 kinds:
+ *   'thresholdCrossed'  sector — first crossing below θK this run (the crisis event, if one fires at the same step, comes
+ *                       first, in the M2 order)
+ *   'scarHealed'        sector
+ *   'surveyed'          sector — the first step this run on which a survey effect is in force (the true gauge appears);
+ *                       first: true and label 'reveal' for the Board's free first survey (RenewableDef.firstSurvey)
+ *   'arrears'           sector ; 'arrearsCleared' sector (see SettledState, M4 arrears)
+ *   'capstoned'         sector, id (the act) — emitted by reckon() on the new run, one per capstoned sector, after the
+ *                       'reckoning' event (the page's cartouche); createState alone and the between-runs rebuilds emit
+ *                       none (the rebuilds keep the list)
+ * M4 CHANGES: 'won' and 'ending' with Content.acts are the act's (id = ActDef.ending.id on 'ending'; 'won' as before);
+ *   'dispatchAnswered' for a wager arm carries label 'won' | 'lost'. M3's 'ending' id 'steadyAll' remains for content
+ *   without acts.
+ * M4 order within a step: the M3 order up to 'archiveUnlocked', then 'thresholdCrossed', 'scarHealed', 'surveyed',
+ *   'arrears' / 'arrearsCleared' (each in sectorOrder), then (if orders tick) the standing orders' events.
  */
 export type EventKind =
   | 'appAvailable' | 'appFounded' | 'upgradeBought' | 'stageReached' | 'leverEnacted' | 'leverLapsed'
@@ -1959,7 +2371,9 @@ export type EventKind =
   | 'featureUnlocked'
   /* --- M3 --- */
   | 'seamSunk' | 'biteBack' | 'dispatchArrived' | 'dispatchAnswered' | 'modifierEnded' | 'historyChosen'
-  | 'historyCleared' | 'returnFiled' | 'returnPublished' | 'returnWithdrawn' | 'archiveUnlocked' | 'ending' | 'bankUsed';
+  | 'historyCleared' | 'returnFiled' | 'returnPublished' | 'returnWithdrawn' | 'archiveUnlocked' | 'ending' | 'bankUsed'
+  /* --- M4 --- */
+  | 'thresholdCrossed' | 'scarHealed' | 'surveyed' | 'arrears' | 'arrearsCleared' | 'capstoned';
 
 /** M2: one event (GameState.events). Plain JSON. */
 export interface GameEvent {
@@ -1988,8 +2402,12 @@ export interface OfflineReport {
   simulated: number;
   /** Why it stopped short of `requested`: a hold (offline.holdBefore), the cap, a Reckoning that was ALREADY pending
    *  when it began ('pending'), or null if it ran the whole request. */
-  heldBy: 'crisis' | 'collapse' | 'exhausted' | 'cap' | 'pending' | null;
-  /** The sector whose crisis, collapse or exhaustion was held off (heldBy 'crisis' | 'collapse' | 'exhausted'). */
+  heldBy: 'crisis' | 'collapse' | 'exhausted' | 'cap' | 'pending' | null
+    /** M4: it stopped one step before a capstoned sector would go into arrears (holdBefore 'crisis' or 'collapse';
+     *  heldSector names it). Banked like 'crisis' (GlobalParams.offline.bankRate). */
+    | 'arrears';
+  /** The sector whose crisis, collapse or exhaustion was held off (heldBy 'crisis' | 'collapse' | 'exhausted'; M4: or
+   *  'arrears'). */
   heldSector?: SectorId;
   /** Run time when the catch-up began and ended. */
   from: number;
@@ -2071,6 +2489,19 @@ export interface BudgetState {
   pace: string;
   /** Run time at which the sector first became clear on this line (emits 'clearSkies'); absent until then. */
   clearAt?: number;
+  /* --- M4 --- */
+  /**
+   * M4 (The Survey): the account the line is drawn on: 'own' (the chimney: R, as before) or 'full' (SectorDerived.fullR).
+   * Lines drawn (by any means) while feature 'estimates' is on are 'full'; earlier lines keep 'own' (absent = 'own'), and
+   * a redraw takes the account of the moment. For a 'full' line r0 is fullR when drawn, and every test that compares R
+   * with budgetR uses fullR: withinBudget (and so decoupling and the decades), the Steady streak's within-budget part
+   * (sinkHeld), 'budgetHeadroom', the Civil Service's tests, setLever's over-the-line redraw, and caps' capR. A cap or
+   * quota on a 'full' line still prices the sector's OWN R (it cannot tax Iron's coke): the permit is solved so that
+   * own R ≤ capR − received (received = fullR − R + handedOn, SectorDerived.embodied summed; if that target is ≤ 0 the
+   * squeeze limit applies). Clear skies and the sink line are unchanged (they are about the local sky). The page labels
+   * each line with its account. HistorySample.budget stays budgetR / baseR.
+   */
+  account?: 'own' | 'full';
 }
 
 /**
@@ -2093,6 +2524,25 @@ export interface BudgetState {
  *   When Mandate cannot pay: the lapse rule (LeverLevelDef.mandateUpkeep) first drops lever levels as in M1; only once
  *     no lever with upkeep is left does it unsettle the settled sector with the largest defence (ties: sectorOrder),
  *     and repeats until upkeep is covered. An unsettled sector resumes as after ModelApi.unsettle (by 'default').
+ * M4: a capstoned sector (SectorState.capstoned) holds the CapstoneRecord's SettledState with D, R, appD and income
+ *   scaled per head each step (see CapstoneRecord); everything above applies to it with those values, except:
+ *   - it uses no room (Derived.ending.room, GlobalParams.settleMax) and pays no settleHold (it is not among the n);
+ *   - ARREARS (M4 CHANGE to the lapse rule's last step, for capstoned sectors only): when the settled sector the lapse
+ *     rule would unsettle (largest defence; ties: sectorOrder) is capstoned, it goes INTO ARREARS instead
+ *     (SectorState.arrears = true; 'arrears' event and headline) and the rule moves on to the next. In arrears:
+ *       · its defence is not charged;
+ *       · its R and D are the scaled settled values × (1 + max(0, excess − freeExcess)) (the excess served, undefended);
+ *         income and appD scale with D;
+ *       · its pressure is stepped again from P with that R (P += R × intensity × dt; P ×= exp(−absorption × dt)); for a
+ *         'depletion' sector the stock is stepped instead (RenewableDef's step with R_home = that R, no foreign catch)
+ *         and P derived from it; its wellbeing share uses that pressure;
+ *       · it cannot end the run: crises at its crisisAt fire headlines and Mandate as usual, but its pressure is held at
+ *         ARREARS_COLLAPSE_HOLD × collapseAt (a capstone never collapses or exhausts the run);
+ *       · it leaves arrears on the first step at which Mandate would cover its defence for that step (Mandate ≥ the
+ *         defence × dt after every other upkeep): arrears = false, 'arrearsCleared' event; its pressure then decays back
+ *         by absorption (not reset; a depletion stock regrows by G − the scaled settled R × (1 − circularity)) until it
+ *         is back at the recorded P (resp. the recorded stock), where it is frozen again.
+ *   - ModelApi.unsettle refuses it (same reference).
  */
 export interface SettledState {
   /** Run time and calendar year (integer) when settled. */
@@ -2122,6 +2572,29 @@ export interface SettledState {
   travel?: { speed: number; hoursPerHead: number; roads: number; sprawl: number };
   /** M3: the seen price per founded application at settlement (AppDerived.priceSeen while settled). */
   appPriceSeen?: Record<string, number>;
+}
+
+/**
+ * M4: one capstoned sector's record (MetaState.world.capstone[s]), taken from its SettledState at the step the act's
+ * ending was reached. The per-head service is what persists: at a run's population N the capstone serves
+ *   k = min(1, N / N0);  D = D0 × k;  R = R0 × k;  appD[a] = appD0[a] × k;  income = income0 × k × incomeShare
+ * (incomeShare = ActDef.capstone.incomeShare ?? CAPSTONE_INCOME_SHARE), and once N > N0 the ordinary settled excess rule
+ * applies (SettledState: excess, defence, freeExcess). P, ps, pPre, eta, defect, appAdoption and the M3 snapshots
+ * (load, travel, appPriceSeen) are taken as recorded. Why per head: a fresh run starts at population 1, and the
+ * ending's frozen totals would give the first minute the ending's whole service.
+ * Building (the carry-over step, inherit.ts, used by reckon and by createState(content, meta)): every sector with a
+ * record opens at the run's first step, settled = record.settled with since = 0 and sinceYear = the run's start year
+ * (both rewritten each run), capstoned = true, pressure = settled.P, its reserve as a fresh run builds it (a renewable's
+ * by startScarred), its applications founded where appAdoption has them, levers at 0; settledBefore = true (the
+ * settle dividend's one-offs never fire for a capstone; its standing effects are in force).
+ */
+export interface CapstoneRecord {
+  /** ActDef.id. */
+  act: string;
+  /** Calendar year the ending was reached (integer; the cartouche: "Settled 1911"). */
+  year: number;
+  /** As recorded; since and sinceYear are rewritten each run to the run's start. */
+  settled: SettledState;
 }
 
 /** M1 CHANGE (was EraState). */
@@ -2187,6 +2660,34 @@ export interface SectorState {
   /* --- M3 --- */
   /** M3: seams sunk this run (SectorDef.seams[0 … seamsSunk − 1]); 0 without seams. */
   seamsSunk: number;
+  /* --- M4 (all optional: absent = false / none, so M3 states and hand-built test states stay valid) --- */
+  /**
+   * M4: this sector is capstoned this run (opened settled at run start from meta.world.capstone; see CapstoneRecord).
+   * A capstoned sector: is open from the run's first step; SectorState.settled is the record's SettledState, scaled
+   * each step; counts as settled for every rule (the ending, Cond 'settled' and 'sectorsSettled', excess, defence, the
+   * lapse rule's ordering) EXCEPT that it uses no room (Derived.ending.room, GlobalParams.settleMax), pays no settleHold,
+   * cannot be unsettled by ModelApi.unsettle (refused: same reference), and its levers stay hidden. It never leaves the
+   * settled state in the run; under an unpaid defence it goes into arrears (SettledState, M4).
+   */
+  capstoned?: boolean;
+  /** M4: a capstoned sector whose defence could not be paid (SettledState, M4 arrears). */
+  arrears?: boolean;
+  /** M4: Q has crossed below θK in this run (renewable only; RenewableDef). */
+  crossed?: boolean;
+  /** M4: the lowest Q / K this run (renewable only; updated every step it is stepped; RunSummary.sectors[s].minStock). */
+  minStock?: number;
+  /**
+   * M4: the last step on which a survey effect was in force on this sector this run: the sink line it showed (sinkR,
+   * or null if no line was drawn then), the run time and the calendar year (integer). A held 'quota' acts on this sinkR
+   * while unsurveyed; the page letters the blank gauge "No survey since {year}". Absent: never surveyed this run (the
+   * first step with a survey emits 'surveyed').
+   */
+  lastSurvey?: { sinkR: number | null; t: number; year: number };
+  /** M4: the 'foreignFleets' headline has been printed this run (ForeignDef.announceAt). */
+  foreignAnnounced?: boolean;
+  /** M4: on a feed SOURCE, the peak rAdded into each target this run (SectorDerived.feeds), sampled at each
+   *  HistorySample (every 5 s of run time) rather than every step: RunSummary.sectors[s].feedR. */
+  feedPeak?: Record<SectorId, number>;
 }
 
 export interface AppState {
@@ -2231,7 +2732,8 @@ export interface HistorySample {
   sectors: Record<SectorId, [number, number]>;
   /** M1: sector id → budgetR / baseR at the sample time, for sectors with a budget. */
   budget?: Record<SectorId, number>;
-  /** M2: sector id → SectorDerived.sinkR / baseR at the sample time, for sectors with a non-null sinkR (the sink line). */
+  /** M2: sector id → SectorDerived.sinkR / baseR at the sample time, for sectors with a non-null sinkR (the sink line).
+   *  M4: a depletion sector's is recorded only while it is surveyed (its sinkR reads null otherwise). */
   sink?: Record<SectorId, number>;
   wellbeing: number;
 }
@@ -2469,7 +2971,8 @@ export interface MetaState {
   archive: Record<string, number>;
   /** M3: permanent flags set by the one-off metaFlag effect ('proprietor'). */
   flags: Record<string, boolean>;
-  /** M3: endings reached, by id ('steadyAll' in M3; M4 renames nothing, it adds 'actOne'). */
+  /** M3: endings reached, by id ('steadyAll' in M3; M4 renames nothing, it adds each act's ActDef.ending.id: 'actOne').
+   *  M4: milestones gain 'ending:<id>' (an act's ending) and 'capstone' (the first run built with a capstone). */
   endings: Record<string, EndingRecord>;
   /**
    * M3: the first time ever of each thing the retrospective tells, by key (never overwritten; at most MILESTONES_MAX).
@@ -2481,6 +2984,21 @@ export interface MetaState {
   milestones: Record<string, { run: number; at: number; year: number }>;
   /** M3: banked seconds (GlobalParams.offline.bankRate; ModelApi.useBank). 0 when banking is off. */
   bankedSeconds: number;
+  /* --- M4 --- */
+  /**
+   * M4: what persists in the WORLD across Reckonings, as opposed to the player's knowledge (Hindsight, Know-how,
+   * Institutions, features). Absent = {} (and each member absent = {}). M4 writes `capstone` and `scars`; M7 (The
+   * Inheritance) adds reserves, pressure, lock-in, founded uses, population, the generation count and endowments here,
+   * so that the prestige shift is a migration, not a rewrite. Nothing world-scoped goes anywhere else. The fresh run is
+   * built from it by ONE carry-over step in core (inherit.ts), used by reckon and createState(content, meta) alike; no
+   * M4 rule may assume a run starts from a fresh world (design/m4-contract-notes.md §14).
+   */
+  world?: {
+    /** Capstoned sectors, by sector id (CapstoneRecord). Written once per act at its ending, never removed. */
+    capstone?: Record<SectorId, CapstoneRecord>;
+    /** Scars by renewable sector id (RenewableDef.scar). `since` = meta.totalSeconds when written. */
+    scars?: Record<SectorId, { yearsLeft: number; since: number }>;
+  };
 }
 
 /**
@@ -2557,6 +3075,10 @@ export interface RunSummary {
     steady?: boolean; settled?: boolean;
     /** M3: seams sunk; load factor, speed index and sprawl at the end (absent where the sector has no such kind). */
     seams?: number; loadFactor?: number; speed?: number; sprawl?: number;
+    /** M4 (absent on summaries made before M4, and where the sector lacks the kind): the lowest true Q / K this run and
+     *  whether it crossed its threshold (renewable); the peak rAdded into each fed target (SectorState.feedPeak; feed
+     *  sources); capstoned this run. */
+    minStock?: number; crossed?: boolean; feedR?: Record<SectorId, number>; capstoned?: boolean;
   }>;
   /** M1: the Hindsight breakdown at the Reckoning. Absent on summaries migrated from v1. */
   hindsightTerms?: HindsightTerms;
@@ -2585,6 +3107,12 @@ export interface RunSummary {
   peakPopulation?: number;
 }
 
+/**
+ * Why a run ended. M4: OPEN: M7 (The Inheritance) adds 'generation', and later milestones may add more. Code that
+ * switches on it must have a default branch (a default label, never an exhaustive switch without one), and a saved
+ * RunSummary with an unknown cause must load and display. (A depletion sector never collapses and a capstoned sector
+ * never ends a run, so M4 adds no cause.)
+ */
 export type ReckoningCause = 'exhausted' | 'collapse' | 'chosen';
 
 /* ------------------------------------------------------------------ */
@@ -2602,15 +3130,16 @@ export interface HindsightTerms {
   wellbeing: number;
   /** M2 CHANGE: perBudgetDecade × (run.budgetDecades − run.leanDecades) + (perLeanDecade ?? 0) × run.leanDecades */
   budget: number;
-  /** perUnburnt × Σ over open stock sectors of (reserve / reserveMax) × min(1, yearsAtTarget / STEADY_STATE_YEARS) */
+  /** perUnburnt × Σ over open stock sectors of (reserve / reserveMax) × min(1, yearsAtTarget / STEADY_STATE_YEARS)
+   *  M4: renewable sectors count as Q / K; resourceStock drawers are not counted (see GlobalParams.hindsight). */
   unburnt: number;
   /** perFirstBackfire × count of run.firstBackfires */
   backfire: number;
-  /** perSectorReached × max(0, open sectors − 1) */
+  /** perSectorReached × max(0, open sectors − 1). M4: capstoned sectors not counted unless capstone.hindsight. */
   sectorsReached: number;
   /** perSteadySector × count of run.steadySectors */
   steady: number;
-  /** M2: (perSettledSector ?? 0) × open sectors settled now. */
+  /** M2: (perSettledSector ?? 0) × open sectors settled now. M4: capstoned sectors not counted unless capstone.hindsight. */
   settled: number;
   /**
    * M2 (offline fix): max(0, run.hindsightWithheld ?? 0): Hindsight the seven terms include but a Reckoning does not
@@ -2717,15 +3246,44 @@ export interface Derived {
    *                clear streak running: `years` of STEADY_STATE_YEARS); 'feature' (Settlement has not arrived);
    *                'room' (at Steady State, but as many are settled as may be: settled ≥ room); 'ready' (ModelApi.settle
    *                would accept it now). null when every Industry is settled.
+   * M4 CHANGE (with Content.acts; without them every field keeps its M3 meaning and `act` is null): the fields are read
+   *   from the ENDING ACT E = the current act if it has an `ending`, else the last act (in content order) whose ending
+   *   has been reached (in M4, after the Act I ending: Act I, so the page keeps showing the settled Coal Age), else none.
+   *   With E: reached / record = meta.endings[E.ending.id]; total = E.ending.sectors.length; allOpen, settled and next
+   *   over E.ending.sectors (in sectorOrder; a capstoned sector counts as open and settled); progress, years and
+   *   yearsNeeded as before (progress 1 when reached and E is not current). Without E: reached false, record null,
+   *   progress 0, total 0, settled 0, next null, allOpen false; hold, nextHold and room as M3 in every case.
+   *   next.need gains 'requires', ordered after 'feature' and before 'room': at Steady State but settle.requires fails
+   *   (its label is SectorDerived.settleBlocked of next.sector).
    */
   ending: {
     reached: boolean; record: EndingRecord | null; progress: number; allOpen: boolean;
     settled: number; total: number; years: number; yearsNeeded: number;
     hold: number; nextHold: number; room: number;
-    next: { sector: SectorId; need: 'open' | 'line' | 'clear' | 'years' | 'feature' | 'room' | 'ready'; years: number } | null;
+    next: {
+      sector: SectorId;
+      need: 'open' | 'line' | 'clear' | 'years' | 'feature' | 'room' | 'ready'
+        /** M4: see above. */
+        | 'requires';
+      years: number;
+    } | null;
+    /** M4: the ending act E (above): its id, name and title (the Act title card), or null (no acts, or no E). Absent =
+     *  null (views from a core before M4). */
+    act?: { id: string; name: string; title: string } | null;
   };
   /** M3: Archive notes unlocked (in content) and in content. */
   archive: { unlocked: number; total: number };
+  /* --- M4 (optional: absent = null, as from a core before M4; the M4 core always writes it) --- */
+  /**
+   * M4 (The Survey): the reveal to show, built from GameState.surveyReveal and Content.surveyReveal: present from the
+   * step of the Board's first survey (the 'surveyed' event with first: true) until the run ends; the page shows it once
+   * (it keeps its own "seen"). reported and true are fractions 0–1 (as recorded); headline and body are the variant's,
+   * substituted. null when there is none this run, or Content.surveyReveal is absent or has no variant of that kind.
+   */
+  surveyReveal?: {
+    sector: SectorId; reported: number; true: number; variant: 'small' | 'large' | 'failed';
+    headline: string; body: string;
+  } | null;
 }
 
 /** M3: Derived.dispatch. */
@@ -2755,6 +3313,9 @@ export interface PendingDispatchView {
     affordable: boolean;
     /** The arm's effects and modifier, for the UI's effect formatter. */
     effects: EffectDef[]; modifier: { effects: EffectDef[]; years: number; label?: string } | null;
+    /** M4: a wager arm's hint and its two outcome lines, substituted (DispatchArm.wager); null for an ordinary arm.
+     *  Absent = null (views from a core before M4). The view never says which way it would go. */
+    wager?: { hint: string; win: string; lose: string } | null;
   }[];
 }
 
@@ -3016,6 +3577,82 @@ export interface SectorDerived {
    *  share of capacity eaten by upkeep, min(0.95, P × pressureUpkeep / capacity), and deletion out-flow and pressure
    *  in-flow per second. */
   upkeep: { share: number; deletionOut: number; pressureIn: number } | null;
+  /* --- M4 (each optional: absent = the null / false stated, as from a core before M4; the M4 core always writes every
+   *     one). M4 CHANGES to existing fields: for a 'renewable' sector reserveFraction is the TRUE Q / K and secondsLeft
+   *     Infinity; while it is NOT surveyed, sinkR and clearP read null (no sink line on the page) while
+   *     pressureFraction keeps the TRUE value (the core's rules and crises use it; the page shows
+   *     stock.reportedPressureFraction instead). A resourceStock drawer's reserveFraction and secondsLeft are the
+   *     owner's. A capstoned sector reports as a settled one, with its scaled values (in arrears: the arrears values). --- */
+  /** M4: this sector's age belongs to an act with `preview` (ActDef.preview); the page labels it "Preview". It plays
+   *  under the ordinary rules and is never part of an act's ending set. False without Content.acts. */
+  preview?: boolean;
+  /** M4: SectorState.capstoned. */
+  capstoned?: boolean;
+  /** M4: SectorState.arrears. */
+  arrears?: boolean;
+  /** M4: on a reserve OWNER drawn on by another sector (SectorDef.resourceStock): the drain by source this step, R per
+   *  second net of each one's circularity, by sector id (own included); null if nothing draws on it. */
+  drawnBy?: Record<SectorId, number> | null;
+  /**
+   * M4: on a feed SOURCE (Iron), the order book: per target sector currently fed, in sectorOrder:
+   *   factor     Π f over this sector's feeding apps into that target (≤ 1; ApplicationDef.feeds).
+   *   rAdded     target R now − target R solved with this sector's feeds removed (same state, no time), per second; ≥ 0
+   *              normally. Computed at most once per derive bucket (as M3's temptation views: PROJECTION_BUCKET), null
+   *              in projections.
+   *   lineShare  rAdded / the target's budgetR when the target has a budget line, else null.
+   * null when this sector has no application with feeds, or none founded.
+   */
+  feeds?: { to: SectorId; factor: number; rAdded: number | null; lineShare: number | null }[] | null;
+  /** M4: the label of the failing settle.requires while the sector is at Steady State (clearYears ≥
+   *  STEADY_STATE_YEARS and sinkHeld) and unsettled, else null. (Cond.label, or the core's plain fallback.) */
+  settleBlocked?: string | null;
+  /**
+   * M4: the stock gauges ('renewable' only; null otherwise).
+   *   reported   catch per trip, (Q/K)^beta, 0–1                       — always
+   *   true       Q/K, 0–1, or null while NOT surveyed                  — the survey's gauge
+   *   surveyed   a survey effect (EffectDef 'survey') is in force
+   *   regen      G(Q) per second now (null while not surveyed)
+   *   foreign    { share, R } now (null without ForeignDef; share is shown always: the sails are visible)
+   *   scar       { yearsLeft } from meta.world.scars, or null
+   *   crossed    SectorState.crossed
+   *   reportedPressureFraction  1 − reported: what the fleet's depletion gauge shows while unsurveyed
+   *   world      the true Q/K, ALWAYS, for the scene's living world only (gulls, shoals, boats out; the soundscape's sea
+   *              life). The page's gauges and text must not read it: they read `true` (null while unsurveyed).
+   * A settled or capstoned renewable reports its frozen Q (foreign null).
+   */
+  stock?: {
+    reported: number; true: number | null; surveyed: boolean; regen: number | null;
+    foreign: { share: number; R: number } | null; scar: { yearsLeft: number } | null; crossed: boolean;
+    reportedPressureFraction: number;
+    world: number;
+  } | null;
+  /**
+   * M4 (The Survey; feature 'estimates'): the full account: the resource used on this sector's behalf, wherever burnt.
+   *   fullR = R − handedOn + received
+   * Attribution, per derive, deterministic, conserving totals (Σ fullR = Σ R over open sectors, foreign catch excluded):
+   *   - a source with feeds (Iron) splits its R across its founded applications by demand share; an application's share
+   *     with feeds is handed on to its targets in proportion to (1 − f_t) for each target t (for '*', every fed open
+   *     sector); applications without feeds keep their share;
+   *   - drawsOn: the drawn service's share of the target's R (drawn D ÷ target D × target R) is handed from the target
+   *     (Steam) to the drawer (Fishing);
+   *   - a settled sector's frozen R takes part with its frozen adoption and draws;
+   *   - foreign catch is nobody's (not attributed).
+   * One pass in sectorOrder over the solve's edge order (an R handed on is not handed on again). null while 'estimates'
+   * is off.
+   */
+  fullR?: number | null;
+  /** M4: what fullR received, by source sector, in sectorOrder (entries with R > 0 only); null while 'estimates' is off. */
+  embodied?: { from: SectorId; R: number }[] | null;
+  /**
+   * M4 (The Survey): years of the resource left ('stock' sectors and their resourceStock drawers; null otherwise).
+   *   flat     the old reading, "at this year's rate": secondsLeft × YEARS_PER_SECOND (the net drain to the exhaustion
+   *            threshold; for a drawer the owner's total drain), model years; null when secondsLeft is Infinity.
+   *   growing  years to exhaustion if the drain grows at the sector's trend g (SectorState.trendR, per model year; the
+   *            owner's for a drawer) when g > 0: ln(1 + g × flat) / g; equals flat when g ≤ 0; null while 'estimates'
+   *            is off or flat is null.
+   * Both assume no new seam (the formula sheet says so).
+   */
+  yearsLeft?: { flat: number | null; growing: number | null } | null;
 }
 
 /** M3: SectorDerived.seams. */
@@ -3095,6 +3732,12 @@ export interface AppDerived {
    *  Here: for an available, unfounded application that IS the mechanic (a load profile other than the default, a
    *  travel use with lockIn, an ApplicationDef.priceSeen), founding it now. */
   wantedChange?: number | null;
+  /* --- M4 --- */
+  /** M4: this application's feeds as factors now (target sector id → f, ApplicationDef.feeds; '*' expanded to every
+   *  other open sector; 1 while unfounded), or null if it has no feeds. Absent = null (a core before M4). For an
+   *  application with feeds, wantedChange (once its conditions hold) also counts the fed Industries' R change
+   *  (core: temptation.ts). */
+  feeds?: Record<SectorId, number> | null;
 }
 
 export interface UpgradeView {
@@ -3252,6 +3895,10 @@ export interface ModelApi {
    * {}, unlocks {}, returns {}, archive {}, flags {}, endings {}, milestones {}, bankedSeconds 0) and orders.dispatch
    * { on: false, cast: {} }. The signature is unchanged: a History, like a Charter, is chosen on the fresh run
    * (chooseHistory), not passed in.
+   * M4: the run is built from the meta by the ONE carry-over step (core inherit.ts; also used by reckon): every sector
+   * with a meta.world.capstone record opens capstoned (CapstoneRecord), a renewable starts at K or, while scarred, at
+   * startScarred × K (RenewableDef.startScarred). A fresh meta has world {} (or absent). No 'capstoned' events here
+   * (reckon emits them). GameState.surveyReveal absent.
    */
   createState(content: Content, meta?: MetaState, seed?: number): GameState;
 
@@ -3323,6 +3970,23 @@ export interface ModelApi {
    *   - Mandate: a 'measure' lever's upkeep counts as any lever's.
    *   - Standing orders: the Market skips forbidden candidates and writes orderLog; nothing else changes.
    * Settled sectors: as M2; their levers are at 0, so their bite decays; lockInDecay does not run while settled.
+   *
+   * M4 CHANGES to the step (each one line in step.ts calling its module; every rule reads the state at the START of the
+   * step, as in M2 and M3):
+   *   - Solve: feeds (ApplicationDef.feeds), the shared reserve's price (SectorDef.resourceStock) and the renewable's
+   *     reported price act inside computeFlows; a capstoned sector's settled flows are scaled per head (CapstoneRecord).
+   *   - Reserves: an owner's reserve is drained by its drawers too (SectorDef.resourceStock); a renewable's stock is
+   *     stepped (RenewableDef's step), with crossing, scar, derived pressure ('depletion') and its crises; scars tick.
+   *   - Surveys: the Board's first survey (RenewableDef.firstSurvey; live steps only); 'surveyed' on the first surveyed
+   *     step of the run; SectorState.lastSurvey updated on every surveyed step; the reveal's follow-up headline on the
+   *     step after the reveal.
+   *   - Foreign fleets: 'foreignFleets' headline once a run (ForeignDef.announceAt).
+   *   - Mandate and lapses: capstoned sectors go into arrears instead of unsettling; arrears stepping and clearing
+   *     (SettledState, M4).
+   *   - steadyYearsAll and the win: the M4 rule with Content.acts (GameState.steadyYearsAll); at an act's ending, the
+   *     capstone records.
+   *   - Run records: SectorState.minStock every step; SectorState.feedPeak at each HistorySample.
+   *   - Events and headlines in the M4 order (EventKind).
    */
   tick(state: GameState, content: Content, dt: number): GameState;
   /**
@@ -3347,6 +4011,10 @@ export interface ModelApi {
    * M3: inside fastForward no dispatch is drawn and no ambient headline printed; pending dispatches still expire to
    * their defaults (OfflineReport.dispatchesDefaulted); timed modifiers still end; bites ramp; Histories and the Archive
    * are checked as in tick. After the call, banked time per GlobalParams.offline.bankRate (OfflineReport.banked).
+   * M4: with holdBefore 'crisis' or 'collapse' it also holds one step before a capstoned sector would go into arrears
+   * (heldBy 'arrears'). Scars tick away as in tick. The Board's first survey never happens inside fastForward (it waits
+   * for the first live step). A renewable's threshold crossing is not itself held (its crisis at 1 − θ is, under
+   * 'crisis').
    */
   fastForward(state: GameState, content: Content, seconds: number): GameState;
 
@@ -3406,6 +4074,8 @@ export interface ModelApi {
    * goes to level 0 (ref 0; their upkeep stops; their recycle choice is kept); settle.dividend's standing effects come
    * into force, and its one-offs fire if settledBefore was false (then settledBefore = true); 'settled' headline and
    * event. The budget line, decades and dividends are kept; the Market and the Civil Service skip the sector.
+   * M4: also refused while SectorDef.settle.requires fails (SectorDerived.settleBlocked); capstoned sectors are already
+   * settled (refused) and do not count against the room. A renewable's settlement snapshots Q (frozen).
    */
   settle(state: GameState, content: Content, sector: SectorId): GameState;
   /**
@@ -3415,6 +4085,7 @@ export interface ModelApi {
    * clearYears and windowLean reset (Steady State must be earned again before settling again; the line keeps its
    * heldAt); settle.dividend stops. 'unsettled' headline and event. Free; refused if not settled or a Reckoning is
    * pending. The cost is what is lost: the dividend, the levers, the streak, and whatever the economy has grown into.
+   * M4: refused (same reference) for a capstoned sector, by the player or by the lapse rule (which puts it into arrears).
    */
   unsettle(state: GameState, content: Content, sector: SectorId): GameState;
   /**
@@ -3500,6 +4171,10 @@ export interface ModelApi {
    * and the modifiers unpaid; publishes an unpublished household return into the new run's news if meta.flags.proprietor
    * (see fileReturn). meta.dispatches, histories, unlocks, returns, archive, flags, endings, milestones and the bank
    * carry over.
+   * M4: reckon() records the RunSummary's M4 sector fields (minStock, crossed, feedR, capstoned); builds the new run
+   * with the carry-over step (createState, M4) and emits one 'capstoned' event per capstoned sector after the
+   * 'reckoning' event (and the milestone 'capstone' the first time); meta.world carries over (it is never reset).
+   * GameState.surveyReveal does not carry over. Hindsight's capstone exclusions: GlobalParams.hindsight.
    */
   hindsightOnReckon(state: GameState, content: Content): number;
 
@@ -3524,6 +4199,9 @@ export interface ModelApi {
    * milestone 'dispatch' if absent; nextAt per GameState.dispatch. A decision.
    * A default resolution (expiry, the standing order) does the same with the default arm, by 'default' or 'dispatch',
    * paying what there is, counting run.dispatchesDefaulted and meta.dispatches.arms (not playerArms), no decision.
+   * M4: a wager arm (DispatchArm.wager) evaluates its `when` on the state after the cost is paid and before any effect,
+   * records AnsweredDispatch.won, then applies the arm's own effects, modifier and reply, then the branch's (in that
+   * order); the event's label is 'won' | 'lost'. A wager arm is never a default arm (lint), so defaults never wager.
    */
   answerDispatch(state: GameState, content: Content, arm: number, id?: string): GameState;
   /**
