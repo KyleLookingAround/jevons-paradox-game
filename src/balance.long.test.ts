@@ -181,7 +181,7 @@ describe.skipIf(!LONG)('M4: the Act I arc and its ending (long; BAL_LONG=1)', ()
 // M4: the Fishing lessons, from the balance lane's fixture (the budget player's run 6, Fishing open, five seconds before
 // the Board's first survey: tools/balance.ts budget 6 --dump-survey). About two minutes.
 describe.skipIf(!LONG)('M4: the banks (long; BAL_LONG=1)', () => {
-  const FIX = 'design/scratch/m4-balance/hour6.json';
+  const FIX = 'fixtures/m4/hour6.json';
   const from = (args: string[]) => run([...args, `--from=${FIX}`, '--json', '--no-series', '--unlocks']).then(parse);
   const probes = LONG ? Promise.all([
     // the burner calls its Reckoning 45 minutes in (--hours=0.75), soon after the crossing (the scar outlasts the run);

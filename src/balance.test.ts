@@ -531,7 +531,7 @@ describe('M4: the Coal Age complete (fast checks on states the campaigns reach)'
   /** The fixtures the balance lane writes (tools/balance.ts budget 6 --dump-survey): the budget player's run 6, Fishing
    *  open, five seconds before the Board's first survey (hour6.json) and at it (hour6-after.json: the full account on). */
   const fixture = (name: string): GameState => {
-    const f = `design/scratch/m4-balance/${name}.json`;
+    const f = `fixtures/m4/${name}.json`;
     expect(`${f} ${fs.existsSync(f)}`).toBe(`${f} true`);
     const s = model.deserialize(fs.readFileSync(f, 'utf8'), C);
     expect(s).not.toBeNull();
@@ -610,7 +610,7 @@ describe('M4: the Coal Age complete (fast checks on states the campaigns reach)'
     const { readFileSync, existsSync } = require('node:fs');
     // M3's finishing dumps (before the M3 ending), and an M3 human-like campaign after its ending (start of run 9,
     // written by the M3 tree, c075c26, with tools/balance.ts human 9 --dump-at=9)
-    const files = [...['mixed-run3', 'budget-run4', 'mixed-run5', 'budget-run6', 'human-run9'].map((f) => `design/scratch/finish/${f}.json`), 'design/scratch/m4-balance/m3-human-after-ending.json'].filter((f) => existsSync(f));
+    const files = [...['mixed-run3', 'budget-run4', 'mixed-run5', 'budget-run6', 'human-run9'].map((f) => `fixtures/m3/${f}.json`), 'fixtures/m4/m3-human-after-ending.json'].filter((f) => existsSync(f));
     expect(files.length).toBeGreaterThanOrEqual(4);
     let afterEnding = 0;
     for (const f of files) {

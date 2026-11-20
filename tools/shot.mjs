@@ -1670,9 +1670,9 @@ async function m3() {
 // The page meets every M4 view as the core writes it: states are made in the page from a fresh run through the real model
 // (window.rebound), as tools/perf.mjs makes its states. `m4`: the postcard row with seven tabs, Iron's order book, Fishing
 // unsurveyed then the Board's Survey card (and filed), a wager answered both ways, Steam before and after `estimates`.
-// `m4real`: from the Act I ending dump (M4_ENDING=path, default design/scratch/m4-fixtures/act1-ending.json, real
+// `m4real`: from the Act I ending dump (M4_ENDING=path, default fixtures/m4/act1-ending.json, real
 // content): the credits, then the next run with the capstone group and Motion as a Preview; from an M3 save
-// (design/scratch/finish/human-run9.json): the save notice shown once.
+// (fixtures/m3/human-run9.json): the save notice shown once.
 const M4_MAKE = (variant) => {
   const R = window.rebound, m = R.model, C = R.content;
   let s = JSON.parse(JSON.stringify(m.createState(C)));
@@ -1958,8 +1958,8 @@ async function m4real() {
   try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
   catch (e) { console.log('M4REAL: bun run build.ts failed'); problems++; return; }
   const url = 'file://' + resolve(root, 'dist/index.html');
-  const endingPath = process.env.M4_ENDING || resolve(root, 'design/scratch/m4-fixtures/act1-ending.json');
-  const m3Path = resolve(root, 'design/scratch/finish/human-run9.json');
+  const endingPath = process.env.M4_ENDING || resolve(root, 'fixtures/m4/act1-ending.json');
+  const m3Path = resolve(root, 'fixtures/m3/human-run9.json');
   for (const sz of [{ w: 390, h: 844, tag: 'phone' }, { w: 1280, h: 800, tag: 'desk' }]) {
     if (filter && !sz.tag.includes(filter)) continue;
     const T = `m4real-${sz.tag}`;

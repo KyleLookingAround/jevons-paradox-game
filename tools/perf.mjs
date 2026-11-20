@@ -1,7 +1,7 @@
 // Page performance of the real built game, at phone size with the CPU throttled.
 //   bun run build.ts && node tools/perf.mjs [states] [throttles] [flags]
 //     states:    comma list of fresh,mid,late,act1,act1fish,hour6   (default fresh,mid,late)
-//                act1 / act1fish: the Act I fixture (design/scratch/m4-balance/act1-late.json) on Iron's / Fishing's tab;
+//                act1 / act1fish: the Act I fixture (fixtures/m4/act1-late.json) on Iron's / Fishing's tab;
 //                hour6: hour 6 with Fishing unsurveyed (…/hour6.json) on Fishing's tab (the fixtures are local files)
 //     throttles: comma list of CPU slow-down factors    (default 4,6)
 //     --no-trace     skip the 10 s trace (style/layout/paint split)
@@ -103,7 +103,7 @@ async function newPage(save, fonts = 'block') {
 }
 
 /* ------------------------------------------------------------ making the states */
-const FIXTURES = { act1: ['design/scratch/m4-balance/act1-late.json', 'iron'], act1fish: ['design/scratch/m4-balance/act1-late.json', 'fishing'], hour6: ['design/scratch/m4-balance/hour6.json', 'fishing'] };
+const FIXTURES = { act1: ['fixtures/m4/act1-late.json', 'iron'], act1fish: ['fixtures/m4/act1-late.json', 'fishing'], hour6: ['fixtures/m4/hour6.json', 'fishing'] };
 async function makeStates() {
   const { ctx, page } = await newPage(null);
   await page.goto(url); await page.waitForTimeout(800);
