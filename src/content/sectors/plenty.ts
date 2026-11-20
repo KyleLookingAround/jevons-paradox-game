@@ -487,13 +487,15 @@ export const PLENTY_LOOPHOLES: LoopholeDef[] = [
   /*
    * The right gauge: with every well metered, the licence still counts what is lifted, not what is used up. Pryce turns
    * the farms to the thirstiest kit and crops the licence allows: no escape on the applied figure (the licence holds
-   * it), but the return share × 0.8 a level while used, so consumed water rises under a held licence. Not amendable;
+   * it), but the return share × 0.8 a level while used (times = the licence's level), so consumed water rises under a held licence. Not amendable;
    * closed only by a cap on water consumed in force (LoopholeDef.closedBy).
    */
   {
     id: 'plenty.licence.rightGauge', lever: 'plenty.licence',
     name: 'Water that never comes back', blurb: 'The licence counts what is lifted, not what is used up',
-    escape: 0, premium: 0.02,
+    /* premium 0.005 of a model year's income: cheaper than complying with a licence that binds (measured: at 0.02 he
+     * complied and the rung was never used), so the robust rung is taken until the consumption cap closes it */
+    escape: 0, premium: 0.005,
     effects: [ret(0.8)],
     closedBy: CONSUMED_CAP_IN_FORCE,
   },
