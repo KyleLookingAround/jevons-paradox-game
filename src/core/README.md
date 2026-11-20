@@ -21,7 +21,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 0 | `dispatchClock.ts` | M3: GlobalParams.dispatch with defaults, `dispatchFirstAt`, `dispatchGap`. |
 | 0 | `milestones.ts` | M3: `milestone` (first time ever of each thing, written once, MILESTONES_MAX). |
 | 0 | `record.ts` | M2: decisions and automated actions per model decade, `run.opening`, the `asDecision` wrapper. |
-| 1 | `steady.ts` | Budget lines; M2: paces, the line's own day (`decadeWellbeing`), `clearP`, clear skies, `sinkR`, decade choices, `newBudget`. |
+| 1 | `steady.ts` | Budget lines; M2: paces, the line's own day (`decadeWellbeing`), `clearP`, clear skies, `sinkR`, decade choices, `newBudget`. M3 finish: `holdEach` / `holdTotal` (GlobalParams.settleHold). |
 | 1 | `hindsight.ts` | The Hindsight terms a Reckoning would pay (M2: lean decades, settled sectors, less what was withheld for time away). |
 | 1 | `headlines.ts` | Headline choice, case-aware placeholders (M2: `{name}`), the news list. |
 | 2 | `effects.ts` | Standing effects folded into `Mods` (cached per state; M2 sources: Charter, dividends, Commons, settle dividends, institution loans; M2 effects), η and flow capacity, one-off effects. M3: the ten new effects; the History (and `suspend`) in the cached base; a run-varying overlay (measures × value, side effects × bite × level, timed modifiers, dispatch standing effects) that costs nothing when absent; `isForbidden`, `costMulOfId`, `applyM3OneOffs`, `refreshEta`. |
@@ -41,11 +41,12 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 6 | `seams.ts` | M3: seam cost and reachability, `sinkSeam`, SectorDerived.seams. |
 | 6 | `modifiers.ts` | M3: timed modifiers (stacking, expiry, views). |
 | 6 | `archive.ts` | M3: subject rules, `unlockNotes`, `archiveViews`. |
-| 6 | `ending.ts` | M3: the ending record, `retrospective`. |
+| 6 | `ending.ts` | M3: the ending record, `retrospective`; M3 finish: `endingYearsOf`, `settledCount` (the streak itself is counted in `step.ts`: every Industry settled). |
+| 6 | `temptation.ts` | M3 finish: the temptation's trade at the point of decision (`appWanted`, `seamWanted`, `cardWanted`: the views' `wantedChange`), one sector solve per candidate, cached per bucket. |
 | 6 | `returns.ts` | M3: `fileReturn` validation, publication, `withdrawReturn`, SurveyView. |
 | 6 | `ambient.ts` | M3: ambient ticks, the pick, stat formatting. |
 | 6 | `bank.ts` | M3: Derived.bank (banking and useBank live in offline.ts with the shared catch-up loop). |
-| 6 | `settlement.ts` | M2: `settle`, `unsettle`, `canSettle`, the forced unsettle. |
+| 6 | `settlement.ts` | M2: `settle`, `unsettle`, `canSettle`, the forced unsettle; M3 finish: `settleRoom` (GlobalParams.settleMax + settleSlotAdd). |
 | 7 | `commonsActions.ts` | M2: `buyCommons` (fund first), `commonsViews`. |
 | 7 | `unfold.ts` | The unfolding's unlock check (`dueFeature`, every 5 s of run time in the step, never away; and in reckon()), one feature at a time, spaced by `featureGapSeconds`. |
 | 7 | `unlocks.ts` | Which sectors may open next, whether one opens, their checklists. |

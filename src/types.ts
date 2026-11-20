@@ -644,6 +644,22 @@ export interface GlobalParams {
    * achievement rather than the instant the fifth Industry settles). ≥ 0; 0 means the moment all are settled.
    */
   endingYears?: number;
+  /**
+   * M3 (finish): what holding settlements costs together, so that five at once is a Mandate economy built over many
+   * runs (Institutions, the Commons, levy income), not the moment the fifth Steady State arrives. With n Industries
+   * settled now, EACH settled Industry costs holdUpkeep + holdStep × (n − 1) Mandate per second, on top of its own
+   * excess defence (SectorDef.settle.upkeepPerSpill); the total is n × (holdUpkeep + holdStep × (n − 1)). It is part of
+   * SectorDerived.settleDefence (and so of the lapse rule: once no lever upkeep is left to drop, the settled Industry
+   * with the largest defence unsettles) and of Derived.mandatePerSec. Defaults 0 and 0 (M2's behaviour).
+   */
+  settleHold?: { holdUpkeep?: number; holdStep?: number };
+  /**
+   * M3 (finish): how many Industries may be settled at once, before any settleSlotAdd effect (Institutions bought
+   * with Hindsight raise it). ModelApi.settle and SectorDerived.canSettle refuse a settlement beyond it; settlements
+   * already held are never undone by it. Default: no limit. The first ending needs every Industry settled, so it waits
+   * until the player has built the room for all of them (Derived.ending.room).
+   */
+  settleMax?: number;
 }
 
 /**
@@ -1218,7 +1234,9 @@ export type EffectDef =
   | { type: 'leakMul'; sector: SectorId; value: number }
   /** The sector's spill (SectorDef.spill: the demand its savings add to the sector it spills into) × value
    *  (multiplicative; `sector` is the source). */
-  | { type: 'spillMul'; sector: SectorId; value: number };
+  | { type: 'spillMul'; sector: SectorId; value: number }
+  /** M3 (finish): standing: GlobalParams.settleMax + Σ value Industries may be settled at once (an Institution's). */
+  | { type: 'settleSlotAdd'; value: number };
 
 export interface UpgradeDef {
   id: string;              // 'steam.condenser'
@@ -2691,10 +2709,20 @@ export interface Derived {
    *   total        sectorOrder.length.
    *   years        GameState.steadyYearsAll (model years held with all of them settled).
    *   yearsNeeded  GlobalParams.endingYears with its default.
+   *   hold         Mandate per second all settlements' hold costs now (GlobalParams.settleHold; excess defences apart).
+   *   nextHold     the same if one more Industry were settled (what settling the next would cost, in total).
+   *   room         how many may be settled at once now (GlobalParams.settleMax + settleSlotAdd; = total without a limit).
+   *   next         the first Industry in sectorOrder not settled, and what it waits on, in order: 'open' (closed);
+   *                'line' (no budget line); 'clear' (its sky is not clear: SectorDerived.sinkHeld false); 'years' (a
+   *                clear streak running: `years` of STEADY_STATE_YEARS); 'feature' (Settlement has not arrived);
+   *                'room' (at Steady State, but as many are settled as may be: settled ≥ room); 'ready' (ModelApi.settle
+   *                would accept it now). null when every Industry is settled.
    */
   ending: {
     reached: boolean; record: EndingRecord | null; progress: number; allOpen: boolean;
     settled: number; total: number; years: number; yearsNeeded: number;
+    hold: number; nextHold: number; room: number;
+    next: { sector: SectorId; need: 'open' | 'line' | 'clear' | 'years' | 'feature' | 'room' | 'ready'; years: number } | null;
   };
   /** M3: Archive notes unlocked (in content) and in content. */
   archive: { unlocked: number; total: number };
@@ -3371,6 +3399,7 @@ export interface ModelApi {
   chooseDecadeDividend(state: GameState, content: Content, sector: SectorId, option: number): GameState;
   /**
    * M2: settle the sector. Allowed when the sector is open and not settled, SectorDef.settle exists, flags.revealed,
+   * (M3 finish: fewer Industries are settled than Derived.ending.room allows,)
    * no Reckoning is pending, and the sector is AT Steady State now: clearYears ≥ STEADY_STATE_YEARS and
    * SectorDerived.sinkHeld. Effect: SectorState.settled = a SettledState snapshot of the sector's current flows (D, R,
    * ps, pPre, income, pressure, η, defect, N, spillMul, extraD, per-app demand and adoption); every lever of the sector

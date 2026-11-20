@@ -9,12 +9,14 @@ import type { Content, EndingRecord, GameState, MetaState, RetroItem, SectorId }
 import { idx } from './contentIndex';
 import { fillText } from './headlines';
 import { milestone } from './milestones';
+export { holdEach, holdTotal } from './steady';
 
 /** GlobalParams.endingYears with its default (model years every Industry must stay settled for the first ending). */
 export const endingYearsOf = (content: Content): number => {
   const y = content.global.endingYears;
   return typeof y === 'number' && Number.isFinite(y) && y >= 0 ? y : STEADY_STATE_YEARS;
 };
+
 
 /** Sectors in sectorOrder that are open and settled now (Derived.ending.settled). */
 export const settledCount = (state: GameState, content: Content): number =>

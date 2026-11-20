@@ -13,7 +13,7 @@ import type { Mods } from './effects';
 import { sectorLevers, NO_LEVERS, leverNetUpkeep, mandateShareOf } from './levers';
 import { solveSector } from './solver';
 import type { SectorFlow } from './solver';
-import { budgetROf, isWithin, decadeWellbeingOf, clearPOf, isClear, sinkROf, sectorSteady } from './steady';
+import { budgetROf, isWithin, decadeWellbeingOf, clearPOf, isClear, sinkROf, sectorSteady, holdEach } from './steady';
 import { fin, clamp } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -87,6 +87,10 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
   const settled: Flows['settled'] = {};
   let wellbeing = 0, income = 0, levy = 0, treasury = 0, commonsLevy = 0, defence = 0;
   addCommonsIntensity(state, content, N, extra);
+  // M3 finish: the hold cost of settlements together (GlobalParams.settleHold), each settled Industry's share
+  let nSettled = 0;
+  for (const s of ix.ids) if (state.sectors[s]?.open && state.sectors[s]?.settled) nSettled++;
+  const hold = nSettled ? holdEach(content, nSettled) : 0;
   for (const s of ix.solveOrder) {
     const es = state.sectors[s];
     if (!es || !es.open) continue;
@@ -99,7 +103,7 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
       inputs[s] = inp;
       const excess = Math.max(0, (N * inp.spillMul) / (Math.max(POP_MIN, st.N0) * (st.spillMul0 > 0 ? st.spillMul0 : 1)) - 1)
         + Math.max(0, inp.extraD - st.extraD0) / Math.max(st.D, 1e-12);
-      const dfn = def.settle ? Math.max(0, fin(def.settle.upkeepPerSpill) * Math.max(0, excess - (def.settle.freeExcess ?? DEFAULT_FREE_EXCESS))) : 0;
+      const dfn = (def.settle ? Math.max(0, fin(def.settle.upkeepPerSpill) * Math.max(0, excess - (def.settle.freeExcess ?? DEFAULT_FREE_EXCESS))) : 0) + hold;
       settled[s] = { excess: fin(excess), defence: fin(dfn) };
       defence += settled[s].defence;
       wellbeing += f.wellbeingShare;

@@ -136,4 +136,6 @@ export const global: GlobalParams = {
    * credits' title, "Fifty Years Within the Line", reads this number.
    */
   endingYears: 50,
+  /* M3 finish: three settled Industries at once; the Royal Commission (prestige.ts) makes room for the fourth and fifth. */
+  settleMax: 3,
 };

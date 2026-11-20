@@ -2,11 +2,11 @@
  * derive(): the Derived view the UI reads every frame (flows, instruments, budgets, Hindsight, next sectors).
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import { EXHAUSTED_BELOW, YEARS_PER_SECOND } from '../types';
+import { EXHAUSTED_BELOW, YEARS_PER_SECOND, STEADY_STATE_YEARS } from '../types';
 import type { AppDerived, Content, Derived, GameState, SectorDerived, SectorId } from '../types';
 import { calendarYear, currentAge } from './calendar';
 import { idx } from './contentIndex';
-import { endingYearsOf, settledCount } from './ending';
+import { endingYearsOf, settledCount, holdTotal } from './ending';
 import { modsOf, isForbidden } from './effects';
 import { archiveCounts } from './archive';
 import { bankView } from './bank';
@@ -29,10 +29,10 @@ import { ordersView } from './orders';
 import { popGrowthRate } from './population';
 import { isFreshRun, slotsUsed, respecRefunds } from './prestige';
 import { stageOf } from './purchases';
-import { canSettle } from './settlement';
+import { canSettle, settleRoom } from './settlement';
 import { standingDrawYearsOf } from './steady';
 import { nextSectorsOf } from './unlocks';
-import { featuresView } from './features';
+import { featuresView, featureOn } from './features';
 import { fin, clamp } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -162,7 +162,27 @@ function endingView(state: GameState, content: Content): Derived['ending'] {
     progress: need > 0 ? clamp(years / need, 0, 1) : settled === ix.ids.length && ix.ids.length > 0 ? 1 : 0,
     allOpen: ix.ids.every((x) => !!state.sectors[x]?.open),
     settled, total: ix.ids.length, years, yearsNeeded: need,
+    room: Math.min(ix.ids.length, settleRoom(state, content)),
+    hold: holdTotal(content, settled), nextHold: settled < ix.ids.length ? holdTotal(content, settled + 1) : holdTotal(content, settled),
+    next: nextToSettle(state, content),
   };
+}
+
+/** Derived.ending.next: the first Industry in sectorOrder not settled, and what it waits on (M3 finish). */
+function nextToSettle(state: GameState, content: Content): Derived['ending']['next'] {
+  const ix = idx(content);
+  const s = ix.ids.find((x) => !(state.sectors[x]?.open && state.sectors[x]?.settled));
+  if (s === undefined) return null;
+  const es = state.sectors[s];
+  const years = Math.max(0, fin(es?.clearYears ?? 0));
+  if (!es?.open) return { sector: s, need: 'open', years: 0 };
+  if (!es.budget) return { sector: s, need: 'line', years };
+  if (canSettle(state, content, s)) return { sector: s, need: 'ready', years };
+  const fl = computeFlows(state, content);
+  if (!steadyView(state, content, fl, s).sinkHeld) return { sector: s, need: 'clear', years };
+  if (years < STEADY_STATE_YEARS - 1e-9) return { sector: s, need: 'years', years };
+  if (!featureOn(content, state.meta, 'settlement')) return { sector: s, need: 'feature', years };
+  return { sector: s, need: settledCount(state, content) >= settleRoom(state, content) ? 'room' : 'clear', years };
 }
 
 /** SeamsView with the temptation's trade for the next seam (M3 finish; null when no line is drawn). */

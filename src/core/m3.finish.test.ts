@@ -10,7 +10,7 @@ import { headline, newsWith } from './headlines';
 import { publish } from './returns';
 import { temptingApp } from './temptation';
 import { freshMeta } from './state';
-import { openAll, run } from './m1.testkit';
+import { openAll, run, settledNow } from './m1.testkit';
 
 const M: Content = { ...M0, sectors: { ...M0.sectors, steam: { ...M0.sectors.steam, pressureIntensity: 0, reserve: 1e9 } } };
 const fresh = (c: Content, p: Partial<MetaState> = {}) => model.createState(c, { ...freshMeta(c), ...p }, 3);
@@ -182,5 +182,27 @@ describe('M3 finish: the temptation shown where the player decides (wantedChange
     if (card) expect(card.wantedChange!).toBeGreaterThanOrEqual(0);
     // deterministic and cached within the bucket: the same state, the same figure
     expect(model.derive(s, c).sectors.light!.apps[night.id].wantedChange).toBe(d.sectors.light!.apps[night.id].wantedChange);
+  });
+});
+
+describe('M3 finish: holding settlements together costs Mandate (GlobalParams.settleHold); the ending checklist', () => {
+  test('each settled Industry pays holdUpkeep + holdStep × (n − 1); the view says what one more would cost', () => {
+    const H: Content = { ...F, global: { ...F.global, settleHold: { holdUpkeep: 1, holdStep: 0.5 } } };
+    let s = { ...openAll(H, 40), mandate: 1e4, flags: { revealed: true, won: false } };
+    const before = model.derive(s, H).mandatePerSec;
+    s = settledNow(settledNow(s, H, 'steam'), H, 'light');
+    const d = model.derive(s, H);
+    expect(d.ending.settled).toBe(2);
+    expect(d.ending.hold).toBeCloseTo(3, 9); // 2 × (1 + 0.5)
+    expect(d.ending.nextHold).toBeCloseTo(6, 9); // 3 × (1 + 1)
+    expect(d.sectors.steam!.settleDefence).toBeGreaterThanOrEqual(1.5 - 1e-9);
+    // the settled Industries' lever upkeep is gone and the hold is paid instead: compare with no hold cost
+    expect(model.derive(s, F).mandatePerSec - d.mandatePerSec).toBeCloseTo(3, 6);
+    void before;
+    // the next Industry in order not settled, and what it waits on
+    expect(d.ending.next?.sector).toBe('motion');
+    expect(['line', 'clear', 'years', 'ready', 'feature']).toContain(d.ending.next!.need);
+    const none = model.derive(s, { ...H, global: { ...H.global, settleHold: undefined } }).ending;
+    expect(none.hold).toBe(0);
   });
 });

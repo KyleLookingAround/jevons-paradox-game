@@ -101,3 +101,33 @@ of each other. The rule is in the data (`src/content/features.ts`), not the core
 Measured with `bun run tools/balance.ts <budget|mixed|human> 1 --total-hours=12 --summary --unlocks --file-return=6`
 (19 Nov 2026); asserted in `src/balance.test.ts` ("the unfolding"). The budget player's runs from run 5 last about
 three hours, so its later Reckoning arrivals come late in hours; the human player's runs are 40–110 minutes.
+
+## M3 finish: the first ending (20 Nov 2026)
+
+The coordinator's rule: the first ending needs **every Industry settled at once**, held fifty years
+(`GlobalParams.endingYears`). Settlement still arrives where M2 put it, at the Reckoning after the first Steady State
+(run 5, about hour 4–6), but Parliament holds only **three** settled Industries at once (`GlobalParams.settleMax`). The
+**Settlement Commission**, an Institution in the Hindsight shop (1,500 Hindsight; its second sitting 3,750; one seat),
+makes room for the fourth and the fifth (`settleSlotAdd`). The ending is then one long run in which all five reach
+Steady State and are settled together, and held. Nothing is gated on the clock: the wait is the Hindsight the
+Commission costs and the run it takes. The budget panel's last line is the checklist, read from `Derived.ending`
+("Settled 3 of 5. Motion needs clear skies for 50 years (12 so far)", or "…as many as Parliament will hold; an
+Institution can make room for more"). An hours gate (Settlement from hour 11) was tried and withdrawn: a timewall the
+player could not see, and it left hours 4–11 without Settlement.
+
+The scripted players pursue it as a competent player would (`tools/balance.ts --ending`, on by default; mirrored in
+`src/balance.kit.ts`): they save Hindsight for the Commission once Settlement has arrived and seat it first; settle each
+Industry once it reaches Steady State and the net Mandate rate can hold it; under a held line whose sky has not cleared
+they buy the Industry's efficiency cards and tighten its cap; and they stay in the run, past the three-hour cap, while
+the room for all five exists and four are settled (or two, with a clear streak running in another).
+
+| Player | Industries open (h): Light · Motion · Compute · Code | First Steady State | Commission | Settled in the ending's run (h) | Ending |
+|---|---|---|---|---|---|
+| `mixed` | 0.9 · 1.5 · 2.8 · 4.1 | 3.5 h (Compute) | L1 after run 5, L2 after run 7 | Code 13.7, Compute 13.8, Light 14.7, Steam 14.8, Motion 18.0 | **18.2 h** (run 8) |
+| `budget` | 0.9 · 1.6 · 2.7 · 4.2 | 3.6 h (Compute) | L1 after run 5, L2 after run 7 | Code 13.7, Compute 13.7, Light 14.9, Steam 14.9, Motion 18.6 | **18.9 h** (run 8) |
+| `human` | 0.7 · 1.4 · 2.3 · 3.7 | 4.7 h (Compute) | L1 after run 5, L2 after run 7 | Code 13.3, Compute 13.5, Steam 13.7, Light 15.0, Motion 15.1 | **15.4 h** (run 8) |
+
+Measured with `bun run tools/balance.ts <player> 1 --total-hours=24 --commons --no-series --unlocks`; asserted in
+`src/balance.long.test.ts` (BAL_LONG=1). Motion is the last to settle for the restraint players: its sprawl holds its
+smoke up until the cap has been tightened several times (about three hours into the run); a player who does not found
+the sprawl uses clears it in forty minutes. Persistent Settlement across Reckonings was not needed.

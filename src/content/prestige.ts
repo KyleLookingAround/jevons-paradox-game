@@ -162,6 +162,10 @@ function leverInstitution(
   return { ...rest, effects: [startLever(lv, 1)], nextLevels: levels(s.cost, next) };
 }
 
+/** M3 finish: the Commission's first level, in Hindsight (its second costs 2.5×). Tuned so the first ending lands at
+ *  15–20 h for the scripted restraint players (design/unlock-schedule.md). */
+const SETTLE_COMMISSION = 1500;
+
 export const institutions: InstitutionDef[] = [
   {
     id: 'inst.statisticsOffice', name: 'Statistics Office',
@@ -279,6 +283,19 @@ export const institutions: InstitutionDef[] = [
    * its second level is the first offline step (8 h → 12 h by about hour 5). Treasury rules (hour 10) spend on the
    * Commons by a priority list. Both cost a seat, which is their real price.
    */
+  /*
+   * M3 finish: Parliament will hold only three settled Industries at once (GlobalParams.settleMax); the Commission
+   * makes room for a fourth, and its second sitting for the fifth. The first ending needs all five settled together, so
+   * it waits on this purchase and the run after it: the path, priced in Hindsight, puts the ending at 15–20 hours.
+   */
+  {
+    id: 'inst.settlementCommission', name: 'Settlement Commission',
+    blurb: 'A standing commission to hear the case for one more Industry kept at its sink line. It sits for years and reports in volumes.',
+    cost: SETTLE_COMMISSION, effects: [{ type: 'settleSlotAdd', value: 1 }],
+    nextLevels: levels(SETTLE_COMMISSION, [
+      { effects: [{ type: 'settleSlotAdd', value: 1 }], label: 'A second sitting: room for the fifth' },
+    ], [2.5]),
+  },
   {
     id: 'inst.civilService', name: 'The Civil Service',
     blurb: 'Permanent officials who hold a line with the levers you give them, raise one when it is crossed, and ask for nothing.',

@@ -5,7 +5,9 @@
  * Content is data (see ../README.md); the rules and magnitudes are in kit.ts and dispatches.test.ts.
  */
 import type { DispatchDef } from '../../types';
-import { AFTER_FIRST, cash, eta, half, income, intensity, mandate, mrate, owns, sat, smoke, timed, wellbeing } from './kit';
+import {
+  AFTER_FIRST, cash, eta, half, income, intensity, mandate, mrate, owns, sat, smoke, timed, wellbeing,
+} from './kit';
 
 const K = 'code';
 
@@ -29,7 +31,8 @@ export const codeDispatches: DispatchDef[] = [
         outcome: 'Review is cheap, so everything is shipped, and the code stock grows accordingly.',
         price: '£, and everything that is now shipped',
         cost: { capitalSeconds: 40 },
-        effects: [eta(K, 1.05), sat(K, 1.025), wellbeing(0.5), intensity(K, 0.95)],
+        effects: [eta(K, 1.05), sat(K, 1.025)],
+        modifier: timed(10, wellbeing(1), intensity(K, 0.9)),
         reply: 'Added: agent review on every change; merge queue empties hourly',
       },
       {
@@ -59,8 +62,8 @@ export const codeDispatches: DispatchDef[] = [
         label: 'Take the forty',
         outcome: 'Forty agents arrive, and find forty agents’ worth of work.',
         price: 'Forty agents’ worth of new code to keep',
-        effects: [cash(45), wellbeing(0.5), intensity(K, 0.95)],
-        modifier: timed(15, sat(K, 1.05)),
+        effects: [cash(45)],
+        modifier: timed(15, sat(K, 1.05), wellbeing(1), intensity(K, 0.9)),
         reply: 'Added: forty agents; Known issue: forty agents’ worth of code',
       },
     ],
@@ -93,7 +96,8 @@ export const codeDispatches: DispatchDef[] = [
         outcome: 'A fortnight in which only deletions are merged, and nobody is promoted.',
         price: '£ for a fortnight with nothing new',
         cost: { capitalSeconds: 30 },
-        effects: [smoke(K, -0.04), wellbeing(0.5), intensity(K, 0.95)],
+        effects: [smoke(K, -0.04)],
+        modifier: timed(10, wellbeing(1), intensity(K, 0.9)),
         reply: 'Removed: one fortnight’s worth of code nobody used',
       },
     ],
@@ -143,8 +147,8 @@ export const codeDispatches: DispatchDef[] = [
         label: 'Hold the limits',
         outcome: 'The limits hold, and a few firms leave to write elsewhere.',
         price: 'The firms that leave',
-        effects: [mandate(30), wellbeing(0.5), intensity(K, 0.95)],
-        modifier: timed(12, income(0.94, K)),
+        effects: [mandate(30)],
+        modifier: timed(12, income(0.94, K), wellbeing(1), intensity(K, 0.9)),
       },
       {
         label: 'Lift them with the rest',

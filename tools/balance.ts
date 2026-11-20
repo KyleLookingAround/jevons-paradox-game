@@ -593,6 +593,14 @@ function towardsSky(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
   for (const e of ORDER) {
     const x = d.sectors[e], es = s.sectors[e];
     if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null || es.clearYears > 0) continue;
+    if (es.pressure > x.clearP) {
+      // a thriftier engine first, where one can be bought (under a line it lowers the burn and so the smoke; the Market
+      // leaves a capped Industry's cards alone, so a player who wants it settled buys them by hand)
+      {
+        const up = model.upgradeViews({ ...s, flags: { ...s.flags, revealed: false } }, C).filter((v) => v.def.sector === e && v.def.kind === 'efficiency' && v.affordable && !v.excludedBy).sort((a, b) => a.cost - b.cost)[0];
+        if (up) { const nx = model.buyUpgrade(s, C, up.def.id); if (nx !== s) { s = nx; } }
+      }
+    }
     if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
     if (s.time - (memo.lastSky[e] ?? -Infinity) < every) continue;
     const p0 = memo.skyP[e];
@@ -613,12 +621,14 @@ function towardsSky(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
 }
 
 /** --ending: the run is worth staying in for the first ending: not yet won this run, and four or more Industries
- *  settled, or three settled with a clear streak running in another (Settlement does not survive a Reckoning). */
+ *  settled, or two with a clear streak running in another, and room for all (Settlement does not survive a Reckoning). */
 function pursuing(s: GameState): boolean {
   if (s.flags.won || (C.features?.settlement && s.meta.features?.settlement === undefined)) return false;
+  // (M3 finish: and room for every Industry: GlobalParams.settleMax and the Settlement Commission)
+  if (model.derive(s, C).ending.room < ORDER.length) return false;
   const settled = ORDER.filter((e) => s.sectors[e]?.settled).length;
   const streak = ORDER.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
-  return settled >= 4 || (settled >= 3 && streak);
+  return settled >= 4 || (settled >= 2 && streak);
 }
 
 /* ---------------- the plausible human restraint player (QA, 19 Nov 2026) ---------------- */
@@ -674,7 +684,7 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
   s = pushToSink(s, ctx, memo, 300, 600);
   s = towardsSky(s, ctx, memo, 300, 600);
   s = humanBite(s, ctx);
-  for (const e of ORDER) if (model.derive(s, C).sectors[e]?.canSettle) { const nx = model.settle(s, C, e); if (nx !== s) { s = nx; ctx.ev.push({ t: s.time, text: `SETTLED ${e} (human)` }); } }
+  for (const e of ORDER) { const nx = settleIfHeld(s, e); if (nx !== s) { s = nx; ctx.ev.push({ t: s.time, text: `SETTLED ${e} (human)` }); } }
   return s;
 }
 
@@ -732,11 +742,16 @@ function chooseDividends(s: GameState, ctx: RunCtx): GameState {
   }
   return s;
 }
+/** M3 finish: a settlement the player can hold: after settling, the net Mandate rate stays at or above 0 (the hold
+ *  cost of settlements together, GlobalParams.settleHold, against the lever upkeep the settled Industry frees). */
+function settleIfHeld(s: GameState, e: SectorId): GameState {
+  if (!model.derive(s, C).sectors[e]?.canSettle) return s;
+  const next = model.settle(s, C, e);
+  return next !== s && model.derive(next, C).mandatePerSec >= 0 ? next : s;
+}
 function settleAll(s: GameState, ctx: RunCtx): GameState {
-  const d = model.derive(s, C);
   for (const e of ORDER) {
-    if (!d.sectors[e]?.canSettle) continue;
-    const next = model.settle(s, C, e);
+    const next = settleIfHeld(s, e);
     if (next !== s) { s = next; ctx.firsts[`settle:${e}`] ??= s.time; ctx.ev.push({ t: s.time, text: `SETTLED ${e}` }); }
   }
   return s;
@@ -789,6 +804,7 @@ function marketPlayer(s: GameState, ctx: RunCtx, seen: Map<string, number>, ok?:
 function instRank(d: InstitutionDef): number {
   const effs = [d.effects, ...(d.nextLevels ?? []).map((l) => l.effects)].flat();
   const lever = (k: string) => effs.some((e) => e.type === 'startLever' && C.levers.find((l) => l.id === e.lever)?.kind === k);
+  if (effs.some((e) => e.type === 'settleSlotAdd')) return -1; // M3 finish: room to settle, seated first
   if (lever('cap')) return 0;
   if (effs.some((e) => e.type === 'wellbeingAdd')) return 1;
   if (effs.some((e) => e.type === 'reveal')) return 2;
@@ -823,6 +839,18 @@ function spendHindsight(s: GameState, mode: Strategy): { s: GameState; bought: s
   if (instFirst && s.meta.reckonings >= 4) for (const v of model.institutionViews(s, C).filter((x) => x.canBuy && x.level === 0 && instRank(x.def) === 4)) {
     const next = model.buyInstitution(s, C, v.def.id);
     if (next !== s) { s = next; bought.push(`${v.def.id} L1`); }
+  }
+  // M3 finish (--ending): once Settlement has arrived, the room to settle every Industry (the Settlement Commission) is
+  // bought before anything else, saving for it run by run: the first ending waits on it
+  if (ENDING && (mode === 'budget' || mode === 'levers') && (!C.features?.settlement || s.meta.features?.settlement !== undefined)) {
+    for (let g = 0; g < 4; g++) {
+      const room = model.institutionViews(s, C).find((v) => v.nextCost !== null && [v.def.effects, ...(v.def.nextLevels ?? []).map((l) => l.effects)].flat().some((e) => e.type === 'settleSlotAdd'));
+      if (!room) break;
+      if (!room.canBuy) { if (instFirst) s = seatLoadout(s); return { s, bought }; }
+      const next = model.buyInstitution(s, C, room.def.id);
+      if (next === s) break;
+      s = next; bought.push(`${room.def.id} L${room.level + 1}`);
+    }
   }
   for (let guard = 0; guard < 400; guard++) {
     const inst = model.institutionViews(s, C).filter((v) => v.canBuy)
@@ -859,24 +887,27 @@ function armPay(effects: EffectDef[] | undefined, cost?: { mandate?: number; cap
  * wellbeing-years; smoke matters near a crisis; Mandate is worth little. A standing effect counts as 60 model years.
  */
 function armSuits(s: GameState, sector: SectorId | undefined, a: { effects?: EffectDef[]; modifier?: { effects: EffectDef[]; years: number }; cost?: { mandate?: number; capitalSeconds?: number } }): number {
-  const holding = sector ? !!s.sectors[sector]?.budget : ORDER.some((e) => s.sectors[e]?.budget);
+  // the player's posture, not the letter's Industry: a player holding any line is a restraint player, and will draw
+  // one in a newly opened Industry soon (judging that Industry as booming chose the arms that fill it)
+  void sector;
+  const holding = ORDER.some((e) => s.sectors[e]?.budget);
   const short = s.mandate < 20_000; // Mandate is short until the pile covers many Tightenings (a cap step costs hundreds to thousands)
   const mVal = holding ? (short ? 30 : 300) : 200;
   const ONE = new Set(['mandateAdd', 'capitalAdd', 'populationMul', 'pressureAdd', 'metaFlag', 'reserveAdd']);
-  let v = -(a.cost?.mandate ?? 0) / mVal - (a.cost?.capitalSeconds ?? 0) / (holding ? 300 : 40);
+  let v = -(a.cost?.mandate ?? 0) / mVal - (a.cost?.capitalSeconds ?? 0) / 40; // capital buys the efficiency that is wellbeing under a cap
   const weigh = (e: EffectDef, years: number) => {
     const t = years / 10;
     const x = (e as { value?: number }).value ?? 1;
     if (holding) {
       switch (e.type) {
         case 'mandateAdd': v += x / mVal; return;
-        case 'capitalAdd': v += x / 300; return;
+        case 'capitalAdd': v += x / 40; return;
         case 'pressureAdd': v -= x * 40; return;
         case 'populationMul': v += (x - 1) * 2; return;
         case 'satMul': case 'halfPriceMul': v -= (x - 1) * 20 * t; return; // more appetite strains the line (a cap leaks): a broken streak
         case 'etaMul': v += (x - 1) * 20 * t; return;
         case 'intensityMul': v -= (x - 1) * 20 * t; return;
-        case 'incomeMul': v += (x - 1) * 3 * t; return;
+        case 'incomeMul': v += (x - 1) * 20 * t; return;
         case 'mandateRateMul': v += (x - 1) * (short ? 40 : 5) * t; return;
         case 'wellbeingAdd': v += x * 6 * t; return;
         case 'absorptionAdd': v += x * 4000 * t; return;
@@ -926,8 +957,8 @@ function m3Actions(s: GameState, ctx: RunCtx, mode: Strategy, tick5: boolean): G
     }
   }
   const pending = s.dispatch?.pending ?? [];
-  if (pending.length && DISPATCH !== 'default') {
-    const p = pending[0];
+  if (pending.length && (DISPATCH !== 'default' || (ARM_OVERRIDE && pending.some((x) => x.id === ARM_OVERRIDE!.id)))) {
+    const p = DISPATCH === 'default' ? pending.find((x) => x.id === ARM_OVERRIDE?.id)! : pending[0];
     const def = C.dispatches?.find((x) => x.id === p.id);
     if (def) {
       let arm = 0;
@@ -1032,6 +1063,8 @@ interface RunReport {
     wy: Record<string, number>;
     /** M3 finish: each Industry's player income this run (Σ SectorDerived.income × dt, £), and when each opened (s) */
     inc: Record<string, number>;
+    /** M3 finish: the highest gross Mandate rate of the run (per second, sampled each minute). */
+    peakGross: number;
   };
 }
 
@@ -1100,6 +1133,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
   /** each Industry's own wellbeing-years this run (Σ W_s dt): its contribution to the main Hindsight term (--ignore) */
   const wy: Record<string, number> = {};
   const inc: Record<string, number> = {};
+  let peakGross = 0;
   const restraint = mode === 'budget' || mode === 'levers' || mode === 'market' || mode === 'human' || mode === 'crisisFarm';
   let firstDecadeLean: boolean | null = null;
   let settlements = 0;
@@ -1247,6 +1281,11 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
     if (Math.floor(s.time / EVERY) > Math.floor(prev.time / EVERY)) {
       pushSample();
       check(s, `run ${idx} t=${s.time}`);
+    }
+    if (Math.floor(s.time / 60) > Math.floor(prev.time / 60)) {
+      // M3 finish: the gross Mandate rate (net + lever upkeep + defences), the economy settlements are held from
+      const up = model.leverViews(s, C).reduce((a, l) => a + Math.max(0, l.upkeep), 0) + ORDER.reduce((a, e) => a + (d.sectors[e]?.settleDefence ?? 0), 0);
+      peakGross = Math.max(peakGross, d.mandatePerSec + up);
     }
     if (SETTLE && Math.floor(s.time / 10) > Math.floor(prev.time / 10)) {
       const def = ORDER.reduce((a, e) => a + (d.sectors[e]?.settleDefence ?? 0), 0);
@@ -1416,7 +1455,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       sprawl: Object.fromEntries(ORDER.filter((e) => d.sectors[e]?.travel).map((e) => [e, d.sectors[e]!.travel!.sprawl])),
       answered: s.run.dispatchesAnswered, defaulted: s.run.dispatchesDefaulted, history: s.meta.history,
       historyClearedMin: ctx.firsts.historyCleared !== undefined ? ctx.firsts.historyCleared / 60 : null,
-      endingHour: ctx.firsts.ending !== undefined ? ctx.firsts.ending / 3600 : null, mandateEnd: s.mandate, wy, inc,
+      endingHour: ctx.firsts.ending !== undefined ? ctx.firsts.ending / 3600 : null, mandateEnd: s.mandate, wy, inc, peakGross,
     } } : {}),
   };
   if (COMMONS && SUMMARY) {
@@ -1476,7 +1515,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
         (R.m3 ? ` · m3 seams ${Object.entries(R.m3.seams).map(([e, v]) => `${e}:${v}`).join(',') || '-'} LF ${Object.entries(R.m3.loadFactor).map(([e, v]) => `${e}:${v.toFixed(2)}`).join(',') || '-'}` +
           ` speed ${Object.entries(R.m3.speed).map(([e, v]) => `${e}:${v.toFixed(2)}`).join(',') || '-'} sprawl ${Object.entries(R.m3.sprawl).map(([e, v]) => `${e}:${n(v)}`).join(',') || '-'}` +
           ` disp ${R.m3.answered}/${R.m3.defaulted} hist ${R.m3.history ?? '-'}${R.m3.history ? ` ${R.m3.historyClearedMin !== null ? `cleared@${R.m3.historyClearedMin.toFixed(1)}` : 'not cleared'}` : ''}` +
-          ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'} mandate ${n(R.m3.mandateEnd)}` +
+          ` ending ${R.m3.endingHour !== null ? `${R.m3.endingHour.toFixed(2)} h` : '-'} mandate ${n(R.m3.mandateEnd)} gross/s ${R.m3.peakGross.toFixed(1)}` +
           ` Wy ${Object.entries(R.m3.wy).map(([e, v]) => `${e}:${v.toFixed(0)}`).join(',')}` : '') +
         (DECISIONS ? ` · decisions ${M.decisions} (${mean(M.decisionsByDecade).toFixed(1)}/dec) auto ${M.automated} (${mean(M.automatedByDecade).toFixed(1)}/dec) gap h1 ${M.gaps.hour1.toFixed(0)} s run ${M.gaps.run.toFixed(0)} s` : ''));
     }
@@ -1650,7 +1689,9 @@ if (strategy === 'forks') {
 } else if (DISPATCH_AUDIT) {
   // M3: each arm of each dispatch forced (the rest at the policy), Hindsight per minute per arm (target ±10% of the mean)
   const rows: { id: string; arm: number; hpm: number; answered: number }[] = [];
-  for (const d of C.dispatches ?? []) {
+  // --audit-slice=i:j (M3 finish): only letters i…j−1 of Content.dispatches, so the audit can run in pieces
+  const [ai, aj] = flag('audit-slice', '').split(':').map((x) => parseInt(x, 10));
+  for (const d of (C.dispatches ?? []).slice(Number.isFinite(ai) ? ai : 0, Number.isFinite(aj) ? aj : undefined)) {
     for (let a = 0; a < d.arms.length; a++) {
       ARM_OVERRIDE = { id: d.id, arm: a };
       const reps = campaign(strategy, runs, undefined, undefined, { quietSummary: true });

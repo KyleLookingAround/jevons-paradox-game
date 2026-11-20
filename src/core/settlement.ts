@@ -19,11 +19,21 @@ import { sectorLevers, NO_LEVERS } from './levers';
 import { clamp, fin } from './util';
 import { featureOn } from './features';
 
+/** M3 finish: how many Industries may be settled at once (GlobalParams.settleMax + settleSlotAdd; Infinity without). */
+export function settleRoom(state: GameState, content: Content): number {
+  const max = content.global.settleMax;
+  if (typeof max !== 'number' || !Number.isFinite(max)) return Infinity;
+  return Math.max(0, Math.floor(max + modsOf(state, content).settleSlots));
+}
+const settledCount = (state: GameState, content: Content): number =>
+  idx(content).ids.reduce((n, s) => n + (state.sectors[s]?.open && state.sectors[s]?.settled ? 1 : 0), 0);
+
 /** ModelApi.settle would succeed now (SectorDerived.canSettle). */
 export function canSettle(state: GameState, content: Content, s: SectorId): boolean {
   const es = state.sectors[s];
   const def = content.sectors[s];
   if (!es?.open || es.settled || !def?.settle || !state.flags.revealed || !featureOn(content, state.meta, 'settlement')) return false;
+  if (settledCount(state, content) >= settleRoom(state, content)) return false; // M3 finish: GlobalParams.settleMax
   const fl = computeFlows(state, content);
   if (fl.pending || !(es.clearYears >= STEADY_STATE_YEARS - 1e-9)) return false;
   return steadyView(state, content, fl, s).sinkHeld;

@@ -116,7 +116,7 @@ function effectProblems(where: string, e: EffectDef, out: string[]) {
   if ((e.type === 'leakMul' || e.type === 'spillMul') && (v! < 0.5 || v! > 2)) out.push(`${where}: ${e.type} ${v} outside [0.5, 2]`);
   if (e.type === 'leverCostMul' && [e.cost ?? 1, e.upkeep ?? 1].some((x) => x < 0.5 || x > 2)) out.push(`${where}: leverCostMul outside [0.5, 2]`);
   if (e.type === 'leverCostMul' && e.lever !== undefined && !leverIds.has(e.lever)) out.push(`${where}: leverCostMul ${e.lever}`);
-  if (['slotAdd', 'reveal', 'unlock', 'startLever', 'startFounded', 'institutionLoan', 'orderUnlock', 'offlineCapAdd', 'startCapitalMul', 'metaFlag'].includes(e.type)) out.push(`${where}: ${e.type} is not for dispatches`);
+  if (['slotAdd', 'reveal', 'unlock', 'startLever', 'startFounded', 'institutionLoan', 'orderUnlock', 'offlineCapAdd', 'startCapitalMul', 'metaFlag', 'settleSlotAdd'].includes(e.type)) out.push(`${where}: ${e.type} is not for dispatches`);
 }
 /** An effect that costs the player something (or trades one good for another). */
 function adverse(e: EffectDef): boolean {

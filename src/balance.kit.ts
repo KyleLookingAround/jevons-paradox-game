@@ -250,6 +250,14 @@ export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number
   for (const e of ORDER) {
     const x = d.sectors[e], es = s.sectors[e];
     if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null || es.clearYears > 0) continue;
+    if (es.pressure > x.clearP) {
+      // a thriftier engine first, where one can be bought (under a line it lowers the burn and so the smoke; the Market
+      // leaves a capped Industry's cards alone, so a player who wants it settled buys them by hand)
+      {
+        const up = model.upgradeViews({ ...s, flags: { ...s.flags, revealed: false } }, C).filter((v) => v.def.sector === e && v.def.kind === 'efficiency' && v.affordable && !v.excludedBy).sort((a, b) => a.cost - b.cost)[0];
+        if (up) { const nx = model.buyUpgrade(s, C, up.def.id); if (nx !== s) { s = nx; } }
+      }
+    }
     if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
     if (s.time - (m.lastSky[e] ?? -Infinity) < every) continue;
     const p0 = m.skyP[e];
@@ -271,9 +279,11 @@ export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number
  *  or more Industries settled, or three with a clear streak running in another. */
 export function pursuing(s: GameState): boolean {
   if (s.flags.won || (C.features?.settlement && s.meta.features?.settlement === undefined)) return false;
+  // (M3 finish: and room for every Industry: GlobalParams.settleMax and the Settlement Commission)
+  if (model.derive(s, C).ending.room < ORDER.length) return false;
   const settled = ORDER.filter((e) => s.sectors[e]?.settled).length;
   const streak = ORDER.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
-  return settled >= 4 || (settled >= 3 && streak);
+  return settled >= 4 || (settled >= 2 && streak);
 }
 
 /** Dividends (option 0, the modest one), Settlement and the Commons, as tools/balance.ts --settle --commons. */
@@ -283,7 +293,8 @@ export function restraintExtras(s: GameState, settle: boolean, commons: boolean)
     if (n === s) break;
     s = n;
   }
-  if (settle) for (const e of ORDER) if (D(s).sectors[e]?.canSettle) s = model.settle(s, C, e);
+  // M3 finish: only a settlement that can be held (the net Mandate rate stays ≥ 0 after it; GlobalParams.settleHold)
+  if (settle) for (const e of ORDER) if (D(s).sectors[e]?.canSettle) { const n = model.settle(s, C, e); if (n !== s && D(n).mandatePerSec >= 0) s = n; }
   if (commons) {
     for (let g = 0; g < 5; g++) {
       const d = D(s);
@@ -330,13 +341,25 @@ export function marketPlayer(s: GameState, log: Log, seen: Map<string, number>, 
 export function instRank(d: InstitutionDef): number {
   const effs = [d.effects, ...(d.nextLevels ?? []).map((l) => l.effects)].flat();
   const lever = (k: string) => effs.some((e) => e.type === 'startLever' && C.levers.find((l) => l.id === e.lever)?.kind === k);
-  return lever('cap') ? 0 : effs.some((e) => e.type === 'wellbeingAdd') ? 1 : effs.some((e) => e.type === 'reveal') ? 2
+  return effs.some((e) => e.type === 'settleSlotAdd') ? -1 : lever('cap') ? 0 : effs.some((e) => e.type === 'wellbeingAdd') ? 1 : effs.some((e) => e.type === 'reveal') ? 2
     : effs.some((e) => e.type === 'absorptionAdd') ? 3 : effs.some((e) => e.type === 'orderUnlock') ? 4 : lever('duty') ? 9 : 5;
 }
 
 /** Between runs: restraint buys Institutions by rank then Know-how and seats the best loadout; backfire buys Know-how. */
 export function spend(s: GameState, restraint: boolean, capsOnly = false): GameState {
-  for (let guard = 0; guard < 400; guard++) {
+  // M3 finish (tools/balance.ts): once Settlement has arrived, the restraint player saves for the room to settle
+  let saving = false;
+  if (restraint && (!C.features?.settlement || s.meta.features?.settlement !== undefined)) {
+    for (let g = 0; g < 4; g++) {
+      const room = model.institutionViews(s, C).find((v) => v.nextCost !== null && [v.def.effects, ...(v.def.nextLevels ?? []).map((l) => l.effects)].flat().some((e) => e.type === 'settleSlotAdd'));
+      if (!room) break;
+      if (!room.canBuy) { saving = true; break; }
+      const n = model.buyInstitution(s, C, room.def.id);
+      if (n === s) break;
+      s = n;
+    }
+  }
+  for (let guard = 0; guard < 400 && !saving; guard++) {
     const inst = model.institutionViews(s, C).filter((v) => v.canBuy).sort((a, b) => instRank(a.def) - instRank(b.def) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
     const kh = model.knowhowViews(s, C).filter((v) => v.canBuy).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
     const n = restraint && inst.length ? model.buyInstitution(s, C, inst[0].def.id) : kh.length ? model.buyKnowhow(s, C, kh[0].def.id) : s;

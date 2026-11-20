@@ -5,8 +5,7 @@
  */
 import type { DispatchDef } from '../../types';
 import {
-  AFTER_FIRST, BUDGET, absorb, all, cash, income, intensity, mandate, mrate, owns, price, rk, sat, smoke, timed,
-  wellbeing,
+  AFTER_FIRST, BUDGET, absorb, all, cash, income, mandate, mrate, owns, price, rk, sat, smoke, timed, wellbeing,
 } from './kit';
 
 export const ageDispatches: DispatchDef[] = [
@@ -79,8 +78,7 @@ export const ageDispatches: DispatchDef[] = [
         label: 'Back the evening off',
         outcome: 'One evening a week is quiet, and the others are a little busier.',
         price: 'One evening’s takings a week',
-        effects: [wellbeing(1), absorb('compute', 0.002)],
-        modifier: timed(15, sat('compute', 0.95), wellbeing(0.75), income(0.96)),
+        modifier: timed(15, sat('compute', 0.95), income(0.96), wellbeing(1), absorb('compute', 0.002)),
         reply: 'Wednesday declared an evening off the screens; Thursday busier',
       },
       {

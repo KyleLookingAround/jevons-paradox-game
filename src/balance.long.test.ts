@@ -39,8 +39,9 @@ describe.skipIf(!LONG)('the arc and the first ending (long; BAL_LONG=1)', () => 
     expect(h).toBeGreaterThanOrEqual(3 * 0.85);
     expect(h).toBeLessThanOrEqual(4.5);
   }, 3_600_000);
-  // M3 finish: the first ending is every Industry settled at once, held fifty years; Settlement arrives at the first
-  // Reckoning from hour 11 (src/content/features.ts). Measured 19–20 Nov 2026: mixed 15.4 h, budget 15.7 h, human 15.1 h.
+  // M3 finish: the first ending is every Industry settled at once, held fifty years; Parliament holds three settlements
+  // until the Settlement Commission (an Institution, 1,500 Hindsight, its second sitting 3,750) makes room for all five
+  // (src/content/prestige.ts, GlobalParams.settleMax). Measured 20 Nov 2026: see design/unlock-schedule.md.
   test('the first ending: mixed at 15–20 h, budget 15–22 h, human by 25 h, none before hour 12', async () => {
     const m = endingH(await MIX), b = endingH(await BUD), h = endingH(await HUM);
     expect(m).not.toBeNull(); expect(b).not.toBeNull(); expect(h).not.toBeNull();

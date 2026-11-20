@@ -74,6 +74,7 @@ export function effectText(ctx: Ctx, e: EffectDef): string {
     }
     case 'suspendOrder': return e.order === 'market' ? 'The Market places no orders' : e.order === 'civilService' ? 'The Civil Service stands idle' : e.order === 'treasury' ? 'No Treasury rules for the Commons' : 'No standing replies';
     case 'leakMul': return `${pct(e.value - 1)} leakage past the cap`;
+    case 'settleSlotAdd': return `${fmt(e.value)} more Industr${e.value === 1 ? 'y' : 'ies'} may be settled at once`;
     case 'spillMul': { const to = def?.spill ? sectorDef(ctx, def.spill.to)?.name : undefined; return `${pct(e.value - 1)} spill${to ? ` into ${to}` : ''}`; }
     default: return '';
   }
@@ -463,9 +464,18 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     show(endTxt, showEnd);
     if (showEnd && en) {
       const need = Math.round(num(en.yearsNeeded)), have = num(en.settled), all = num(en.total);
+      // What the next Industry waits on, and what holding one more would cost (Derived.ending: no rule here)
+      const nx = en.next;
+      const nm = nx ? sectorDef(ctx, nx.sector)?.name ?? 'The next Industry' : '';
+      const wait = !nx ? '' : nx.need === 'open' ? `${nm} is not yet open.` : nx.need === 'line' ? `${nm} needs a line drawn.`
+        : nx.need === 'clear' ? `${nm} needs clear skies within its line.` : nx.need === 'years' ? `${nm} needs clear skies for ${fmt(STEADY_STATE_YEARS)} years (${fmt(Math.floor(num(nx.years)))} so far).`
+          : nx.need === 'feature' ? `${nm} is at Steady State; Settlement has not yet been proposed.`
+            : nx.need === 'room' ? `${nm} is at Steady State, but ${fmt(num(en.room))} settled at once is as many as Parliament will hold; an Institution can make room for more.`
+              : `${nm} can be settled now.`;
+      const cost = num(en.nextHold) > num(en.hold) + 1e-9 ? ` Holding ${fmt(have + 1)} would cost ${fmt(num(en.nextHold))} Mandate a second; you raise ${fmt(Math.max(0, num(ctx.d?.mandatePerSec) + num(en.hold)))} after levers.` : '';
       setText(endTxt, have >= all
         ? `Every Industry settled: ${fmt(Math.floor(num(en.years)))} of ${fmt(need)} years held. An unsettled Industry starts the count again.`
-        : `The ledger balances when every Industry is settled at once and held for ${fmt(need)} years. Settled now: ${fmt(have)} of ${fmt(all)}.`);
+        : `The ledger balances when every Industry is settled at once and held for ${fmt(need)} years. Settled ${fmt(have)} of ${fmt(all)}. ${wait}${cost}`);
     }
 
     // Settled: the whole panel is one quiet row.

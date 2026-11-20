@@ -72,6 +72,8 @@ export interface Mods {
   /** leakMul and spillMul per sector. */
   leakMul: Record<string, number>;
   spillMul: Record<string, number>;
+  /** settleSlotAdd: extra Industries that may be settled at once. */
+  settleSlots: number;
 }
 
 function emptyMods(): Mods {
@@ -82,7 +84,7 @@ function emptyMods(): Mods {
     offlineCapAdd: 0, orderUnlock: new Set(), commonsYieldMul: 1, startFounded: new Set(), loans: {},
     resourcePriceMul: {}, intensityMul: {}, incomeMul: {}, incomeMulAll: 1, costMulOf: {}, forbids: [], travelSpeed: {},
     travelRoads: {}, priceSeenApp: {}, priceSeenSector: {}, anyPriceSeen: false, runVarying: false,
-    leverCost: [], suspendOrder: new Set(), leakMul: {}, spillMul: {},
+    leverCost: [], suspendOrder: new Set(), leakMul: {}, spillMul: {}, settleSlots: 0,
   };
 }
 /** A shallow copy deep enough for an overlay (every record and set copied). */
@@ -154,6 +156,7 @@ function applyEffect(m: Mods, ef: EffectDef, times: number): void {
     case 'suspendOrder': m.suspendOrder.add(ef.order); break;
     case 'leakMul': mul(m.leakMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
     case 'spillMul': mul(m.spillMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
+    case 'settleSlotAdd': m.settleSlots += Math.max(0, fin(ef.value)) * times; break;
     default: break;
   }
 }

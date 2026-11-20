@@ -140,7 +140,26 @@ and `charter` (each Charter arm); a decision log in the balancer for the cadence
 
 ---
 
-## M3 — "Every Industry its own" (mechanics, the cast, Histories, the second reveal, a first ending)
+## M3 — "Every Industry its own" (mechanics, the cast, Histories, the second reveal, a first ending) · built
+
+**Built (20 Nov 2026), on the working branch.** As planned below, with these changes, withdrawals and deferrals:
+
+- **The first ending's rule changed** (coordinator's decision): every Industry settled at once, held fifty years
+  (`GlobalParams.endingYears`), not "settled or within budget and clear". Parliament holds three settlements at once
+  (`GlobalParams.settleMax`); the Settlement Commission (an Institution bought with Hindsight) makes room for the fourth
+  and fifth. Measured (20 Nov 2026): `mixed` 18.2 h, `budget` 18.9 h, the human-like player 15.4 h, none before
+  hour 15; no clock gate (`design/unlock-schedule.md`).
+- **The mechanics are temptations** (coordinator's decision): the "ignoring a mechanic is ≥ 25% worse" criterion is
+  replaced by "the burner gains ≥ 15% income by engaging, and the trade is shown at the point of decision" (met: seams
+  +125%, load +330%, travel +82%, free +30%).
+- **Withdrawn:** "the first decade within budget in run 1" and "burning out-earns restraint by 1.2× in run 1" (the
+  budget moved to run 3 by the owner's direction, so neither can be measured in run 1).
+- **Accepted miss:** "something new every two active hours to hour 20": at most two systems arrive per run from run 4
+  by the owner's direction, and the run in which the ending is played is long, so the longest gap between firsts
+  before hour 20 is 2.7 h (`budget`) to 6 h (`mixed`, hours 13–19: the ending's own run, five settlements in it).
+- **Not met:** the letters' "thoughtful beats always-default by 5–15% and always-default beats random" for the budget
+  player (the burning player's thoughtful policy does beat default by 10%); see the M3 finishing report.
+- **Deferred:** persistent Settlement across Reckonings (M4, with the Act I capstone); Wirth's law (M7).
 
 **Goal.** Industries stop being re-skins, the broadsheet becomes a character, the game rebounds on the player, and
 there is a real ending at 15–20 h (audit recs 14–16).

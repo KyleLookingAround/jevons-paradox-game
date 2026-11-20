@@ -91,23 +91,27 @@ at least one lever per Industry rebounds; from M5 the government gains `standard
 
 ## A first run, as measured
 
-Efficiency-only play (`bun run tools/balance.ts efficiency 1`, 19 Nov 2026):
+Efficiency-only play (`bun run tools/balance.ts efficiency 1`, 20 Nov 2026):
 
 | Time | What happens |
 |---|---|
-| 0:18 | Better boilers (−33%). Coal use rises 232% within a minute: Cotton mills come within reach |
-| 0:36–4:24 | Another engine works, seven levels (the repeatable growth card) |
-| 1:00 | Cotton mills founded |
-| 5:18 | Separate condenser (−40%). Coal use +150% within two minutes |
-| 8:36 | **The Coal Question**: the reveal. Cards gain their projection lines; the rebound meter wakes. Nothing else |
-| 13:36 | Smoke noticed in Parliament: the first two levers and Mandate |
-| 13:06 | Railways founded (brought within reach by the double-acting engine) |
-| 19:12 | First crisis, The Black Fog: population −8%, Mandate +150; the population gauge appears |
-| 40:48 | Exhaustion. Efficiency ×14.9, peak coal use ×45.6. Hindsight 72 |
+| 0:18 | Better boilers (−33%) |
+| 0:36–4:12 | Another engine works, seven levels (the repeatable growth card) |
+| 1:24 | Cotton mills founded |
+| 4:48 | Separate condenser (−40%) |
+| 9:24 | **The Coal Question**: the reveal. Cards gain their projection lines; the rebound meter wakes. Nothing else |
+| 12:48 | Railways founded (brought within reach by the double-acting engine) |
+| 14:24 | Smoke noticed in Parliament: the first two levers and Mandate |
+| 19:00 | First crisis, The Black Fog: population −8%, Mandate +150; the population gauge appears |
+| 40:48 | Exhaustion. Efficiency ×11, peak coal use ×47. Hindsight 94 |
 
 Run 2 opens with the Market and opens Light & Current at 10–12 minutes (about 50 minutes in all). Budgets arrive in
 run 3 (the unfolding, below); the restraint player earns its first decade about 15 minutes into run 3 and Steady State
-in run 4 (about 3.4 h in all).
+in run 4 (about 3.5–4 h in all). Settlement arrives with the Reckoning after it (run 5, about hour 4–6), for three
+Industries at once; the Settlement Commission, bought with Hindsight, makes room for the fourth and the fifth, and the
+first ending (all five settled together for fifty years) follows in the long run after the second sitting is bought:
+about 18–19 h for the scripted restraint players (`mixed`, `budget`) and about 15 h for the plausible human player
+(`design/unlock-schedule.md`).
 
 ## The unfolding
 
@@ -161,7 +165,8 @@ M4 (owner decision D3).
 
 Three credits, and the game continues after each: the **Act I ending** (built in M3 as the first ending: every
 Industry open and **settled** at once, in one run, and held so for fifty model years, `GlobalParams.endingYears`;
-15–20 h), the **Act II ending** (the consumption ledger within budget for 50 years, about 50 h), the **true ending**
+Parliament holds three settlements at once until the Settlement Commission, an Institution bought with Hindsight, makes
+room for all five; 15–20 h), the **Act II ending** (the consumption ledger within budget for 50 years, about 50 h), the **true ending**
 (everything retired or settled at its sink line, wellbeing held for 50 years, the first pit flooded into a lake, about
 100 h). Also: **Backfire** (the default Reckoning), **Degrowth by accident** (hidden: population crashes until use
 falls), **Business as usual**, and the achievement **Jevons Was Right**. Endings report as ledgers, never as verdicts.

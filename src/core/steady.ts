@@ -149,3 +149,14 @@ export function sinkROf(es: SectorState, def: SectorDef, content: Content, R: nu
   if (cp === null || !(absorption > 0) || !(pressureIn > 0) || !(R > 0)) return null;
   return fin((cp * absorption + deletionOut) * R / pressureIn);
 }
+
+/* M3 finish: holding settlements together (GlobalParams.settleHold) */
+/** GlobalParams.settleHold: each settled Industry's hold cost (Mandate/s) when n are settled. */
+export function holdEach(content: Content, n: number): number {
+  if (n <= 0) return 0;
+  const h = content.global.settleHold;
+  const base = Math.max(0, Number.isFinite(h?.holdUpkeep) ? h!.holdUpkeep! : 0), step = Math.max(0, Number.isFinite(h?.holdStep) ? h!.holdStep! : 0);
+  return base + step * (n - 1);
+}
+/** The total hold cost of n settlements (n × holdEach(n)). */
+export const holdTotal = (content: Content, n: number): number => n * holdEach(content, n);
