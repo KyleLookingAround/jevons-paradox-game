@@ -85,6 +85,9 @@ const sector: SectorDef = {
    * Motion first opened (the travel dial arrives at that Reckoning: one Preview a run). */
   unlock: {
     minReckonings: 3,
+    /* M5 (registry lane): Plenty now stands between Motion and Compute in sectorOrder and opens only in office; without
+     * this, Compute (by default after its predecessor) could never open as a Preview. */
+    after: ['motion'],
     when: {
       all: [
         {

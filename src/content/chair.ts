@@ -170,8 +170,10 @@ export const rival: RivalDef = {
      * points above the line that is 15% of a year's income, inside the comply costs (0–90%: findings, E2). The line
      * (52 + drawn × 10) sits just above winAt: he lobbies a popular Ministry down to the edge of losing. */
     { kind: 'lobby', lobby: { costPerPoint: 3, carveOutAt: 52 } },
-    /* Litigation (design: window 5, delay 3): the fee is three tenths of a year's income, inside the comply range. */
-    { kind: 'litigate', litigate: { windowYears: 5, delayYears: 3, feeYears: 0.3 } },
+    /* Litigation (design: window 5, delay 3). The fee in model years of the Industry's income: the Motion lane measured
+     * Motion's comply costs at 0–24% of a year, so at 0.3 he never litigated there; 0.1 sits inside that range (findings
+     * E2), so a fresh raise that costs him more than a tenth of a year goes to court. */
+    { kind: 'litigate', litigate: { windowYears: 5, delayYears: 3, feeYears: 0.1 } },
     { kind: 'conceal', feature: 'inspection' },
   ],
   policy: {

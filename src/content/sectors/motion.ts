@@ -421,7 +421,8 @@ const withLadder = (l: LeverDef, ladder: string[]): LeverDef => ({ ...l, ladder 
 
 const motionLevers: LeverDef[] = [
   /* ---- Motion ---- */
-  afterChair(lever({
+  {
+  ...afterChair(lever({
     id: 'motion.duty', sector: 'motion', kind: 'duty',
     name: 'Fuel duty escalator',
     blurb: 'Petrol duty that rises faster than engines improve. Briefly popular with nobody.',
@@ -429,6 +430,12 @@ const motionLevers: LeverDef[] = [
     values: DUTY_VALUES, cost: 250, upkeep: 0.12, label: DUTY_LABEL, recycle: RECYCLE,
     recycleBlurb: { commons: 'Spent on the Commons instead: a bus pass, a shorter week, and a fortnight in the sun with the time.' },
   }), 'Pryce Consolidated will pay it on the barrels it reports.'),
+    /* M5 (registry lane, for the coordinator's order of discovery): the duty is the expensive lever on the day. Per
+     * level, −4 in Confidence's target when enacted, +0.5 after twenty model years (a fuel duty is resented, then
+     * forgotten), on top of the price share every levy costs. A steward who reaches for it first pays at the polls;
+     * one who meets the light trucks under a standard first finds the duty closes the ladder. */
+    popularity: { start: -4, after: 0.5, years: 20 },
+  },
   afterChair(lever({
     id: 'motion.cap', sector: 'motion', kind: 'cap',
     requires: ['budget'],

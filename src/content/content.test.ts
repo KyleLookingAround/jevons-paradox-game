@@ -626,7 +626,7 @@ describe('words', () => {
   test('no banned Americanisms', () => {
     const BANNED = /\b(colors?|colored|honors?|honored|centers?|centered|grays?|tires?|curbs?|aluminum)\b/i;
     const IZE = /\b([a-z]+)(ize|izes|ized|izing|ization|izations)\b/i;
-    const IZE_OK = new Set(['size', 'sizes', 'sized', 'prize', 'prizes', 'seize', 'seized', 'seizes', 'capsize']);
+    const IZE_OK = new Set(['size', 'sizes', 'sized', 'prize', 'prizes', 'seize', 'seized', 'seizes', 'capsize', /* M5: a grain, not a suffix */ 'maize']);
     const bad: string[] = [];
     for (const { path, text: raw } of text) {
       const t = stripPlaceholders(raw);
@@ -2156,6 +2156,31 @@ describe('M5: Statecraft, Institutions and the Treaty', () => {
     }
     const alkali = C.institutions.find((x) => x.id === 'inst.alkaliInspectorate')!;
     expect((alkali.nextLevels ?? []).some((l) => l.effects.some((e) => e.type === 'inspectorAdd'))).toBe(true);
+  });
+
+  test('the Ministry\'s shop: an Institution that acts only on the Coal Age, Compute and Code or Parliament\'s room is not offered in office', () => {
+    const chairAges = new Set(acts.filter((a) => a.chair === 'government').flatMap((a) => a.ages));
+    const chairSector = (s: string) => chairAges.has(ageOfSector(s));
+    const leverSector = new Map(C.levers.map((l) => [l.id, l.sector]));
+    // an effect does something in a Ministry if it is global (no sector) or names a chair Industry
+    const live = (e: EffectDef): boolean => {
+      if (e.type === 'settleSlotAdd') return false;
+      if (e.type === 'startLever') return chairSector(leverSector.get(e.lever) ?? '');
+      if (e.type === 'certify') return true;
+      const sec = (e as { sector?: string }).sector;
+      return sec === undefined ? true : chairSector(sec);
+    };
+    // the Standing coal duty is inert in office but the climate committee requires it
+    const PREREQ = ['inst.standingDuty'];
+    const hidden = (c?: Cond) => !!c && leaves(c).some((x) => 'flag' in x && x.flag === 'office') && JSON.stringify(c).includes('"not"');
+    for (const i of C.institutions) {
+      if (PREREQ.includes(i.id)) continue;
+      const effs = [...i.effects, ...(i.nextLevels ?? []).flatMap((l) => l.effects)];
+      if (effs.length && !effs.some(live)) expect(hidden(i.when) ? '' : `${i.id}: offered in office, does nothing there`).toBe('');
+    }
+    // the Water Resources Board is in the shop by the Reckoning of Plenty's Ministry (Statecraft's)
+    const wb = C.institutions.find((x) => x.id === 'inst.waterBoard')!;
+    expect(wb.when && leaves(wb.when).some((x) => 'feature' in x && x.feature === 'statecraft')).toBe(true);
   });
 
   test('four Articles priced in Precedent; two playbooks, one per Treaty from the first', () => {

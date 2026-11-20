@@ -55,7 +55,8 @@ const SECTOR_STATS: StatKey[] = [
 ];
 const APP_STATS: StatKey[] = ['adoption', 'appDemand'];
 const FRACTION_STATS: StatKey[] = ['reserveFraction', 'pressureFraction', 'rebound', 'adoption', 'loadFactor', 'withinBudget',
-  /* M4 */ 'reportedStock', 'stockFraction', 'foreignShare', 'feedFactor', 'feedShare'];
+  /* M4 */ 'reportedStock', 'stockFraction', 'foreignShare', 'feedFactor', 'feedShare',
+  /* M5 */ 'returnShare', 'concealment'];
 /** M4: the act endings a { ending } leaf may name. */
 const endingIds = new Set((C.acts ?? []).flatMap((a) => (a.ending ? [a.ending.id] : [])));
 

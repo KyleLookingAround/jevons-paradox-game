@@ -25,7 +25,7 @@ export const ages: AgeDef[] = [
     yearSpan: [1909, 2010],
     theme: 'chrome',
     /* M5: Plenty, under the Chair from Ministry 3 (design/m5-design.md §7.3) */
-    sectors: ['motion' /* , 'plenty' (PENDING: with its module) */],
+    sectors: ['motion', 'plenty'],
   },
   {
     id: 'attention',

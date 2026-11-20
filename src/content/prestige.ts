@@ -2,7 +2,7 @@
  * Prestige content: Know-how (the tempting kind) and Institutions (the slow kind), bought with Hindsight.
  * Content is data (see README.md): every number and word here is read by the core and the UI; no game rules.
  */
-import type { EffectDef, InstitutionDef, InstitutionLevelDef, KnowhowDef } from '../types';
+import type { Cond, EffectDef, InstitutionDef, InstitutionLevelDef, KnowhowDef } from '../types';
 import { eta, capCost, reserve, absorb, sat, half, startLever, sig2 } from './helpers';
 
 /* ------------------------------------------------------------------ */
@@ -249,6 +249,17 @@ const SETTLE_COMMISSION = 5500;
 const SETTLE_SITTING_1 = 2500;
 const SETTLE_SITTING_2 = 2.5 * SETTLE_COMMISSION;
 
+/**
+ * M5: Institutions whose every effect acts on the Coal Age (capstoned in a Ministry, its levers hidden), on Compute and
+ * Code (closed in a Ministry), or on Parliament's room for settlements (Act II's two Industries fit the three it holds)
+ * are not offered once office is taken: the Ministry's shop holds only what does something there. Kept: the Statistics
+ * Office, the Alkali Inspectorate (an Inspector at level 2), the Clean Air Act (Motion's air at level 2), the
+ * broadcaster, the sovereign fund, the green belt (Motion's walking distance), the climate committee (Motion's duty),
+ * the Standing coal duty (inert, but the climate committee requires it), the Civil Service, Treasury rules, the private
+ * secretary, and the two Boards. A level already bought stays owned (the wipe sets levels to 0 anyway).
+ */
+const NOT_IN_OFFICE: Cond = { not: { flag: 'office' }, label: 'Not in a Ministry' };
+
 export const institutions: InstitutionDef[] = [
   {
     id: 'inst.statisticsOffice', name: 'Statistics Office',
@@ -263,12 +274,12 @@ export const institutions: InstitutionDef[] = [
    * twelve minutes into the industry (or earlier, if the player Tightens the cap or draws a line), not at its opening.
    */
   leverInstitution({
-    id: 'inst.smokeAbatement', name: 'Smoke Abatement Act',
+    id: 'inst.smokeAbatement', when: NOT_IN_OFFICE, name: 'Smoke Abatement Act',
     blurb: 'The ceiling on the borough’s coal is law before the first engine is lit. The line itself is drawn once there is a town to draw it across.',
     cost: 110, lever: 'steam.cap', leverName: 'Smoke abatement', maxLevel: 3,
   }),
   leverInstitution({
-    id: 'inst.gasReferees', name: 'Gas referees',
+    id: 'inst.gasReferees', when: NOT_IN_OFFICE, name: 'Gas referees',
     blurb: 'Officials who test the gas, and in time ration it. The allowance waits until the town has lamps worth counting.',
     cost: 160, requires: ['inst.smokeAbatement'], lever: 'light.cap', leverName: 'Gas allowance', maxLevel: 3,
   }),
@@ -289,12 +300,12 @@ export const institutions: InstitutionDef[] = [
     cost: 45, requires: ['inst.statisticsOffice'], lever: 'steam.duty', leverName: 'Coal duty', maxLevel: 3,
   }),
   leverInstitution({
-    id: 'inst.royalCommission', name: 'Royal Commission on Coal',
+    id: 'inst.royalCommission', when: NOT_IN_OFFICE, name: 'Royal Commission on Coal',
     blurb: 'Sits for five years and reports, at length, that there is plenty. Meanwhile, the slack heaps are burned too.',
     cost: 45, requires: ['inst.statisticsOffice'], lever: 'steam.circularity', leverName: 'Slack recovery', maxLevel: 3,
   }),
   leverInstitution({
-    id: 'inst.temperance', name: 'Temperance societies',
+    id: 'inst.temperance', when: NOT_IN_OFFICE, name: 'Temperance societies',
     blurb: 'Tea, hymns and a pledge to want less. Appetite is already modest when the first engine is lit.',
     cost: 40, lever: 'steam.sufficiency', leverName: 'Temperance pledge', maxLevel: 3,
   }),
@@ -326,12 +337,12 @@ export const institutions: InstitutionDef[] = [
     ]),
   },
   leverInstitution({
-    id: 'inst.parksTrust', name: 'Municipal improvement trust',
+    id: 'inst.parksTrust', when: NOT_IN_OFFICE, name: 'Municipal improvement trust',
     blurb: 'Libraries, baths and parks are funded before the lamps are lit.',
     cost: 110, requires: ['inst.broadcaster'], lever: 'light.greenSpending', leverName: 'Public parks', maxLevel: 3,
   }),
   {
-    id: 'inst.revenueDecoupling', name: 'Revenue decoupling',
+    id: 'inst.revenueDecoupling', when: NOT_IN_OFFICE, name: 'Revenue decoupling',
     blurb: 'Pay the gas company for light delivered, not for therms sold. It stops building load.',
     cost: 130, effects: [startLever('light.sufficiency', 1)],
     nextLevels: levels(130, [
@@ -374,7 +385,7 @@ export const institutions: InstitutionDef[] = [
    * it waits on this purchase and the run after it: the path, priced in Hindsight, puts the ending at 15–20 hours.
    */
   {
-    id: 'inst.settlementCommission', name: 'Settlement Commission',
+    id: 'inst.settlementCommission', when: NOT_IN_OFFICE, name: 'Settlement Commission',
     blurb: 'A standing commission to hear the case for one more Industry kept at its sink line. It sits for years and reports in volumes.',
     cost: SETTLE_SITTING_1, effects: [{ type: 'settleSlotAdd', value: 1 }],
     needs: { owns: 'ach.m4.thirdSpring', label: 'The banks have passed the spring survey in three runs' },
@@ -399,12 +410,12 @@ export const institutions: InstitutionDef[] = [
     ], [2.5]),
   },
   leverInstitution({
-    id: 'inst.gridCode', name: 'Grid connection code',
+    id: 'inst.gridCode', when: NOT_IN_OFFICE, name: 'Grid connection code',
     blurb: 'Data centres queue for power like everybody else, and are told to bring their own.',
     cost: 260, requires: ['inst.cleanAirAct'], lever: 'compute.substitution', leverName: 'Solar & storage', maxLevel: 3,
   }),
   {
-    id: 'inst.engineeringGuild', name: 'Engineering guild',
+    id: 'inst.engineeringGuild', when: NOT_IN_OFFICE, name: 'Engineering guild',
     blurb: 'A profession with standards: nothing ships that no one has read.',
     cost: 350, requires: ['inst.gridCode'], effects: [startLever('code.reviewGate', 1)],
     nextLevels: levels(350, [
@@ -438,7 +449,7 @@ export const institutions: InstitutionDef[] = [
   {
     id: 'inst.fisheryBoard', name: 'The Fishery Board',
     blurb: 'A Board with a survey vessel and two naturalists, counting the banks every spring from minute one.',
-    cost: 150, when: { owns: 'fishing', label: 'Fishing has opened' }, effects: [{ type: 'survey', sector: 'fishing' }],
+    cost: 150, when: { all: [{ owns: 'fishing', label: 'Fishing has opened' }, NOT_IN_OFFICE] }, effects: [{ type: 'survey', sector: 'fishing' }],
     nextLevels: levels(150, [
       { effects: [startLever('fishing.surveyQuota', 1)], label: 'The survey quota at 90% of the surplus from the start' },
     ], [2.5]),
@@ -446,7 +457,7 @@ export const institutions: InstitutionDef[] = [
   leverInstitution({
     id: 'inst.inspectorFurnaces', name: 'Inspector of Furnaces',
     blurb: 'An inspector with the right to enter any works, and a preference for charcoal and scrap wherever they still pay.',
-    cost: 120, when: { owns: 'iron', label: 'Iron & Steel has opened' }, lever: 'iron.smokeInspector', leverName: 'Clean smelting', maxLevel: 3,
+    cost: 120, when: { all: [{ owns: 'iron', label: 'Iron & Steel has opened' }, NOT_IN_OFFICE] }, lever: 'iron.smokeInspector', leverName: 'Clean smelting', maxLevel: 3,
   }),
   /*
    * M5 (design §§6.7, 7.3): the Ministry's two new Institutions, appended (the loadout order of M2–M4 is unchanged).
@@ -463,12 +474,12 @@ export const institutions: InstitutionDef[] = [
    * Confidence): a real choice against the Inspectorate.
    */
   {
-    /* Offered from the fourth Ministry: Plenty opens mid-run in the third (its unlock), so the Board is in the shop at
-     * the first Reckoning after Plenty has been seen (a condition on the Ministry count, not on Plenty's id, so the
-     * Board stands whether or not Plenty's module is registered). One level: the right gauge is the whole of it. */
-    id: 'inst.waterBoard', name: 'Water Resources Board',
-    blurb: 'Accounts of water consumed as well as water pumped. A rule can be written on the gauge that matters.',
-    cost: 200, when: { stat: 'ministries', op: '>=', value: 4, label: 'Plenty has opened (the fourth Ministry)' }, effects: [],
+    /* Offered with Statecraft (the Reckoning of Ministry 3, the Ministry Plenty opens in mid-run), so a steward can seat
+     * it for Plenty's first run and write the cap on water consumed (the Plenty lane's balance note 3); priced inside
+     * one Ministry's Hindsight beside a Statecraft node (SC_MINISTRY 150). One level: the right gauge is the whole of it. */
+    id: 'inst.waterBoard', name: 'The Water Resources Board',
+    blurb: 'Accounts for the water that never comes back: what the fields use up, not what the pumps lift.',
+    cost: 90, when: { feature: 'statecraft', label: 'Statecraft' }, effects: [],
   },
   {
     id: 'inst.statisticsBoard', name: 'Independent Statistics Board',

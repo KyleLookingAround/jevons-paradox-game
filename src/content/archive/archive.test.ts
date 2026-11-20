@@ -36,7 +36,7 @@ const STYLE_BAD = /!|"|'| - |\bironically\b|\byou\b|\byour\b/i;
 const UNIT_WORDS = /\b(sector|sectors|era|eras)\b/i;
 const AMERICAN = /\b(colors?|colored|honors?|honored|centers?|centered|grays?|tires?|curbs?|aluminum|programs?)\b/i;
 const IZE = /\b([a-z]+)(ize|izes|ized|izing|ization|izations)\b/i;
-const IZE_OK = new Set(['size', 'sizes', 'sized', 'prize', 'prizes', 'seize', 'seized', 'seizes', 'capsize']);
+const IZE_OK = new Set(['size', 'sizes', 'sized', 'prize', 'prizes', 'seize', 'seized', 'seizes', 'capsize', /* M5: a grain, not a suffix */ 'maize']);
 const styleErrors = (where: string, t: string): string[] => {
   const out: string[] = [];
   if (STYLE_BAD.test(t)) out.push(`${where}: banned mark or word in “${t.match(STYLE_BAD)![0]}”`);

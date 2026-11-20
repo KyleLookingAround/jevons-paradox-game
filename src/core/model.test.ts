@@ -11,7 +11,10 @@ const SECTORS = C.sectorOrder;
 /** Real content is exercised only once the content lane has brought it to the M1 shape. */
 const REAL_OK = Array.isArray((realContent as Partial<Content> | undefined)?.sectorOrder) && !!realContent.sectors;
 const SKIP_REAL = !REAL_OK;
-const orderOf = (c: Content) => c.sectorOrder;
+/** Sectors these tests open outside office: M5 leaves out an Industry that opens only in a Ministry (Plenty: its unlock
+ *  needs the 'office' flag), which no run outside office can reach. */
+const officeOnly = (c: Content, e: string): boolean => JSON.stringify(c.sectors[e]?.unlock?.when ?? null).includes('"flag":"office"');
+const orderOf = (c: Content) => c.sectorOrder.filter((e) => !officeOnly(c, e));
 
 /* ---------------- helpers ---------------- */
 
@@ -607,8 +610,8 @@ describe('robustness', () => {
   });
   (SKIP_REAL ? test.skip : test)('real content: every sector open, every lever at max, 10 minutes, stays finite', () => {
     // keep it alive: no collapse, reserves topped up
-    const ORDER = realContent.sectorOrder;
-    const C3: Content = { ...realContent, sectors: Object.fromEntries(ORDER.map((e) => [e, { ...realContent.sectors[e], collapseAt: 1e12, reserve: realContent.sectors[e].reserve * (realContent.sectors[e].resourceKind === 'stock' ? 1e3 : 1) }])) };
+    const ORDER = orderOf(realContent);
+    const C3: Content = { ...realContent, sectors: Object.fromEntries(realContent.sectorOrder.map((e) => [e, { ...realContent.sectors[e], collapseAt: 1e12, reserve: realContent.sectors[e].reserve * (realContent.sectors[e].resourceKind === 'stock' ? 1e3 : 1) }])) };
     let s = openAll(C3, 3000);
     for (const e of ORDER) expect(s.sectors[e].open).toBe(true);
     s = { ...s, mandate: 1e9, flags: { revealed: true, won: false } };

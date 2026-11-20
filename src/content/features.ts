@@ -12,7 +12,7 @@ const rk = (n: number, label?: string): Cond => ({ stat: 'reckonings', op: '>=',
 const steamDecades = (n: number): Cond => ({ stat: 'budgetDecades', sector: 'steam', op: '>=', value: n });
 const revealed: Cond = { flag: 'revealed' };
 /* M4: the Coal Age's four, then the Previews (sectorOrder). */
-const SECTORS = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
+const SECTORS = ['steam', 'light', 'iron', 'fishing', 'motion', 'plenty', 'compute', 'code'];
 /* M3 note: 'survey' reads the Civil Service, 'histories' the Steady State achievement: plain ids, resolved by the lint. */
 
 /**
@@ -31,7 +31,7 @@ const actOne = (...cs: Cond[]): Cond => ({ all: [...cs.flatMap((c) => ('all' in 
  * openFor = run time, past the window's start). Run floors (below) keep an Industry's first run free of mid-run
  * features; this keeps a late opening and a feature apart in any run.
  */
-const MID_OPENERS = ['light', 'iron', 'fishing', 'motion', 'compute', 'code' /* , 'plenty' (with its module) */];
+const MID_OPENERS = ['light', 'iron', 'fishing', 'motion', 'plenty', 'compute', 'code'];
 export const OPENING_GAP_SECONDS = 300;
 const CLEAR_OF_OPENINGS: Cond = {
   not: { any: MID_OPENERS.map((sector): Cond => ({ stat: 'openFor', sector, op: '<', value: OPENING_GAP_SECONDS })) },

@@ -16,6 +16,7 @@ import { ironDispatches } from './iron';
 import { fishingDispatches } from './fishing';
 /* M5 (the text lane's letters from the Chair; wired by the registry lane, design/scratch/m5-registry-text.md): appended. */
 import { chairDispatches } from './chair';
+import { plentyDispatches } from './plenty';
 
 export const dispatches: DispatchDef[] = [
   ...generalDispatches,
@@ -29,4 +30,5 @@ export const dispatches: DispatchDef[] = [
   ...fishingDispatches,
   ...ageDispatchesM4,
   ...chairDispatches,
+  ...plentyDispatches,
 ];

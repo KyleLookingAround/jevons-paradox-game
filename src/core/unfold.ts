@@ -31,13 +31,15 @@ function lockedOf(meta: MetaState, content: Content): { locked: FeatureId[]; las
 
 /** The feature due now for `state` (conditions read `state`), or null. Cheap when nothing is locked or the gap since
  *  the last arrival has not passed. */
-export function dueFeature(state: GameState, content: Content): FeatureId | null {
+export function dueFeature(state: GameState, content: Content, atReckoning = false): FeatureId | null {
   if (!content.features) return null;
   const meta = state.meta;
   const { locked, last } = lockedOf(meta, content);
   if (!locked.length) return null;
+  // M5 (follow-up 2): the gap keeps two arrivals off one screen within a run; a Reckoning is another screen, so its
+  // check is not held back by an arrival late in the run just ended (still one feature per check)
   const gap = fin(content.global?.featureGapSeconds ?? 0);
-  if (gap > 0 && meta.totalSeconds - last < gap) return null;
+  if (!atReckoning && gap > 0 && meta.totalSeconds - last < gap) return null;
   const f = content.features;
   for (const id of locked) if (evalCond(state, content, f[id]!.when)) return id;
   return null;

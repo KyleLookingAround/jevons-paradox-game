@@ -149,7 +149,7 @@ export function reckon(state: GameState, content: Content): GameState {
   // the unfolding: a feature that waits on a Reckoning arrives with the new run (before the Charter draw it may open)
   const fItems: NewsItem[] = [];
   const fEv: EvDraft[] = [];
-  const due = dueFeature(s0, content);
+  const due = dueFeature(s0, content, true); // M5 (follow-up 2): the gap does not hold back the Reckoning's arrival
   if (due) s0 = { ...s0, meta: unlockFeature(s0.meta, content, due, 0, calendarYear(s0, content), fItems, fEv) };
   const offer = featureOn(content, s0.meta, 'charters') ? drawOffer(s0, content, charter ?? undefined) : [];
   // M5: the invitation, judged on the run just ended (OfficeDef.when), while office is not taken

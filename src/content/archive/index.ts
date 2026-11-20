@@ -25,6 +25,9 @@ import { fishingArchive } from './fishing';
 import { ironArchive } from './iron';
 import { lightArchive } from './light';
 import { motionArchive } from './motion';
+/* M5 (the text lane's notes; wired by the registry lane) */
+import { chairArchive } from './chair';
+import { plentyArchive } from './plenty';
 import { steamArchive } from './steam';
 
 export const archive: ArchiveDef[] = [
@@ -33,6 +36,8 @@ export const archive: ArchiveDef[] = [
   ...ironArchive,
   ...fishingArchive,
   ...motionArchive,
+  ...chairArchive,
+  ...plentyArchive,
   ...computeArchive,
   ...codeArchive,
   ...commonsArchive,

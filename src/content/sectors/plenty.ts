@@ -201,13 +201,16 @@ const sector: SectorDef = {
     {
       id: 'plenty.airFreight', name: 'Air-freighted produce', icon: 'plane',
       blurb: 'Green beans in January, flown in overnight. The winter has been abolished, at a price.',
-      halfPrice: 0.6, saturation: 6_000, steepness: 2.8, visibleBelow: 0.6, foundCost: 40_000,
+      /* Registry lane (core follow-up: ApplicationDef.when is now enforced): the intended price gate 0.95 restored; 0.6 was a
+       * stand-in that kept the use shut while `when` was ignored. */
+      halfPrice: 0.6, saturation: 6_000, steepness: 2.8, visibleBelow: 0.95, foundCost: 40_000,
       when: { stat: 'openFor', sector: 'plenty', op: '>=', value: AIR_FREIGHT_AT, label: 'The late 1960s on the farms' },
     },
     {
       id: 'plenty.biofuels', name: 'Biofuels', icon: 'pump',
       blurb: 'Grain distilled into motor spirit. The field now feeds the car as well as the table.',
-      halfPrice: 0.5, saturation: 14_000, steepness: 3, visibleBelow: 0.5, foundCost: 80_000,
+      /* Registry lane: the intended gate 0.85 restored (0.5 was the stand-in; see air freight). */
+      halfPrice: 0.5, saturation: 14_000, steepness: 3, visibleBelow: 0.85, foundCost: 80_000,
       when: { stat: 'openFor', sector: 'plenty', op: '>=', value: BIOFUELS_AT, label: 'The year 2000 on the farms' },
     },
   ],

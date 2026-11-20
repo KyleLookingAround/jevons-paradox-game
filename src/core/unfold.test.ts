@@ -51,6 +51,17 @@ describe('the unfolding', () => {
     expect(s.meta.features?.budget).toBeDefined();
     expect(Object.keys(s.meta.features ?? {}).filter((k) => k === 'budgetPace' || k === 'market').length).toBe(1);
   });
+  test('M5 follow-up 2: a Reckoning\'s arrival is not held back by a mid-run arrival inside the gap (one per check)', () => {
+    let s = tickN(revealed(model.createState(F)), 100);
+    const n0 = Object.keys(s.meta.features ?? {}).length;
+    for (let i = 0; i < 200 && Object.keys(s.meta.features ?? {}).length === n0; i++) s = tickN(s, 1);
+    const last = Math.max(...(Object.values(s.meta.features ?? {}) as number[]));
+    expect(s.meta.totalSeconds - last).toBeLessThan(60); // the run ends inside the gap after its last arrival
+    s = model.reckon(s, F);
+    const now = Object.keys(s.meta.features ?? {});
+    expect(now.filter((k) => k === 'budgetPace' || k === 'market').length).toBe(1);
+    expect(s.meta.features![now.find((k) => k === 'budgetPace' || k === 'market') as 'market']).toBe(s.meta.totalSeconds);
+  });
   test('nothing unlocks inside fastForward; it arrives once ticking resumes', () => {
     const s0 = revealed(model.createState(F));
     const f = model.fastForward(s0, F, 600);
