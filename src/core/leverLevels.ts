@@ -11,6 +11,7 @@ const KIND_RANGE: Record<LeverKind, [number, number]> = {
   duty: [0, 0.999], cap: [0.05, Infinity], sufficiency: [0.05, 1], substitution: [0, 1], greenSpending: [0, 1],
   reviewGate: [0, 1], circularity: [0, 0.95], sharedLibs: [0, 0.95], deletion: [0, 0.9], measure: [0, Infinity],
   quota: [0, 1],
+  /* M5 */ subsidy: [0, 0.9], charge: [0, 1],
 };
 
 const leverMaxCache = new WeakMap<LeverDef, number>();
@@ -57,3 +58,6 @@ export function leverLevelDef(def: LeverDef, level: number): LeverLevelDef | nul
   return out;
 }
 
+
+/** M5 (Core A): the effective level of a lever in a Ministry (carve-outs and litigation); the level outside one. */
+export { effectiveLevel } from './chair/acting';

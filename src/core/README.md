@@ -17,7 +17,9 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 0 | `calendar.ts` | The calendar year, the current Age, `yearAt` (M2); QA fix: clocks that open ahead catch up over `CALENDAR_CATCHUP_SECONDS` (no jump), and the slowing past an Age levels off within `CALENDAR_LATE_SPAN` years. |
 | 0 | `events.ts` | M2: `emit` / `pushEvents` (seq from `meta.eventSeq`, the `EVENTS_MAX` trim), the headline → event mapping. |
 | 0 | `features.ts` | The unfolding: `featureOn` (a feature absent from content is on), `featuresView` (Derived.features), grandfathering for saves from before it. |
-| 0 | `leverLevels.ts` | M3: lever level resolution and each kind's range (split from levers.ts so effects.ts can read a measure's value). |
+| 0 | `leverLevels.ts` | M3: lever level resolution and each kind's range (split from levers.ts so effects.ts can read a measure's value). M5: re-exports `effectiveLevel`. |
+| 0 | `chair/chairIndex.ts` | M5 (Core A): the Chair's lookups per Content: chair sectors (ActDef.chair), loophole rungs and ladders, pledges, Articles, playbooks, the rival's rows. |
+| 0 | `chair/acting.ts` | M5 (Core A): how a lever acts in a Ministry: `effectiveLevel` (carve-outs, litigation), `effKey`, used rungs and `leverEscape`, `concealOf`. Read by effects.ts and levers.ts; the M4 value at one null check outside a Ministry. |
 | 0 | `dispatchClock.ts` | M3: GlobalParams.dispatch with defaults, `dispatchFirstAt`, `dispatchGap`. |
 | 0 | `milestones.ts` | M3: `milestone` (first time ever of each thing, written once, MILESTONES_MAX). |
 | 0 | `record.ts` | M2: decisions and automated actions per model decade, `run.opening`, the `asDecision` wrapper. |
@@ -25,8 +27,8 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 1 | `steady.ts` | Budget lines; M2: paces, the line's own day (`decadeWellbeing`), `clearP`, clear skies, `sinkR`, decade choices, `newBudget`. M3 finish: `holdEach` / `holdTotal` (GlobalParams.settleHold). |
 | 1 | `hindsight.ts` | The Hindsight terms a Reckoning would pay (M2: lean decades, settled sectors, less what was withheld for time away). |
 | 1 | `headlines.ts` | Headline choice, case-aware placeholders (M2: `{name}`), the news list. |
-| 2 | `effects.ts` | Standing effects folded into `Mods` (cached per state; M2 sources: Charter, dividends, Commons, settle dividends, institution loans; M2 effects), η and flow capacity, one-off effects. M3: the ten new effects; the History (and `suspend`) in the cached base; a run-varying overlay (measures × value, side effects × bite × level, timed modifiers, dispatch standing effects) that costs nothing when absent; `isForbidden`, `costMulOfId`, `applyM3OneOffs`, `refreshEta`. |
-| 3 | `levers.ts` | Lever levels, visibility (M2: settled sectors, loans), recycle, upkeep, the per-sector aggregate, the levy's Mandate share. |
+| 2 | `effects.ts` | Standing effects folded into `Mods` (cached per state; M2 sources: Charter, dividends, Commons, settle dividends, institution loans; M2 effects), η and flow capacity, one-off effects. M3: the ten new effects; the History (and `suspend`) in the cached base; a run-varying overlay (measures × value, side effects × bite × level, timed modifiers, dispatch standing effects) that costs nothing when absent; `isForbidden`, `costMulOfId`, `applyM3OneOffs`, `refreshEta`. M5 (Core A): the thirteen M5 effects; Articles and playbooks in the base; pledges in force, used rungs' effects (× effective level) and the Know-how transfer in the overlay; measures and side effects at the effective level, a measure × (1 − escape); 'confidenceAdd'. |
+| 3 | `levers.ts` | Lever levels, visibility (M2: settled sectors, loans), recycle, upkeep, the per-sector aggregate, the levy's Mandate share. M5: the aggregate reads the effective level; a used rung's escape (duty and charge × (1 − e), cap and quota ÷ (1 − e)) and concealment (cap and quota ÷ (1 − c)). |
 | 3 | `population.ts` | Population growth and the demographic transition. |
 | 3 | `commons.ts` | M2: the Commons arithmetic (open, wellbeing, intensity, parameters). |
 | 4 | `feeds.ts` | M4: a feed's factor on c, the combined factor into a target, how a source's R is handed on to its targets (the full account's feed part). |
@@ -34,7 +36,7 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 5 | `load.ts` | M3: SectorDerived.load (live or frozen). |
 | 5 | `travel.ts` | M3: hours per head, sprawl, SectorDerived.travel, lockInDecay. |
 | 5 | `account.ts` | M4 (The Survey): the full account (fullR, embodied; one deterministic pass per flows, Σ conserved), `accountOn` ('estimates' defined and unlocked), `lineR`, `drawLine` (a line on the account of the moment). |
-| 5 | `inherit.ts` | M4: the ONE carry-over step (capstoned sectors built from meta.world.capstone; the scarred start through freshSector); M7 extends only this. |
+| 5 | `inherit.ts` | M4: the ONE carry-over step (capstoned sectors built from meta.world.capstone; the scarred start through freshSector); M7 extends only this. M5: `freshChair` (a Ministry's chair state, built every run while office is taken), `sealedInOffice` (ActDef.closedInOffice). |
 | 5 | `flows.ts` | Every open sector solved in order, cached per state; M2: settled sectors' frozen flows, excess and defence, Commons intensity and wellbeing, `steadyView` (the decade and Steady conditions), `primeFocusedFlows` for projections; the pending Reckoning; the shadow and instruments. M4: feeds into c, a drawer's owner's price, a renewable's reported price and `ren` (G, foreign share and catch; a depletion sector's net rate in pressureIn), the quota (two solves), a capstone scaled per head and in arrears, a 'full' line's cap, `flowsWithoutFeeds`, `depletionSink`. |
 | 6 | `conditions.ts` | `Cond`: stat values (M2 stats and `owns` kinds), evaluation, checklist labels. |
 | 6 | `state.ts` | Fresh meta (M2: default orders), run stats and sectors, baselines, history samples (M2: the sink line), `createState`, `isFreshRun`, `withMeta` (the between-runs rebuild). |
@@ -46,6 +48,8 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 6 | `modifiers.ts` | M3: timed modifiers (stacking, expiry, views). |
 | 6 | `archive.ts` | M3: subject rules, `unlockNotes`, `archiveViews`. |
 | 6 | `ending.ts` | M3: the ending record, `retrospective`; M3 finish: `endingYearsOf`, `settledCount` (the streak itself is counted in `step.ts`: every Industry settled). |
+| 6 | `chair/inspect.ts` | M5 (Core A): Inspectors and their rest, the quiet period and coverage, the concealment ramp (`concealTick`), `inspect` and Standing inspection, `reportedR`, `levyScale`, `capTargetScale`, `certifyDecade`, the sector fields of the views. |
+| 6 | `chair/loopholes.ts` | M5 (Core A): rung states (`loopholeStep` every step: first rung opens, drafting completes, held in Opposition; `robustReopen` at ticks), evade's rung (`evadeRung`, `useRung`: the exempt app), `amend`, `loopholeViews`. |
 | 6 | `temptation.ts` | M3 finish: the temptation's trade at the point of decision (`appWanted`, `seamWanted`, `cardWanted`: the views' `wantedChange`), one sector solve per candidate, cached per bucket. |
 | 6 | `returns.ts` | M3: `fileReturn` validation, publication, `withdrawReturn`, SurveyView. |
 | 6 | `ambient.ts` | M3: ambient ticks, the pick, stat formatting. |
@@ -57,6 +61,8 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 7 | `commonsActions.ts` | M2: `buyCommons` (fund first), `commonsViews`. |
 | 7 | `unfold.ts` | The unfolding's unlock check (`dueFeature`, every 5 s of run time in the step, never away; and in reckon()), one feature at a time, spaced by `featureGapSeconds`. |
 | 7 | `unlocks.ts` | Which sectors may open next, whether one opens, their checklists. |
+| 7 | `candidates.ts` | M5 (Core A): the candidate rule shared by the Market and the rival (`bestCandidate`, `marketGain`, flows with a card raised or a use founded), split out of orders.ts with no change to the Market. |
+| 7 | `chair/rival.ts` | M5 (Core A): the rival: profile from the opening, policy, income and opening purse, `rivalStep` (the one step call: income, rungs, THE YEARLY DECISION at order ticks: housekeeping, purchase, answers, concealment; Standing inspection), `priceResponses`, the answer line (`rivalAnswerView`, cached per lever per bucket), `leverChairFields`, `rivalView`. |
 | 8 | `orders.ts` | M2: order ticks, the Market, the Civil Service, Treasury rules, `setOrders`, `OrdersView`. |
 | 8 | `dispatch.ts` | M3: the scheduler (expiry, draw), answers, default resolution, the standing dispatch order, DispatchesView. |
 | 8 | `history.ts` | M3: `chooseHistory`, forbidUntil and the goal in the step, rewards, `historyViews`. |
@@ -68,6 +74,12 @@ A module imports only from modules in layers above it in this table (no cycles).
 | 11 | `offline.ts` | M2: `fastForward` with holds, the cap and the `OfflineReport`; the offline fix: Hindsight at `offline.hindsightRate` (`run.hindsightWithheld`) and steps run `away` (no dividend overflow); QA fix: budget lines do not decline while away (`since` moved on per step). |
 | 12 | `derive.ts` | `derive()`: the view the UI reads every frame (M2: every new field). |
 | 12 | `projections.ts` | The cards' "this decade" and "brings within reach" projections (focused clones, structural cache with a 20 s bucket, optional per-sector laziness), and upgrade views. |
+| 3 | `hiddenFlow.ts` | M5 (Core B): a hiddenFlow sector's return share r (returnShare × Mods.returnShareMul, floored, clamped). |
+| 6 | `chair/elections.ts` | M5 (Core B): Confidence (C*, the yearly update, crisis one-offs), the pledge offer (mix32), polling day, Opposition and its repeal, 'defeated', binds, popularity, `choosePledges`, `campaign`, `stepChair` (step.ts's one line). |
+| 6 | `chair/treasury.ts` | M5 (Core B): the Treasury's income (tax, levy share, pledges' treasuryShare), `capitalPerSec` (step.ts), `compensate`, the subsidy's share and split (called by the rival's purchase). |
+| 9 | `chair/office.ts` | M5 (Core B): `takeOffice` (the first Treaty reset, `resetForOffice`), the prospectus and the file, `treaty`, `buyArticle`, Derived.office and Derived.treaty. |
+| 9 | `serialise5.ts` | M5 (Core B): save v6: the v5 → v6 step, validation of every M5 field, the invitation on migration. |
+| 12 | `chair/views.ts` | M5 (Core B): Derived.chair (ChairView, with Core A's rival, inspector and loophole views), SectorDerived's M5 fields, AppDerived.regime. |
 | 13 | `index.ts` | The registry: assembles `model` (every in-run player action wrapped by `asDecision`) and the public exports. |
 
 Caches are module-level `WeakMap`s keyed by object identity (content, state, `state.upgrades`, `state.levers`,
@@ -101,5 +113,6 @@ the M2 core, via `m3.golden.ts`), `m3.mechanics.test.ts`, `m3.dispatch.test.ts`,
 `m3.perf.test.ts` (against `fixtureM3`, `fixtureM3Bank` and `fixtureM3Gated` in `fixture.ts`), and the M4 tests
 `m4.nochange.test.ts` (golden hours from the M3 core, via `m4.golden.ts`), `m4.reserve.test.ts`, `m4.renewable.test.ts`,
 `m4.acts.test.ts`, `m4.survey.test.ts`, `m4.misc.test.ts`, `m4.perf.test.ts` (against `fixtureM4` and `fixtureM4Acts`;
-helpers in `m4.testkit.ts`), all against `fixture.ts` (test-only content; never imported by the game) except the
+helpers in `m4.testkit.ts`), the M5 Core A tests `m5.nochange.test.ts` (golden hours from the M4 core), `m5.rival.test.ts`,
+`m5.inspect.test.ts`, `m5.loopholes.test.ts` (against `fixtureM5`; helpers in `m5.testkit.ts`), all against `fixture.ts` (test-only content; never imported by the game) except the
 projection tolerance test, which also runs the real content. The real-content pacing targets are in `src/balance.test.ts`.

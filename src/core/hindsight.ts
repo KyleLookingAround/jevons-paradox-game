@@ -13,7 +13,9 @@ import { featureOn } from './features';
 /* ------------------------------------------------------------------ */
 
 export function hindsightTerms(state: GameState, content: Content): HindsightTerms {
-  const h = content.global.hindsight;
+  // M5: in a Ministry the global weights are overlaid by ChairDef.hindsight (and perParliamentWon pays an eighth term)
+  const ov = state.chair ? content.chair?.hindsight : undefined;
+  const h = ov ? { ...content.global.hindsight, ...ov } : content.global.hindsight;
   const ix = idx(content);
   const ids = ix.ids;
   const run = state.run;
@@ -41,6 +43,7 @@ export function hindsightTerms(state: GameState, content: Content): HindsightTer
     sectorsReached: fin(h.perSectorReached * Math.max(0, open - 1)),
     steady: fin(h.perSteadySector * count(run.steadySectors)),
     settled: fin((h.perSettledSector ?? 0) * settled),
+    ...(state.chair ? { parliaments: fin(Math.max(0, fin(ov?.perParliamentWon ?? 0)) * state.chair.electionsWon) } : {}),
   };
   let sum = termsSum(terms);
   // M4 (finish): the letters' stake (RunStats.letterShare; EffectDef 'hindsightShare'), a share of the seven terms
@@ -73,8 +76,8 @@ function capstoneCounts(state: GameState, content: Content, s: string): boolean 
 }
 
 /** The unrounded sum of the seven weighted terms (before withholding): what fastForward's offline rate is applied to. */
-export function termsSum(t: Pick<HindsightTerms, 'wellbeing' | 'budget' | 'unburnt' | 'backfire' | 'sectorsReached' | 'steady' | 'settled'>): number {
-  return t.wellbeing + t.budget + t.unburnt + t.backfire + t.sectorsReached + t.steady + t.settled;
+export function termsSum(t: Pick<HindsightTerms, 'wellbeing' | 'budget' | 'unburnt' | 'backfire' | 'sectorsReached' | 'steady' | 'settled' | 'parliaments'>): number {
+  return t.wellbeing + t.budget + t.unburnt + t.backfire + t.sectorsReached + t.steady + t.settled + (t.parliaments ?? 0); // M5: the eighth
 }
 
 export function hindsightOnReckon(state: GameState, content: Content): number {

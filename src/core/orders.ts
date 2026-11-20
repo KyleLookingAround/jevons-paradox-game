@@ -11,13 +11,13 @@ import {
   DEFAULT_ORDER_INTERVAL_YEARS, DEFAULT_MARKET_FROM_RECKONING, DEFAULT_PAYBACK_CHOICES, PAYBACK_MIN, ORDER_SECONDS_MAX,
 } from './constants';
 import { idx } from './contentIndex';
-import { modsOf, etaAt, isForbidden, suspended, leverMulOf } from './effects';
+import { modsOf, isForbidden, suspended, leverMulOf } from './effects';
 import type { Mods } from './effects';
 import { computeFlows, steadyView } from './flows';
-import type { Flows } from './flows';
 import { leverLevelDef, leverMaxLevel, leverNetUpkeep, leverVisible } from './levers';
 import { setLeverAs } from './policy';
-import { buyUpgradeAs, foundAppAs, foundCostOf, upgradeCost, upgradeExcludedBy, upgradeMax, upgradeVisible } from './purchases';
+import { buyUpgradeAs, foundAppAs } from './purchases';
+import { bestCandidate } from './candidates';
 import { recordAutomated } from './record';
 import { defaultOrders, isFreshRun } from './state';
 import { clamp, fin, isObj } from './util';
@@ -54,85 +54,15 @@ const orderOn = (mods: Mods, o: 'civilService' | 'treasury'): boolean => mods.or
 /* The orders                                                          */
 /* ------------------------------------------------------------------ */
 
-/**
- * The Market's view of one candidate: whole-state flows with the upgrade raised one level (η recomputed for every open
- * sector) or the application founded. No time passes.
- */
-function flowsWithUpgrade(state: GameState, content: Content, id: string): Flows {
-  const draft0: GameState = { ...state, upgrades: { ...state.upgrades, [id]: (state.upgrades[id] ?? 0) + 1 } };
-  const mods = modsOf(draft0, content);
-  const sectors = { ...state.sectors };
-  for (const s of idx(content).ids) {
-    const es = sectors[s];
-    if (es?.open && !es.settled) sectors[s] = { ...es, eta: etaAt(content.sectors[s], mods, es.openFor) };
-  }
-  return computeFlows({ ...draft0, sectors }, content);
-}
-function flowsWithApp(state: GameState, content: Content, s: SectorId, appId: string): Flows {
-  const es = state.sectors[s];
-  const draft: GameState = { ...state, sectors: { ...state.sectors, [s]: { ...es, apps: { ...es.apps, [appId]: { ...es.apps[appId], founded: true } } } } };
-  return computeFlows(draft, content);
-}
-
-/**
- * What a candidate pays per second, as the Market sees it (see OrdersState): the running cost it saves at today's
- * output, Σ over solved sectors of D_now × max(0, p_pre now − p_pre after) (coal no longer bought, cheaper engines),
- * plus any rise in whole-state income, max(0, income after − income now). The first term is how an engine was sold
- * ("a third of the coal it saves"); the second is how an application is. Neither ever counts a loss.
- */
-export function marketGain(f0: Flows, f1: Flows): number {
-  let saved = 0;
-  for (const s in f0.sectors) {
-    const a = f0.sectors[s], b = f1.sectors[s];
-    if (!a || !b || f0.settled[s] !== undefined) continue;
-    saved += Math.max(0, a.D) * Math.max(0, a.pPre - b.pPre);
-  }
-  return fin(saved) + Math.max(0, fin(f1.income - f0.income));
-}
-
+export { marketGain } from './candidates';
 type LogEntry = GameState['orderLog'][string];
+
 /** The Market's one action in sector s, or the same state; `log` receives the outcome (GameState.orderLog). */
 function marketIn(state: GameState, content: Content, s: SectorId, paybackMax: number, log: (e: LogEntry) => void): GameState {
-  const def = content.sectors[s];
-  const es = state.sectors[s];
-  const f0 = computeFlows(state, content);
-  const mods = modsOf(state, content);
-  let best: { kind: 'found' | 'upgrade'; id: string; payback: number } | null = null;
-  let eligible = 0, affordable = 0, bestAny = Infinity;
-  const consider = (kind: 'found' | 'upgrade', id: string, cost: number, f1: Flows) => {
-    const gain = marketGain(f0, f1);
-    const payback = gain > 0 ? cost / gain : Infinity;
-    if (payback < bestAny) bestAny = payback;
-    if (payback <= paybackMax && (best === null || payback < best.payback)) best = { kind, id, payback };
-  };
-  for (const a of def.applications) {
-    const st = es.apps[a.id];
-    if (!st?.available || st.founded || isForbidden(mods, a.id)) continue;
-    eligible++;
-    const cost = foundCostOf(a, s, mods);
-    if (!(cost <= state.capital)) continue;
-    affordable++;
-    consider('found', a.id, cost, flowsWithApp(state, content, s, a.id));
-  }
-  for (const u of content.upgrades ?? []) {
-    if (u.sector !== s || (u.kind !== 'efficiency' && u.kind !== 'capital') || (u.excludes && u.excludes.length)) continue;
-    const lvl = state.upgrades[u.id] ?? 0;
-    if (lvl >= upgradeMax(u) || !upgradeVisible(state, u, mods, content) || upgradeExcludedBy(state, content, u.id)) continue;
-    if (isForbidden(mods, u.id)) continue;
-    eligible++;
-    const cost = upgradeCost(u, lvl, mods);
-    if (!(cost <= state.capital)) continue;
-    affordable++;
-    consider('upgrade', u.id, cost, flowsWithUpgrade(state, content, u.id));
-  }
-  const t = state.time;
-  if (best === null) {
-    log(eligible === 0 ? { t, outcome: 'none' } : affordable === 0 ? { t, outcome: 'cash' } : { t, outcome: 'payback', payback: fin(bestAny, Number.MAX_VALUE) });
-    return state;
-  }
-  const b = best as { kind: 'found' | 'upgrade'; id: string };
-  log({ t, outcome: 'bought', id: b.id });
-  return b.kind === 'found' ? foundAppAs(state, content, b.id, 'market') : buyUpgradeAs(state, content, b.id, 'market');
+  const { best, log: e } = bestCandidate(state, content, s, { capital: state.capital, paybackMax, foundPaybackMax: paybackMax, fork: null, share: null });
+  log(e);
+  if (best === null) return state;
+  return best.kind === 'found' ? foundAppAs(state, content, best.id, 'market') : buyUpgradeAs(state, content, best.id, 'market');
 }
 
 /** The Civil Service in sector s: raise the cheapest listed lever when over the line; lower the costliest per the rule. */
@@ -293,7 +223,7 @@ export function ordersView(state: GameState, content: Content): OrdersView {
 }
 
 /** M3: shift 3's label per order, fixed by the contract (OrdersView.kind). */
-const ORDER_KIND: Record<OrderId, 'opening' | 'closing'> = { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing' };
+const ORDER_KIND: Record<OrderId, 'opening' | 'closing'> = { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing', inspection: 'closing' };
 
 /** M3: OrdersView.marketWhy: the static reasons first, else the last order tick's outcome, else 'waiting'. */
 export function marketWhyOf(state: GameState, content: Content, o: OrdersState, mods: Mods): Record<SectorId, MarketWhy> {

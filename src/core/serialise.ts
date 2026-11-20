@@ -4,6 +4,7 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { SAVE_VERSION, START_YEAR, YEARS_PER_SECOND } from '../types';
+import { institutionLevels, migrateV5, officeOfferOnMigration, validChair, validMeta5 } from './serialise5';
 import { EVENTS_MAX, PENDING_DIVIDENDS_MAX, RUN_HISTORY_MAX, OPENING_MAX, ANSWERED_MAX, MODIFIERS_MAX, MILESTONES_MAX, LOAD_HOURS } from '../types';
 import type {
   ActiveModifier, AnsweredDispatch, AppState, BudgetState, Content, EndingRecord, FiledReturn, GameEvent, GameState, LeverRecycle,
@@ -327,7 +328,7 @@ function validReveal(x: unknown, content: Content): GameState['surveyReveal'] {
 /* ---- element-by-element validation of the M2 map- and array-valued fields ---- */
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
-const ACTORS = new Set(['player', 'market', 'civilService', 'treasury', 'default', 'dispatch']);
+const ACTORS = new Set(['player', 'market', 'civilService', 'treasury', 'default', 'dispatch', /* M5 */ 'rival', 'inspectorate', 'opposition']);
 const EVENT_KINDS = new Set([
   'appAvailable', 'appFounded', 'upgradeBought', 'stageReached', 'leverEnacted', 'leverLapsed', 'budgetDrawn',
   'budgetBroken', 'decade', 'dividendChosen', 'clearSkies', 'steadyState', 'settled', 'unsettled', 'crisis', 'collapse',
@@ -336,6 +337,10 @@ const EVENT_KINDS = new Set([
   'seamSunk', 'biteBack', 'dispatchArrived', 'dispatchAnswered', 'modifierEnded', 'historyChosen', 'historyCleared', 'returnFiled',
   'returnPublished', 'returnWithdrawn', 'archiveUnlocked', 'ending', 'bankUsed',
   'thresholdCrossed', 'scarHealed', 'surveyed', 'arrears', 'arrearsCleared', 'capstoned',
+  /* M5 */
+  'officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'leverRepealed', 'ministryDefeated', 'inspected',
+  'concealmentFound', 'rivalAnswered', 'loopholeOpened', 'loopholeUsed', 'loopholeClosed', 'litigated', 'carveOut',
+  'compensated', 'treaty', 'playbookLearnt', 'articleBought',
 ]);
 function validEvents(x: unknown, maxSeq: number): GameEvent[] {
   if (!Array.isArray(x)) return [];
@@ -567,12 +572,13 @@ export function deserialize(text: string, content: Content): GameState | null {
     if (version < 3) raw = migrateV2(raw, content);
     if (version < 4) raw = migrateV3(raw, content);
     if (version < 5) raw = migrateV4(raw);
+    if (version < 6) raw = migrateV5(raw); // M5
   } catch { return null; }
   try {
     const ix = idx(content);
     const savedMeta = isObj(raw.meta) ? raw.meta : {};
     const merged0 = merge(freshMeta(content), savedMeta) as MetaState;
-    const institutions = levelMap(merged0.institutions, (id) => { const d = ix.institutions.get(id); return d ? institutionMax(d) : undefined; });
+    const institutions = institutionLevels(merged0.institutions, content); // M5: 0 = unlocked, no level
     // loadout: owned, known, distinct, within the seats
     const loadout: string[] = [];
     let used = 0;
@@ -591,7 +597,7 @@ export function deserialize(text: string, content: Content): GameState | null {
     for (const k in knowhow) knowhowPeak[k] = Math.max(knowhowPeak[k] ?? 0, knowhow[k]);
     const { opening: _o, firstOpening: _f, ...rest0 } = merged0;
     void _o; void _f;
-    const meta: MetaState = {
+    let meta: MetaState = {
       ...rest0,
       charter: typeof merged0.charter === 'string' && ix.charters.has(merged0.charter) ? merged0.charter : null,
       orders: mergeOrders(defaultOrders(content), merged0.orders, content),
@@ -617,6 +623,7 @@ export function deserialize(text: string, content: Content): GameState | null {
         ? Object.fromEntries(Object.entries(savedMeta.features).filter(([k, v]) => FEATURE_SET.has(k) && typeof v === 'number' && Number.isFinite(v)))
         : grandfathered(content, merged0, isObj(raw.flags) && raw.flags.revealed === true),
     };
+    { const m5 = validMeta5(savedMeta, content, meta); delete meta.office; meta = { ...meta, ...m5 }; } // M5
     // M4: the merge base is built without the world (a capstone in meta would otherwise lend its built sector's fields
     // to a saved sector that lacks them); the saved run carries its own capstoned sectors
     const fresh = createState(content, { ...meta, world: undefined }, typeof raw.seed === 'number' ? raw.seed : 1);
@@ -647,6 +654,10 @@ export function deserialize(text: string, content: Content): GameState | null {
         settled,
         dividends: Array.isArray(es.dividends) ? es.dividends.filter((d): d is string => typeof d === 'string' && ix.dividends.has(d)) : [],
       };
+      // M5: certified decades parallel to decadesWithin; the return share at the baseline
+      delete sectors[s].decadesCertified; delete sectors[s].returnAtBase;
+      if (Array.isArray(es.decadesCertified)) sectors[s].decadesCertified = decadesWithin.map((_, i) => (es.decadesCertified as unknown[])[i] === true);
+      if (isNum(es.returnAtBase)) sectors[s].returnAtBase = clamp(es.returnAtBase, 0, 1);
     }
     const levers: Record<string, LeverState> = {};
     for (const [id, ls] of Object.entries(isObj(merged.levers) ? merged.levers : {})) {
@@ -656,6 +667,8 @@ export function deserialize(text: string, content: Content): GameState | null {
       const out: LeverState = { level, ref: level > 0 ? Math.max(0, fin(ls.ref)) : 0 };
       if (typeof ls.bite === 'number' && Number.isFinite(ls.bite) && ls.bite > 0) out.bite = clamp(ls.bite, 0, 1);
       if (ls.bitten === true) out.bitten = true;
+      if (level > 0 && isNum(ls.since)) out.since = ls.since; // M5
+      if (isNum(ls.raisedAt)) out.raisedAt = ls.raisedAt;
       if (def && typeof ls.recycle === 'string' && recycleOptions(def).includes(ls.recycle as LeverRecycle)) out.recycle = ls.recycle as LeverRecycle;
       levers[id] = out;
     }
@@ -694,6 +707,8 @@ export function deserialize(text: string, content: Content): GameState | null {
       // M3 (finish): the headline rotation, kept only when well formed (absent = {})
       headlineUse: isObj(merged.headlineUse) ? amountMap(merged.headlineUse) : undefined,
       surveyReveal: validReveal(merged.surveyReveal, content), // M4
+      chair: validChair(raw.chair, content, meta), // M5
+      ...(raw.officeOffer === true && !meta.office ? { officeOffer: true } : {}),
       news: Array.isArray(merged.news)
         ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number')
           .map((n) => (typeof n.year === 'number' ? n : { ...n, year: Math.floor(START_YEAR + n.time * YEARS_PER_SECOND) }))
@@ -743,6 +758,10 @@ export function deserialize(text: string, content: Content): GameState | null {
       const m2 = unlockNotes(s, content, s.meta);
       if (m2 !== s.meta) s = { ...s, meta: m2 };
     }
+    // M5 (v5 → v6) step 6: the invitation on a fresh run after a run that met OfficeDef.when, as far as a summary says
+    if (version < 6 && officeOfferOnMigration(s, content, isFreshRun(s))) s = { ...s, officeOffer: true };
+    if (!s.chair) delete s.chair;
+    if (!s.officeOffer) delete s.officeOffer;
     // sanity: must be computable
     const d = computeFlows(s, content);
     if (!Number.isFinite(d.wellbeing) || !Number.isFinite(s.capital)) return null;

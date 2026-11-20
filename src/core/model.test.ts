@@ -530,7 +530,7 @@ describe('persistence', () => {
     expect(badNumbers(run(back, 30))).toEqual([]);
   });
   test('garbage → null', () => {
-    for (const t of ['', 'nope', '{}', '[]', 'null', '{"time":"x","eras":{}}', '{"time":1}', '{"time":1,"version":2}', '{"time":1,"version":6,"sectors":{}}']) expect(model.deserialize(t, C)).toBeNull();
+    for (const t of ['', 'nope', '{}', '[]', 'null', '{"time":"x","eras":{}}', '{"time":1}', '{"time":1,"version":2}', '{"time":1,"version":7,"sectors":{}}']) expect(model.deserialize(t, C)).toBeNull();
   });
 });
 

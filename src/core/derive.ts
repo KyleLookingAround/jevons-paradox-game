@@ -41,6 +41,10 @@ import { standingDrawYearsOf } from './steady';
 import { nextSectorsOf } from './unlocks';
 import { featuresView, featureOn } from './features';
 import { fin, clamp } from './util';
+import { chairIdx } from './chair/chairIndex';
+import { capitalPerSec } from './chair/treasury';
+import { officeView, treatyView } from './chair/office';
+import { chairView, regimeOf, sectorM5 } from './chair/views';
 
 /* ------------------------------------------------------------------ */
 /* Derive                                                              */
@@ -56,6 +60,8 @@ export function derive(state: GameState, content: Content): Derived {
   const features = featuresView(state, content);
   const m4 = ix.anyM4;
   const acct = accountOn(content, state.meta) ? fullAccount(state, content, fl) : null;
+  const m5 = !!(content.office || content.chair); // M5: the views' M5 fields (absent for content without them)
+  const chairSet = chairIdx(content).chairSet;
   for (const s of ix.ids) {
     const f = fl.sectors[s];
     const es = state.sectors[s];
@@ -89,6 +95,10 @@ export function derive(state: GameState, content: Content): Derived {
         feeds: m4 && known ? appFeedsView(state, content, s, i) : null,
         feedsKnown: known,
       };
+      if (m5) {
+        apps[a.id].regime = regimeOf(content, s, i, seen, mods);
+        if (state.chair && chairSet.has(s)) apps[a.id].canFound = false; // the rival's
+      }
     });
     const secondsLeft = secondsLeftOf(state, content, fl, levs, s);
     const sv = steadyView(state, content, fl, s);
@@ -134,6 +144,7 @@ export function derive(state: GameState, content: Content): Derived {
       embodied: acct ? acct.embodied[s] ?? [] : null,
       yearsLeft: yearsLeftOf(state, content, s, secondsLeft, acct !== null),
     };
+    if (m5) { Object.assign(sectors[s], sectorM5(state, content, s, f)); sectors[s].levyRevenue += f.chargeRevenue ?? 0; }
   }
   const terms = hindsightTerms(state, content);
   const fresh = isFreshRun(state);
@@ -143,8 +154,8 @@ export function derive(state: GameState, content: Content): Derived {
     year: calendarYear(state, content),
     age: currentAge(state, content)?.id ?? null,
     wellbeing: fl.wellbeing,
-    incomePerSec: fl.income,
-    clickValue: fl.pending ? 0 : fin(g.clickFlat + g.clickSeconds * fl.income),
+    incomePerSec: capitalPerSec(state, content, fl), // M5: the Treasury's in a Ministry
+    clickValue: fl.pending || state.chair ? 0 : fin(g.clickFlat + g.clickSeconds * fl.income),
     mandatePerSec: fl.mandateGain - fl.upkeep,
     populationGrowthPerSec: popGrowthRate(fl.wellbeing, content, mods) * state.population,
     pendingReckoning: fl.pending,
@@ -170,6 +181,7 @@ export function derive(state: GameState, content: Content): Derived {
     ending: { ...(ix.acts.length ? actEndingView(state, content) : { ...endingView(state, content), act: null }), roomBy: roomByView(state, content) },
     archive: archiveCounts(state, content),
     surveyReveal: surveyRevealView(state, content),
+    ...(m5 ? { office: officeView(state, content), chair: chairView(state, content, fl), treaty: treatyView(state, content) } : {}),
   };
 }
 

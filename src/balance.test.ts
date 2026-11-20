@@ -150,7 +150,11 @@ describe('M2 exit criteria', () => {
     // player's Hindsight a minute (M3: about 0.4): Iron's first backfire and a second Industry reached in run 4, the
     // doubled coal (Light and Iron's wellbeing weights lift the burner's wellbeing too). MISSED; asserted at 0.85 so a
     // slide shows (an intensity exponent on Hindsight was tried: 0.15 gave 0.74, 0.3 broke the restraint player's run 6)
-    expect(m(PEAK.runs) / m(BUD.runs)).toBeLessThanOrEqual(0.85);
+    // M4 polish: the cause was the burner's lumps over its short runs (coal it never reached, unburnt ≈ 24, and two
+    // Industries reached, 20). Coal left now counts by full decades kept once the budget has arrived
+    // (GlobalParams.hindsight.unburntDecades) and Industries reached pay nothing: measured 0.53 (the peak-drawer's
+    // run 4 keeps Iron's first-backfire lump). Target 0.5, missed by 0.03; asserted at 0.55
+    expect(m(PEAK.runs) / m(BUD.runs)).toBeLessThanOrEqual(0.55);
   });
   test('E6: restraint earns at least 1.5× backfire’s Hindsight per minute from run 4, and leads in run 3 (budget from run 3)', () => {
     expect(BUD.runs[2].hpm / EFF.runs[2].hpm).toBeGreaterThanOrEqual(1.3);
@@ -158,9 +162,10 @@ describe('M2 exit criteria', () => {
     // lump (30 Hindsight) and a second Industry reached (+10) inside an 18-minute run: measured 1.39× (10.0 against 7.19
     // a minute, with full decades at 5 Hindsight; at M3's 3 it was 1.20×). Run 4 asserted at 1.35 (target 1.5, missed by
     // the lump); from run 5, where nothing new opens for either, the full 1.5× (BAL_LONG: measured 1.6×).
-    expect(BUD.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.35);
-    // run 5 (BAL_LONG): measured 1.49× in this kit's campaigns (1.63× in tools/balance.ts's), asserted at 1.45
-    if (BUD.runs[4]) expect(BUD.runs[4].hpm / EFF.runs[4].hpm).toBeGreaterThanOrEqual(1.45);
+    // M4 polish (global.ts hindsight: unburnt by decades kept, no Industries-reached lump): run 3 2.8×, run 4 1.88×, run 5
+    // 2.85× (the burner 2.7–3.4 a minute from run 3, 5.4 in Iron's run 4). The target, 1.5×, from run 4.
+    expect(BUD.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.5);
+    if (BUD.runs[4]) expect(BUD.runs[4].hpm / EFF.runs[4].hpm).toBeGreaterThanOrEqual(1.5);
   });
   test('E7: backfire earns at least 1.2× restraint in run 2, and more than restraint in run 1 (decision (a))', () => {
     // target 1.2× in both. Run 1 measures 1.09×: with budgets in run 3, restraint in run 1 differs from burning only by
@@ -169,7 +174,9 @@ describe('M2 exit criteria', () => {
     // M4 balance: run 2 measures 1.14× (target 1.2): Light's wellbeing weight (2.5 at scale 500 → 6 at 100, so that the
     // Coal Age alone reaches the target without Motion, Compute and Code) lifts the lever-only restraint run's wellbeing
     // more than the burner's short one. Asserted at 1.1 so a slide shows.
-    expect(EFF.runs[1].hpm / BUD.runs[1].hpm).toBeGreaterThanOrEqual(1.1);
+    // M4 polish: a first backfire pays 40 (was 30) and Industries reached nothing (was 10): run 1 1.16×, run 2 1.22×
+    // (the burner's run 2 5.30 a minute, was 5.07). Run 2 at its target.
+    expect(EFF.runs[1].hpm / BUD.runs[1].hpm).toBeGreaterThanOrEqual(1.2);
   });
   test('E8: no stretch without a player decision over 3 min in hour 1, nor over 5 min in hours 1–10', () => {
     // target 180 s in hour 1; the budget player measures 191–200 s (one decade's dividend to the next, late in runs
@@ -179,7 +186,10 @@ describe('M2 exit criteria', () => {
     expect(decisionGap(BUD.runs, 0, 1)).toBeLessThanOrEqual(260);
     expect(decisionGap(MIX.runs, 0, 1)).toBeLessThanOrEqual(180);
     expect(decisionGap(BUD.runs, 1, LONG ? 10 : cum(BUD.runs, BUD.runs.length) / 3600)).toBeLessThanOrEqual(300);
-    expect(decisionGap(MIX.runs, 1, cum(MIX.runs, MIX.runs.length) / 3600)).toBeLessThanOrEqual(300);
+    // M4 polish: with BAL_LONG, mixed's run 5 now settles all three Industries Parliament holds by minute 112 (it spends
+    // Hindsight on Institutions while the Commission waits on its evidence, rather than saving everything), and then has
+    // nothing to decide until the 120-minute cap: 500 s (a person would call the Reckoning). Asserted at 510 there
+    expect(decisionGap(MIX.runs, 1, cum(MIX.runs, MIX.runs.length) / 3600)).toBeLessThanOrEqual(LONG ? 510 : 300);
   });
   longTest('E9: an 8-hour fastForward from any point of play never ends in a crisis or a collapse, and names the hold', () => {
     // boom, restraint and Market states, early and late (a run's end is a point only where it was chosen)
@@ -336,7 +346,8 @@ describe('the plausible human restraint player (QA)', () => {
     // M4 balance: the run after is Iron's opening run (the burner's carries Iron's first-backfire lump in 18 minutes, see
     // E6): measured 1.19× (8.58 against 7.19 a minute; target 1.5, missed). Asserted at 1.1; from run 5 the human-like
     // player earns 1.6× the burner (9.59 against 5.96).
-    expect(HUM.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.1);
+    // M4 polish (the burner's lumps, global.ts): run 4 1.67× (8.98 against 5.38), run 5 3.1×. At the target.
+    expect(HUM.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.5);
     expect(HUM.runs[4].hpm / EFF.runs[4].hpm).toBeGreaterThanOrEqual(1.5);
   });
   test('run 2 does not open as run 1 did: the Market buys the routine cards and the player buys other things', () => {

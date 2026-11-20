@@ -10,4 +10,6 @@ tests; working files stay in `design/scratch/`, which is not.
   Survey and at it. `act1-late.json`: three settled, run 9. `act1-ending.json`: five seconds before the Act I ending.
 
 Regenerate the M4 states after a balance change (they are states the current content reaches):
-`bun run tools/balance.ts budget 1 --total-hours=16.5 --dump-ending=fixtures/m4 --dump-survey`. Never regenerate `m3/`.
+`bun run tools/balance.ts budget 1 --total-hours=16.5 --commons --dispatch=thoughtful --survey=board --dump-ending=fixtures/m4 --dump-survey=fixtures/m4`
+(the measured campaign's flags; `--dump-survey` alone writes to `design/scratch/m4-balance/`). Never regenerate `m3/`.
+Last regenerated 20 Nov 2026 by the M4 polish pass (the spring surveys; the Act I ending at 15.9 h).

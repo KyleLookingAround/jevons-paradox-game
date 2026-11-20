@@ -16,7 +16,9 @@ import type { Mods } from './effects';
 import { sectorLevers, NO_LEVERS, leverNetUpkeep, mandateShareOf } from './levers';
 import type { SectorLevers } from './levers';
 import { solveSector } from './solver';
-import type { SectorFlow } from './solver';
+import type { SectorFlow, SolveM5 } from './solver';
+import { returnShareOf } from './hiddenFlow';
+import { concealOf } from './chair/acting';
 import { budgetROf, isWithin, decadeWellbeingOf, clearPOf, isClear, sinkROf, sectorSteady, holdEach } from './steady';
 import { fin, clamp } from './util';
 
@@ -32,6 +34,8 @@ export interface FlowInput {
   feedMul: number; pr: number; seam: number; squeeze: number; lev: SectorLevers | null;
   /** M4 (finish): the demand feeds into this sector (feedSatOf), or null. */
   feedSat?: Record<string, number> | null;
+  /** M5: charges, hidden flow, an applied-basis cap and the levy scale the solve used (absent: none). */
+  m5?: SolveM5 | null;
 }
 export interface Flows {
   sectors: Record<SectorId, SectorFlow>;
@@ -71,6 +75,9 @@ function pendingOf(state: GameState, content: Content): { cause: ReckoningCause;
     const def = content.sectors[s];
     if (es?.open && !es.settled && def.collapseAt > 0 && es.pressure >= def.collapseAt) return { cause: 'collapse', sector: s };
   }
+  // M5: two elections lost in a row end the Ministry (ChairDef.opposition.lostInARowEnds)
+  const ch = state.chair, cd = content.chair;
+  if (ch && cd && ch.lostInARow >= Math.max(1, Math.floor(fin(cd.opposition.lostInARowEnds, 2)))) return { cause: 'defeated' };
   return null;
 }
 
@@ -196,9 +203,25 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
     }
     let squeeze = CAP_SQUEEZE_MAX;
     let levUsed: SectorLevers | null = null;
+    // M5: charges, hidden flow, a cap on water applied, the levy's concealment scale (null: none, the M4 solve). A cap's
+    // concealment and escape scaling is already in capFrac / capFracA (Core A, sectorLevers).
+    let m5: SolveM5 | null = null;
+    if (def.hiddenFlow || lev.charge > 0 || lev.chargeA > 0 || lev.chargeC > 0 || lev.capFracA < Infinity || state.chair) {
+      const ret = returnShareOf(def, mods);
+      let capA = Infinity;
+      if (lev.capFracA < Infinity) {
+        const b = budgetROf(es, def, content, state.time);
+        const r0 = es.budget?.r0 ?? 0;
+        if (b !== null && r0 > 0) capA = lev.capFracA * lev.capRefA * b / r0;
+      }
+      // the applied line binds: its leak and recycle in the cap's place
+      if (capA < (ret > 0 ? capR / (1 - ret) : capR)) lev = levUsed = { ...lev, leakAbove: lev.leakAboveA, capRecycle: lev.capRecycleA };
+      m5 = { charge: lev.charge, chargeA: lev.chargeA, chargeC: lev.chargeC, chargeRecycle: lev.chargeRecycle, ret, capA,
+        levyMul: 1 - concealOf(state, s) };
+    }
     const reused = reuse !== null && !focus!.has(s) && reuse.sectors[s] !== undefined;
     let f = reused ? reuse!.sectors[s]
-      : solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze, feedSat);
+      : solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze, feedSat, m5);
     if (rn && !reused) {
       const sMul = scarMulOf(rn, state.meta, s);
       const fm = mods.foreignMul[s] ?? 1;
@@ -213,20 +236,21 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
             capR = capQ;
             lev = levUsed = { ...lev, leakAbove: lev.quotaLeak, capRecycle: lev.quotaRecycle };
             if (lev.quotaFrac <= 0) squeeze = MORATORIUM_SQUEEZE;
-            f = solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze, feedSat);
+            f = solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze, feedSat, m5);
           }
         }
       }
       f = withRenewable(def, rn, es, f, lev.circ, sMul, fm);
     }
     sectors[s] = f;
-    inputs[s] = { extraD: extra[s] ?? 0, spillMul: spill[s] ?? 1, capR, feedMul, pr, seam, squeeze, lev: levUsed, ...(feedSat ? { feedSat } : {}) };
+    inputs[s] = { extraD: extra[s] ?? 0, spillMul: spill[s] ?? 1, capR, feedMul, pr, seam, squeeze, lev: levUsed, ...(feedSat ? { feedSat } : {}), ...(m5 ? { m5 } : {}) };
     wellbeing += f.wellbeingShare;
     income += f.income;
-    levy += f.dutyRevenue + f.permitRevenue;
+    levy += f.dutyRevenue + f.permitRevenue + (f.chargeRevenue ?? 0);
     treasury += f.treasuryLevy;
     if (lev.dutyRecycle === 'commons') commonsLevy += f.dutyRevenue;
     if (lev.capRecycle === 'commons') commonsLevy += f.permitRevenue;
+    if (m5 && lev.chargeRecycle === 'commons') commonsLevy += f.chargeRevenue ?? 0;
     if (def.spill && state.sectors[def.spill.to]?.open && es.basePs > 0) {
       const a = def.spill.rate * (mods.spillMul[s] ?? 1) * (1 - lev.green) * Math.max(0, 1 - f.ps / es.basePs);
       spill[def.spill.to] = (spill[def.spill.to] ?? 1) * (1 + Math.max(0, a));
@@ -336,11 +360,13 @@ function shadowR(state: GameState, content: Content, fl: Flows, s: SectorId): nu
   let r = 0;
   if (es && f && inp && es.baseR > 0) {
     const etaBase = es.etaAtBase > 0 ? es.etaAtBase : f.eta / (f.etaFold || 1);
-    if (Math.abs(etaBase - f.eta) <= 1e-12 * f.eta) r = f.R; // identical solve
+    // M5: the shadow freezes the return share too (SectorState.returnAtBase)
+    const m5 = inp.m5 && es.returnAtBase !== undefined && inp.m5.ret !== es.returnAtBase ? { ...inp.m5, ret: es.returnAtBase } : inp.m5 ?? null;
+    if (Math.abs(etaBase - f.eta) <= 1e-12 * f.eta && m5 === (inp.m5 ?? null)) r = f.R; // identical solve
     else {
       const def = content.sectors[s];
       const lev = inp.lev ?? sectorLevers(state, content)[s] ?? NO_LEVERS;
-      r = solveSector(def, es, Math.max(POP_MIN, fin(state.population, 1)), modsOf(state, content), lev, inp.extraD, inp.spillMul, inp.capR, etaBase, inp.feedMul, inp.pr, inp.seam, inp.squeeze, inp.feedSat ?? null).R;
+      r = solveSector(def, es, Math.max(POP_MIN, fin(state.population, 1)), modsOf(state, content), lev, inp.extraD, inp.spillMul, inp.capR, etaBase, inp.feedMul, inp.pr, inp.seam, inp.squeeze, inp.feedSat ?? null, m5).R;
     }
   }
   rec[s] = fin(r);

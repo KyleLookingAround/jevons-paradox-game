@@ -15,6 +15,11 @@ import { emit } from './events';
 import type { EvDraft } from './events';
 import { recordOpening } from './record';
 import { fin } from './util';
+import { chairIdx } from './chair/chairIndex';
+
+/** M5: in a Ministry a chair sector's cards and applications are the rival's: refused to every other actor. */
+const rivalOnly = (state: GameState, content: Content, s: SectorId, by: Actor): boolean =>
+  !!state.chair && by !== 'rival' && chairIdx(content).chairSet.has(s);
 
 export function upgradeExcludedBy(state: GameState, content: Content, id: string): string | null {
   for (const o of idx(content).conflicts.get(id) ?? []) if ((state.upgrades[o] ?? 0) >= 1) return o;
@@ -32,7 +37,7 @@ export function jevonsSet(state: GameState, content: Content, s: SectorId, mods:
 
 export function click(state: GameState, content: Content): GameState {
   const fl = computeFlows(state, content);
-  if (fl.pending) return state;
+  if (fl.pending || state.chair) return state; // M5: no click in a Ministry
   const g = content.global;
   return {
     ...state, capital: fin(state.capital + g.clickFlat + g.clickSeconds * fl.income),
@@ -120,7 +125,7 @@ export function buyUpgrade(state: GameState, content: Content, upgradeId: string
 /** buyUpgrade by any actor (the Market uses 'market'): recorded in run.opening; 'upgradeBought' and 'stageReached'. */
 export function buyUpgradeAs(state: GameState, content: Content, upgradeId: string, by: Actor): GameState {
   const def = idx(content).upgrades.get(upgradeId);
-  if (!def || computeFlows(state, content).pending) return state;
+  if (!def || computeFlows(state, content).pending || rivalOnly(state, content, def.sector, by)) return state;
   const level = state.upgrades[def.id] ?? 0;
   const mods = modsOf(state, content);
   if (level >= upgradeMax(def) || !upgradeVisible(state, def, mods, content) || upgradeExcludedBy(state, content, def.id)) return state;
@@ -142,7 +147,7 @@ export function foundApp(state: GameState, content: Content, appId: string): Gam
 /** foundApp by any actor: recorded in run.opening; 'appFounded' event. Refused in a settled sector. */
 export function foundAppAs(state: GameState, content: Content, appId: string, by: Actor): GameState {
   const loc = idx(content).apps.get(appId);
-  if (!loc) return state;
+  if (!loc || rivalOnly(state, content, loc.sector, by)) return state;
   const es = state.sectors[loc.sector];
   const def = content.sectors[loc.sector].applications[loc.idx];
   const st = es?.apps[appId];

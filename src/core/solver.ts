@@ -5,7 +5,7 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { LOAD_HOURS } from '../types';
-import type { SectorDef, SectorState } from '../types';
+import type { LeverRecycle, SectorDef, SectorState } from '../types';
 import {
   SUBSTITUTION_CAPCOST_MUL, CAP_LEAK_MAX, CAP_SQUEEZE_MAX, FLOW_MAX_UTILISATION, FLOW_MIN_CAPACITY_SHARE,
   DEFECT_UTILISATION_START, DEFECT_PENALTY, POP_MIN, DEFAULT_LOAD_FLOOR, DEFAULT_TRAVEL_EXPONENT, TRAVEL_ITERS,
@@ -45,6 +45,27 @@ export interface SectorFlow {
    *  filled by flows.ts after the solve). For a 'depletion' sector pressureIn then carries the net depletion rate
    *  collapseAt / K × (R × (1 − circ) + R_foreign − G), so the clear-skies test reads it as any sector's. */
   ren: { G: number; share: number; rForeign: number; reported: number; /** M4 (finish): the price-rule share and the room weight */ share0?: number; rho?: number } | null;
+  /* M5 (absent = none: the M4 solve) */
+  /** M5: the charge part of the service price (LeverKind 'charge') and its revenue (chargePart × D). */
+  chargePart?: number; chargeRevenue?: number;
+  /** M5: hidden flow: water applied (R_applied; R above is water consumed) and the return share used. */
+  rApplied?: number; ret?: number;
+}
+
+/** M5: the solve's extra inputs (charges, hidden flow); absent = the M4 solve. */
+export interface SolveM5 {
+  /** Σ value × ref of charges priced per unit of service. */
+  charge: number;
+  /** Σ value × ref of charges priced per unit of water applied, and per unit of water consumed. */
+  chargeA: number; chargeC: number;
+  /** Where charge revenue goes (as a duty's). */
+  chargeRecycle: LeverRecycle | null;
+  /** Hidden flow: the return share r (0 without hiddenFlow). capR stays in CONSUMED water (the solver converts it). */
+  ret: number;
+  /** A cap written on water APPLIED (Infinity: none); the tighter of it and capR / (1 − ret) binds. */
+  capA: number;
+  /** Levy revenue (duty, permit, charge) × this: the rival's concealment (1 outside a Ministry). */
+  levyMul: number;
 }
 
 /* ---- M3: per-sector mechanic data (cached per SectorDef) ---- */
@@ -105,7 +126,7 @@ function loadFactor(mech: Mech, x: number[], active: number[], extraD: number): 
 }
 
 // scratch outputs for supply(); cC = the capital cost per unit in force (c, or M3's c_eff at the last mix tried)
-let sSigma = 0, sR = 0, sPrBase = 0, sPre = 0, sPermitPart = 0, sDutyPart = 0, sCust = 0, cC = 0;
+let sSigma = 0, sR = 0, sPrBase = 0, sPre = 0, sPermitPart = 0, sDutyPart = 0, sCust = 0, cC = 0, sChargePart = 0;
 
 /**
  * M4 arguments (defaults leave the M3 solve unchanged): cMul, the feeds' factor on c (ApplicationDef.feeds), joined
@@ -116,7 +137,7 @@ let sSigma = 0, sR = 0, sPrBase = 0, sPre = 0, sPermitPart = 0, sDutyPart = 0, s
 export function solveSector(
   def: SectorDef, es: SectorState, N: number, mods: Mods, lev: SectorLevers, extraD: number, spillMul: number,
   capR: number, etaOverride?: number, cMul = 1, prOv = NaN, seamOv = 1, squeeze = CAP_SQUEEZE_MAX,
-  satFeed: Record<string, number> | null = null,
+  satFeed: Record<string, number> | null = null, m5: SolveM5 | null = null,
 ): SectorFlow {
   const sid = def.id;
   const eta = Math.max(1e-12, fin(etaOverride ?? es.eta, def.baseEta || 1));
@@ -256,6 +277,13 @@ export function solveSector(
     lev.subShare <= 0 ? 0 : D > 0 ? Math.min(lev.subShare, lev.subCap / D) : lev.subShare;
   const prOf = (R: number): number =>
     isFlow ? (flowMul === 1 ? def.basePrice : def.basePrice * flowMul) * Math.pow(1 / (1 - Math.min(FLOW_MAX_UTILISATION, R / usable)), def.alpha) : pr0;
+  // M5: the charge (after the duty; fixed per unit of service, or per unit of water applied)
+  const ret = m5 ? clamp(fin(m5.ret), 0, 1) : 0;
+  const chS = m5 ? Math.max(0, fin(m5.charge)) : 0;
+  const chW = m5 ? Math.max(0, fin(m5.chargeA)) + Math.max(0, fin(m5.chargeC)) * (1 - ret) : 0;
+  // M5: hidden flow: the solve runs in water APPLIED; a consumed-basis cap is converted, an applied-basis one taken as is
+  if (m5 && (ret > 0 || m5.capA < Infinity)) capR = Math.min(ret > 0 ? capR / (1 - ret) : capR, m5.capA >= 0 ? m5.capA : Infinity);
+  const chargeOf = (sg: number): number => (chW > 0 ? chS + (chW * (1 - sg)) / eta : chS);
   const supply = (D: number, permit: number): void => {
     sSigma = sigmaOf(D);
     sR = ((1 - sSigma) * D) / eta;
@@ -264,7 +292,8 @@ export function solveSector(
     sPermitPart = ((1 - sSigma) * permit) / eta;
     const before = sPre + sPermitPart;
     sDutyPart = dutyOn ? lev.dutyS * Math.max(0, lev.dutyRef - before) : 0;
-    sCust = before + sDutyPart;
+    sChargePart = m5 ? chargeOf(sSigma) : 0;
+    sCust = before + sDutyPart + sChargePart;
   };
 
   // unconstrained equilibrium: closed form for a stock sector without substitution (p_s does not depend on D)
@@ -275,7 +304,7 @@ export function solveSector(
   } else {
     const prMax = isFlow ? (flowMul === 1 ? def.basePrice : def.basePrice * flowMul) * Math.pow(1 / (1 - FLOW_MAX_UTILISATION), def.alpha) : pr0;
     const cMax = ld ? c * ((1 - lK) + lK / lFloor) : c;
-    let hi = Math.max(prMax / eta + cMax, SUBSTITUTION_CAPCOST_MUL * cMax, dutyOn ? lev.dutyRef : 0) * 1.0001 + 1e-12;
+    let hi = (Math.max(prMax / eta + cMax, SUBSTITUTION_CAPCOST_MUL * cMax, dutyOn ? lev.dutyRef : 0) + (m5 ? chargeOf(0) : 0)) * 1.0001 + 1e-12;
     let lo = hi * 1e-12;
     for (let it = 0; it < BISECT_ITERS; it++) {
       const mid = Math.sqrt(lo * hi);
@@ -287,6 +316,7 @@ export function solveSector(
   let D = demand(p);
   supply(D, 0);
   let sigma = sSigma, R = sR, prBase = sPrBase, pPre = sPre, permitPart = sPermitPart, dutyPart = sDutyPart, ps = sCust;
+  let chargePart = sChargePart;
   let permit = 0;
 
   // hard cap (with leak). Floors (lock-in, drawsOn) are demand no price removes: the cap binds only down to
@@ -319,8 +349,8 @@ export function solveSector(
         const sg = sigmaOf(d);
         const r = ((1 - sg) * d) / eta;
         const pb = prOf(r);
-        let pre = pc;
-        if (dutyOn && pc < lev.dutyRef) pre = (pc - lev.dutyS * lev.dutyRef) / (1 - lev.dutyS);
+        let pre = m5 ? pc - chargeOf(sg) : pc;
+        if (dutyOn && pre < lev.dutyRef) pre = (pre - lev.dutyS * lev.dutyRef) / (1 - lev.dutyS);
         const pConv = sg < 1 ? (pre - sg * (SUBSTITUTION_CAPCOST_MUL * cC)) / (1 - sg) : pre;
         return { p: pc, permit: Math.max(0, (pConv - cC) * eta - pb), prBase: pb };
       };
@@ -345,6 +375,7 @@ export function solveSector(
         D = demand(p);
         supply(D, sol.permit);
         sigma = sSigma; R = sR; prBase = sPrBase; pPre = sPre; permitPart = sPermitPart; dutyPart = sDutyPart; ps = sCust;
+        chargePart = sChargePart;
         permit = sol.permit;
       }
     }
@@ -406,11 +437,17 @@ export function solveSector(
   }
 
   const income = m * pPre * D;
-  const dutyRevenue = Math.max(0, dutyPart) * D;
-  const permitRevenue = Math.max(0, permit) * R;
+  const lm = m5 ? clamp(fin(m5.levyMul, 1), 0, 1) : 1;
+  const dutyRevenue = Math.max(0, dutyPart) * D * lm;
+  const permitRevenue = Math.max(0, permit) * R * lm;
   let treasury = 0, dividend = 0;
   if (lev.dutyRecycle === 'treasury') treasury += dutyRevenue; else if (lev.dutyRecycle === 'dividend') dividend += dutyRevenue;
   if (lev.capRecycle === 'treasury') treasury += permitRevenue; else if (lev.capRecycle === 'dividend') dividend += permitRevenue;
+  const chargeRevenue = m5 ? Math.max(0, chargePart) * D * lm : 0;
+  if (chargeRevenue > 0) { if (m5!.chargeRecycle === 'dividend') dividend += chargeRevenue; else if (m5!.chargeRecycle === 'treasury') treasury += chargeRevenue; }
+  // M5: hidden flow: R so far is water APPLIED; the resource side reads water CONSUMED
+  const rApplied = R;
+  if (ret > 0) R = R * (1 - ret);
   const dDiv = ps > 0 ? dividend / ps : 0;
   const imul = mods.intensityMul[sid] ?? 1;
   const intensity = imul === 1 ? def.pressureIntensity * (1 - lev.libs) : def.pressureIntensity * (1 - lev.libs) * imul;
@@ -430,12 +467,13 @@ export function solveSector(
   return {
     eta, etaFold: fin(eta / etaBase, 1), c: cC, m,
     prBase: fin(prBase), permit: fin(permit), pr: fin(prBase + permit),
-    pPre: fin(pPre), permitPart: fin(permitPart), dutyPart: fin(dutyPart), ps: fin(pPre) + fin(permitPart) + fin(dutyPart),
+    pPre: fin(pPre), permitPart: fin(permitPart), dutyPart: fin(dutyPart), ps: fin(pPre) + fin(permitPart) + fin(dutyPart) + (m5 ? fin(chargePart) : 0),
     D: fin(D), R: fin(R), sigma,
     income: fin(income), dutyRevenue: fin(dutyRevenue), permitRevenue: fin(permitRevenue), treasuryLevy: fin(treasury),
     capacity, usable: fin(usable), util: fin(util), unrev,
     appD, appSat, reserveGain: fin(reserveGain), pressureIn: fin(pressureIn), deletionOut: fin(deletionOut),
     wellbeingShare: fin(wb),
     load: loadOut, travel: travelOut, appSeen, seamMul, ren: null,
+    ...(m5 ? { chargePart: fin(chargePart), chargeRevenue: fin(chargeRevenue), rApplied: fin(rApplied), ret } : {}),
   };
 }

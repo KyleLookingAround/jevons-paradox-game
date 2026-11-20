@@ -163,3 +163,43 @@ held home fleet leaves (the fishery limits answer them). Every player meets the 
 
 Longest gap between firsts (features, Industry openings, the first poor season, the first survey, each Industry's first
 settlement): to hour 14 budget 2.08 h, mixed 2.31 h, human 1.86 h; from hour 14 to the ending 2.65 / 1.03 / 3.10 h.
+
+## M4 polish: the spring surveys (20 Nov 2026)
+
+The M4 arc's hours 8–15 were mostly saving: three Industries settled in each of runs 7 and 8 by minute 70–80, and the
+only thing ahead was 5,500 Hindsight for the Settlement Commission's first sitting (room for the fourth settlement),
+bought after run 8. Now the first sitting waits on **evidence**: the Board's **spring survey passed in three runs**, each
+to a stricter standard (achievements with a headline, `src/content/achievements.ts` `SPRINGS`; the Commission's
+`InstitutionDef.needs`, shown on its card as "Sits once: …" and in the ending checklist). Its price falls to 2,500,
+which is to hand when the third spring passes. Each spring is a thing done in a run, not a number:
+
+| Spring | The Board's standard (Fishing surveyed, 15 decades within its line this run, and…) | Needs |
+|---|---|---|
+| The Spring Survey | the banks at ¾ of K or more, foreign boats under 10% of the catch | — (in practice, the run Fishing opens: rebuild the bank after the Board's Survey at half, buy Garstang's inquiry and keep a survey vessel at sea, raise the limits) |
+| A Second Spring | ⅘ of K, foreign under 7% | the first, in an earlier run |
+| Three Springs | 85% of K, foreign under 5% | the second, in an earlier run |
+
+The fishery limits are offered once the first spring has passed (as well as at a 15% foreign share), since the later
+standards ask for fewer foreign boats than that; Garstang's inquiry (which unlocks survey cruises) costs £25,000 (was
+£60,000), so the first spring can be passed in the run Fishing opens without the Fishery Board. The Archive moves from
+run 8 to run 9 (the ending's run had nothing new in it; run 8 has the third spring), the bite from run 9 to run 10.
+
+| Run | At the Reckoning | In the run | budget · mixed · human (h) |
+|---|---|---|---|
+| 6 | — | Fishing opens; the Board's Survey; **the Spring Survey** (minute 73–110) | Survey 7.84 · 7.54 · 7.75; spring 8.69 · 8.88 · 8.41 |
+| 7 | the household survey | the load curve; **A Second Spring** (minute 70–87) | 11.13 · 10.49 · 10.63 |
+| 8 | Histories | **Three Springs** (minute 70) | 13.10 · 12.49 · 12.72 |
+| 9 | **the Commission's first sitting** (room for a fourth) | the Archive (minute 25); four settled at once (minute 103–147); **the Act I ending** | sitting 13.93 · 13.57 · 13.95; ending **15.93 · 15.68 · 16.68** |
+
+Longest gap between firsts (as criterion 2 counts them, plus each spring, the sitting and the room first used): to hour
+14 1.75 · 1.75 · 1.83 h (M4: 2.08 · 2.31 · 1.86); hour 14 to the ending 1.30 · 1.41 · 2.03 h (M4: 2.65 · 1.03 · 3.10).
+Counting every first the tool logs (letters, applications too): 108 · 108 · 122 minutes to hour 20 (M4: 258 · 217 · 269).
+Measured with `bun run tools/balance.ts <player> 1 --total-hours=24 --json --no-series --unlocks --commons
+--dispatch=thoughtful --survey=board` (design/scratch/m4-polish/s7-*.json; summarise with crit2.py there).
+
+One caution about the scripted players: every restraint run from run 3 is held to its 120th minute while Motion, a
+Preview that opens only after the Act I ending, counts as an Industry still to open (`opening` in tools/balance.ts). The
+M4 pacing was tuned with that hold; without it (`--opening-fix`) the whole arc runs about two hours earlier (Iron 2.3 h,
+Fishing 5.2 h, the ending 14.4 h for `budget`). It also leaves `budget` and `mixed` sitting 39–64 minutes at the end of
+runs 7 and 8 after their spring and third settlement; the human-like player Reckons once a run's work is done (tails
+of 0–17 minutes in hours 8–15).

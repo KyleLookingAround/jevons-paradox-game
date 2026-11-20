@@ -426,7 +426,7 @@ const springs: AchievementDef[] = [
     id: SPRINGS[0], name: 'The Spring Survey', feature: 'estimates',
     blurb: 'Fishing surveyed after fifteen decades within its line, the banks at three quarters of their natural size or more, the foreign boats under a tenth of the catch.',
     when: spring(0),
-    headline: 'Spring survey: the banks at three quarters, foreign boats under a tenth',
+    headline: 'Spring survey: banks at three quarters, foreign boats under a tenth',
   },
   {
     id: SPRINGS[1], name: 'A Second Spring', feature: 'estimates',

@@ -7,6 +7,7 @@ import { evalCond, condCheck, fmtNum } from './conditions';
 import { idx } from './contentIndex';
 import { computeFlows } from './flows';
 import { clamp } from './util';
+import { sealedInOffice } from './inherit';
 
 /* ------------------------------------------------------------------ */
 /* Unlocks                                                             */
@@ -32,6 +33,7 @@ function legacyGate(state: GameState, content: Content, s: SectorId): { met: boo
 export function canOpen(state: GameState, content: Content, s: SectorId): boolean {
   const ix = idx(content);
   if ((ix.pos.get(s) ?? 0) === 0) return true;
+  if (state.meta.office && sealedInOffice(content, state.meta, s)) return false; // M5: closed in a Ministry
   if (!afterOf(content, s).every((a) => !!state.sectors[a]?.open)) return false;
   const u = content.sectors[s].unlock;
   if (!u) return true;
@@ -47,6 +49,7 @@ export function nextSectorsOf(state: GameState, content: Content): Derived['next
   for (let k = 1; k < ix.ids.length; k++) {
     const s = ix.ids[k];
     if (state.sectors[s]?.open) continue;
+    if (state.meta.office && sealedInOffice(content, state.meta, s)) continue; // M5
     if (!afterOf(content, s).every((a) => !!state.sectors[a]?.open)) continue;
     const u = content.sectors[s].unlock;
     const need = u?.minReckonings ?? 0;

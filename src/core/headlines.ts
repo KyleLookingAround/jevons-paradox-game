@@ -27,6 +27,15 @@ const FALLBACK: Record<HeadlineKey, string> = {
   threshold: 'The {sector} stock falls below its threshold', scarHealed: 'The {sector} stock recovers',
   surveyed: 'A survey of the {sector} stock', arrears: '{sector} in arrears', foreignFleets: 'Foreign fleets on the {sector} grounds',
   actEnding: '{name} settled, {year}', achievement: 'A record entered',
+  /* M5 */
+  acquisition: 'Pryce Consolidated acquires the Works', officeTaken: 'New Ministry formed; the first election is due in {year}',
+  electionCalled: 'An election is called for {year}', electionWon: 'The Ministry is returned', electionLost: 'The Ministry is defeated at the polls',
+  leverRepealed: 'The new government repeals {name}', ministryDefeated: 'The Ministry falls',
+  concealmentFound: 'Inspectors find {n}% unreported in {sector}', inspectedClean: 'Inspectors find {sector} returns in order',
+  rivalAnswered: 'Pryce Consolidated answers {name}', loopholeOpened: 'A loophole: {name}', loopholeUsed: 'Pryce Consolidated uses {name}',
+  loopholeClosed: 'Loophole closed: {name}', litigated: 'Pryce Consolidated takes {name} to court', carveOut: 'A carve-out from {name}',
+  compensated: 'Compensation for {sector} workers', treaty: 'A Treaty is signed', playbookLearnt: 'Pryce Consolidated learns {name}',
+  articleBought: 'An Article adopted: {name}',
 };
 
 /** Common-noun placeholders: lower-cased mid-sentence (see Content.headlines). */

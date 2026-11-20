@@ -49,9 +49,12 @@ const runOf = (c: Camp, what: string): number | null => c.unlocks.find((x) => x.
 /** Features that are Act I's (every feature but the Previews' widgets and banked time). */
 const PREVIEW_FEATURES = new Set(['travel', 'freeAtUse', 'bank']);
 /** The firsts criterion 2 counts: features, Industry openings, the first poor season, the first survey, each
- *  Industry's first settlement (tools/balance.ts --unlocks prints all but the settlements; those come from the runs). */
+ *  Industry's first settlement (tools/balance.ts --unlocks prints all but the settlements; those come from the runs).
+ *  M4 polish: and each spring survey passed ('evidence …', with its headline), the Commission's first sitting ('room …')
+ *  and the room first used ('settled at once N', more Industries settled together than Parliament held before). */
+const FIRST_PREFIXES = ['feature ', 'Industry ', 'first poor season', "the Board's Survey", 'first survey', 'evidence ', 'room ', 'settled at once '];
 const firstsTimes = (c: Camp): number[] => {
-  const ts = c.unlocks.filter((u) => u.what.startsWith('feature ') || u.what.startsWith('Industry ') || u.what.startsWith('first poor season') || u.what.startsWith("the Board's Survey") || u.what.startsWith('first survey')).map((u) => u.t);
+  const ts = c.unlocks.filter((u) => FIRST_PREFIXES.some((p) => u.what.startsWith(p))).map((u) => u.t);
   const settled = new Set<string>();
   c.runs.forEach((r, i) => { for (const [k, v] of Object.entries(r.firsts)) if (k.startsWith('settle:') && !settled.has(k)) { settled.add(k); ts.push(cumAt(c, i) + v * 60); } });
   return ts.sort((a, b) => a - b);
@@ -71,6 +74,10 @@ describe.skipIf(!LONG)('M4: the Act I arc and its ending (long; BAL_LONG=1)', ()
   const all = () => Promise.all([BUD, MIX, HUM]).then(([b, m, h]) => ({ budget: b, mixed: m, human: h }));
 
   test('criterion 1: the Act I ending at 14–17 h for mixed, 15–18 h for budget, 13–17 h for human; none before hour 13', async () => {
+    // M4 polish (design/scratch/m4-polish/s7-*): budget 15.93 h, mixed 15.68 h, human 16.68 h, run 9 each. The
+    // Commission's first sitting now waits on the spring survey passed in three runs (achievements.ts SPRINGS, each
+    // stricter than the last), at 2,500 Hindsight; the springs land in runs 6, 7 and 8, the sitting at run 9's Reckoning.
+    // Human at its target.
     // measured 20 Nov 2026, M4 finishing (design/scratch/m4-balance/g-*): budget 16.65 h, mixed 15.31 h, human 17.27 h
     // (run 9 each). The pace is the path, never a clock: the Settlement Commission's first sitting (5,500 Hindsight: room
     // for the fourth settlement) and, in the ending's run, Fishing (surveyed, fifteen decades within its line, against the
@@ -81,7 +88,7 @@ describe.skipIf(!LONG)('M4: the Act I arc and its ending (long; BAL_LONG=1)', ()
     const b = hourOf(budget, 'the ending'), m = hourOf(mixed, 'the ending'), h = hourOf(human, 'the ending');
     expect(`mixed ${m?.toFixed(2)} ${m !== null && m >= 14 && m <= 17}`).toEndWith('true');
     expect(`budget ${b?.toFixed(2)} ${b !== null && b >= 15 && b <= 18}`).toEndWith('true');
-    expect(`human ${h?.toFixed(2)} ${h !== null && h >= 13 && h <= 17.5}`).toEndWith('true');
+    expect(`human ${h?.toFixed(2)} ${h !== null && h >= 13 && h <= 17}`).toEndWith('true');
   }, 3_600_000);
   test('criterion 4: Iron opens in run 4 at 2.4–3.6 h; Fishing in run 6 by hour 8 (all three players)', async () => {
     // measured: Iron 3.59 / 3.32 / 3.26 h; Fishing 7.67 / 7.42 / 7.42 h (budget / mixed / human)
@@ -117,7 +124,10 @@ describe.skipIf(!LONG)('M4: the Act I arc and its ending (long; BAL_LONG=1)', ()
       for (const u of c.unlocks.filter((x) => x.t > endT && x.what.startsWith('feature '))) expect(`${name} ${u.what} after the ending ${PREVIEW_FEATURES.has(u.what.slice(8))}`).toEndWith('true');
     }
   }, 3_600_000);
-  test('criterion 2: the longest gap between firsts ≤ 2 h to hour 14 and ≤ 2.5 h from hour 14 to the ending (all three)', async () => {
+  test('criterion 2: the longest gap between firsts ≤ 2 h to hour 14 and from hour 14 to the ending (all three)', async () => {
+    // M4 polish (s7-*): to hour 14 budget 1.75 h, mixed 1.75 h, human 1.83 h; from hour 14 to the ending 1.30 / 1.41 /
+    // 2.03 h (the human's ending run: the Archive at minute 25, the fourth settlement at minute 147). Target 2 h: met but
+    // for the human's last stretch, by two minutes; asserted at 2 h and 2.1 h
     // measured 20 Nov 2026, M4 finishing (first settlements included): to hour 14 budget 2.08 h, mixed 2.31 h, human
     // 1.86 h (target 2: missed by up to 19 minutes, the load curve in run 7 to the Archive in run 8); from hour 14 to the
     // ending budget 2.65 h, mixed 1.03 h, human 3.10 h (target 2.5: missed for budget and human, whose run 9 brings no
@@ -126,9 +136,38 @@ describe.skipIf(!LONG)('M4: the Act I arc and its ending (long; BAL_LONG=1)', ()
       const ts = firstsTimes(c);
       const endT = hourOf(c, 'the ending')! * 3600;
       const a = longestGap(ts, 0, Math.min(14 * 3600, endT)) / 3600, b = endT > 14 * 3600 ? longestGap(ts, 14 * 3600, endT) / 3600 : 0;
-      expect(`${name} to hour 14 ${a.toFixed(2)} h ${a <= 2.5}`).toEndWith('true');
-      expect(`${name} hour 14 to the ending ${b.toFixed(2)} h ${b <= 3.25}`).toEndWith('true');
+      expect(`${name} to hour 14 ${a.toFixed(2)} h ${a <= 2}`).toEndWith('true');
+      expect(`${name} hour 14 to the ending ${b.toFixed(2)} h ${b <= 2.1}`).toEndWith('true');
     }
+  }, 3_600_000);
+  test('M4 polish: three spring surveys in three runs, in order, the third by hour 14; the Commission sits at the next Reckoning; the ending in that run', async () => {
+    // measured (s7-*): springs at 8.7 / 11.1 / 13.1 h (budget), 8.9 / 10.5 / 12.5 (mixed), 8.4 / 10.6 / 12.7 (human); runs
+    // 6, 7, 8; the first sitting at run 9's Reckoning; the ending in run 9
+    const ids = ['ach.m4.springSurvey', 'ach.m4.secondSpring', 'ach.m4.thirdSpring'];
+    for (const [name, c] of Object.entries(await all())) {
+      const us = ids.map((id) => c.unlocks.find((u) => u.what === `evidence ${id}`));
+      expect(`${name} springs in runs ${us.map((u) => u?.run ?? '-').join(',')} ${us.every((u) => u !== undefined)}`).toEndWith('true');
+      expect(`${name} runs ${us.map((u) => u!.run).join(',')} ${us[0]!.run < us[1]!.run && us[1]!.run < us[2]!.run}`).toEndWith('true');
+      expect(`${name} third ${(us[2]!.t / 3600).toFixed(2)} ${us[2]!.t <= 14 * 3600}`).toEndWith('true');
+      const room = c.unlocks.find((u) => u.what === 'room inst.settlementCommission L1');
+      expect(`${name} room run ${room?.run}`).toBe(`${name} room run ${us[2]!.run + 1}`);
+      expect(runOf(c, 'the ending')).toBe(room!.run);
+    }
+  }, 3_600_000);
+  test('M4 polish: the human-like player Reckons once a run’s work is done: in hours 8–15 no run ends more than 40 minutes after its last spring, settlement or arrival', async () => {
+    // measured (s7-human): runs 6–9 end 7, 3, 0 and 17 minutes after their last piece of work. (The budget and mixed
+    // players are held in each run to its 120th minute while Motion, a Preview, counts as an Industry still to open
+    // (tools/balance.ts `opening`); their runs 7–8 end 39–64 minutes after the spring and the third settlement.)
+    const { human: c } = await all();
+    const endT = hourOf(c, 'the ending')! * 3600;
+    c.runs.forEach((r, i) => {
+      const a = cumAt(c, i), b = a + r.seconds;
+      if (b < 8 * 3600 || a > 15 * 3600 || a >= endT) return;
+      const work = [...Object.entries(r.firsts).filter(([k]) => k.startsWith('settle:')).map(([, v]) => v * 60),
+        ...c.unlocks.filter((u) => u.run === r.run && /^(evidence |feature |settled at once )/.test(u.what)).map((u) => u.t - a), 0];
+      const tail = (r.seconds - Math.max(...work)) / 60;
+      expect(`run ${r.run} tail ${tail.toFixed(0)} min ${tail <= 40}`).toEndWith('true');
+    });
   }, 3_600_000);
   test('E3 (M2, kept): the first Steady State at 2–4.5 h for budget and mixed, by hour 6 for human', async () => {
     // measured: budget 3.32 h (run 3), mixed 2.18 h (run 3), human 2.45 h (run 3)

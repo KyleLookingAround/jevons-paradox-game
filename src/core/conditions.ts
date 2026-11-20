@@ -16,7 +16,9 @@ import { modsOf } from './effects';
 import { lineR } from './account';
 import { feedMulOf } from './feeds';
 import { fedInto } from './orderBook';
-import { clamp, isObj } from './util';
+import { clamp, isObj, fin } from './util';
+import { NEVER_INSPECTED_YEARS, RETURN_SHARE_MAX, YEARS_PER_SECOND } from '../types';
+import { chairIdx } from './chair/chairIndex';
 
 /* ------------------------------------------------------------------ */
 /* Conditions                                                          */
@@ -47,6 +49,28 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
     case 'historiesCleared': { let n = 0; const h = state.meta.histories ?? {}; for (const k in h) if (h[k]?.cleared) n++; return n; }
     case 'totalHours': return state.meta.totalSeconds / 3600;
     case 'bankedSeconds': return state.meta.bankedSeconds ?? 0;
+    /* M5, global (Core A) */
+    case 'confidence': return state.chair?.confidence ?? 0;
+    case 'inOffice': return state.chair ? 1 : 0;
+    case 'inOpposition': return state.chair?.inOpposition ? 1 : 0;
+    case 'electionsWon': return state.chair?.electionsWon ?? 0;
+    case 'ministries': return state.meta.office?.ministries ?? 0;
+    case 'treaties': return state.meta.treaties ?? 0;
+    case 'precedent': return state.meta.precedent ?? 0;
+    case 'settledFromChair': {
+      if (!state.chair) return 0;
+      let n = state.meta.office?.record.settledFromChair ?? 0;
+      for (const k of chairIdx(content).chairSectors) if (state.sectors[k]?.open && state.sectors[k].settled) n++;
+      return n;
+    }
+    case 'parliamentWagers': {
+      const ch = state.chair;
+      if (!ch) return 0;
+      let n = 0;
+      for (const a of state.dispatch?.answered ?? []) if (a.by === 'player' && a.won !== undefined && a.t >= ch.parliament.start) n++;
+      return n;
+    }
+    case 'rivalCapital': return state.chair?.rival.capital ?? 0;
     /* M4, global */
     case 'capstoned': { let n = 0; for (const k of idx(content).ids) if (state.sectors[k]?.capstoned) n++; return n; }
     case 'adoption': case 'appDemand': {
@@ -131,6 +155,32 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
       return fed ? fed.share : 0;
     }
     case 'arrears': return es.arrears ? 1 : 0;
+    /* M5, sector (Core A) */
+    case 'concealment': return state.chair ? fin(state.chair.rival.concealment[s] ?? 0) : null;
+    case 'yearsSinceInspection': {
+      const ch = state.chair;
+      if (!ch) return null;
+      const t = ch.inspected[s];
+      return typeof t === 'number' ? Math.max(0, (state.time - t) * YEARS_PER_SECOND) : NEVER_INSPECTED_YEARS;
+    }
+    case 'certifiedDecades': { let n = 0; for (const x of es.decadesCertified ?? []) if (x) n++; return n; }
+    case 'waterApplied': case 'waterConsumed': case 'returnShare': {
+      const hf = def.hiddenFlow;
+      if (!hf) return null;
+      const r = clamp(fin(hf.returnShare) * (modsOf(state, content).returnShareMul[s] ?? 1), Math.max(0, fin(hf.floor ?? 0)), RETURN_SHARE_MAX);
+      if (cond.stat === 'returnShare') return r;
+      return cond.stat === 'waterConsumed' ? f.R : f.R / (1 - r);
+    }
+    case 'loopholesUsed': {
+      const ch = state.chair;
+      if (!ch) return 0;
+      let n = 0;
+      for (const l of idx(content).leversBySector[s] ?? []) for (const r of chairIdx(content).ladders.get(l.id) ?? []) {
+        const st = ch.loopholes[r.id]?.status;
+        if (st === 'used' || st === 'closed') n++;
+      }
+      return n;
+    }
     default: return null;
   }
 }
@@ -153,7 +203,21 @@ function ownsId(state: GameState, content: Content, id: string): boolean {
   if (seam) return (state.sectors[seam.sector]?.seamsSunk ?? 0) > seam.idx;
   if (ix.histories.has(id)) return state.meta.histories?.[id]?.cleared === true;
   if (ix.archive.has(id)) return state.meta.archive?.[id] !== undefined;
+  /* M5 */
+  const cx = chairIdx(content);
+  if (cx.pledges.has(id)) return (state.chair?.pledges ?? []).includes(id) || state.meta.pledgesKept?.[id] === true;
+  if (cx.articles.has(id)) return state.meta.articles?.[id] === true;
+  if (cx.playbooks.has(id)) return (state.meta.playbooks ?? []).includes(id);
+  if (cx.loopholes.has(id)) return loopholeLeaf(state, id, undefined);
   return false;
+}
+
+/** M5: { loophole } leaf: the rung's state this run; without status, 'used' or 'closed'. FALSE outside office or with no state. */
+function loopholeLeaf(state: GameState, id: string, status: unknown): boolean {
+  const st = state.chair?.loopholes[id];
+  if (!st) return false;
+  if (typeof status === 'string') return st.status === status;
+  return st.status === 'used' || st.status === 'closed';
 }
 
 /** M3: { returned } leaf. */
@@ -212,6 +276,7 @@ export function evalCond(state: GameState, content: Content, cond: Cond): boolea
   if ('returned' in c) return returnedLeaf(state, c);
   if ('answered' in c) return answeredLeaf(state, c);
   if ('ending' in c) return typeof c.ending === 'string' && state.meta.endings?.[c.ending] !== undefined; // M4
+  if ('loophole' in c) return typeof c.loophole === 'string' && loopholeLeaf(state, c.loophole, c.status); // M5
   if ('all' in c) return Array.isArray(c.all) && (c.all as Cond[]).every((x) => evalCond(state, content, x));
   if ('any' in c) return Array.isArray(c.any) && (c.any as Cond[]).some((x) => evalCond(state, content, x));
   if ('not' in c) return isObj(c.not) && !evalCond(state, content, c.not as Cond);
@@ -235,6 +300,12 @@ const STAT_WORDS: Record<StatKey, string> = {
   openFor: 'time open (s)', stockFraction: 'stock left', reportedStock: 'catch per trip', foreignShare: 'foreign share',
   scarYears: 'years of scar', surveyed: 'surveyed', budgetHeadroom: 'headroom under the line', feedFactor: 'input cost factor',
   arrears: 'in arrears', capstoned: 'industries settled for good', feedShare: 'share of the burn the inputs add',
+  /* M5 */
+  confidence: 'Confidence', inOffice: 'in office', inOpposition: 'in Opposition', electionsWon: 'elections won',
+  ministries: 'Ministries', treaties: 'Treaties', precedent: 'Precedent', settledFromChair: 'industries settled from the Chair',
+  parliamentWagers: 'wagers this Parliament', rivalCapital: 'the rival\u2019s capital', concealment: 'concealed share',
+  yearsSinceInspection: 'years since inspection', certifiedDecades: 'certified decades', waterApplied: 'water applied',
+  waterConsumed: 'water consumed', returnShare: 'return share', loopholesUsed: 'loopholes used',
 };
 const OP_SYM: Record<string, string> = { '<': '<', '<=': '≤', '>': '>', '>=': '≥' };
 export function fmtNum(x: number): string {
@@ -263,6 +334,7 @@ function condLabel(content: Content, cond: Cond): string {
   if ('returned' in c) return 'A household return on file';
   if ('answered' in c) return `Answer ${ix.names.get(c.answered as string) ?? c.answered}`;
   if ('ending' in c) { const a = ix.acts.find((x) => x.ending?.id === c.ending); return a ? `${a.title} settled` : `The ending ${c.ending}`; }
+  if ('loophole' in c) { const r = chairIdx(content).loopholes.get(c.loophole as string); return `${r?.name ?? c.loophole}${typeof c.status === 'string' ? `: ${c.status}` : ' used'}`; } // M5
   if ('all' in c) return 'All of these';
   if ('any' in c) return 'Any of these';
   if ('not' in c && isObj(c.not)) return `Not: ${condLabel(content, c.not as Cond)}`;

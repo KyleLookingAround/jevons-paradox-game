@@ -110,7 +110,14 @@ function catchUp(state: GameState, content: Content, requested: number, capped: 
       if (cfg.holdBefore !== null) {
         const pend = computeFlows(t, content).pending;
         const undo = () => { for (const k of Object.keys(shifted)) shifted[k] = snap[k] ?? 0; };
-        if (pend) { held = { by: pend.cause === 'chosen' ? 'collapse' : pend.cause, sector: pend.sector }; undo(); break; }
+        // M5: never voted out while away: hold one step before a polling day the Ministry would lose
+        if (s.chair && (t.events ?? []).some((e) => e.kind === 'electionLost' && e.seq > (s.meta.eventSeq ?? 0))) {
+          held = { by: 'election' }; undo(); break;
+        }
+        if (pend) {
+          held = { by: pend.cause === 'chosen' ? 'collapse' : pend.cause === 'defeated' ? 'election' : pend.cause, sector: pend.sector };
+          undo(); break;
+        }
         if (cfg.holdBefore === 'crisis') {
           const cs = ix.ids.find((id) => (t.sectors[id]?.crisesFired ?? 0) > (s.sectors[id]?.crisesFired ?? 0));
           if (cs !== undefined) { held = { by: 'crisis', sector: cs }; undo(); break; }

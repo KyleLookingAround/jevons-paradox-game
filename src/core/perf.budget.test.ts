@@ -93,3 +93,39 @@ describe('per-call cost budgets (late game, five Industries)', () => {
     expect(se).toBeLessThan(BUDGET.serialize);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* M5 (Core A): the rival's yearly decision and a Ministry step         */
+/* ------------------------------------------------------------------ */
+import { fixtureM5 } from './fixture';
+import { adv as advM5, ministry as ministryM5 } from './m5.testkit';
+import { rivalDecide, rivalAnswerView } from './chair/rival';
+import { step as stepM5 } from './step';
+
+describe('per-call cost budgets (M5: a Ministry on fixtureM5)', () => {
+  const F = fixtureM5;
+  // a Ministry two minutes in with the duty, the cap and the standard raised (the light-trucks rung used), every
+  // answer then marked due, so each decision prices three levers (the most a tick sees in M5 content)
+  let m = advM5(ministryM5(F), F, 120);
+  for (const [id, L] of [['motor.duty', 1], ['motor.cap', 1], ['motor.mileage', 2]] as const) m = model.setLever(m, F, id, L);
+  m = advM5(m, F, 45);
+  const due = (x: GameState): GameState => ({ ...x, chair: { ...x.chair!, due: { 'motor.duty': true, 'motor.cap': true, 'motor.mileage': true } } });
+  const states: GameState[] = [];
+  let x = m;
+  for (let i = 0; i < 30; i++) { x = advM5(x, F, 1); states.push(due(x)); }
+  test('the rival\'s yearly decision ≤ 2 ms per chair sector (three levers due)', () => {
+    const us = cost(states.map((s) => ({ ...s })), (s) => rivalDecide(s, F, 1), 1);
+    console.log(`  rival decision ${us.toFixed(0)} µs (1 chair sector, 3 answers due)`);
+    expect(us).toBeLessThan(2000);
+  });
+  // the step: measured 14 µs in office against 8.8 µs for the same states with chair null on the fixture's one sector (a
+  // few µs of constant overhead: the overlay's and the aggregate's chair keys); budget 1.25× plus 20 µs of noise
+  test('the answer line (cold) for one lever; a Ministry step ≤ 1.25 × the same state\'s step outside office', () => {
+    const al = cost(states.map((s) => ({ ...s, levers: { ...s.levers } })), (s) => rivalAnswerView(s, F, 'motor.duty'), 1);
+    const inOffice = cost(states.map((s) => ({ ...s })), (s) => stepM5(s, F, 0.1), 3);
+    const outOffice = cost(states.map((s) => ({ ...s, chair: null })), (s) => stepM5(s, F, 0.1), 3);
+    console.log(`  answer line (cold) ${al.toFixed(0)} µs; step in office ${inOffice.toFixed(0)} µs, outside ${outOffice.toFixed(0)} µs`);
+    expect(al).toBeLessThan(2000);
+    expect(inOffice).toBeLessThan(1.25 * outOffice + 20);
+  });
+});

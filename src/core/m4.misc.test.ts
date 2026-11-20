@@ -106,7 +106,7 @@ describe('M4: save version 5', () => {
   test('a v4 save before the M3 ending: Iron and Fish closed, world empty, nothing replayed', () => {
     const text = v4(false);
     const b = model.deserialize(text, CA)!;
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.sectors.iron.open).toBe(false);
     expect(b.sectors.fish.open).toBe(false);
     expect(b.meta.world).toEqual({ capstone: {}, scars: {} });
@@ -123,12 +123,12 @@ describe('M4: save version 5', () => {
     expect(b.steadyYearsAll).toBe(0);
     expect(model.derive(b, CA).ending.reached).toBe(false); // Act I's ending is not the M3 one
   });
-  test('v1–v3 chain to v5; v6 → null; a v5 round trip with every M4 structure is lossless; invalid entries dropped', () => {
+  test('v1–v3 chain to v6; v7 → null; a v5 → v6 round trip with every M4 structure is lossless; invalid entries dropped', () => {
     const v1 = { time: 5, eras: { steam: { open: true, eta: 1, reserve: 1000, reserveMax: 1000, pressure: 0, apps: {} } }, meta: { furthestEra: 1 } };
-    expect(model.deserialize(JSON.stringify(v1), CA)!.version).toBe(5);
+    expect(model.deserialize(JSON.stringify(v1), CA)!.version).toBe(6);
     const v3 = JSON.parse(v4(false)); v3.version = 3;
-    expect(model.deserialize(JSON.stringify(v3), CA)!.version).toBe(5);
-    expect(model.deserialize(JSON.stringify({ ...JSON.parse(v4(false)), version: 6 }), CA)).toBeNull();
+    expect(model.deserialize(JSON.stringify(v3), CA)!.version).toBe(6);
+    expect(model.deserialize(JSON.stringify({ ...JSON.parse(v4(false)), version: 7 }), CA)).toBeNull();
     // a v5 state with capstones, scars, survey, reveal, wagers, a full line
     let s = openWith(CA, ['iron', 'fish'], ['steam.pumping', 'iron.rails', 'fish.market']);
     s = run4(s, 6, CA);

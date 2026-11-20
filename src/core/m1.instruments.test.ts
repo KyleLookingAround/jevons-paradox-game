@@ -200,6 +200,10 @@ describe('conditions (P3)', () => {
       seamsSunk: 0, loadFactor: null, travelHours: null, sprawl: null, bite: 0,
       openFor: s.sectors.steam.openFor, stockFraction: null, reportedStock: null, foreignShare: null, scarYears: null,
       surveyed: 0, budgetHeadroom: sd.budgetR ? 1 - sd.resourceUse / sd.budgetR : null, feedFactor: 1, arrears: 0, capstoned: 0, feedShare: 0,
+      // M5: outside office
+      confidence: 0, inOffice: 0, inOpposition: 0, electionsWon: 0, ministries: 0, treaties: 0, precedent: 0,
+      settledFromChair: 0, parliamentWagers: 0, rivalCapital: 0, concealment: null, yearsSinceInspection: null,
+      certifiedDecades: 0, waterApplied: null, waterConsumed: null, returnShare: null, loopholesUsed: 0,
     };
     for (const stat of ALL) {
       const leaf = { stat, sector: 'steam', app: 'steam.mills' };

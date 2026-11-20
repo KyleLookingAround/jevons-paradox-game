@@ -3,7 +3,10 @@
  * lever views.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { Actor, Content, GameState, LeverRecycle, LeverView, NewsItem, SectorId, SectorState } from '../types';
+import type { Actor, Content, GameState, LeverDef, LeverRecycle, LeverState, LeverView, NewsItem, SectorId, SectorState } from '../types';
+import type { SectorFlow } from './solver';
+import { bindOf, popularityTerm, raiseRefused } from './chair/elections';
+import { leverChairFields } from './chair/rival';
 import { calendarYear } from './calendar';
 import { commonsOpen } from './commons';
 import { idx } from './contentIndex';
@@ -18,6 +21,31 @@ import { featureOn } from './features';
 import { budgetROf, isWithin, newBudget, pacesOf } from './steady';
 import { fin } from './util';
 import { drawLine, lineR } from './account';
+
+/** M5: the ref a 'charge' or an applied-basis cap/quota snapshots on enactment (0 for every other kind: M4 unchanged). */
+function refOnEnact(content: Content, def: LeverDef, f: SectorFlow | undefined): number {
+  if (!f || !(f.D > 0)) return 0;
+  const hf = !!content.sectors[def.sector]?.hiddenFlow;
+  if (def.kind === 'charge') return hf && def.basis ? f.prBase : f.ps;
+  if ((def.kind === 'cap' || def.kind === 'quota') && hf && def.basis === 'applied') return f.rApplied ?? f.R;
+  return 0;
+}
+/** M5: a raise's LeverState: raisedAt always; since on a raise from 0 (only where M5 can read them: a Ministry or a
+ *  popularity lever, so M4 states stay byte-identical). */
+function raisedState(state: GameState, cur: LeverState, level: number, ref: number): LeverState {
+  const ls: LeverState = { ...cur, level, ref };
+  if (state.chair) {
+    ls.raisedAt = state.time;
+    if (cur.level === 0) ls.since = state.time;
+  }
+  return ls;
+}
+
+/** M5 (Core B's part of LeverView): the pledge that binds it and its popularity term. Core A adds the rival's fields. */
+function m5LeverFields(state: GameState, content: Content, def: LeverDef, mods: ReturnType<typeof modsOf>): Partial<LeverView> {
+  const b = bindOf(state, content, def);
+  return { ...leverChairFields(state, content, def.id), bound: b?.name ?? null, boundMax: b?.max ?? null, popularity: popularityTerm(state, content, def, mods) };
+}
 
 /** Largest number of lever levels one setLever call may climb (guards unbounded repeat). */
 const MAX_LEVEL_JUMP = 10_000;
@@ -53,10 +81,13 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   const fl = computeFlows(state, content);
   if (fl.pending) return state;
   if (target < cur.level) {
-    const low = { ...state, levers: { ...state.levers, [leverId]: { ...cur, level: target, ref: target > 0 ? cur.ref : 0 } } };
+    const ls: LeverState = { ...cur, level: target, ref: target > 0 ? cur.ref : 0 };
+    if (target === 0) delete ls.since; // M5: the popularity clock stops
+    const low = { ...state, levers: { ...state.levers, [leverId]: ls } };
     return def.kind === 'measure' ? refreshEta(low, content) : low;
   }
   if (target - cur.level > MAX_LEVEL_JUMP || isForbidden(mods, def.id, def)) return state;
+  if (state.chair && raiseRefused(state, content, def, target)) return state; // M5: Opposition and pledges bind
   const inst = mods.startLevers[leverId] ?? 0;
   let cost = 0;
   const lm = leverMulOf(mods, def).cost;
@@ -64,7 +95,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   if (!(state.mandate >= cost)) return state;
   const f = fl.sectors[def.sector];
   let ref = cur.ref;
-  if (cur.level === 0 || !(ref > 0)) ref = def.kind === 'duty' && f && f.D > 0 ? f.pPre + f.permitPart : 0;
+  if (cur.level === 0 || !(ref > 0)) ref = def.kind === 'duty' && f && f.D > 0 ? f.pPre + f.permitPart : refOnEnact(content, def, f);
   const items: NewsItem[] = [];
   const ev: EvDraft[] = [];
   let sectors = state.sectors;
@@ -84,7 +115,7 @@ export function setLeverAs(state: GameState, content: Content, leverId: string, 
   ev.push({ kind: 'leverEnacted', sector: def.sector, id: leverId, n: target, by });
   const raised = emit({
     ...state, mandate: state.mandate - cost, sectors, run,
-    levers: { ...state.levers, [leverId]: { ...cur, level: target, ref: fin(ref) } },
+    levers: { ...state.levers, [leverId]: raisedState(state, cur, target, fin(ref)) },
     ...newsWith(state, content, items),
   }, ev, state.time, year);
   return def.kind === 'measure' ? refreshEta(raised, content) : raised;
@@ -141,7 +172,7 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
     const opts = fuller ? opts0 : opts0.slice(0, 1);
     return {
       def, level, maxLevel, current: leverLevelDef(def, level), next, visible, nextCost,
-      canRaise: visible && nextCost !== null && state.mandate >= nextCost && !forbidden,
+      canRaise: visible && nextCost !== null && state.mandate >= nextCost && !forbidden && !(state.chair && raiseRefused(state, content, def, level + 1)),
       upkeep: leverNetUpkeep(def, level, inst, lm.upkeep),
       recycleOptions: opts, recycle: recycleOf(def, ls),
       recycleChoices: opts.map((option) => ({
@@ -153,6 +184,7 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
       bite, forbidden,
       // M4 (amend): the condition a lever waits on, while it hides it
       waiting: def.when && !visible && !ls?.seen && !(level > 0) ? condCheck(state, content, def.when).label : null,
+      ...(content.office ? m5LeverFields(state, content, def, mods) : {}),
     };
   });
 }

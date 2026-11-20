@@ -296,6 +296,25 @@ Criteria (§15), as measured; tests in `src/balance.test.ts` and `src/balance.lo
 - **Withdrawn:** 8 for `budget` (the free survey comes at the first poor season, and a player who reads it can save the
   bank; the threat is live: `budget` and `mixed` crossed in some measured campaigns); 19–21 belong to the page lanes.
 
+**Polish (20 Nov 2026, one agent; `design/scratch/m4-polish-progress.md`).** The two worst misses.
+- *Hours 8–15 were saving.* The Settlement Commission's first sitting (room for the fourth settlement) now waits on the
+  Board's spring survey passed in three runs, each to a stricter standard (¾ of the bank and under 10% foreign boats,
+  then ⅘ and 7%, then 85% and 5%), at 2,500 Hindsight instead of 5,500: rebuilding the bank after the Board's Survey,
+  keeping a survey at sea, the quota and the fishery limits are worked in runs 6, 7 and 8. The Archive moves to run 9.
+  Measured: springs at 8.4–8.9, 10.5–11.1 and 12.5–13.1 h, the sitting at 13.6–14.0 h, the Act I ending at 15.93 h
+  (`budget`), 15.68 h (`mixed`), 16.68 h (`human`), run 9 each; longest gap between firsts to hour 14 1.75–1.83 h,
+  from hour 14 to the ending 1.30–2.03 h (`design/unlock-schedule.md`, M4 polish). Contract additions (`M4 (polish):`,
+  additive): `InstitutionDef.needs`/`InstitutionLevelDef.needs`, `InstitutionView.needs`, `Cond` `{ owns, earlier }`,
+  `AchievementDef.headline` (HeadlineKey `'achievement'`), `Derived.ending.roomBy`, `GlobalParams.hindsight.unburntDecades`.
+- *Burning paid too well.* The cause was lumps over short runs: since Steam's coal doubled, smoke ends a burning run at
+  16–17 minutes with most of the coal unburnt (≈ 24 Hindsight) and two Industries reached (20). Unburnt coal now counts
+  by full decades kept once the budget has arrived, Industries reached pay nothing, and a first backfire pays 40 (was
+  30) so that runs 1–2 pay the burner as much or more (run 2 5.07 → 5.30 a minute). Kit measurements: the burner 2.7–3.4
+  a minute from run 3 (0.35 of restraint; Iron's run 4 0.53), E5 0.53 (was 0.77; target 0.5), E6 run 4 1.88× (was
+  1.39), E7 1.16× / 1.22×, the human-like player's run 4 1.67× (was 1.19). Income is untouched.
+- Criteria now: 1 met for all three; 2 met but the human's last stretch (2.03 h); E6, E7 run 2 and the human margin met;
+  E5 missed by 0.03.
+
 ---
 
 ## M5 — "The Other Chair" (layer 2: the Treaty as government; Plenty)

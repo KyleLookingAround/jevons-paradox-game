@@ -31,6 +31,7 @@ import { foreignCatch, growthOf, renewableOf, reportedOf, scarMulOf, sizeOf, sta
 import { clearPOf } from './steady';
 import type { SectorFlow } from './solver';
 import { clamp, fin } from './util';
+import { concealOf } from './chair/acting';
 
 /** News, events and meta.world changes the M4 rules gather during a step (emitted after the M3 ones). */
 export interface M4Step {
@@ -158,10 +159,16 @@ export function stepCapstone(state: GameState, content: Content, s: SectorId, f:
     P = Math.min(hold, depletionP(def, Q));
   } else {
     const ab = absorptionOf(def, mods);
+    const conc = def.pressureSource === 'service' ? 0 : concealOf(state, s); // M5 (Core A): the rival under-reports the capstone
     if (es0.arrears) {
       const intensity = def.pressureIntensity * (mods.intensityMul[s] ?? 1);
       const inflow = (def.pressureSource === 'service' ? f.D : f.R) * intensity;
       P = Math.min(hold, Math.max(0, fin(P * Math.exp(-ab * dt) + inflow * dt)));
+    } else if (conc > 0) {
+      // M5 (Core A): the record's R is the reported figure; the excess (true − reported = R c / (1 − c)) is stepped into
+      // pressure as arrears are (held below the collapse line), relaxing towards the recorded P, without entering arrears
+      const exc = f.R * conc / (1 - conc) * def.pressureIntensity * (mods.intensityMul[s] ?? 1);
+      P = Math.min(hold, Math.max(st.P, fin(st.P + (P - st.P) * Math.exp(-ab * dt) + exc * dt)));
     } else if (P > st.P + 1e-12) P = Math.max(st.P, fin(P * Math.exp(-ab * dt)));
     else return 0;
   }

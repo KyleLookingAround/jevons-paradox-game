@@ -57,6 +57,10 @@
  *   --payback=S          the Market's paybackMax in seconds (default: the content's, 120 s unless set)
  *   --hold-for=M         the restraint player waits for clear skies it sees coming within M minutes (default 30)
  *   --fixed-run=M        runs 3 onwards of budget/market last exactly M minutes (to compare like with like)
+ *   --work-done          (M4 polish) budget and mixed also Reckon once a run's work is done (no spring survey left to
+ *                        pass this run, every Industry they may settle settled); always on for `human`
+ *   --opening-fix        (M4 polish) a Preview that waits on an Act's ending does not hold a run open (`opening`): without
+ *                        it every restraint run from run 3 lasts at least --max-open minutes (the M4 pacing was tuned so)
  *
  * Clicking (all strategies but idle): --cps taps per second (default 5) while a tap is worth it, i.e. while
  * cps × clickValue ≥ --click-until × income (default 0.5, the UI's shrink rule). --cps=0 turns it off.
@@ -101,6 +105,7 @@ declare const process: { argv: string[]; exit(code?: number): never };
 type Strategy = 'efficiency' | 'levers' | 'idle' | 'budget' | 'forks' | 'peakdraw' | 'mixed' | 'market' | 'charter' | 'human' | 'crisisFarm';
 const STRATEGIES: Strategy[] = ['efficiency', 'levers', 'idle', 'budget', 'forks', 'peakdraw', 'mixed', 'market', 'charter', 'human', 'crisisFarm'];
 const argv = process.argv.slice(2);
+if (argv[0]?.startsWith('gov:')) { (await import('./balance.m5')).mainM5([argv[0].slice(4), ...argv.slice(1)]); process.exit(0); } // M5: regulator bots (tools/balance.m5.ts)
 const flag = (name: string, dflt: string): string => {
   const a = argv.find((x) => x === `--${name}` || x.startsWith(`--${name}=`));
   return a === undefined ? dflt : a.includes('=') ? a.slice(a.indexOf('=') + 1) : 'true';
@@ -193,6 +198,8 @@ const C: Content = applySets(stripMechanics(C0));
 const HOURS = parseFloat(flag('hours', '3'));
 /** M4 polish: --work-done: budget and mixed also Reckon once the run's work is done (workDone; always on for human). */
 const WORK_DONE = flag('work-done', 'false') !== 'false';
+/** M4 polish: --opening-fix: a Preview waiting on an Act's ending does not hold a run open (see `opening`). */
+const OPENING_FIX = flag('opening-fix', 'false') !== 'false';
 const EVERY = parseFloat(flag('every', '120'));
 const CPS = parseFloat(flag('cps', '5'));
 const CLICK_UNTIL = parseFloat(flag('click-until', '0.5'));
@@ -678,6 +685,18 @@ function reckonBrings(s: GameState, e: SectorId, i: number): boolean {
   const kids = w && 'all' in w ? (w as { all: import('../src/types').Cond[] }).all : w ? [w] : [];
   const c = kids[i] as { feature?: string } | undefined;
   return !!c && c.feature === 'settlement' && s.meta.achievements?.steadyState === true;
+}
+
+/** M4 polish: sector e's unlock names an Act's ending (a leaf { ending }) that has not been reached. */
+function waitsOnEnding(s: GameState, e: SectorId): boolean {
+  const walk = (c: unknown): boolean => {
+    if (!c || typeof c !== 'object') return false;
+    const o = c as Record<string, unknown>;
+    if (typeof o.ending === 'string') return !evalCond(s, C, o as import('../src/types').Cond);
+    for (const k of ['all', 'any']) if (Array.isArray(o[k]) && (o[k] as unknown[]).some(walk)) return true;
+    return false;
+  };
+  return walk(C.sectors[e]?.unlock?.when);
 }
 
 /** M4 polish: nothing left in this run that a person would stay for: no spring survey to pass this run (SPRINGS: the
@@ -1178,12 +1197,13 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
   if (DUMP_ENDING !== 'false' && act?.ending) {
     const set = act.ending.sectors.filter((e) => !!C.sectors[e]);
     const settled = set.filter((e) => s.sectors[e]?.open && s.sectors[e].settled).length;
-    const write = (name: string) => { if (dumped.has(name)) return; dumped.add(name); writeFileSync(`${DUMP_DIR}/${name}`, model.serialize(s)); log(`  state written to ${DUMP_DIR}/${name}`); };
+    const write = (name: string, st: GameState = s) => { if (dumped.has(name)) return; dumped.add(name); writeFileSync(`${DUMP_DIR}/${name}`, model.serialize(st)); log(`  state written to ${DUMP_DIR}/${name}`); };
     if (settled >= set.length - 1 && set.length > 1 && !s.meta.endings?.[act.ending.id]) write('act1-late.json');
     // M4 (finish): act1-ending.json is the state five seconds BEFORE the ending (all settled, the streak a step short), so
     // a page loading it plays into the ending event and its credits; the step of the ending itself had already fired it
     if (settled === set.length && !s.meta.endings?.[act.ending.id]) preEnding = s;
-    if (s.meta.endings?.[act.ending.id] && s.flags.won && preEnding) write('act1-ending.json');
+    // (M4 polish: the state before, preEnding, not this one: this path used to write the state after the ending)
+    if (s.meta.endings?.[act.ending.id] && s.flags.won && preEnding) write('act1-ending.json', preEnding);
   }
   return s;
 }
@@ -1616,7 +1636,11 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       const sure = ORDER.some((e) => !s.run.steadySectors[e] && !s.sectors[e]?.settled && (s.sectors[e]?.clearYears ?? 0) > 0);
       const streaking = sure || (streakingRaw && s.time - (holdMemo.since ?? s.time) <= 1.5 * HOLD_FOR);
       // a competent player does not Reckon while an industry it is entitled to is still opening this run
-      const opening = s.time < MAX_OPEN && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
+      // M4 polish (recorded, not changed): this also holds for a Preview that waits on the Act I ending (Motion), so every
+      // restraint run from run 3 lasts at least MAX_OPEN; with --opening-fix it does not, and the whole arc moves about
+      // two hours earlier (Iron 2.3 h, Fishing 5.2 h, the ending 14.3 h for budget: design/scratch/m4-polish/s8-*). The
+      // M4 pacing was tuned with it; changing it is a rebalancing of hours 1–8, left for a later pass.
+      const opening = s.time < MAX_OPEN && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded && !(OPENING_FIX && waitsOnEnding(s, x.id)));
       if (s.time >= MIN_RUN && marginal < 0.9 * avg && !streaking && !opening) { stopReason = `marginal rate ${n(marginal)} below average ${n(avg)}`; break; }
       // progression: the next industry waits only on another Reckoning, so bank the run (once no streak is running)
       // M4 balance: an unmet "Settlement has come to the House" counts as waiting on a Reckoning once a Steady State is

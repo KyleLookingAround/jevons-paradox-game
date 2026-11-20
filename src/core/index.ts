@@ -35,6 +35,11 @@ import { fileReturn, publishOnFlag, withdrawReturn } from './returns';
 import { sinkSeam } from './seams';
 import { archiveViews } from './archive';
 import type { EvDraft } from './events';
+import { buyArticle, takeOffice, treaty } from './chair/office';
+import { campaign, choosePledges } from './chair/elections';
+import { compensate } from './chair/treasury';
+import { inspect } from './chair/inspect';
+import { amend } from './chair/loopholes';
 
 export {
   DEFAULT_MANDATE_SHARE, DEFAULT_BUDGET_DECLINE, DEFAULT_DECADE_YEARS, SUBSTITUTION_CAPCOST_MUL, CAP_LEAK_MAX,
@@ -98,4 +103,13 @@ export const model: CoreModel = {
   withdrawReturn,
   useBank: after(useBank),
   historyViews, archiveViews, retrospective,
+  /* M5 (in-run actions are decisions; takeOffice, treaty and buyArticle are between runs and are not) */
+  takeOffice: after(takeOffice),
+  inspect: after(asDecision(inspect)),
+  amend: after(asDecision(amend)),
+  choosePledges: after(asDecision(choosePledges)),
+  campaign: after(asDecision(campaign)),
+  compensate: after(asDecision(compensate)),
+  treaty: after(treaty),
+  buyArticle: after(buyArticle),
 };

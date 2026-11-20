@@ -49,6 +49,9 @@ import { drawLine } from './account';
 import { seenLevers } from './world';
 import { actEndingMeta, arrearsStep, depletionP, drainOfDrawers, mirrorDrawers, newM4Step, stepCapstone, stepM4, stepRenewableSector } from './world';
 import type { M4Step } from './world';
+import { capitalPerSec } from './chair/treasury';
+import { stepChair } from './chair/elections';
+import { rivalStep } from './chair/rival';
 
 /* ------------------------------------------------------------------ */
 /* Tick                                                                */
@@ -223,7 +226,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
 
     // budget auto-draw for an active cap (M2: the default pace, the line's own day)
-    if (fBudget && (Number.isFinite(lev.capFrac) || Number.isFinite(lev.quotaFrac)) && !es0.budget && f.D > 0 && f.R > 0
+    if (fBudget && (Number.isFinite(lev.capFrac) || Number.isFinite(lev.quotaFrac) || lev.capFracA < Infinity) && !es0.budget && f.D > 0 && f.R > 0
       && es0.openFor * YEARS_PER_SECOND >= standingDrawYearsOf(def, content) - 1e-9) {
       es.budget = m4 ? drawLine(state, content, fl, s, f.R, state.time, year, W, es0.pressure) : newBudget(content, s, f.R, state.time, year, W, es0.pressure); // M4: the account
       items.push(headline(tmp, content, 'budgetDrawn', time, hc, s));
@@ -480,7 +483,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   const commonsIn = fl.commonsLevy > 0 ? commonsCfg(content).fundShare * fl.commonsLevy * dt : 0;
 
   let next: GameState = {
-    ...state, time, capital: fin(state.capital + fl.income * dt + one.capital), mandate, population,
+    ...state, time, capital: fin(state.capital + capitalPerSec(state, content, fl) * dt + one.capital), mandate, population, // M5: the Treasury in a Ministry
     peakPopulation: Math.max(state.peakPopulation, population), sectors, levers, flags, steadyYearsAll, run, meta,
     ...newsWith(state, content, items), events: evs.events,
     commons: commonsIn > 0 ? { ...state.commons, fund: fin(state.commons.fund + commonsIn) } : state.commons,
@@ -502,6 +505,8 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   }
   next = stepM3(state, next, content, year, secondTick, bites.bitten, lite, away);
   if (m4) next = stepM4(state, next, content, fl, mods, year, lite, away, w4); // M4: surveys, the order book's peaks, M4 events
+  if (next.chair) next = stepChair(state, next, content, fl, year, lite, away); // M5: Confidence, the offer, polling day
+  if (next.chair) next = rivalStep(state, next, content, dt, lite); // M5: the rival (income, rungs, his yearly decision, Standing inspection)
   next = runOrders(state, next, content, lite);
   return next;
 }

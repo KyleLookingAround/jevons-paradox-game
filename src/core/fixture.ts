@@ -160,6 +160,10 @@ export const HEADLINE_KEYS: HeadlineKey[] = [
   'leverLapsed', 'steadySector', 'steadyAll', 'reckoning', 'efficiency', 'ageBegins', 'budgetDrawn', 'decade', 'budgetBroken',
   'clearSkies', 'settled', 'unsettled', 'commonsBuilt', 'charter',
   'threshold', 'scarHealed', 'surveyed', 'arrears', 'foreignFleets', 'actEnding',
+  // M5
+  'acquisition', 'officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'leverRepealed', 'ministryDefeated',
+  'concealmentFound', 'inspectedClean', 'rivalAnswered', 'loopholeOpened', 'loopholeUsed', 'loopholeClosed', 'litigated',
+  'carveOut', 'compensated', 'treaty', 'playbookLearnt', 'articleBought',
 ];
 const headlines = Object.fromEntries(HEADLINE_KEYS.map((k) => [k, [`${k}: {sector} {age} {app} {resource} {service} {year} #{n}{name}`]])) as Record<HeadlineKey, string[]>;
 
@@ -512,3 +516,107 @@ export const fixtureM4Acts: Content = {
     { id: 'actTwo', name: 'Act II', title: 'The Great Acceleration', ages: ['acceleration', 'attention'], preview: true },
   ],
 };
+
+/* ------------------------------------------------------------------ */
+/* M5 (Core A): a Ministry on fixture content (design/m5-design.md §16)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * M5: one "motor" Industry played from the Chair (an act with chair 'government'), the only sector, open from the start:
+ * two applications (cars, founded free; the exempt 'motor.vans', available only while the light-trucks rung is used,
+ * founded by the rival when he evades), efficiency cards, a repeatable demand card ('motor.roads': satMul 1.15 on cars, cost
+ * × 1.7 a level), a duty, a cap, and the mileage standard (a measure: η up, margin down per level value) with a two-rung
+ * ladder (light trucks: escape 0.6, an exempt app, amendable; the footprint rule: closed by the duty in force). ChairDef,
+ * RivalDef (default profile, comply/evade/lobby/litigate/conceal rows) and OfficeDef with placeholder numbers.
+ * `fixtureM5NoTail` is the same without the repeatable card (E1's control).
+ */
+const motor = sector({
+  id: 'motor', firstYear: 1950, basePrice: 1, capCost: 0.05, margin: 0.2, alpha: 0.6, reserve: 4_000_000,
+  pressureIntensity: 0.0005, absorption: 0.01, collapseAt: 100, crisisAt: [0.4, 0.7], pressureWellbeingCost: 12,
+  wellbeingWeight: 10, wellbeingScale: 200,
+  applications: [
+    app('motor.cars', 1.2, 400, 1.6),
+    { ...app('motor.lorries', 0.5, 1_500, 2, Infinity, 400) },
+    { ...app('motor.vans', 0.8, 600, 1.8, Infinity, 1e12), when: { loophole: 'motor.mileage.lightTrucks', status: 'used' } },
+  ],
+});
+const m5Upgrades: UpgradeDef[] = [
+  effUp('motor.carburettor', 'motor', 300, 1.4),
+  effUp('motor.overhead', 'motor', 2_000, 1.4, ['motor.carburettor']),
+  effUp('motor.injection5', 'motor', 9_000, 1.4, ['motor.overhead']),
+  effUp('motor.turbo', 'motor', 30_000, 1.4, ['motor.injection5']),
+  // E1 (design/scratch/m5-core-rival-progress.md): cost × 1.7 a level against satMul 1.15 gives a tail (R still rising at
+  // minute 30, first crisis at about minute 25); × 1.3 against 1.25 explodes (collapse at minute 6)
+  { id: 'motor.roads', sector: 'motor', name: 'Trunk roads', blurb: '', kind: 'capital', cost: 600, repeatable: true, costGrowth: 1.7,
+    effects: [{ type: 'satMul', sector: 'motor', app: 'motor.cars', value: 1.15 }, { type: 'satMul', sector: 'motor', app: 'motor.lorries', value: 1.1 }] },
+  // a fork (the rival takes the larger-demand arm when volume ≥ 0.5)
+  { id: 'motor.massMarket', sector: 'motor', name: 'The people’s car', blurb: '', kind: 'capital', cost: 1_500, excludes: ['motor.coachbuilt'],
+    effects: [{ type: 'satMul', sector: 'motor', app: 'motor.cars', value: 1.4 }] },
+  { id: 'motor.coachbuilt', sector: 'motor', name: 'Coachbuilt', blurb: '', kind: 'capital', cost: 1_500, excludes: ['motor.massMarket'],
+    effects: [{ type: 'marginAdd', sector: 'motor', value: 0.03 }] },
+];
+const m5Levers: LeverDef[] = [
+  lever('motor.duty', 'motor', 'duty', [L(40, 0.02, 0.3), L(120, 0.05, 0.6), L(300, 0.1, 0.8)], { recycle: ['treasury', 'dividend'] }),
+  lever('motor.cap', 'motor', 'cap', [L(50, 0.03, 1.0, 3), L(150, 0.08, 0.8, 3), L(400, 0.2, 0.6, 3)]),
+  lever('motor.mileage', 'motor', 'measure', [L(30, 0.01, 1), L(60, 0.02, 2), L(120, 0.04, 3), L(240, 0.08, 4)], {
+    effects: [{ type: 'etaMul', sector: 'motor', value: 1.15 }, { type: 'marginAdd', sector: 'motor', value: -0.02 }],
+    ladder: ['motor.mileage.lightTrucks', 'motor.mileage.footprint'],
+  }),
+];
+const m5Loopholes: import('../types').LoopholeDef[] = [
+  { id: 'motor.mileage.lightTrucks', lever: 'motor.mileage', name: 'Light trucks', blurb: 'Vans are counted separately',
+    app: 'motor.vans', escape: 0.6, premium: 0.05, prop: 'vans',
+    effects: [{ type: 'satMul', sector: 'motor', app: 'motor.vans', value: 1.15 }],
+    amend: { mandateCost: 60, years: 5, label: 'Count every vehicle' } },
+  { id: 'motor.mileage.footprint', lever: 'motor.mileage', name: 'The footprint rule', blurb: 'Larger vehicles, easier targets',
+    escape: 0.5, premium: 0.03, closedBy: { owns: 'motor.duty', label: 'A fuel duty in force' } },
+];
+export const M5_CHAIR: import('../types').ChairDef = {
+  confidence: { start: 55, winAt: 50, relaxPerYear: 0.15, base: 50, perWellbeing: 0.5, perPriceShare: -40, perJobShare: -20,
+    perCommonsLevel: 1, lobbyPerYear: 1, fineFound: 2, crisis: -5, campaignPerMandate: 0.05 },
+  elections: { firstTermYears: 10, termYears: 15, noticeYears: 3, offer: 3, keep: 2, winMandate: 50 },
+  opposition: { repealPerParliament: 1, lostInARowEnds: 2 },
+  inspection: { inspectors: 2, cooldownYears: 5, revealYears: 10, quietYears: 6, concealPerYear: 0.02, concealMax: 0.2, fineMul: 0.5 },
+  treasury: { taxShare: 0.3, levyShare: 0.5 },
+  compensation: { costYears: 5, years: 10 },
+  amend: { mandateCost: 80, years: 5 },
+};
+export const M5_RIVAL: import('../types').RivalDef = {
+  id: 'pryce', name: 'Rival Consolidated', cast: 'rivalChair',
+  defaultProfile: { haste: 0.5, founder: 0.3, volume: 0.6, drawn: 0.3, pliant: 0.5 },
+  responses: [
+    { kind: 'comply' },
+    { kind: 'evade', feature: 'loopholes' },
+    { kind: 'lobby', lobby: { costPerPoint: 3, carveOutAt: 52 } },
+    { kind: 'litigate', litigate: { windowYears: 3, delayYears: 5, feeYears: 0.3 } },
+    { kind: 'conceal', feature: 'inspection' },
+  ],
+  policy: { paybackSlow: 240, paybackFast: 60, foundSlow: 300, foundFast: 90, drawnLobby: 10, quietSpread: 4 },
+  profileFrom: { hasteAtPerMinute: [0.5, 2], drawnBySeconds: 1_800, casts: ['rivalPater'] },
+  knowhowTransfer: { k: 0.01, cap: 1.25 },
+  startCapitalSeconds: 60,
+};
+const OFFICE_TEXT: import('../types').OfficeText = {
+  acquisition: { headline: 'ACQUIRED', sub: 'sub' }, letter: { cast: 'rivalChair', body: 'body', button: 'ok' },
+  offer: { take: 'Take office', notYet: 'Not yet' },
+  prospectus: { title: 't', first: 'f', firstDefault: 'fd', chair: 'c', close: 'cl', button: 'b' },
+  file: { title: 't', accepted: 'a', declined: 'd', automated: 'au', conclusion: [{ pliantBelow: 0.5, text: 'x' }, { pliantBelow: 2, text: 'y' }], button: 'b' },
+};
+export const fixtureM5: Content = {
+  ...fixture,
+  sectors: { motor },
+  sectorOrder: ['motor'],
+  ages: [{ id: 'acceleration', name: 'The Great Acceleration', tagline: '', yearSpan: [1950, 2010], theme: 'chrome', sectors: ['motor'] }],
+  acts: [{ id: 'actTwo', name: 'Act II', title: 'The Great Acceleration', ages: ['acceleration'], chair: 'government' }],
+  upgrades: m5Upgrades,
+  levers: m5Levers,
+  loopholes: m5Loopholes,
+  knowhow: [], institutions: [], charters: [], dividends: [], commons: [],
+  global: { ...fixture.global, steady: { ...fixture.global.steady!, decadeChoices: [] } },
+  office: { when: { flag: 'never' }, text: OFFICE_TEXT },
+  chair: M5_CHAIR,
+  rival: M5_RIVAL,
+  pledges: [],
+};
+/** E1's control: the same Ministry without the repeatable demand card. */
+export const fixtureM5NoTail: Content = { ...fixtureM5, upgrades: m5Upgrades.filter((u) => u.id !== 'motor.roads') };

@@ -6,7 +6,8 @@
  * Inheritance) replaces "fresh world" with "inherited world" here and nowhere else.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
-import type { CapstoneRecord, Content, LeverState, MetaState, SectorDef, SectorId, SectorState } from '../types';
+import { CONFIDENCE_MAX, YEARS_PER_SECOND } from '../types';
+import type { CapstoneRecord, ChairState, Content, LeverState, MetaState, SectorDef, SectorId, SectorState } from '../types';
 import { idx } from './contentIndex';
 import { clamp, fin } from './util';
 
@@ -55,4 +56,33 @@ export function stampCapstones(sectors: Record<SectorId, SectorState>, year: num
     out[s] = { ...es, settled: { ...es.settled, sinceYear: Math.floor(year) } };
   }
   return out ?? sectors;
+}
+
+/**
+ * M5: a Ministry's chair state, fresh (GameState.chair): built for every run while meta.office is present and content
+ * has office, chair and rival; null otherwise. Confidence at confidence.start; the first (caretaker) Parliament polls
+ * firstTermYears from the start; every map empty; the rival's purse 0 until a chair sector opens (createState and the
+ * rival's step add RivalDef.startCapitalSeconds × that sector's income). M7 hands an heir's state on here.
+ */
+export function freshChair(content: Content, meta: MetaState): ChairState | null {
+  const cd = content.chair;
+  if (!meta.office || !cd || !content.rival || !content.office) return null;
+  const c0 = Number.isFinite(cd.confidence.start) ? cd.confidence.start : 50;
+  const first = Math.max(1, Number.isFinite(cd.elections.firstTermYears) ? cd.elections.firstTermYears : 10);
+  return {
+    confidence: clamp(c0, 0, CONFIDENCE_MAX),
+    parliament: { index: 0, start: 0, pollAt: first / YEARS_PER_SECOND, offer: null, chosen: null },
+    pledges: [], inOpposition: false, lostInARow: 0, electionsWon: 0,
+    inspectors: [], inspected: {}, found: {}, compensated: {}, loopholes: {}, carveOuts: {}, litigation: {}, repealed: [],
+    rival: { capital: 0, peakIncome: {}, concealment: {}, answers: {}, lobbying: {} }, // = rival.ts freshRivalState()
+  };
+}
+
+/** M5: the act of sector s is closed while office is taken (ActDef.closedInOffice; Act III in M5). */
+export function sealedInOffice(content: Content, meta: MetaState, s: SectorId): boolean {
+  if (!meta.office) return false;
+  const ix = idx(content);
+  const age = ix.ageOf.get(s);
+  const act = age ? ix.actOfAge.get(age.id) : undefined;
+  return !!act?.closedInOffice;
 }

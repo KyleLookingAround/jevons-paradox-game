@@ -3,9 +3,12 @@
  * flow capacity from them, and the one-off effects fired at the moment they are granted.
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
+import { CONFIDENCE_MAX } from '../types';
 import type { Content, EffectDef, GameState, InstitutionDef, LeverKind, MetaState, OrderId, SectorDef } from '../types';
 import { POP_MIN } from './constants';
 import { leverLevelDef } from './leverLevels';
+import { chairIdx } from './chair/chairIndex';
+import { effKey, effectiveOf, rungActsUsed, leverEscape } from './chair/acting';
 import { idx } from './contentIndex';
 import { decadeEffectsOf } from './steady';
 import { fin } from './util';
@@ -13,7 +16,8 @@ import { fin } from './util';
 /** autoEta exponent cap (keeps η finite in very long runs). */
 const AUTO_ETA_EXP_MAX = 300;
 
-const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag', /* M4 (finish) */ 'hindsightShare']);
+const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag', /* M4 (finish) */ 'hindsightShare',
+  /* M5 */ 'confidenceAdd']);
 
 /* ------------------------------------------------------------------ */
 /* Modifiers (standing effects)                                        */
@@ -79,6 +83,22 @@ export interface Mods {
   survey: Set<string>;
   /** foreignMul per sector (multiplicative). */
   foreignMul: Record<string, number>;
+  /* M5 (each inert outside a Ministry by its readers) */
+  returnShareMul: Record<string, number>;
+  inspectorAdd: number;
+  amendYearsMul: number;
+  pledgeOfferAdd: number;
+  litigateYearsMul: number;
+  fineMul: number;
+  popularityYearsMul: number;
+  compensationMul: number;
+  quietYearsAdd: number;
+  termYearsAdd: number;
+  ratchet: boolean;
+  /** Sectors with a 'certify' effect in force. */
+  certify: Set<string>;
+  /** rivalCostMul per ResponseKind (multiplicative). */
+  rivalCostMul: Record<string, number>;
 }
 
 function emptyMods(): Mods {
@@ -91,6 +111,9 @@ function emptyMods(): Mods {
     travelRoads: {}, priceSeenApp: {}, priceSeenSector: {}, anyPriceSeen: false, runVarying: false,
     leverCost: [], suspendOrder: new Set(), leakMul: {}, spillMul: {}, settleSlots: 0,
     survey: new Set(), foreignMul: {},
+    returnShareMul: {}, inspectorAdd: 0, amendYearsMul: 1, pledgeOfferAdd: 0, litigateYearsMul: 1, fineMul: 1,
+    popularityYearsMul: 1, compensationMul: 1, quietYearsAdd: 0, termYearsAdd: 0, ratchet: false, certify: new Set(),
+    rivalCostMul: {},
   };
 }
 /** A shallow copy deep enough for an overlay (every record and set copied). */
@@ -105,6 +128,7 @@ function cloneMods(b: Mods): Mods {
     priceSeenApp: { ...b.priceSeenApp }, priceSeenSector: { ...b.priceSeenSector },
     leverCost: b.leverCost.slice(), suspendOrder: new Set(b.suspendOrder), leakMul: { ...b.leakMul }, spillMul: { ...b.spillMul },
     survey: new Set(b.survey), foreignMul: { ...b.foreignMul },
+    returnShareMul: { ...b.returnShareMul }, certify: new Set(b.certify), rivalCostMul: { ...b.rivalCostMul },
   };
 }
 const seenBetter = (a: { share: number; flat: number } | undefined, share: number, flat: number): boolean =>
@@ -167,6 +191,20 @@ function applyEffect(m: Mods, ef: EffectDef, times: number): void {
     /* M4 */
     case 'survey': if (typeof ef.sector === 'string') m.survey.add(ef.sector); break;
     case 'foreignMul': mul(m.foreignMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
+    /* M5 */
+    case 'returnShareMul': mul(m.returnShareMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
+    case 'inspectorAdd': m.inspectorAdd += fin(ef.value) * times; break;
+    case 'amendYearsMul': m.amendYearsMul *= Math.pow(Math.max(0, fin(ef.value, 1)), times); break;
+    case 'pledgeOfferAdd': m.pledgeOfferAdd += fin(ef.value) * times; break;
+    case 'litigateYearsMul': m.litigateYearsMul *= Math.pow(Math.max(0, fin(ef.value, 1)), times); break;
+    case 'fineMul': m.fineMul *= Math.pow(Math.max(0, fin(ef.value, 1)), times); break;
+    case 'popularityYearsMul': m.popularityYearsMul *= Math.pow(Math.max(0, fin(ef.value, 1)), times); break;
+    case 'compensationMul': m.compensationMul *= Math.pow(Math.max(0, fin(ef.value, 1)), times); break;
+    case 'quietYearsAdd': m.quietYearsAdd += fin(ef.value) * times; break;
+    case 'termYearsAdd': m.termYearsAdd += fin(ef.value) * times; break;
+    case 'ratchet': m.ratchet = true; break;
+    case 'certify': if (typeof ef.sector === 'string') m.certify.add(ef.sector); break;
+    case 'rivalCostMul': if (typeof ef.response === 'string') mul(m.rivalCostMul, ef.response, Math.max(0, fin(ef.value, 1)), times); break;
     default: break;
   }
 }
@@ -217,7 +255,8 @@ export function suspended(meta: MetaState, content: Content, what: 'knowhow' | '
   return (idx(content).histories.get(h)?.suspend ?? []).includes(what);
 }
 
-const modsCache = new WeakMap<object, { kh: object; inst: object; loadout: object; charter: string | null; history: string | null; key: string; content: Content; mods: Mods }>();
+const modsCache = new WeakMap<object, { kh: object; inst: object; loadout: object; charter: string | null; history: string | null; key: string; content: Content; mods: Mods;
+  /* M5 */ art: object | undefined; pb: object | undefined }>();
 /**
  * Standing effects of: upgrades owned (× level), know-how (× level), the Charter in force (once), decades (× earned),
  * dividends chosen (once each), Commons projects (× level), settled sectors' settle.dividend (once), and the seated
@@ -229,7 +268,8 @@ export function computeMods(upgrades: Record<string, number>, meta: MetaState, c
   const history = meta.history ?? null;
   const hit = modsCache.get(upgrades);
   if (hit && hit.kh === meta.knowhow && hit.inst === meta.institutions && hit.loadout === meta.loadout && hit.key === key
-    && hit.charter === charter && hit.history === history && hit.content === content) return hit.mods;
+    && hit.charter === charter && hit.history === history && hit.content === content
+    && hit.art === meta.articles && hit.pb === meta.playbooks) return hit.mods;
   const ix = idx(content);
   const m = emptyMods();
   const hdef = history !== null ? ix.histories.get(history) : undefined;
@@ -280,8 +320,15 @@ export function computeMods(upgrades: Record<string, number>, meta: MetaState, c
     if (lvl > 0) for (const ef of institutionEffects(i, lvl)) if (ef.type !== 'institutionLoan') applyEffect(m, ef, 1);
   }
   m.loans = loans;
+  // M5: the Articles bought and the playbooks the rival has learnt stand for good (once each)
+  if (meta.articles || meta.playbooks?.length) {
+    const cx = chairIdx(content);
+    for (const id in meta.articles ?? {}) if (meta.articles![id] === true) for (const ef of cx.articles.get(id)?.effects ?? []) applyEffect(m, ef, 1);
+    for (const id of meta.playbooks ?? []) for (const ef of cx.playbooks.get(id)?.effects ?? []) applyEffect(m, ef, 1);
+  }
   m.runVarying = ix.measureLevers.length > 0 || ix.sideLevers.length > 0;
-  modsCache.set(upgrades, { kh: meta.knowhow, inst: meta.institutions, loadout: meta.loadout, charter, history, key, content, mods: m });
+  modsCache.set(upgrades, { kh: meta.knowhow, inst: meta.institutions, loadout: meta.loadout, charter, history, key, content, mods: m,
+    art: meta.articles, pb: meta.playbooks });
   return m;
 }
 
@@ -317,28 +364,40 @@ export function modsOf(s: GameState, c: Content): Mods {
 /* M3: the run-varying sources (measure levers × value, side effects × bite × level, timed modifiers, dispatch standing
  * effects) layered over the cached base. Nothing to layer (the common case): the base itself, at the cost of a few
  * length checks. Cached per (levers, modifiers, standing) identity. */
-const overlayCache = new WeakMap<object, { base: Mods; mods: object; standing: object; content: Content; out: Mods }>();
+const overlayCache = new WeakMap<object, { base: Mods; mods: object; standing: object; content: Content; out: Mods;
+  /* M5: the chair's parts the overlay reads (by identity: the rival's capital moving every step must not invalidate it) */
+  pl: object | null; lh: object | null; off: object | undefined; ek: string }>();
 const EMPTY_LIST: never[] = [];
 function overlayMods(s: GameState, c: Content, base: Mods): Mods {
   const modifiers = s.modifiers ?? EMPTY_LIST;
   const standing = s.dispatch?.standing ?? EMPTY_LIST;
-  if (!base.runVarying && !modifiers.length && !standing.length) return base;
+  const ch = s.chair ?? null;
+  if (!base.runVarying && !modifiers.length && !standing.length && !ch) return base;
   const ix = idx(c);
+  const pl = ch ? ch.pledges : null, lh = ch ? ch.loopholes : null, off = ch ? s.meta.office : undefined;
+  const ek = ch ? effKey(s) : '';
   const hit = overlayCache.get(s.levers);
-  if (hit && hit.base === base && hit.mods === modifiers && hit.standing === standing && hit.content === c) return hit.out;
+  if (hit && hit.base === base && hit.mods === modifiers && hit.standing === standing && hit.content === c
+    && hit.pl === pl && hit.lh === lh && hit.off === off && hit.ek === ek) return hit.out;
   let m: Mods | null = null;
   const get = (): Mods => (m ??= cloneMods(base));
   for (const def of ix.measureLevers) {
     const ls = s.levers[def.id];
     if (!ls || !(ls.level >= 1)) continue;
-    const v = fin(leverLevelDef(def, ls.level)?.value ?? 0);
+    // M5: the effective level, and the grip that escapes through a used rung
+    const L = ch ? effectiveOf(ch, def.id, ls.level, s.time) : ls.level;
+    if (!(L >= 1)) continue;
+    let v = fin(leverLevelDef(def, L)?.value ?? 0);
+    if (ch) v *= 1 - leverEscape(s, c, def.id);
     if (v > 0) for (const ef of def.effects!) applyEffect(get(), ef, v);
   }
   for (const def of ix.sideLevers) {
     const ls = s.levers[def.id];
-    const t = fin(ls?.bite ?? 0) * (ls?.level ?? 0);
+    const L = ch && ls ? effectiveOf(ch, def.id, ls.level, s.time) : (ls?.level ?? 0);
+    const t = fin(ls?.bite ?? 0) * L;
     if (t > 0) for (const ef of def.sideEffects!.effects) applyEffect(get(), ef, t);
   }
+  if (ch) overlayChair(s, c, ch, get);
   for (const md of modifiers) {
     const effs = modifierEffects(ix, md);
     if (effs) for (const ef of effs) applyEffect(get(), ef, 1);
@@ -355,8 +414,30 @@ function overlayMods(s: GameState, c: Content, base: Mods): Mods {
     }
   }
   const out = m ?? base;
-  overlayCache.set(s.levers, { base, mods: modifiers, standing, content: c, out });
+  overlayCache.set(s.levers, { base, mods: modifiers, standing, content: c, out, pl, lh, off, ek });
   return out;
+}
+
+/** M5: a Ministry's standing sources: pledges in force, used rungs' effects (× effective level), the Know-how transfer. */
+function overlayChair(s: GameState, c: Content, ch: NonNullable<GameState['chair']>, get: () => Mods): void {
+  const cx = chairIdx(c);
+  for (const id of ch.pledges) for (const ef of cx.pledges.get(id)?.effects ?? []) if (!ONE_OFF.has(ef.type)) applyEffect(get(), ef, 1);
+  for (const [lever, rungs] of cx.ladders) {
+    let L = -1;
+    for (const r of rungs) {
+      if (!r.effects?.length || !rungActsUsed(ch.loopholes[r.id])) continue;
+      if (L < 0) L = effectiveOf(ch, lever, s.levers[lever]?.level ?? 0, s.time);
+      if (L > 0) for (const ef of r.effects) if (!ONE_OFF.has(ef.type)) applyEffect(get(), ef, L);
+    }
+  }
+  const kt = c.rival?.knowhowTransfer;
+  const ho = s.meta.office?.handedOver;
+  if (kt && ho && cx.chairSectors.length) {
+    let n = 0;
+    for (const id in ho) n += Math.max(0, fin(ho[id]));
+    const f = Math.min(fin(kt.cap, 1), 1 + fin(kt.k) * n);
+    if (f !== 1 && f > 0) for (const sec of cx.chairSectors) mul(get().etaMul, sec, f, 1);
+  }
 }
 
 /** M4: the effects of a timed modifier: a dispatch arm's own modifier, a wager branch's (`branch`), or the Board's first
@@ -414,7 +495,8 @@ export function flowCapacity(def: SectorDef, mods: Mods): number {
 
 /** One-offs gathered by fireOneOffs. M3 adds (optional, absent = none): a population factor, pressure additions per
  *  sector (× collapseAt) and permanent flags. applyM3OneOffs applies those three. */
-export interface OneOffs { capital: number; mandate: number; slots: number; pop?: number; pressure?: Record<string, number>; flags?: string[]; /** M4 (finish) */ letterShare?: number }
+export interface OneOffs { capital: number; mandate: number; slots: number; pop?: number; pressure?: Record<string, number>; flags?: string[]; /** M4 (finish) */ letterShare?: number;
+  /** M5: 'confidenceAdd' (applied by applyM3OneOffs to ChairState.confidence; inert outside office). */ confidence?: number }
 /** Fire the one-off effects of a list (`times` times); capitalAdd is measured in seconds of `income`. */
 export function fireOneOffs(effects: EffectDef[], times: number, income: number, acc: OneOffs): void {
   for (const ef of effects) {
@@ -427,6 +509,7 @@ export function fireOneOffs(effects: EffectDef[], times: number, income: number,
     }
     if (ef.type === 'populationMul') { acc.pop = (acc.pop ?? 1) * Math.pow(Math.max(0, fin(ef.value, 1)), times); continue; }
     if (ef.type === 'hindsightShare') { acc.letterShare = (acc.letterShare ?? 0) + fin(ef.value) * times; continue; } // M4 (finish)
+    if (ef.type === 'confidenceAdd') { acc.confidence = (acc.confidence ?? 0) + fin(ef.value) * times; continue; } // M5
     const v = fin((ef as { value: number }).value) * times;
     if (ef.type === 'capitalAdd') acc.capital += v * Math.max(0, income);
     else if (ef.type === 'mandateAdd') acc.mandate += v;
@@ -436,8 +519,13 @@ export function fireOneOffs(effects: EffectDef[], times: number, income: number,
 /** M3: apply the M3 one-offs of `one` (population × pop, pressure += value × collapseAt on open unsettled sectors
  *  flooring at 0, meta.flags). The same reference when there are none. */
 export function applyM3OneOffs(state: GameState, content: Content, one: OneOffs): GameState {
-  if (one.pop === undefined && one.pressure === undefined && one.flags === undefined && !one.letterShare) return state;
+  if (one.pop === undefined && one.pressure === undefined && one.flags === undefined && !one.letterShare && !one.confidence) return state;
   let s = state;
+  // M5: a letter's Confidence one-off (clamped; inert outside office)
+  if (one.confidence && s.chair) {
+    const confidence = Math.min(CONFIDENCE_MAX, Math.max(0, fin(s.chair.confidence + one.confidence)));
+    if (confidence !== s.chair.confidence) s = { ...s, chair: { ...s.chair, confidence } };
+  }
   // M4 (finish): a letter's stake in the run's Hindsight (EffectDef 'hindsightShare')
   if (one.letterShare) s = { ...s, run: { ...s.run, letterShare: fin((s.run.letterShare ?? 0) + one.letterShare) } };
   if (one.pop !== undefined && one.pop !== 1) {

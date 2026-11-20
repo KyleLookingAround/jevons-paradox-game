@@ -17,9 +17,12 @@ import { absorptionOf } from './effects';
 import { fin } from './util';
 import { featureOn } from './features';
 import { dispatchFirstAt } from './dispatchClock';
-import { inheritWorld, stampCapstones } from './inherit';
+import { freshChair, inheritWorld, stampCapstones } from './inherit';
 import { startStockOf, sizeOf } from './renewable';
 import { calendarYear } from './calendar';
+import { chairIdx } from './chair/chairIndex';
+
+const isChairSector = (content: Content, s: SectorId): boolean => chairIdx(content).chairSet.has(s);
 
 const NO_META = {} as MetaState;
 
@@ -87,7 +90,9 @@ export function freshSector(def: SectorDef, mods: Mods, open: boolean, meta?: Me
 
 export function snapshotBase(es: SectorState, f: SectorFlow): SectorState {
   if (es.baseR > 0 || !(f.D > 0) || !(f.R > 0)) return es;
-  return { ...es, baseR: f.R, baseD: f.D, basePs: f.ps, etaAtBase: f.eta, smoothR: f.R, peakR: Math.max(es.peakR, f.R) };
+  const out: SectorState = { ...es, baseR: f.R, baseD: f.D, basePs: f.ps, etaAtBase: f.eta, smoothR: f.R, peakR: Math.max(es.peakR, f.R) };
+  if (f.ret !== undefined && f.ret > 0) out.returnAtBase = f.ret; // M5: hidden flow (the shadow freezes r)
+  return out;
 }
 
 export function historySample(state: GameState, content: Content, flows: Flows): HistorySample {
@@ -112,6 +117,7 @@ export function historySample(state: GameState, content: Content, flows: Flows):
     }
   }
   const h: HistorySample = { time: state.time, sectors, wellbeing: flows.wellbeing };
+  if (state.chair) h.confidence = state.chair.confidence; // M5: the Confidence sparkline
   if (anyBudget) h.budget = budget;
   if (anySink) h.sink = sink;
   return h;
@@ -148,6 +154,8 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
     pendingDividends: [], commons: { levels: {}, fund: 0 }, events: [], lastOffline: null, charterOffer: [],
     dispatch: freshDispatch(content), modifiers: [], ambientLast: {}, orderLog: {}, historyLifted: false,
   };
+  const chair = freshChair(content, m); // M5: a Ministry while office is taken
+  if (chair) s.chair = chair;
   // initial availability check and baseline
   const flows = computeFlows(s, content);
   const next = { ...s.sectors };
@@ -163,6 +171,12 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
     next[id] = snapshotBase(es, f);
   }
   s = { ...s, sectors: stampCapstones(next, calendarYear(s, content)) };
+  if (s.chair && content.rival) { // M5: the rival's opening purse for the chair sectors open at the start
+    let purse = 0;
+    const k = Math.max(0, fin(content.rival.startCapitalSeconds));
+    for (const id of ix.ids) if (s.sectors[id]?.open && !s.sectors[id].capstoned && isChairSector(content, id)) purse += k * Math.max(0, flows.sectors[id]?.income ?? 0);
+    if (purse > 0) s = { ...s, chair: { ...s.chair, rival: { ...s.chair.rival, capital: fin(purse) } } };
+  }
   s = { ...s, history: [historySample(s, content, computeFlows(s, content))] };
   return s;
 }
@@ -183,5 +197,6 @@ export function withMeta(state: GameState, content: Content, meta: MetaState): G
     ...fresh, capital: fresh.capital + Math.max(0, state.capital - before.capital), mandate: state.mandate,
     run: { ...fresh.run, clicks: state.run.clicks }, news: state.news,
     events: state.events, charterOffer: state.charterOffer, lastOffline: state.lastOffline,
+    ...(state.officeOffer ? { officeOffer: true } : {}), // M5: the invitation stands through a rebuild
   };
 }

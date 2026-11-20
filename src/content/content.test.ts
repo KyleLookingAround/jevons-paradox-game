@@ -600,6 +600,12 @@ describe('words', () => {
     expect(all.filter((h) => h.length > 70)).toEqual([]);
   });
 
+  test('M4 polish: an achievement headline is at most 70 characters, on an achievement the core grants by `when`', () => {
+    const withHeadline = C.achievements.filter((a) => a.headline !== undefined);
+    expect(withHeadline.length).toBeGreaterThanOrEqual(3);
+    for (const a of withHeadline) expect(`${a.id} ${a.headline!.length <= 70 && a.headline!.length > 0 && !!a.when}`).toBe(`${a.id} true`);
+  });
+
   test('every headline key has variants', () => {
     for (const k of ALL_KEYS) expect(C.headlines[k]?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
