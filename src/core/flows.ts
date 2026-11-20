@@ -6,9 +6,9 @@
 import { EXHAUSTED_BELOW, CAPSTONE_INCOME_SHARE } from '../types';
 import type { Content, GameState, ReckoningCause, RenewableDef, SectorDef, SectorId, SectorState, SettledState } from '../types';
 import { POP_MIN, REBOUND_MIN_FOLD, FLOW_MIN_CAPACITY_SHARE, DEFAULT_FREE_EXCESS, CAP_SQUEEZE_MAX } from './constants';
-import { feedMulOf, handedByFeeds } from './feeds';
+import { feedMulOf, feedSatOf, handedByFeeds } from './feeds';
 import { lineR } from './account';
-import { renewableOf, renewablePrice, scarMulOf, depletionSinkR, foreignShareOf, foreignCatch, growthOf, reportedOf, sizeOf } from './renewable';
+import { renewableOf, renewablePrice, scarMulOf, depletionSinkR, foreignShareOf, foreignCatch, foreignRoomOf, growthOf, reportedOf, sizeOf } from './renewable';
 import { addCommonsIntensity, commonsWellbeing } from './commons';
 import { idx } from './contentIndex';
 import { modsOf, flowCapacity, absorptionOf, leverMulOf } from './effects';
@@ -30,6 +30,8 @@ export interface FlowInput {
    * (a drawer's owner's, a renewable's reported), its seam multiplier, the cap's squeeze limit, and the levers' aggregate
    * the solve used when a quota bound (its leak and recycle in the cap's place); null = sectorLevers' own. */
   feedMul: number; pr: number; seam: number; squeeze: number; lev: SectorLevers | null;
+  /** M4 (finish): the demand feeds into this sector (feedSatOf), or null. */
+  feedSat?: Record<string, number> | null;
 }
 export interface Flows {
   sectors: Record<SectorId, SectorFlow>;
@@ -184,6 +186,7 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
     }
     // M4: feeds into c, the price of a stock the sector does not own
     const feedMul = m4 && ix.feedsInto[s] ? feedMulOf(ix, sectors, state, s, skipFeeds) : 1;
+    const feedSat = m4 && ix.feedsInto[s] ? feedSatOf(ix, sectors, state, s, skipFeeds) : null;
     let pr = NaN, seam = 1;
     const rn = m4 ? renewableOf(def) : undefined;
     if (m4) {
@@ -195,14 +198,14 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
     let levUsed: SectorLevers | null = null;
     const reused = reuse !== null && !focus!.has(s) && reuse.sectors[s] !== undefined;
     let f = reused ? reuse!.sectors[s]
-      : solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze);
+      : solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze, feedSat);
     if (rn && !reused) {
       const sMul = scarMulOf(rn, state.meta, s);
       const fm = mods.foreignMul[s] ?? 1;
       // M4: the quota: a cap on the true sink line (the last surveyed figure while unsurveyed), the tighter of the two
       if (Number.isFinite(lev.quotaFrac)) {
         const sink = mods.survey.has(s)
-          ? depletionSinkR(def, rn, clearPOf(es, def, content), lev.circ, foreignShareOf(rn, es, f.ps, fm), sMul)
+          ? depletionSinkR(def, rn, clearPOf(es, def, content), lev.circ, foreignShareOf(rn, es, f.ps, fm), sMul, foreignRoomOf(rn, fm))
           : es.lastSurvey?.sinkR ?? null;
         if (sink !== null && Number.isFinite(sink)) {
           const capQ = lev.quotaFrac * Math.max(0, sink);
@@ -210,14 +213,14 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
             capR = capQ;
             lev = levUsed = { ...lev, leakAbove: lev.quotaLeak, capRecycle: lev.quotaRecycle };
             if (lev.quotaFrac <= 0) squeeze = MORATORIUM_SQUEEZE;
-            f = solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze);
+            f = solveSector(def, es, N, mods, lev, extra[s] ?? 0, spill[s] ?? 1, capR, undefined, feedMul, pr, seam, squeeze, feedSat);
           }
         }
       }
       f = withRenewable(def, rn, es, f, lev.circ, sMul, fm);
     }
     sectors[s] = f;
-    inputs[s] = { extraD: extra[s] ?? 0, spillMul: spill[s] ?? 1, capR, feedMul, pr, seam, squeeze, lev: levUsed };
+    inputs[s] = { extraD: extra[s] ?? 0, spillMul: spill[s] ?? 1, capR, feedMul, pr, seam, squeeze, lev: levUsed, ...(feedSat ? { feedSat } : {}) };
     wellbeing += f.wellbeingShare;
     income += f.income;
     levy += f.dutyRevenue + f.permitRevenue;
@@ -255,7 +258,7 @@ export function depletionSink(state: GameState, content: Content, s: SectorId, f
   const rn = renewableOf(def);
   if (!rn || !f.ren) return null;
   const lev = sectorLevers(state, content)[s] ?? NO_LEVERS;
-  return depletionSinkR(def, rn, clearP, lev.circ, f.ren.share, scarMulOf(rn, state.meta, s));
+  return depletionSinkR(def, rn, clearP, lev.circ, f.ren.share0 ?? f.ren.share, scarMulOf(rn, state.meta, s), f.ren.rho ?? 0);
 }
 
 /** M4: a quota at value 0 (a moratorium) holds demand at the price-proof floors: the cap's squeeze limit, nearly all. */
@@ -277,10 +280,13 @@ function receivedSoFar(ix: ReturnType<typeof idx>, fls: Record<SectorId, SectorF
 export function withRenewable(def: SectorDef, rn: RenewableDef, es: SectorState, f: SectorFlow, circ: number, sMul: number, foreignMul: number): SectorFlow {
   const K = sizeOf(def);
   const Q = es.reserve;
-  const share = foreignShareOf(rn, es, f.ps, foreignMul);
-  const rForeign = foreignCatch(f.R, share);
+  const share0 = foreignShareOf(rn, es, f.ps, foreignMul);
   const G = growthOf(rn, K, Q, sMul);
-  const ren = { G, share, rForeign, reported: reportedOf(rn, K, Q) };
+  // M4 (finish): the foreign fleets also fill the room the home fleet leaves (ForeignDef.room)
+  const rho = foreignRoomOf(rn, foreignMul);
+  const rForeign = foreignCatch(f.R, share0) + (rho > 0 ? rho * Math.max(0, G - f.R) : 0);
+  const share = rho > 0 ? (rForeign + f.R > 0 ? fin(rForeign / (rForeign + f.R)) : 0) : share0;
+  const ren = rho > 0 ? { G, share, rForeign, reported: reportedOf(rn, K, Q), share0, rho } : { G, share, rForeign, reported: reportedOf(rn, K, Q) };
   if (def.pressureSource !== 'depletion') return { ...f, ren };
   return { ...f, ren, pressureIn: fin(def.collapseAt / K * (f.R * (1 - circ) + rForeign - G)) };
 }
@@ -334,7 +340,7 @@ function shadowR(state: GameState, content: Content, fl: Flows, s: SectorId): nu
     else {
       const def = content.sectors[s];
       const lev = inp.lev ?? sectorLevers(state, content)[s] ?? NO_LEVERS;
-      r = solveSector(def, es, Math.max(POP_MIN, fin(state.population, 1)), modsOf(state, content), lev, inp.extraD, inp.spillMul, inp.capR, etaBase, inp.feedMul, inp.pr, inp.seam, inp.squeeze).R;
+      r = solveSector(def, es, Math.max(POP_MIN, fin(state.population, 1)), modsOf(state, content), lev, inp.extraD, inp.spillMul, inp.capR, etaBase, inp.feedMul, inp.pr, inp.seam, inp.squeeze, inp.feedSat ?? null).R;
     }
   }
   rec[s] = fin(r);

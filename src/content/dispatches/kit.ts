@@ -92,3 +92,16 @@ export const spill = (sector: SectorId, value: number): EffectDef => ({ type: 's
 
 /** A timed modifier of `years` model years. */
 export const timed = (years: number, ...effects: EffectDef[]): NonNullable<DispatchArm['modifier']> => ({ years, effects });
+
+/* ------------------------------------------------------------------ */
+/* M4 (finish): the wager's stake in Hindsight                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A share of the run's Hindsight, paid or forfeited at the Reckoning (EffectDef 'hindsightShare'; wager branches only,
+ * the lint). Balance: a won wager is worth 3% of the run's Hindsight, a lost one costs 3%, the same in a short burning
+ * run as in a long held one; a player who reads the instrument the hint names wins (design/m4-design.md §8.2).
+ */
+export const stake = (value: number): EffectDef => ({ type: 'hindsightShare', value });
+export const WAGER_WIN = 0.03;
+export const WAGER_LOSE = -0.03;

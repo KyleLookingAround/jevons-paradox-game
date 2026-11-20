@@ -168,9 +168,13 @@ function leverInstitution(
  *  1,500 it was bought after run 5 and the Act I ending came in Fishing's first run, at 11.3–11.5 h for `mixed` and
  *  `budget`; at 3,500 after run 7 (ending 13.0–13.6 h, human 15.3 h); at 4,000 after run 8 for `budget` and `mixed`
  *  (ending 17.4 and 15.0 h) and the human-like player (17.5 h); with full decades at 5 Hindsight (global.ts) 5,000
- *  puts it back there: budget 16.0 h, mixed 15.0, human 17.6 (design/scratch/m4-balance/v13-*50). The visible price of
- *  the room for the fourth settlement is the wait, not a clock. */
-const SETTLE_COMMISSION = 5000;
+ *  puts it back there: budget 16.0 h, mixed 15.0, human 17.6 (design/scratch/m4-balance/v13-*50).
+ *  M4 (finish): 5,500. Won wagers now pay a share of a run's Hindsight, so the scripted players reach any price sooner;
+ *  Fishing's own gate (fifteen decades within its line in the run, sectors/fishing.ts) makes it the ending run's last
+ *  settlement, 70–110 minutes in, but adds no hours across runs. Measured: budget 15.6 h, mixed 16.1, human 16.2
+ *  (design/scratch/m4-balance/f3-*5500); 6,500 put mixed at 18.1. The visible price of the room for the fourth
+ *  settlement is the wait, not a clock. */
+const SETTLE_COMMISSION = 5500;
 
 export const institutions: InstitutionDef[] = [
   {

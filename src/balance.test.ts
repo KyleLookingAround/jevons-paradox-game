@@ -575,6 +575,28 @@ describe('M4: the Coal Age complete (fast checks on states the campaigns reach)'
     // measured 20 Nov 2026: see the assertion (satMul 1.12 on every Iron use at full bite; sectors/iron.ts)
     expect(at(1) / at(0)).toBeGreaterThanOrEqual(1.1);
   });
+  test('criterion 12 (M4 finish): a held home line on a healthy bank draws the foreign boats in; the limits bite back without the survey quota', () => {
+    // the Board's Survey just done (hour6-after); the bank at 55% of K; the home catch held by the landings quota (tightened)
+    let s = fixture('hour6-after');
+    s = { ...s, mandate: 1e7, meta: { ...s.meta, features: { ...s.meta.features, sideEffects: s.meta.totalSeconds } } };
+    s = { ...s, sectors: { ...s.sectors, fishing: { ...s.sectors.fishing, reserve: 0.55 * C.sectors.fishing.reserve } } };
+    for (const l of C.levers.filter((x) => x.sector === 'fishing')) s = model.setLever(s, C, l.id, 0);
+    for (let k = 1; k <= 12; k++) { const t = model.setLever(s, C, 'fishing.landingsQuota', k); if (t !== s) s = t; }
+    s = model.tick(model.tick(s, C, 1), C, 1);
+    const catchOf = (x: GameState) => { const f = D(x).sectors.fishing!; return { home: f.resourceUse, foreign: f.stock!.foreign?.R ?? 0, share: f.stock!.foreign?.share ?? 0 }; };
+    // ForeignDef.room: the foreign boats fill half the surplus the home fleet leaves: measured share 0.20 (was 0.05)
+    expect(catchOf(s).share).toBeGreaterThanOrEqual(0.15);
+    let a = s; for (let k = 1; k <= 3; k++) a = model.setLever(a, C, 'fishing.limits', k); // Fifty miles
+    expect(a.levers['fishing.limits']?.level).toBe(3);
+    let b = s;
+    for (let i = 0; i < 600; i++) { a = model.tick(a, C, 1); b = model.tick(b, C, 1); } // thirty model years
+    // without the survey quota (the landings quota lifted) the home fleet grows into the room: measured home catch
+    // ×1.35 against the same state without the limits, and the total catch up 24% (it falls by nothing)
+    const lift = (x: GameState) => catchOf(model.setLever(x, C, 'fishing.landingsQuota', 0));
+    const A = lift(a), B = lift(b);
+    expect(A.home / B.home).toBeGreaterThanOrEqual(1.25);
+    expect((A.home + A.foreign) / (B.home + B.foreign)).toBeGreaterThanOrEqual(0.85);
+  });
   test('criterion 11: hyperstability: at a true stock of 30% catch per trip reads ≥ 65%; the price there ≤ 1.5× its opening', () => {
     const r = C.sectors.fishing.renewable!;
     expect(Math.pow(0.3, r.beta)).toBeGreaterThanOrEqual(0.65);

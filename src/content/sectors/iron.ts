@@ -42,6 +42,19 @@ const PLATE_FISHING = 0.85;   // iron hulls for the steam trawlers (Fishing, fro
 const GIRDER_LIGHT = 0.88;    // gasholders, power stations, tram depots
 const TOOLS_ALL = 0.92;       // the lathe makes every machine cheaper: every OTHER open Industry ('*')
 const TIN_FISHING = 0.9;      // canned fish keeps: the catch has a market inland
+/*
+ * M4 (finish): the order book also widens DEMAND (ApplicationDef.feeds[].satMul, on one use of the fed Industry): cheap
+ * rail let the promoters float lines that dear rail never would have (British route mileage went from about 1,500 in
+ * 1840 to about 13,500 by 1870, on wrought and then steel rail); iron plate made the big steamer possible (the Great
+ * Britain, 1843, the first iron screw steamer across the Atlantic) and the steam trawler after it; tinplate sold fish
+ * inland. The saving in capital is small beside Steam's fuel; the rails' real effect is more railway, and more coal
+ * burnt on it. Balance: Steam's coal use with the order book engaged at least 1.15× the same start with it refused
+ * (criterion 5). The multiplier reaches its full size as the feeding use is fully adopted.
+ */
+const RAIL_RAILWAYS = 2.5;    // the railways’ saturation ×2.5 at full adoption of Rails (a third adopted: ×1.5)
+const PLATE_STEAMERS = 2;     // the steamships’ saturation ×2 at full adoption of Ship plate
+const PLATE_TRAWLERS = 1.3;   // every Fishing use ×1.3 (bigger trawlers, further grounds)
+const TIN_INLAND = 1.25;      // fish sold inland in tins: the salt and smoked trade ×1.25
 
 /* ------------------------------------------------------------------ */
 /* IRON: the Industry                                                  */
@@ -152,7 +165,7 @@ const sector: SectorDef = {
   mechanic: {
     name: 'The order book',
     rebound: 'Embodied',
-    blurb: 'Each use of iron makes another Industry’s machines cheaper to build. The coal is burnt where the machines are.',
+    blurb: 'Cheap iron means more line and bigger hulls in other Industries. The coal is burnt where the machines are.',
     /* M4 amendment (wired by the Act lane): the order book's lines are shown once Jevons's chapter on iron is read. */
     feedsKnownWhen: { owns: 'iron.economyOfFuel', label: 'Read Of the Economy of Fuel' },
   },
@@ -188,7 +201,7 @@ const sector: SectorDef = {
       steepness: 3,
       visibleBelow: 0.85, // after Hot blast (design: "Hot blast is its first card"; Rails the first feed)
       foundCost: 3_000,
-      feeds: [{ sector: 'steam', capCostMul: RAIL_STEAM }],
+      feeds: [{ sector: 'steam', capCostMul: RAIL_STEAM, satMul: RAIL_RAILWAYS, app: 'steam.railways' }],
     },
     {
       id: 'iron.shipPlate',
@@ -200,7 +213,7 @@ const sector: SectorDef = {
       steepness: 3.4,
       visibleBelow: 0.5,
       foundCost: 12_000,
-      feeds: [{ sector: 'steam', capCostMul: PLATE_STEAM }, { sector: 'fishing', capCostMul: PLATE_FISHING }],
+      feeds: [{ sector: 'steam', capCostMul: PLATE_STEAM, satMul: PLATE_STEAMERS, app: 'steam.steamships' }, { sector: 'fishing', capCostMul: PLATE_FISHING, satMul: PLATE_TRAWLERS }],
     },
     {
       id: 'iron.girders',
@@ -224,7 +237,7 @@ const sector: SectorDef = {
       steepness: 3.8,
       visibleBelow: 0.18,
       foundCost: 100_000,
-      feeds: [{ sector: 'fishing', capCostMul: TIN_FISHING }],
+      feeds: [{ sector: 'fishing', capCostMul: TIN_FISHING, satMul: TIN_INLAND, app: 'fishing.saltSmoked' }],
     },
     {
       /* Last and dearest: the one feed that reaches every other open Industry. */

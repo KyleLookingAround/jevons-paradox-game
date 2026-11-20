@@ -35,6 +35,31 @@ export function feedMulOf(ix: ContentIndex, fls: Record<SectorId, SectorFlow>, s
   return m;
 }
 
+/** M4 (finish): one demand feed's saturation factor: g = 1 + (satMul − 1) × a. */
+export const feedSatFactor = (sat: number, a: number): number => 1 + (sat - 1) * a;
+
+/**
+ * M4 (finish): the demand feeds into target t (ApplicationDef.feeds[].satMul): saturation multipliers keyed by the
+ * target's application id, or '*' for every application of t, from the sources open and solved in `fls` (skipping
+ * `skip`, as feedMulOf). null when none act (no field, no change).
+ */
+export function feedSatOf(ix: ContentIndex, fls: Record<SectorId, SectorFlow>, state: GameState, t: SectorId, skip?: SectorId): Record<string, number> | null {
+  const list = ix.feedsInto[t];
+  if (!list) return null;
+  let out: Record<string, number> | null = null;
+  for (const e of list) {
+    if (e.sat === undefined || e.src === skip || !state.sectors[e.src]?.open) continue;
+    const f = fls[e.src];
+    if (!f) continue;
+    const g = feedSatFactor(e.sat, adoptionIn(f, e.app));
+    if (g === 1) continue;
+    out ??= {};
+    const k = e.tApp ?? '*';
+    out[k] = (out[k] ?? 1) * g;
+  }
+  return out;
+}
+
 /** The factor one source puts on one target (its feeding apps multiplied), from solved flows. */
 export function feedMulFrom(ix: ContentIndex, fls: Record<SectorId, SectorFlow>, src: SectorId, t: SectorId): number {
   const f = fls[src];
@@ -65,7 +90,7 @@ export function handedByFeeds(ix: ContentIndex, fls: Record<SectorId, SectorFlow
       const et = state.sectors[t];
       if (!et?.open || et.settled) continue; // (not "solved": the weights are the source's, so a cap mid-solve sees the same)
       let w = 0;
-      for (const e of ix.feedsInto[t] ?? []) if (e.src === s && e.app === i) w += 1 - feedFactor(e.mul, adoptionIn(f, i));
+      for (const e of ix.feedsInto[t] ?? []) if (e.src === s && e.app === i) w += 1 - feedFactor(e.mul, adoptionIn(f, i)) + (e.sat !== undefined ? feedSatFactor(e.sat, adoptionIn(f, i)) - 1 : 0);
       if (w > 0) { ws.push([t, w]); wsum += w; }
     }
     if (!(wsum > 0)) continue;

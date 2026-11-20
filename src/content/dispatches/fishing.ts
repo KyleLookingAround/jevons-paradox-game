@@ -22,7 +22,7 @@
 import type { Cond, DispatchDef, EffectDef, SectorId, StatKey } from '../../types';
 import {
   BUDGET, all, any, cash, feature, income, mandate, mrate, sat, smoke, spill, timed, wellbeing,
-} from './kit';
+ stake, WAGER_WIN, WAGER_LOSE } from './kit';
 
 const F = 'fishing';
 
@@ -75,12 +75,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays if the Board’s survey shows the stock above half',
           win: {
             outcome: 'The survey said there was room: the second boat fills her hold from a sea that can spare it.',
-            effects: [cash(20)],
+            effects: [stake(WAGER_WIN), cash(20)],
             modifier: timed(10, income(1.15, F), wellbeing(0.5)),
             reply: 'Second trawler lands a record trip; the Board’s figures agree',
           },
           lose: {
             outcome: 'No survey said there was room: the second boat finds the last shoals, and catch per trip says nothing.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, sat(F, 1.12), wellbeing(-0.5)),
             reply: 'Second trawler lands a record trip; the Board is not consulted',
           },
@@ -145,11 +146,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays if foreign boats take a quarter or more of the catch',
           win: {
             outcome: 'They were many: their going takes real weight off the banks, more than the home fleet adds.',
+            effects: [stake(WAGER_WIN)],
             modifier: timed(10, foreign(F, 0.8), wellbeing(1), income(1.06, F)),
             reply: 'Foreign trawlers warned off the Dogger; the banks breathe',
           },
           lose: {
             outcome: 'They were few: the home fleet fills the room they leave, and more besides.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, sat(F, 1.1), mrate(0.95)),
             reply: 'Foreign boats warned off; Grimsby orders three more trawlers',
           },
@@ -221,12 +224,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays if Steam is a tenth or more inside its line',
           win: {
             outcome: 'Steam had room: the trawlers’ coal fits within its allowance, and the fish catch the morning train.',
+            effects: [stake(WAGER_WIN)],
             modifier: timed(10, income(1.12, F), wellbeing(1)),
             reply: 'Grimsby fleet under steam; the fish train leaves on time',
           },
           lose: {
             outcome: 'Steam had none: the trawlers’ bunkers push Steam over its line, and the fleet fishes harder for it.',
-            effects: [smoke('steam', 0.05)],
+            effects: [stake(WAGER_LOSE), smoke('steam', 0.05)],
             modifier: timed(10, sat('steam', 1.06), sat(F, 1.06)),
             reply: 'Grimsby fleet under steam; the colliery takes the credit',
           },
@@ -320,12 +324,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays unless the banks have failed and not yet recovered',
           win: {
             outcome: 'The banks had not failed: the young fish grow, and the Board’s count rises within the decade.',
-            effects: [mandate(30)],
+            effects: [stake(WAGER_WIN), mandate(30)],
             modifier: timed(10, sat(F, 0.9), foreign(F, 0.9), wellbeing(1)),
             reply: 'Young fish spared; the Board’s count rises',
           },
           lose: {
             outcome: 'The banks had failed: there were too few young fish to spare, and the paper says so.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, income(0.9, F), mrate(0.95)),
             reply: 'Catch cut for a season; the young fish were never there',
           },
@@ -398,12 +403,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays if foreign boats take less than a quarter of the catch',
           win: {
             outcome: 'The foreign boats were few: the bays rest, and the young fish come out of them in numbers.',
-            effects: [mandate(25)],
+            effects: [stake(WAGER_WIN), mandate(25)],
             modifier: timed(10, sat(F, 0.9), wellbeing(1)),
             reply: 'Bays closed to trawling; the nurseries fill',
           },
           lose: {
             outcome: 'The foreign boats were many: they fish the bays the home fleet left, and nothing is spared.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, foreign(F, 1.15), income(0.92, F)),
             reply: 'Bays closed to Grimsby; foreign trawlers work them instead',
           },
@@ -471,13 +477,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays if the sky over Light is clear when the suppers are paid',
           win: {
             outcome: 'Light had room: the money saved goes on gas the sky can carry, and the wards eat well.',
-            effects: [mandate(25)],
+            effects: [stake(WAGER_WIN), mandate(25)],
             modifier: timed(10, wellbeing(1), mrate(1.08)),
             reply: 'Penny suppers in the poorest wards; the Society thanks the proprietor',
           },
           lose: {
             outcome: 'Light had none: the money saved goes on gas, and the fog thickens over the warm wards.',
-            effects: [smoke('light', 0.05)],
+            effects: [stake(WAGER_LOSE), smoke('light', 0.05)],
             modifier: timed(10, spill(F, 1.5), sat('light', 1.04)),
             reply: 'Penny suppers in the poorest wards; the lamps burn later',
           },
@@ -521,11 +527,13 @@ export const fishingDispatches: DispatchDef[] = [
           hint: 'Pays if the stock is surveyed when the limits are widened',
           win: {
             outcome: 'The banks were surveyed: the catch is set by the Board, and the room the foreigners leave stays empty.',
+            effects: [stake(WAGER_WIN)],
             modifier: timed(10, foreign(F, 0.8), wellbeing(1)),
             reply: 'Fishery limits widened; the Board sets the catch',
           },
           lose: {
             outcome: 'Nobody was counting: the home fleet takes up the room, and more, within the decade.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, foreign(F, 0.8), sat(F, 1.12)),
             reply: 'Fishery limits widened; Grimsby fills the room',
           },

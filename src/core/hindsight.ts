@@ -41,7 +41,16 @@ export function hindsightTerms(state: GameState, content: Content): HindsightTer
     steady: fin(h.perSteadySector * count(run.steadySectors)),
     settled: fin((h.perSettledSector ?? 0) * settled),
   };
-  const sum = termsSum(terms);
+  let sum = termsSum(terms);
+  // M4 (finish): the letters' stake (RunStats.letterShare; EffectDef 'hindsightShare'), a share of the seven terms
+  const ls = fin(run.letterShare ?? 0);
+  if (ls !== 0) {
+    const letters = fin(sum * Math.max(-1, ls));
+    sum += letters;
+    const w0 = Math.max(0, fin(run.hindsightWithheld ?? 0));
+    if (w0 > 0) return { wellbeingYears: wy, intensity, ...terms, letters, withheld: w0, total: Math.max(1, Math.round(fin(sum - w0))) };
+    return { wellbeingYears: wy, intensity, ...terms, letters, total: Math.max(1, Math.round(fin(sum))) };
+  }
   // M2 offline fix: Hindsight that accrued inside fastForward at less than the full rate (types.ts RunStats.hindsightWithheld)
   const withheld = Math.max(0, fin(run.hindsightWithheld ?? 0));
   if (withheld > 0) return { wellbeingYears: wy, intensity, ...terms, withheld, total: Math.max(1, Math.round(fin(sum - withheld))) };

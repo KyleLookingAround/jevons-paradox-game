@@ -1001,7 +1001,11 @@ function armSuits(s: GameState, sector: SectorId | undefined, a: { effects?: Eff
       default: break;
     }
   };
-  for (const e of a.effects ?? []) weigh(e, ONE.has(e.type) ? 0 : 60);
+  for (const e of a.effects ?? []) {
+    // M4 (finish): a wager's stake in the run's Hindsight (EffectDef 'hindsightShare'), worth more than any modest arm
+    if (e.type === 'hindsightShare') { v += e.value * 100; continue; }
+    weigh(e, ONE.has(e.type) ? 0 : 60);
+  }
   for (const e of a.modifier?.effects ?? []) weigh(e, a.modifier!.years);
   return v;
 }
@@ -1030,10 +1034,14 @@ let M4R: { endingHour: number | null; arrears: number; minStock: Record<string, 
   /** M4 balance: the Board's Survey card as the page got it (reported and true fractions, the variant) */
   reveal?: { sector: string; reported: number; true: number; variant: string; min: number };
   /** M4 balance: a renewable's true stock (Q/K) twenty minutes into the run, the first sample at or after 1,200 s */
-  stock20?: Record<string, number> } =
+  stock20?: Record<string, number>;
+  /** M4 (finish): the largest foreign share seen this run */
+  maxForeign?: Record<string, number> } =
   { endingHour: null, arrears: 0, minStock: {}, surveyedMin: {}, crossed: {}, capDefence: 0, capDefenceN: 0, accounts: {} };
 const surveyLevers = (e: SectorId) => C.levers.filter((l) => l.sector === e && (l.effects ?? []).some((x) => x.type === 'survey' && x.sector === e));
 const isRenewable = (e: SectorId) => C.sectors[e]?.resourceKind === 'renewable';
+/** M4 (finish): when each renewable's fishery limits were last raised by a restraint player (one level a minute). */
+let memoLimits: Record<string, number> = {};
 
 /** What the page shows of a wager's condition: an unsurveyed stock reads as its catch per trip (thoughtful). */
 function pageCond(s: GameState, c: import('../src/types').Cond): import('../src/types').Cond {
@@ -1069,6 +1077,7 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     const x = d.sectors[e];
     if (!x || !isRenewable(e) || !x.stock) continue;
     M4R.minStock[e] = Math.min(M4R.minStock[e] ?? 1, x.stock.world);
+    if (x.stock.foreign) (M4R.maxForeign ??= {})[e] = Math.max(M4R.maxForeign?.[e] ?? 0, x.stock.foreign.share);
     if (x.stock.crossed) M4R.crossed[e] = true;
     if (x.stock.surveyed && M4R.surveyedMin[e] === undefined) M4R.surveyedMin[e] = s.time / 60;
     if (s.time >= 1200 && (M4R.stock20 ??= {})[e] === undefined) M4R.stock20[e] = x.stock.world;
@@ -1092,9 +1101,15 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
         for (let k = 1; k <= v.maxLevel; k++) { const lv = leverLevelDef(v.def, k); const val = lv?.value ?? NaN; if (Number.isFinite(val) && Math.abs(val - want) < bv) { bv = Math.abs(val - want); best = k; } }
         if (best && v.level !== best) { const t = model.setLever(s, C, v.def.id, best); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `QUOTA ${v.def.id} → level ${best}` }); } }
       }
-      if (STEWARD && C.levers.some((l) => l.sector === e && l.kind === 'quota' && (s.levers[l.id]?.level ?? 0) >= 1)) {
-        for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.visible && y.canRaise && y.level < 1 && (y.def.effects ?? []).some((f) => f.type === 'foreignMul'))) {
-          const t = model.setLever(s, C, v.def.id, 1); if (t !== s) { s = t; ctx.ev.push({ t: s.time, text: `LIMITS ${v.def.id}` }); }
+      // the steward pairs the limits with the quota at once; M4 (finish): every restraint player does once the foreign
+      // boats take more than 15% (the limits are offered then) and the survey quota is in force (it keeps the home fleet
+      // from growing into the room: the limits' side effect), one level a minute while the share stays above 15%
+      if (C.levers.some((l) => l.sector === e && l.kind === 'quota' && (s.levers[l.id]?.level ?? 0) >= 1)) {
+        const share = x.stock.foreign?.share ?? 0;
+        memoLimits[e] ??= -Infinity;
+        for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.visible && y.canRaise && (y.def.effects ?? []).some((f) => f.type === 'foreignMul'))) {
+          if (!(STEWARD ? v.level < 1 : share > 0.15 && s.time - memoLimits[e] >= 60)) continue;
+          const t = model.setLever(s, C, v.def.id, v.level + 1); if (t !== s) { s = t; memoLimits[e] = s.time; ctx.ev.push({ t: s.time, text: `LIMITS ${v.def.id} → L${v.level + 1} (foreign ${share.toFixed(2)})` }); }
         }
       }
     }
@@ -1303,6 +1318,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
   let s = start;
   const ctx: RunCtx = { ev: [], effBuys: [], skip: new Set(skip), firsts: {}, buyTimes: [] };
   M4R = { endingHour: null, arrears: 0, minStock: {}, surveyedMin: {}, crossed: {}, capDefence: 0, capDefenceN: 0, accounts: {} };
+  memoLimits = {};
   const ev = ctx.ev;
   const memo: BudgetMemo = { revealAt: null };
   const series: string[] = [];

@@ -4,7 +4,7 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { STEADY_STATE_YEARS } from '../types';
-import type { Actor, Content, GameState, LeverState, NewsItem, SectorId, SectorState, SettledState } from '../types';
+import type { Cond, Actor, Content, GameState, LeverState, NewsItem, SectorId, SectorState, SettledState } from '../types';
 import { calendarYear } from './calendar';
 import { DEFECT_PENALTY } from './constants';
 import { idx } from './contentIndex';
@@ -48,7 +48,11 @@ export function settleBlockedOf(state: GameState, content: Content, s: SectorId,
   const es = state.sectors[s];
   const req = content.sectors[s]?.settle?.requires;
   if (!req || !es?.open || es.settled || !sinkHeld || !(es.clearYears >= STEADY_STATE_YEARS - 1e-9)) return null;
-  return evalCond(state, content, req) ? null : condCheck(state, content, req).label;
+  if (evalCond(state, content, req)) return null;
+  // M4 (finish): an unlabelled `all` names its first unmet part (Fishing: the survey, then its decades within the line)
+  const r = req as { all?: Cond[]; label?: string };
+  if (Array.isArray(r.all) && !r.label) { const miss = r.all.find((c) => !evalCond(state, content, c)); if (miss) return condCheck(state, content, miss).label; }
+  return condCheck(state, content, req).label;
 }
 
 export function settle(state: GameState, content: Content, s: SectorId): GameState {

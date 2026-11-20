@@ -44,7 +44,7 @@ export interface SectorFlow {
   /** M4: a renewable sector's regrowth G(Q), foreign share, foreign catch and reported stock now (null otherwise;
    *  filled by flows.ts after the solve). For a 'depletion' sector pressureIn then carries the net depletion rate
    *  collapseAt / K × (R × (1 − circ) + R_foreign − G), so the clear-skies test reads it as any sector's. */
-  ren: { G: number; share: number; rForeign: number; reported: number } | null;
+  ren: { G: number; share: number; rForeign: number; reported: number; /** M4 (finish): the price-rule share and the room weight */ share0?: number; rho?: number } | null;
 }
 
 /* ---- M3: per-sector mechanic data (cached per SectorDef) ---- */
@@ -116,6 +116,7 @@ let sSigma = 0, sR = 0, sPrBase = 0, sPre = 0, sPermitPart = 0, sDutyPart = 0, s
 export function solveSector(
   def: SectorDef, es: SectorState, N: number, mods: Mods, lev: SectorLevers, extraD: number, spillMul: number,
   capR: number, etaOverride?: number, cMul = 1, prOv = NaN, seamOv = 1, squeeze = CAP_SQUEEZE_MAX,
+  satFeed: Record<string, number> | null = null,
 ): SectorFlow {
   const sid = def.id;
   const eta = Math.max(1e-12, fin(etaOverride ?? es.eta, def.baseEta || 1));
@@ -137,6 +138,7 @@ export function solveSector(
     S[i] = 0; P[i] = 1; K[i] = 1; F[i] = 0;
     if (!st || !st.founded) continue;
     S[i] = Math.max(0, fin(N * a.saturation * fin(st.satMul, 1) * satSector * (mods.satMulApp[a.id] ?? 1) * spillMul));
+    if (satFeed) S[i] = fin(S[i] * (satFeed[a.id] ?? 1) * (satFeed['*'] ?? 1)); // M4 (finish): demand feeds
     const hp = a.halfPrice * halfSector * (mods.halfMulApp[a.id] ?? 1);
     P[i] = hp > 0 ? hp : 1e-12;
     K[i] = a.steepness > 0 ? a.steepness : 1;

@@ -60,7 +60,7 @@ export interface ContentIndex {
   drawers: Map<SectorId, SectorId[]>;
   /** Feeds accepted into the solve order (ApplicationDef.feeds, '*' expanded), by target in solve order of their
    *  sources: source sector, the app's index in it, capCostMul. A feed that would close a cycle is refused. */
-  feedsInto: Record<SectorId, { src: SectorId; app: number; mul: number }[]>;
+  feedsInto: Record<SectorId, { src: SectorId; app: number; mul: number; /** M4 (finish) */ sat?: number; /** M4 (finish) */ tApp?: string }[]>;
   /** Feed sources → their targets (accepted, sectorOrder). */
   feedTargets: Map<SectorId, SectorId[]>;
   /** Feeds refused because they would close a cycle in the solve order (the lint's job; the core ignores them). */
@@ -167,7 +167,7 @@ export function idx(content: Content): ContentIndex {
     }
     return false;
   };
-  const feedList: { src: SectorId; tgt: SectorId; app: number; mul: number }[] = [];
+  const feedList: { src: SectorId; tgt: SectorId; app: number; mul: number; sat?: number; tApp?: string }[] = [];
   for (const s of ids) {
     sectors[s].applications.forEach((a, i) => {
       for (const fd of a.feeds ?? []) {
@@ -179,7 +179,9 @@ export function idx(content: Content): ContentIndex {
           if (reaches(t, s)) { if (explicit) ix!.refusedFeeds.push({ app: a.id, sector: t }); continue; }
           const e = edges.get(s)!;
           if (!e.includes(t)) e.push(t);
-          feedList.push({ src: s, tgt: t, app: i, mul: fd.capCostMul });
+          // M4 (finish): a demand feed (satMul, on one application of the target or all of it)
+          const sat = typeof fd.satMul === 'number' && Number.isFinite(fd.satMul) && fd.satMul !== 1 ? fd.satMul : undefined;
+          feedList.push(sat === undefined ? { src: s, tgt: t, app: i, mul: fd.capCostMul } : { src: s, tgt: t, app: i, mul: fd.capCostMul, sat, ...(explicit && fd.app ? { tApp: fd.app } : {}) });
         }
       }
     });
@@ -198,7 +200,7 @@ export function idx(content: Content): ContentIndex {
   const solvePos = new Map(ix.solveOrder.map((s, i) => [s, i]));
   for (const f of feedList) {
     if ((solvePos.get(f.src) ?? 0) >= (solvePos.get(f.tgt) ?? 0)) continue; // defensive: only edges the order honours
-    (ix.feedsInto[f.tgt] ??= []).push({ src: f.src, app: f.app, mul: f.mul });
+    (ix.feedsInto[f.tgt] ??= []).push(f.sat === undefined ? { src: f.src, app: f.app, mul: f.mul } : { src: f.src, app: f.app, mul: f.mul, sat: f.sat, ...(f.tApp ? { tApp: f.tApp } : {}) });
     const l = ix.feedTargets.get(f.src) ?? [];
     if (!l.includes(f.tgt)) l.push(f.tgt);
     ix.feedTargets.set(f.src, l);

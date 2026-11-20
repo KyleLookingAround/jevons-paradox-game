@@ -99,7 +99,7 @@ export function stepRenewableSector(state: GameState, content: Content, s: Secto
   const K = sizeOf(def);
   const sMul = scarMulOf(rn, state.meta, s);
   const share = f.ren ? f.ren.share : 0;
-  const Q = stepStock(rn, K, es0.reserve, f.R, lev.circ, foreignCatch(f.R, share), sMul, dt);
+  const Q = stepStock(rn, K, es0.reserve, f.R, lev.circ, f.ren ? f.ren.rForeign : foreignCatch(f.R, share), sMul, dt); // M4 (finish): with the room
   const out: SectorState = { ...es, reserve: Q, reserveMax: K, minStock: Math.min(es0.minStock ?? es0.reserve / K, Q / K) };
   // the scar ticks while open and unsettled; healed at 0
   const sc = worldOf(state, w4).scars?.[s];

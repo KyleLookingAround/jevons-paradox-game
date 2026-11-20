@@ -56,7 +56,7 @@ function wantedR(state: GameState, content: Content, s: SectorId, es: SectorStat
   const mods = modsOf(draft, content);
   const lev = sectorLevers(state, content)[s] ?? NO_LEVERS;
   return solveSector(content.sectors[s], es, Math.max(0.01, fin(state.population, 1)), mods, lev, inp?.extraD ?? 0, inp?.spillMul ?? 1, Infinity,
-    undefined, inp?.feedMul ?? 1, inp?.pr ?? NaN, inp?.seam ?? 1).R;
+    undefined, inp?.feedMul ?? 1, inp?.pr ?? NaN, inp?.seam ?? 1, undefined, inp?.feedSat ?? null).R;
 }
 
 /** M4 (amend): the fed part is left out while the sector's feeds are not known (SectorDef.mechanic.feedsKnownWhen). */

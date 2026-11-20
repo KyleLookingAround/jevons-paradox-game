@@ -76,7 +76,9 @@ export function freshSector(def: SectorDef, mods: Mods, open: boolean, meta?: Me
   const qMax = ren ? sizeOf(def) : q;
   return {
     open, openFor: 0, eta: open ? etaAt(def, mods, 0) : def.baseEta, etaAtBase: 0, reserve: open ? q : 0,
-    reserveMax: open ? qMax : 0, pressure: 0, crisesFired: 0, apps, baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0,
+    // M4 (finish): a renewable opened below its crises (scarred: at θ) has had them already, in the run that crossed: they
+    // do not fire again at the opening (a scarred bank cost two crises and their people every run it reopened)
+    reserveMax: open ? qMax : 0, pressure: 0, crisesFired: ren && open && qMax > 0 && q < qMax ? def.crisisAt.filter((c) => 1 - q / qMax >= c - 1e-9).length : 0, apps, baseR: 0, baseD: 0, basePs: 0, smoothR: 0, trendR: 0,
     peakR: 0, steadyYears: 0, backfired: false, budget: null, serviceDelivered: 0, decadesWithin: [],
     decadesLean: [], windowLean: false, clearYears: 0, settled: null, settledBefore: false, dividends: [], peakPressure: 0,
     seamsSunk: 0,

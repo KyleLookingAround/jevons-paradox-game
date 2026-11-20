@@ -6,7 +6,7 @@
 import type { Cond, DispatchDef } from '../../types';
 import {
   AFTER_FIRST, BUDGET, SETTLEMENT, absorb, all, cash, income, mandate, mrate, owns, price, rk, sat, smoke, timed, wellbeing,
-} from './kit';
+ stake, WAGER_WIN, WAGER_LOSE } from './kit';
 
 export const ageDispatches: DispatchDef[] = [
   {
@@ -191,12 +191,13 @@ export const ageDispatchesM4: DispatchDef[] = [
           hint: 'Pays if all four Coal Age Industries are settled when answered',
           win: {
             outcome: 'All four were settled: the clubs pay up, and the House takes the proprietor’s word for the rest.',
-            effects: [mandate(60), cash(30)],
+            effects: [stake(WAGER_WIN), mandate(60), cash(30)],
             modifier: timed(10, mrate(1.1)),
             reply: 'Proprietor collects from the clubs; the Coal Age “as good as settled”',
           },
           lose: {
             outcome: 'Not all four were settled: the clubs collect, and the stake is talked about in the House.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, mrate(0.9)),
             reply: 'Proprietor’s stake lost to the clubs; members amused',
           },

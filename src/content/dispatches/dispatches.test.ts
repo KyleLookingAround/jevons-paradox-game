@@ -108,7 +108,7 @@ const gateOf = (d: DispatchDef): Cond => {
 };
 
 const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'populationMul', 'pressureAdd', 'metaFlag', 'slotAdd']);
-function effectProblems(where: string, e: EffectDef, out: string[]) {
+function effectProblems(where: string, e: EffectDef, out: string[], wager = false) {
   const s = (e as { sector?: string }).sector;
   if (s !== undefined && !sectorIds.includes(s)) out.push(`${where}: sector ${s}`);
   const a = (e as { app?: string }).app;
@@ -126,6 +126,9 @@ function effectProblems(where: string, e: EffectDef, out: string[]) {
   if (e.type === 'wellbeingAdd' && Math.abs(v!) > 1) out.push(`${where}: wellbeingAdd ${v}`);
   if (e.type === 'absorptionAdd' && Math.abs(v!) > 0.002) out.push(`${where}: absorptionAdd ${v}`);
   if (e.type === 'marginAdd' && Math.abs(v!) > 0.03) out.push(`${where}: marginAdd ${v}`);
+  /* M4 (finish): a wager's branches may stake Hindsight itself (a share of the run's, at most 4% each way); an ordinary
+   * arm may not (its bounds are M3's) */
+  if (e.type === 'hindsightShare' && (!wager || Math.abs(v!) > 0.04)) out.push(`${where}: hindsightShare ${v}${wager ? ' outside ±0.04' : ' only on a wager branch'}`);
   /* M3 finish: the three new kinds */
   if ((e.type === 'leakMul' || e.type === 'spillMul') && (v! < 0.5 || v! > 2)) out.push(`${where}: ${e.type} ${v} outside [0.5, 2]`);
   if (e.type === 'leverCostMul' && [e.cost ?? 1, e.upkeep ?? 1].some((x) => x < 0.5 || x > 2)) out.push(`${where}: leverCostMul outside [0.5, 2]`);
@@ -138,7 +141,7 @@ function adverse(e: EffectDef): boolean {
   switch (e.type) {
     case 'pressureAdd': return v > 0;
     case 'populationMul': return v < 1;
-    case 'mandateAdd': case 'capitalAdd': case 'wellbeingAdd': case 'absorptionAdd': case 'marginAdd': return v < 0;
+    case 'mandateAdd': case 'capitalAdd': case 'wellbeingAdd': case 'absorptionAdd': case 'marginAdd': case 'hindsightShare': return v < 0;
     case 'incomeMul': case 'mandateRateMul': case 'commonsYieldMul': return v < 1;
     case 'intensityMul': case 'costMul': case 'costMulOf': case 'capCostMul': return v > 1;
     case 'satMul': case 'halfPriceMul': case 'resourcePriceMul': case 'popGrowthMul': return v !== 1;
@@ -405,7 +408,8 @@ describe('M4: wager arms', () => {
         sentence(w, b.outcome, 120, out);
         const effs = [...(b.effects ?? []), ...(b.modifier?.effects ?? [])];
         if (!effs.length) out.push(`${w}: no effect`);
-        for (const e of effs) effectProblems(w, e, out);
+        for (const e of b.effects ?? []) effectProblems(w, e, out, true);
+        for (const e of b.modifier?.effects ?? []) { effectProblems(w, e, out); }
         if (b.modifier && (b.modifier.years < 5 || b.modifier.years > 15)) out.push(`${w}: modifier ${b.modifier.years} years`);
         if (b.reply && (b.reply.length > 70 || /[.?]$/.test(b.reply) || /\byou(r|rs)?\b/i.test(b.reply))) out.push(`${w}: reply: ${b.reply}`);
       }

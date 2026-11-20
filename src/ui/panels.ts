@@ -68,6 +68,7 @@ export function effectText(ctx: Ctx, e: EffectDef): string {
     case 'populationMul': return `Population ${pct(e.value - 1)} at once`;
     case 'pressureAdd': return `${def?.pressure.name ?? 'Pressure'} ${e.value >= 0 ? '+' : '−'}${fmt(Math.abs(e.value * 100))} points at once`;
     case 'metaFlag': return '';
+    case 'hindsightShare': return `Hindsight at the Reckoning ${e.value >= 0 ? '+' : '−'}${fmt(Math.abs(e.value * 100))}%`; // M4 (finish)
     /* --- M3 finish --- */
     case 'leverCostMul': {
       const nm = e.lever ? ctx.content.levers?.find((l) => l.id === e.lever)?.name : undefined;

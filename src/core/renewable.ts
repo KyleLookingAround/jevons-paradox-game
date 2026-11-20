@@ -84,12 +84,21 @@ export function stepStock(r: RenewableDef, K: number, Q0: number, Rhome: number,
  * / collapseAt): sinkR = G(Q_clear) / ((1 − circ) + share / (1 − share)). The TRUE value (the page hides it while
  * unsurveyed). null without clearP.
  */
-export function depletionSinkR(def: SectorDef, r: RenewableDef, clearP: number | null, circ: number, share: number, sMul: number): number | null {
+export function depletionSinkR(def: SectorDef, r: RenewableDef, clearP: number | null, circ: number, share: number, sMul: number, rho = 0): number | null {
   if (clearP === null || !(def.collapseAt > 0)) return null;
   const K = sizeOf(def);
   const Qc = clamp(K * (1 - clearP / def.collapseAt), 0, K);
   const den = Math.max(1e-12, (1 - circ) + (share > 0 && share < 1 ? share / (1 - share) : 0));
-  return fin(growthOf(r, K, Qc, sMul) / den);
+  const G = growthOf(r, K, Qc, sMul);
+  if (!(rho > 0)) return fin(G / den);
+  // M4 (finish): foreign boats also take rho of the surplus the home catch leaves (ForeignDef.room):
+  // R(1 − circ) + R s/(1 − s) + rho (G − R) = G  ⇒  R = G (1 − rho) / (den − rho)
+  return fin(G * (1 - rho) / Math.max(1e-12, den - rho));
+}
+/** M4 (finish): the room term's weight now: ForeignDef.room × foreignMul, clamped to [0, 0.99]. 0 without room. */
+export function foreignRoomOf(r: RenewableDef, foreignMul: number): number {
+  const room = r.foreign?.room;
+  return room !== undefined && room > 0 ? clamp(fin(room * foreignMul), 0, 0.99) : 0;
 }
 
 /** The stock a run (or a sector opening mid-run) starts with: K, or min(K, startScarred × K) while scarred. */

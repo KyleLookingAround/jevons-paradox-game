@@ -660,7 +660,7 @@ export function deserialize(text: string, content: Content): GameState | null {
       levers[id] = out;
     }
     // M2 offline fix: run.hindsightWithheld is optional (absent = 0); kept only when finite
-    const { hindsightWithheld: withheld0, ...run } = merged.run;
+    const { hindsightWithheld: withheld0, letterShare: letters0, ...run } = merged.run;
     let s: GameState = {
       ...merged, version: SAVE_VERSION, sectors, levers, meta,
       upgrades: levelMap(merged.upgrades, (id) => { const u = ix.upgrades.get(id); return u ? upgradeMax(u) : undefined; }),
@@ -672,6 +672,7 @@ export function deserialize(text: string, content: Content): GameState | null {
         opening: validOpeningActions(run.opening),
         firstBudgetAt: isNum(run.firstBudgetAt) ? run.firstBudgetAt : null,
         ...(isNum(withheld0) ? { hindsightWithheld: withheld0 } : {}),
+        ...(isNum(letters0) ? { letterShare: letters0 } : {}), // M4 (finish)
         // M3 (finish): run flags; a save without them is migrated from its news and events (the old reading)
         historyCleared: undefined, returnPublished: undefined,
         ...((run.historyCleared === undefined ? legacyHistoryCleared(merged.news, merged.events) : run.historyCleared === true) ? { historyCleared: true } : {}),

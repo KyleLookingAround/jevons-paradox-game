@@ -13,7 +13,7 @@ import { fin } from './util';
 /** autoEta exponent cap (keeps η finite in very long runs). */
 const AUTO_ETA_EXP_MAX = 300;
 
-const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag']);
+const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag', /* M4 (finish) */ 'hindsightShare']);
 
 /* ------------------------------------------------------------------ */
 /* Modifiers (standing effects)                                        */
@@ -414,7 +414,7 @@ export function flowCapacity(def: SectorDef, mods: Mods): number {
 
 /** One-offs gathered by fireOneOffs. M3 adds (optional, absent = none): a population factor, pressure additions per
  *  sector (× collapseAt) and permanent flags. applyM3OneOffs applies those three. */
-export interface OneOffs { capital: number; mandate: number; slots: number; pop?: number; pressure?: Record<string, number>; flags?: string[] }
+export interface OneOffs { capital: number; mandate: number; slots: number; pop?: number; pressure?: Record<string, number>; flags?: string[]; /** M4 (finish) */ letterShare?: number }
 /** Fire the one-off effects of a list (`times` times); capitalAdd is measured in seconds of `income`. */
 export function fireOneOffs(effects: EffectDef[], times: number, income: number, acc: OneOffs): void {
   for (const ef of effects) {
@@ -426,6 +426,7 @@ export function fireOneOffs(effects: EffectDef[], times: number, income: number,
       continue;
     }
     if (ef.type === 'populationMul') { acc.pop = (acc.pop ?? 1) * Math.pow(Math.max(0, fin(ef.value, 1)), times); continue; }
+    if (ef.type === 'hindsightShare') { acc.letterShare = (acc.letterShare ?? 0) + fin(ef.value) * times; continue; } // M4 (finish)
     const v = fin((ef as { value: number }).value) * times;
     if (ef.type === 'capitalAdd') acc.capital += v * Math.max(0, income);
     else if (ef.type === 'mandateAdd') acc.mandate += v;
@@ -435,8 +436,10 @@ export function fireOneOffs(effects: EffectDef[], times: number, income: number,
 /** M3: apply the M3 one-offs of `one` (population × pop, pressure += value × collapseAt on open unsettled sectors
  *  flooring at 0, meta.flags). The same reference when there are none. */
 export function applyM3OneOffs(state: GameState, content: Content, one: OneOffs): GameState {
-  if (one.pop === undefined && one.pressure === undefined && one.flags === undefined) return state;
+  if (one.pop === undefined && one.pressure === undefined && one.flags === undefined && !one.letterShare) return state;
   let s = state;
+  // M4 (finish): a letter's stake in the run's Hindsight (EffectDef 'hindsightShare')
+  if (one.letterShare) s = { ...s, run: { ...s.run, letterShare: fin((s.run.letterShare ?? 0) + one.letterShare) } };
   if (one.pop !== undefined && one.pop !== 1) {
     const population = Math.max(POP_MIN, fin(s.population * one.pop, POP_MIN));
     s = { ...s, population, peakPopulation: Math.max(s.peakPopulation, population) };

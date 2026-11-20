@@ -62,9 +62,14 @@ const SCAR_MUL = 0.15;
  * next run's stock at minute 20 ≤ 0.4 K) needs about 110–120 minutes after the crossing: 360 years (two hours).
  * Balance: if runs are called soon after the crossing, 150–200 is enough; this is the Act I ending's main Fishing knob.
  */
-const SCAR_YEARS = 360;
+/* M4 (finish): 180 (one hour of open play; was 360). With the scarred bank reopening each run at θ, two hours of scar
+ * carried a crossing through three runs at 1.7 Hindsight a minute (the empty sea's wellbeing cost pushed the town into
+ * its fastest growth and wellbeing fell to 14): a lesson, then a sentence. */
+const SCAR_YEARS = 180;
 /** The share of K a scarred run starts (or opens) with: θ, so the next run begins on the edge (design). */
-const START_SCARRED = THRESHOLD;
+/* M4 (finish): a quarter of K, a little above θ, so that a scarred bank fished within the survey quota can be held off the
+ * threshold while it heals (at θ exactly any catch put it below, where regrowth collapses). */
+const START_SCARRED = 0.25;
 /**
  * Foreign fleets (ForeignDef). share = min(cap, share0 × (basePs / p_s)^growth × Π foreignMul). share0 10% at opening
  * (design). growth 1.4: the share passes 15% (announceAt; the sails appear and the limits lever is meant to) when Fishing's
@@ -72,7 +77,13 @@ const START_SCARRED = THRESHOLD;
  * late unrestrained price (cap 0.6: above the design's "50–60% late", below the Grand Banks' 80% in 1968, which Act I
  * stays under).
  */
-const FOREIGN = { share0: 0.1, growth: 1.4, cap: 0.6, announceAt: 0.15 };
+/* M4 (finish): room 0.5: the foreign boats also take half the surplus the home fleet leaves on the banks (G − home
+ * catch, ForeignDef.room). Before, a home line held the price up and the foreign share FELL (0.16 → 0.05 under a quota),
+ * so the fishery limits (which wait for 15%) almost never appeared; now restraint on a healthy bank draws the foreigners
+ * in, which is the commons problem, and the reason the limits exist. */
+/** M4 (finish): the decades within its line Fishing must hold in a run before it can be settled (SettleDef.requires). */
+const FISHING_DECADES = 15;
+const FOREIGN = { share0: 0.1, growth: 1.4, cap: 0.6, announceAt: 0.15, room: 0.5 };
 /**
  * The Board's first survey (RenewableDef.firstSurvey, The Survey's moment): free, ten model years (30 seconds of play:
  * long enough to read the card and see the sink line, short enough that "No survey since {year}" follows within the
@@ -91,7 +102,9 @@ const CRISIS_AT = [0.5, 1 - THRESHOLD];
  * sea costs a little less (18) because it never ends the run and, under a scar, it is held near 0.8–1.0 for two hours
  * of play across runs, where Steam's smoke never sits past 0.88 for long. At a failed bank: about −15 points.
  */
-const WELLBEING_COST = 18;
+/* M4 (finish): 10 (was 18): a failed bank costs about eight points; at 18 it pushed a restrained town below the target
+ * and into its fastest growth (design/scratch/m4-balance-progress.md, finishing). */
+const WELLBEING_COST = 10;
 /**
  * Prices. p_s = p_r / η + c. basePrice 1 at a full bank, capCost 1: half the opening price is fishing power (boats,
  * crews, coal), so the capital cards (cheaper catching) carry the main rebound, as the design asks. alpha 0.5 on catch
@@ -201,7 +214,15 @@ const sector: SectorDef = {
     upkeepPerSpill: 0.2,
     freeExcess: 0.05,
     blurb: 'The Board sets the catch at what the banks will bear. Skipper Tench complains, and goes out on Monday.',
-    requires: { stat: 'surveyed', sector: 'fishing', op: '>=', value: 1, label: 'The stock surveyed' },
+    /* M4 (finish): and the catch held within its line for fifteen decades this run (150 model years, fifty minutes of
+     * play, through the foreign boats' return and the limits' bite): the bank is the Act's last settlement and its gate,
+     * paced by holding it, not by a clock (FISHING_DECADES). */
+    requires: {
+      all: [
+        { stat: 'surveyed', sector: 'fishing', op: '>=', value: 1, label: 'The stock surveyed' },
+        { stat: 'budgetDecades', sector: 'fishing', op: '>=', value: FISHING_DECADES, label: 'Fifteen decades within its line this run' },
+      ],
+    },
   },
 
   renewable: {

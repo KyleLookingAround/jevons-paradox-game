@@ -19,7 +19,7 @@
 import type { Cond, DispatchDef, SectorId, StatKey } from '../../types';
 import {
   BUDGET, all, cash, feature, forbidKind, income, intensity, leak, mandate, mrate, sat, smoke, timed, wellbeing,
-} from './kit';
+ stake, WAGER_WIN, WAGER_LOSE } from './kit';
 
 const I = 'iron';
 /** Iron's coke duty (the Iron lane's duty lever). */
@@ -65,12 +65,13 @@ export const ironDispatches: DispatchDef[] = [
           hint: 'Pays if Steam is a tenth or more inside its line',
           win: {
             outcome: 'Steam had room: the coast trains run within its allowance, and the freight pays for the track.',
+            effects: [stake(WAGER_WIN)],
             modifier: timed(10, income(1.12, 'steam'), income(1.06, I), wellbeing(1)),
             reply: 'Joint railway to the coast opens; the coal trains keep within bounds',
           },
           lose: {
             outcome: 'Steam had no room: the railway grows to meet the cheap rails, and its coal goes over the line.',
-            effects: [smoke('steam', 0.05)],
+            effects: [stake(WAGER_LOSE), smoke('steam', 0.05)],
             modifier: timed(10, sat('steam', 1.1), income(0.95, 'steam')),
             reply: 'Coast railway opens; Steam’s coal trains run over the line',
           },
@@ -136,13 +137,13 @@ export const ironDispatches: DispatchDef[] = [
           hint: 'Pays if Iron & Steel’s sky is clear when the licences are eased',
           win: {
             outcome: 'The sky had room: the furnaces keep within it, and the institute fills on lecture nights.',
-            effects: [mandate(30)],
+            effects: [stake(WAGER_WIN), mandate(30)],
             modifier: timed(10, income(1.1, I), wellbeing(1)),
             reply: 'Mechanics’ institute opens at Ravensdale; the sky holds',
           },
           lose: {
             outcome: 'The sky had none: two more chimneys bring the orange nights nearer, and the lectures are on smoke.',
-            effects: [smoke(I, 0.06)],
+            effects: [stake(WAGER_LOSE), smoke(I, 0.06)],
             modifier: timed(10, sat(I, 1.08), wellbeing(-1)),
             reply: 'Institute opens at Ravensdale; its first lecture is on smoke',
           },
@@ -182,12 +183,13 @@ export const ironDispatches: DispatchDef[] = [
           hint: 'Pays if Steam and Light are both a tenth inside their lines',
           win: {
             outcome: 'Both had room: the cheaper machines are bought within the allowances, and the savings stay saved.',
+            effects: [stake(WAGER_WIN)],
             modifier: timed(10, income(1.08), wellbeing(1)),
             reply: 'Lathes at cost for every works; the allowances hold',
           },
           lose: {
             outcome: 'One had none: cheaper machines mean more machines, and the coal they burn goes over the line.',
-            effects: [smoke('steam', 0.04), smoke('light', 0.04)],
+            effects: [stake(WAGER_LOSE), smoke('steam', 0.04), smoke('light', 0.04)],
             modifier: timed(10, sat('steam', 1.06), sat('light', 1.06)),
             reply: 'Lathes at cost for every works; the coal follows the lathes',
           },
@@ -226,12 +228,13 @@ export const ironDispatches: DispatchDef[] = [
           hint: 'Pays if the coke duty is in force when the bounty is paid',
           win: {
             outcome: 'The duty holds the price: scrap saves coke, and the ton costs what it did.',
+            effects: [stake(WAGER_WIN)],
             modifier: timed(10, intensity(I, 0.9), income(1.06, I), wellbeing(1)),
             reply: 'Scrap bounty saves coke at Ravensdale; the price holds',
           },
           lose: {
             outcome: 'Nothing holds the price: scrap makes the ton cheaper, and cheap iron sells in greater tonnage.',
-            effects: [smoke(I, 0.04)],
+            effects: [stake(WAGER_LOSE), smoke(I, 0.04)],
             modifier: timed(10, sat(I, 1.1)),
             reply: 'Scrap bounty cheapens iron; Ravensdale blows in two more',
           },
@@ -270,12 +273,13 @@ export const ironDispatches: DispatchDef[] = [
           hint: 'Pays if half or more of Steam’s coal is still in the ground',
           win: {
             outcome: 'The coal was there: the contract runs smoothly, and both trades plan a decade ahead.',
-            effects: [cash(25)],
+            effects: [stake(WAGER_WIN), cash(25)],
             modifier: timed(10, income(1.08, 'steam'), income(1.08, I)),
             reply: 'Ravensdale’s coke contract signed; the pits work steadily',
           },
           lose: {
             outcome: 'The coal was not: Ravensdale draws at the old price while the pits grow dear to work.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, income(0.88, 'steam'), sat(I, 1.05)),
             reply: 'Coke contract binds the pits; Ravensdale pays last year’s price',
           },
@@ -342,12 +346,13 @@ export const ironDispatches: DispatchDef[] = [
           hint: 'Pays if the order book makes Steam’s engines a tenth cheaper',
           win: {
             outcome: 'The feed was large: the duty slows the railways’ growth, and Steam’s coal with it.',
-            effects: [mandate(30)],
+            effects: [stake(WAGER_WIN), mandate(30)],
             modifier: timed(10, sat('steam', 0.92), wellbeing(1)),
             reply: 'Rail duty bites; the railway companies build more slowly',
           },
           lose: {
             outcome: 'The feed was small: the duty catches little coal and a great deal of resentment.',
+            effects: [stake(WAGER_LOSE)],
             modifier: timed(10, income(0.9, I), mrate(0.95)),
             reply: 'Rail duty collects little; Ravensdale complains of a great deal',
           },

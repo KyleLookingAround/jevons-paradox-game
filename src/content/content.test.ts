@@ -1763,6 +1763,9 @@ describe('M4: shared reserves, feeds and renewable stocks', () => {
       for (const a of d.applications) {
         for (const f of a.feeds ?? []) {
           expect(f.capCostMul > 0 && f.capCostMul < 1 ? "" : `${a.id}: ${f.capCostMul}`).toBe("");
+          // M4 (finish): a demand feed widens (satMul ≥ 1, at most ×3) one named use of an explicit target, or all of it
+          if (f.satMul !== undefined) expect(f.satMul >= 1 && f.satMul <= 3 ? '' : `${a.id}: satMul ${f.satMul}`).toBe('');
+          if (f.app !== undefined) expect(f.sector !== '*' && C.sectors[f.sector]?.applications.some((x) => x.id === f.app) ? '' : `${a.id}: app ${f.app}`).toBe('');
           if (f.sector === '*') { for (const t of sectorIds) if (t !== s) edges.get(s)!.add(t); continue; }
           expect(sectorIds.includes(f.sector) && f.sector !== s ? '' : `${a.id}: ${f.sector}`).toBe('');
           edges.get(s)!.add(f.sector);
@@ -1856,6 +1859,8 @@ describe('M4: the Industry kit (Iron & Steel, Fishing)', () => {
     // the fishery limits wait for the foreign fleets (design §5.7)
     const lim = C.levers.find((l) => l.id === 'fishing.limits')!;
     expect(lim.when && leaves(lim.when).some((x) => 'stat' in x && x.stat === 'foreignShare')).toBe(true);
+    // M4 (finish): foreign fleets' room in [0, 1) (ForeignDef.room)
+    for (const s of sectorIds) { const r = C.sectors[s].renewable?.foreign?.room; if (r !== undefined) expect(r >= 0 && r < 1 ? '' : `${s}: room ${r}`).toBe(''); }
     // the order book's lines wait for Jevons's chapter on iron
     expect(waits(C.sectors.iron.mechanic?.feedsKnownWhen, 'iron.economyOfFuel')).toBe(true);
   });

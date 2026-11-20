@@ -23,7 +23,7 @@ import { addModifier } from './modifiers';
 import { recordAutomated } from './record';
 import { fin, mix32 } from './util';
 
-const ONE_OFF_TYPES = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag']);
+const ONE_OFF_TYPES = new Set(['mandateAdd', 'capitalAdd', 'slotAdd', 'populationMul', 'pressureAdd', 'metaFlag', /* M4 (finish) */ 'hindsightShare']);
 
 /** The dispatch may be drawn now (DispatchDef: feature, cast `when`, sector open, age, `when`, not offered this run, `once`). */
 export function eligible(state: GameState, content: Content, d: DispatchDef): boolean {
