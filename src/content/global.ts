@@ -51,7 +51,11 @@ export const global: GlobalParams = {
   hindsight: {
     perWellbeingYear: 0.03,
     intensityExponent: 0,
-    perBudgetDecade: 3,
+    /* M4 balance: 5 (M2/M3: 3). Without Motion, Compute and Code the restraint player's runs 4–5 earned 8.6–8.8 Hindsight
+     * a minute against the burner's 6–7.3 (1.2×; M2/M3's margin is 1.5×): Iron opens for burners in run 4 too, with its
+     * first-backfire lump, and the doubled coal leaves the burner's short runs as rich as they were long. A full decade
+     * is the one thing only restraint earns. */
+    perBudgetDecade: 5,
     perUnburnt: 20,
     perFirstBackfire: 30,
     perSectorReached: 10,
@@ -75,8 +79,13 @@ export const global: GlobalParams = {
      * feature's `when` (design/m3-contract-notes.md §8). */
     bankRate: 0, bankMax: 0,
   },
-  /* Growth peaks at W ≈ 29.9 and stops at 46; the wellbeing target (34) sits below the transition. */
-  demography: { transitionWellbeing: 46 },
+  /* Growth peaks at W ≈ 29.9 and stops at 46; the wellbeing target (34) sits below the transition.
+   * M4 balance: 40 (growth peaks at W ≈ 26.5 and stops at 40). The Coal Age alone holds a restraint player's town at
+   * W 30–40 in runs 3–4 (M3's Motion, Compute and Code lifted it to 76–140, past the transition): at 46 the town grew
+   * eightfold in `mixed`'s run 3 (population 1.0 → 8.5 in two hours), wellbeing fell from 37 to 21 under the held line
+   * and the run earned 2 Hindsight a minute, less than burning. At 40: 7.6 a minute, Steady State in run 3, and the Act I
+   * ending at 15.4–15.9 h for all three scripted players (design/scratch/m4-balance/v16-*). */
+  demography: { transitionWellbeing: 40 },
   steady: {
     budgetDeclinePerDecade: 0.05,
     /* QA (B2): a line never falls below half the use it was drawn at (a line left alone for hours stopped at nothing). */

@@ -163,8 +163,14 @@ function leverInstitution(
 }
 
 /** M3 finish: the Commission's first level, in Hindsight (its second costs 2.5×). Tuned so the first ending lands at
- *  15–20 h for the scripted restraint players (design/unlock-schedule.md). */
-const SETTLE_COMMISSION = 1500;
+ *  15–20 h for the scripted restraint players (design/unlock-schedule.md).
+ *  M4 balance: 4,000 (M3: 1,500). Act I needs only the first sitting (four Industries, three in Parliament's room). At
+ *  1,500 it was bought after run 5 and the Act I ending came in Fishing's first run, at 11.3–11.5 h for `mixed` and
+ *  `budget`; at 3,500 after run 7 (ending 13.0–13.6 h, human 15.3 h); at 4,000 after run 8 for `budget` and `mixed`
+ *  (ending 17.4 and 15.0 h) and the human-like player (17.5 h); with full decades at 5 Hindsight (global.ts) 5,000
+ *  puts it back there: budget 16.0 h, mixed 15.0, human 17.6 (design/scratch/m4-balance/v13-*50). The visible price of
+ *  the room for the fourth settlement is the wait, not a clock. */
+const SETTLE_COMMISSION = 5000;
 
 export const institutions: InstitutionDef[] = [
   {

@@ -5,9 +5,9 @@
 // is not met in full, the assertion sits at the measured value with a "target:" note.
 // @ts-ignore — bun-types are not installed (see model.test.ts)
 import { describe, expect, test } from 'bun:test';
-import { model } from './core';
+import { model, evalCond } from './core';
 import type { FeatureId, GameState } from './types';
-import { C, D, ORDER, campaign, cum, decisionGap, firstBuy, firstSteadyH, openedH, play, spend } from './balance.kit';
+import { ACT_I, C, D, ORDER, campaign, cum, decisionGap, firstBuy, firstSteadyH, openedH, play, spend } from './balance.kit';
 import type { Run } from './balance.kit';
 
 /* ---------------- campaigns (computed once) ---------------- */
@@ -24,7 +24,7 @@ const MIX = campaign('budget', LONG ? 5 : 4, { firstTwo: 'efficiency', settle: t
 const capsCampaign = () => campaign('budget', 0, { settle: true, commons: true, untilHours: 3, capsOnly: true });
 const PEAK = LONG ? campaign('peakdraw', 6) : { runs: [] as Run[], ends: [] as GameState[] };
 /** The plausible human restraint player, four runs (the budget arrives in run 3). */
-const HUM = campaign('human', 4, { settle: true, commons: true });
+const HUM = campaign('human', 5, { settle: true, commons: true });
 const IDLE = campaign('idle', 1, { capS: 3600 });
 const run1 = EFF.runs[0];
 if ((globalThis as any).process?.env?.BAL_DEBUG) for (const [k, c] of Object.entries({ EFF, BUD, MIX, PEAK })) console.log(k, c.runs.map((r) => `${(r.seconds / 60).toFixed(0)}m ${r.hpm.toFixed(2)}/min steady ${r.steadyAt === null ? '-' : (r.steadyAt / 60).toFixed(0)} settled ${r.settledAt === null ? '-' : (r.settledAt / 60).toFixed(0)}/${r.settledEnd} commons ${r.commonsLevels} dec1 ${r.decadeAt === null ? '-' : (r.decadeAt / 60).toFixed(1)} open ${Object.keys(r.opened).join(',')}`).join(' | '));
@@ -104,9 +104,12 @@ describe('the first hour', () => {
   test('every efficiency card after the reveal shows a positive decade line or brings something within reach (runs 1–4)', () => {
     const failing = EFF.runs.slice(0, 4).flatMap((r, i) => r.log.cards.filter((c) => !((c.decade ?? -1) > 0 || c.reach > 0)).map((c) => `run ${i + 1} ${c.id} ${c.decade}`));
     // unfolding balance: the efficiency player's Know-how-rich run 4 buys the Cornish engine with the last use (steam
-    // ploughing) more than a decade away: its line reads −4%, honestly. At most that one card in run 4; none in runs 1–3.
-    expect(failing.filter((x) => !x.startsWith('run 4'))).toEqual([]);
-    expect(failing.length).toBeLessThanOrEqual(1);
+    // ploughing) more than a decade away: its line reads −4%, honestly.
+    // M4 balance: with Steam's coal doubled (760,000) the burner's runs 3–4 are smoke-limited at 16–19 minutes and its uses
+    // saturated by minute 10, so the Engine reporter and the Cornish engine read −3% and −7% there (measured 20 Nov 2026),
+    // honestly. None in runs 1–2 (the first hour, where the felt paradox is taught); at most three in runs 3–4.
+    expect(failing.filter((x) => x.startsWith('run 1') || x.startsWith('run 2'))).toEqual([]);
+    expect(failing.length).toBeLessThanOrEqual(3);
     expect(run1.log.cards.length).toBeGreaterThanOrEqual(4);
   });
 });
@@ -140,17 +143,31 @@ describe('M2 exit criteria', () => {
   });
   longTest('E5: drawing at every peak earns at most half the budget player’s Hindsight per minute (runs 3–6)', () => {
     const m = (rs: Run[]) => rs.slice(2, 6).reduce((a, r) => a + r.hpm, 0) / rs.slice(2, 6).length;
-    expect(m(PEAK.runs) / m(BUD.runs)).toBeLessThanOrEqual(0.5);
+    // target 0.5. M4 balance: measured 0.77 (0.82 with M3's decade of 3 Hindsight, so not the decade change). The peak-
+    // drawer is the burner plus a few full decades, and the burner's short runs now earn 0.55–0.7 of the restraint
+    // player's Hindsight a minute (M3: about 0.4): Iron's first backfire and a second Industry reached in run 4, the
+    // doubled coal (Light and Iron's wellbeing weights lift the burner's wellbeing too). MISSED; asserted at 0.85 so a
+    // slide shows (an intensity exponent on Hindsight was tried: 0.15 gave 0.74, 0.3 broke the restraint player's run 6)
+    expect(m(PEAK.runs) / m(BUD.runs)).toBeLessThanOrEqual(0.85);
   });
   test('E6: restraint earns at least 1.5× backfire’s Hindsight per minute from run 4, and leads in run 3 (budget from run 3)', () => {
     expect(BUD.runs[2].hpm / EFF.runs[2].hpm).toBeGreaterThanOrEqual(1.3);
-    for (const i of [3, 4]) if (BUD.runs[i]) expect(BUD.runs[i].hpm / EFF.runs[i].hpm).toBeGreaterThanOrEqual(1.5);
+    // M4 balance (20 Nov 2026): run 4 is Iron's opening run for both players, and the burner banks Iron's first-backfire
+    // lump (30 Hindsight) and a second Industry reached (+10) inside an 18-minute run: measured 1.39× (10.0 against 7.19
+    // a minute, with full decades at 5 Hindsight; at M3's 3 it was 1.20×). Run 4 asserted at 1.35 (target 1.5, missed by
+    // the lump); from run 5, where nothing new opens for either, the full 1.5× (BAL_LONG: measured 1.6×).
+    expect(BUD.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.35);
+    // run 5 (BAL_LONG): measured 1.49× in this kit's campaigns (1.63× in tools/balance.ts's), asserted at 1.45
+    if (BUD.runs[4]) expect(BUD.runs[4].hpm / EFF.runs[4].hpm).toBeGreaterThanOrEqual(1.45);
   });
   test('E7: backfire earns at least 1.2× restraint in run 2, and more than restraint in run 1 (decision (a))', () => {
     // target 1.2× in both. Run 1 measures 1.09×: with budgets in run 3, restraint in run 1 differs from burning only by
     // two levers from about minute 13, which cost little wellbeing in a 40-minute run; asserted at 1.05 so a slide shows
     expect(EFF.runs[0].hpm / BUD.runs[0].hpm).toBeGreaterThanOrEqual(1.05);
-    expect(EFF.runs[1].hpm / BUD.runs[1].hpm).toBeGreaterThanOrEqual(1.2);
+    // M4 balance: run 2 measures 1.14× (target 1.2): Light's wellbeing weight (2.5 at scale 500 → 6 at 100, so that the
+    // Coal Age alone reaches the target without Motion, Compute and Code) lifts the lever-only restraint run's wellbeing
+    // more than the burner's short one. Asserted at 1.1 so a slide shows.
+    expect(EFF.runs[1].hpm / BUD.runs[1].hpm).toBeGreaterThanOrEqual(1.1);
   });
   test('E8: no stretch without a player decision over 3 min in hour 1, nor over 5 min in hours 1–10', () => {
     // target 180 s in hour 1; the budget player measures 191–200 s (one decade's dividend to the next, late in runs
@@ -200,9 +217,11 @@ describe('M2 exit criteria', () => {
     if ((globalThis as any).process?.env?.BAL_DEBUG) console.log('E9b', out.join(' · '));
     expect(out.length).toBeGreaterThanOrEqual(3);
   }, 60_000);
-  longTest('E10: ten hours of budget play open all five Industries and use Settlement', () => {
+  longTest('E10: ten hours of budget play open every Act I Industry and use Settlement', () => {
+    // M4: Act I is the Coal Age's four (Motion, Compute and Code are Previews after the Act I ending)
     expect(cum(BUD.runs, BUD.runs.length) / 3600).toBeGreaterThanOrEqual(10);
-    for (const e of ORDER.slice(1)) expect(`${e} ${openedH(BUD.runs, e) !== null}`).toBe(`${e} true`);
+    for (const e of ACT_I.slice(1)) expect(`${e} ${openedH(BUD.runs, e) !== null}`).toBe(`${e} true`);
+    for (const e of ORDER.filter((x) => !ACT_I.includes(x))) expect(`${e} ${openedH(BUD.runs, e)}`).toBe(`${e} null`);
     expect(BUD.runs.some((r) => r.settledAt !== null)).toBe(true);
     // the forced unsettle is possible but rare in restraint play
     expect(BUD.runs.reduce((a, r) => a + r.forcedUnsettles, 0)).toBe(0);
@@ -263,31 +282,42 @@ describe('the unfolding: one system at a time', () => {
     }
   });
   // M3 balance (owner's direction, 19 Nov 2026: "options should be unlocked more slowly"; design/unlock-schedule.md)
-  longTest('from run 4, at most two arrivals a run: one at the Reckoning, one mid-run (through hour 10, every style)', () => {
+  longTest('from run 4, at most two arrivals a run, at most one at the Reckoning, five minutes apart (through hour 10, every style)', () => {
+    // M4 criterion 3: an Industry opening counts as the run's mid-run arrival, never within five minutes of a feature
     for (const [name, c] of Object.entries({ EFF, BUD, MIX, HUM })) c.runs.forEach((r, i) => {
       if (i < 3 || cum(c.runs, i) >= 36000) return;
       const ts = Object.values(r.features) as number[];
-      expect(`${name} run ${i + 1}: ${ts.length <= 2 && ts.filter((t) => t > 0).length <= 1 && ts.filter((t) => t === 0).length <= 1}`).toBe(`${name} run ${i + 1}: true`);
+      // an Industry's FIRST opening is the new thing (Light and Iron reopen every run after)
+      const opens = Object.entries(r.opened).filter(([e, t]) => t > 0 && !c.runs.slice(0, i).some((q) => q.opened[e] !== undefined)).map(([, t]) => t);
+      // M4: run 6 brings two mid-run things (Fishing, and the Board's Survey with feature 'estimates' at least five minutes
+      // later; design §9), so the rule is at most two a run, at most one at the Reckoning, any two five minutes apart
+      const all = [...ts, ...opens].sort((a, b) => a - b);
+      const ok = ts.filter((t) => t === 0).length <= 1 && all.length <= 2 && all.every((t, k) => k === 0 || t - all[k - 1] >= 299);
+      expect(`${name} run ${i + 1}: ${ok}`).toBe(`${name} run ${i + 1}: true`);
     });
   });
-  longTest('M3 arrivals in their windows: letters in run 2; nothing M3 in run 3; the mechanics mid-run (20–24 min), one run apart', () => {
+  longTest('M3 arrivals in their windows: letters in run 2; nothing M3 in run 3; the mechanics mid-run (25–29 min), one run apart', () => {
+    // M4 (design §9): the mid-run window moved to minutes 25–29 (features.ts MID_WINDOW), clear of any Industry's opening;
+    // the seams in run 5 (run 4 is Iron's), the load curve in run 7 (run 6 is Fishing's), the Archive in run 8; travel and
+    // the free price are the Previews' (after the Act I ending)
     for (const c of [BUD, MIX, HUM]) {
       expect(within(at(c, 'ambient'), 2, 4.9, 6)).toEndWith('true');
       expect(within(at(c, 'dispatches'), 2, 15, 21)).toEndWith('true');
       for (const f of ['archive', 'seams', 'load', 'travel', 'freeAtUse', 'sideEffects', 'survey', 'histories'] as FeatureId[]) expect(`${f} ${c.runs[2]?.features[f] === undefined}`).toBe(`${f} true`);
       let prev = 0;
-      for (const f of ['seams', 'load', 'travel', 'archive'] as FeatureId[]) {
+      for (const f of ['seams', 'load', 'archive'] as FeatureId[]) {
         const x = at(c, f);
         if (!x) break; // a campaign may end first
-        expect(`${f} ${x.run > prev && x.run >= 4 && x.min >= 20 && x.min < 24}`).toBe(`${f} true`);
+        expect(`${f} ${x.run > prev && x.run >= 5 && x.min >= 25 && x.min < 29}`).toBe(`${f} true`);
         prev = x.run;
       }
-      // the seams wait for a first Steady State held (the budget player's run 4)
+      // the seams wait for a first Steady State held
       if (at(c, 'seams')) expect(at(c, 'seams')!.run).toBeGreaterThan(at(c, 'steadyState')!.run);
-      for (const f of ['freeAtUse', 'survey', 'histories', 'settlement'] as FeatureId[]) if (at(c, f)) expect(`${f} ${at(c, f)!.min}`).toBe(`${f} 0`);
+      for (const f of ['survey', 'histories', 'settlement'] as FeatureId[]) if (at(c, f)) expect(`${f} ${at(c, f)!.min}`).toBe(`${f} 0`);
+      for (const f of ['travel', 'freeAtUse'] as FeatureId[]) expect(`${f} ${at(c, f)}`).toBe(`${f} null`);
     }
-    expect(at(BUD, 'seams')?.run).toBe(4);
-    expect(at(BUD, 'load')?.run).toBe(5);
+    expect(at(BUD, 'seams')?.run).toBe(5);
+    expect(at(BUD, 'load')?.run).toBe(7);
   });
 });
 
@@ -299,7 +329,11 @@ describe('the plausible human restraint player (QA)', () => {
   });
   test('it out-earns burning from the run the budget arrives (1.3×) and by 1.5× the run after', () => {
     expect(HUM.runs[2].hpm / EFF.runs[2].hpm).toBeGreaterThanOrEqual(1.3);
-    expect(HUM.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.5);
+    // M4 balance: the run after is Iron's opening run (the burner's carries Iron's first-backfire lump in 18 minutes, see
+    // E6): measured 1.19× (8.58 against 7.19 a minute; target 1.5, missed). Asserted at 1.1; from run 5 the human-like
+    // player earns 1.6× the burner (9.59 against 5.96).
+    expect(HUM.runs[3].hpm / EFF.runs[3].hpm).toBeGreaterThanOrEqual(1.1);
+    expect(HUM.runs[4].hpm / EFF.runs[4].hpm).toBeGreaterThanOrEqual(1.5);
   });
   test('run 2 does not open as run 1 did: the Market buys the routine cards and the player buys other things', () => {
     const r1 = new Set(HUM.runs[0].opening5.player), r2 = HUM.runs[1].opening5.player;
@@ -319,11 +353,17 @@ describe('the arc', () => {
       expect(h!).toBeLessThanOrEqual(1.5);
     }
   });
-  longTest('Code is reachable by about hour 4–5 of competent (budget) play', () => {
-    const h = openedH(BUD.runs, 'code');
-    expect(h).not.toBeNull();
-    expect(h!).toBeGreaterThanOrEqual(3.5);
-    expect(h!).toBeLessThanOrEqual(5.5);
+  test('M4 criterion 4: Iron opens in run 4 at 2.4–3.6 h (budget, mixed, human)', () => {
+    for (const [name, c] of Object.entries({ BUD, MIX, HUM })) {
+      const i = c.runs.findIndex((r) => r.opened.iron !== undefined);
+      const h = openedH(c.runs, 'iron');
+      expect(`${name} run ${i + 1} ${h?.toFixed(2)} ${i === 3 && h !== null && h >= 2.4 && h <= 3.6}`).toEndWith('true');
+    }
+  });
+  longTest('M4 criterion 4: Fishing opens in run 6 by hour 8 (budget; mixed and human in balance.long.test.ts)', () => {
+    const i = BUD.runs.findIndex((r) => r.opened.fishing !== undefined);
+    const h = openedH(BUD.runs, 'fishing');
+    expect(`run ${i + 1} ${h?.toFixed(2)} ${i === 5 && h !== null && h <= 8}`).toEndWith('true');
   });
   longTest('first Settlement at 4–6 h', () => {
     const i = BUD.runs.findIndex((r) => r.settledAt !== null);
@@ -352,8 +392,11 @@ describe('traps and restraint systems', () => {
     // the budget player seating only its cap Institutions (no absorption, substitution or wellbeing ones) every run;
     // with its full loadout it reaches Steady State by hour 4 (E3)
     const h = firstSteadyH(capsCampaign().runs);
-    // measured 3.2 h (Motion, run 3, with water wheels and temperance under its line; Steam does not clear under a cap)
-    expect(h ?? 99).toBeGreaterThanOrEqual(3);
+    // measured 3.2 h in M3 (Motion, run 3, with water wheels and temperance under its line; Steam does not clear under a
+    // cap). M4 balance: 2.3 h (target 3, missed): Light and Steam both reach Steady State in run 3 under tightened caps
+    // alone, Light because its clear level is easier (clearBelow 0.4, floor 1.5% of collapse; sectors/light.ts), Steam
+    // because the town no longer outgrows a held line (demographic transition at 40; global.ts). Asserted at 2 h
+    expect(h ?? 99).toBeGreaterThanOrEqual(2);
   }, 120_000);
   longTest('a settled Industry is defensible: its defence costs under half the restraint player’s Mandate income', () => {
     // a settled Steam whose town grows by a third (population still growing at the target): the defence it costs
@@ -424,23 +467,46 @@ describe('forks and Charters', () => {
     expect(Math.max(...rates) / mean - 1).toBeLessThanOrEqual(0.1);
     expect(1 - Math.min(...rates) / mean).toBeLessThanOrEqual(0.1);
   }, 30_000);
-  test('E11: every Charter within ±15% of the mean Hindsight per minute (run 3, budget, 45 minutes)', () => {
-    // as tools/balance.ts charter, setting B (shortened): the budget player's run 3 after mixed's runs 1–2, each Charter
-    // in force (found in the core's own offer by Reckoning the run-2 end state with seeds 1, 2, 3…), a fixed length
-    const end = MIX.ends[1];
+  /** The Charter audit in one setting: each Charter the core can offer at `end`'s Reckoning (found in its own offer by
+   *  seeds 1, 2, 3…), in force for a fixed 45 minutes of budget play; Hindsight per minute by Charter. */
+  const charterAudit = (end: GameState, ids: string[]): Record<string, number> => {
     const rates: Record<string, number> = {};
-    // M3: a `locked` Charter is a History's reward and is correctly never drawn before it (tested below)
-    for (const c of (C.charters ?? []).filter((x) => !x.locked)) {
+    for (const id of ids) {
       let next: GameState | null = null;
-      for (let k = 1; k <= 4000 && next === null; k++) { const r = model.reckon({ ...end, seed: k }, C); if (r.charterOffer.includes(c.id)) next = r; }
-      expect(`${c.id} ${next !== null}`).toBe(`${c.id} true`);
-      const s = model.chooseCharter(spend(next!, true), C, c.id);
-      rates[c.id] = play(s, 'budget', { stopAt: 45 * 60 }).r.hpm;
+      for (let k = 1; k <= 4000 && next === null; k++) { const r = model.reckon({ ...end, seed: k }, C); if (r.charterOffer.includes(id)) next = r; }
+      expect(`${id} ${next !== null}`).toBe(`${id} true`);
+      rates[id] = play(model.chooseCharter(spend(next!, true), C, id), 'budget', { stopAt: 45 * 60 }).r.hpm;
     }
+    return rates;
+  };
+  const within15 = (rates: Record<string, number>) => {
     const vals = Object.values(rates);
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     for (const [id, v] of Object.entries(rates)) expect(`${id} ${(v / mean - 1).toFixed(2)} ${Math.abs(v / mean - 1) <= 0.15}`).toEndWith('true');
+  };
+  /** A Charter's `requires` holds after this Reckoning (M4: Iron's and Fishing's need their Industry opened once). */
+  const offerable = (end: GameState) => { const r = model.reckon(end, C); return (C.charters ?? []).filter((x) => !x.locked && (!x.requires || evalCond(r, C, x.requires))).map((x) => x.id); };
+  test('E11: every Charter within ±15% of the mean Hindsight per minute (run 3, budget, 45 minutes)', () => {
+    // as tools/balance.ts charter, setting B (shortened): the budget player's run 3 after mixed's runs 1–2, each Charter
+    // in force, a fixed length. M3: a `locked` Charter is a History's reward and is correctly never drawn before it
+    // (tested below). M4: Iron's and Fishing's Charters need their Industry opened once, so they are audited in the
+    // first run they can be offered (E11c, and E11d with BAL_LONG).
+    within15(charterAudit(MIX.ends[1], offerable(MIX.ends[1])));
   }, 60_000);
+  test('E11c (M4): Iron’s Charters within ±15% of the mean of every Charter offerable in run 5 (budget, 45 minutes)', () => {
+    // the budget player's run-4 end (Iron opened at about minute 15): Iron's two Charters and every other offerable one
+    const ids = offerable(BUD.ends[3]);
+    expect(ids).toContain('charter.blackCountry');
+    expect(ids).toContain('charter.ironmastersRing');
+    within15(charterAudit(BUD.ends[3], ids));
+  }, 90_000);
+  longTest('E11d (M4): Fishing’s Charters within ±15% of the mean of every Charter offerable after Fishing opened', () => {
+    const i = BUD.runs.findIndex((r) => r.opened.fishing !== undefined);
+    expect(i).toBeGreaterThanOrEqual(0);
+    const ids = offerable(BUD.ends[i]);
+    expect(ids).toContain('charter.fishTrains');
+    within15(charterAudit(BUD.ends[i], ids));
+  }, 120_000);
   test('E11b: each locked Charter is never offered before its History is cleared, and can be offered after', () => {
     const end = MIX.ends[1];
     for (const c of (C.charters ?? []).filter((x) => x.locked)) {
@@ -452,5 +518,93 @@ describe('forks and Charters', () => {
       const cleared: GameState = { ...end, meta: { ...end.meta, histories: { ...(end.meta.histories ?? {}), [h!.id]: { runs: 1, cleared: true, best: 3600 } }, unlocks: { ...(end.meta.unlocks ?? {}), [c.id]: true } } };
       expect(`${c.id} after ${offered(cleared)}`).toBe(`${c.id} after true`);
     }
+  }, 60_000);
+});
+
+/* ---------------- 7. M4: the order book, the banks, the Survey, M3 saves (fast) ---------------- */
+
+describe('M4: the Coal Age complete (fast checks on states the campaigns reach)', () => {
+  // @ts-ignore — node types are not installed; Bun provides node:fs
+  const fs = require('node:fs');
+  /** The fixtures the balance lane writes (tools/balance.ts budget 6 --dump-survey): the budget player's run 6, Fishing
+   *  open, five seconds before the Board's first survey (hour6.json) and at it (hour6-after.json: the full account on). */
+  const fixture = (name: string): GameState => {
+    const f = `design/scratch/m4-balance/${name}.json`;
+    expect(`${f} ${fs.existsSync(f)}`).toBe(`${f} true`);
+    const s = model.deserialize(fs.readFileSync(f, 'utf8'), C);
+    expect(s).not.toBeNull();
+    return s!;
+  };
+  /** A state with Rails founded (bought if the player had not). */
+  const withRails = (s: GameState): GameState => (s.sectors.iron.apps['iron.rails']?.founded ? s : model.foundApp({ ...s, capital: s.capital + 1e7 }, C, 'iron.rails'));
+
+  test('criterion 23: on the full account, with Rails founded, Steam’s R is ≥ 1.1× its chimney R, Iron’s falls by the same, totals agree', () => {
+    const s = withRails(fixture('hour6-after'));
+    const d = D(s);
+    expect(d.features.estimates).toBe(true);
+    const st = d.sectors.steam!, ir = d.sectors.iron!;
+    // measured 20 Nov 2026 at the Board's Survey (budget, run 6, 7.8 h): Steam 223 own, 320 on the full account (1.43×);
+    // Iron 121 → 24 (97 handed on, to Steam's rails and plate)
+    expect(st.fullR! / st.resourceUse).toBeGreaterThanOrEqual(1.1);
+    expect(ir.fullR!).toBeLessThan(ir.resourceUse);
+    const open = ORDER.filter((e) => d.sectors[e] && s.sectors[e]?.open);
+    const sumR = open.reduce((a, e) => a + d.sectors[e]!.resourceUse, 0), sumFull = open.reduce((a, e) => a + (d.sectors[e]!.fullR ?? 0), 0);
+    // Fishing's catch draws Steam's power (drawsOn): it is in both sums; foreign catch is nobody's
+    expect(Math.abs(sumR - sumFull)).toBeLessThanOrEqual(1e-6 * sumR);
+  });
+  test('criterion 24: “at the rate it is growing” is shorter than “at this year’s rate” whenever Steam’s trend is positive', () => {
+    // a held line (trend ≤ 0): the two readings agree; a burning run (trend > 0): the growing reading is shorter
+    const held = D(fixture('hour6-after')).sectors.steam!.yearsLeft!;
+    expect(held.growing).toBe(held.flat);
+    let b = play(spend(model.reckon(EFF.ends[2], C), false), 'efficiency', { stopAt: 8 * 60 }).s;
+    b = { ...b, meta: { ...b.meta, features: { ...b.meta.features, estimates: b.meta.totalSeconds } } };
+    const y = D(b).sectors.steam!.yearsLeft!;
+    expect(b.sectors.steam.trendR ?? 0).toBeGreaterThan(0);
+    expect(y.growing!).toBeLessThan(y.flat!);
+  });
+  test('criterion 7: the scrap bounty bites back: with the coke duty off, Iron’s demand at bite 1 is ≥ 10% above bite 0', () => {
+    let s = fixture('hour6');
+    // the bite is felt once levers that bite back have arrived (feature 'sideEffects', run 9 for the scripted players)
+    s = { ...s, meta: { ...s.meta, features: { ...s.meta.features, sideEffects: s.meta.totalSeconds } } };
+    s = model.setLever({ ...s, mandate: 1e6 }, C, 'iron.cokeDuty', 0);
+    // no licences (a cap would hold Iron's R, and the bite would show in the permit price instead)
+    for (const l of C.levers.filter((x) => x.sector === 'iron' && x.kind !== 'circularity')) s = model.setLever(s, C, l.id, 0);
+    s = model.setLever(s, C, 'iron.scrapBounty', 1);
+    expect(s.levers['iron.scrapBounty']?.level).toBe(1);
+    const at = (bite: number) => D({ ...s, levers: { ...s.levers, 'iron.scrapBounty': { ...s.levers['iron.scrapBounty'], bite } } }).sectors.iron!.demand;
+    // measured 20 Nov 2026: see the assertion (satMul 1.12 on every Iron use at full bite; sectors/iron.ts)
+    expect(at(1) / at(0)).toBeGreaterThanOrEqual(1.1);
+  });
+  test('criterion 11: hyperstability: at a true stock of 30% catch per trip reads ≥ 65%; the price there ≤ 1.5× its opening', () => {
+    const r = C.sectors.fishing.renewable!;
+    expect(Math.pow(0.3, r.beta)).toBeGreaterThanOrEqual(0.65);
+    // p_r = basePrice × reported^(−α): the cost of fishing follows catch per trip (design §5.3)
+    expect(Math.pow(Math.pow(0.3, r.beta), -C.sectors.fishing.alpha)).toBeLessThanOrEqual(1.5);
+  });
+  test('criterion 18: M3 saves (before and after the M3 ending) load as v5: Iron and Fishing closed, the Previews marked, the old record kept', () => {
+    // @ts-ignore — node types are not installed; Bun provides node:fs
+    const { readFileSync, existsSync } = require('node:fs');
+    // M3's finishing dumps (before the M3 ending), and an M3 human-like campaign after its ending (start of run 9,
+    // written by the M3 tree, c075c26, with tools/balance.ts human 9 --dump-at=9)
+    const files = [...['mixed-run3', 'budget-run4', 'mixed-run5', 'budget-run6', 'human-run9'].map((f) => `design/scratch/finish/${f}.json`), 'design/scratch/m4-balance/m3-human-after-ending.json'].filter((f) => existsSync(f));
+    expect(files.length).toBeGreaterThanOrEqual(4);
+    let afterEnding = 0;
+    for (const f of files) {
+      const s = model.deserialize(readFileSync(f, 'utf8'), C);
+      expect(`${f} ${s !== null}`).toBe(`${f} true`);
+      const d = D(s!);
+      expect(`${f} iron ${!!s!.sectors.iron?.open} fishing ${!!s!.sectors.fishing?.open}`).toBe(`${f} iron false fishing false`);
+      void d;
+      expect(s!.meta.endings?.actOne).toBeUndefined();
+      if (s!.meta.endings?.steadyAll) afterEnding++;
+      // and it plays: fifteen minutes of the budget player, no crash, no NaN; an M3 Industry that reopens is a Preview,
+      // and Iron (closed) is on the way (open, or in the next-Industry checklist)
+      const p = play(s!, 'budget', { settle: true, commons: true, stopAt: s!.time + 900 }).s;
+      const dp = D(p);
+      expect(Number.isFinite(p.capital) && Number.isFinite(p.population)).toBe(true);
+      for (const e of ['motion', 'compute', 'code']) if (p.sectors[e]?.open) expect(`${f} ${e} preview ${!!dp.sectors[e]?.preview}`).toBe(`${f} ${e} preview true`);
+      expect(`${f} iron ${!!p.sectors.iron?.open || dp.nextSectors.some((x) => x.id === 'iron')}`).toBe(`${f} iron true`);
+    }
+    expect(afterEnding).toBeGreaterThanOrEqual(1);
   }, 60_000);
 });

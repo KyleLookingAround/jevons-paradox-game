@@ -11,6 +11,8 @@ export { C };
 
 export const D = (s: GameState) => model.derive(s, C);
 export const ORDER = C.sectorOrder;
+/** M4: the Act I ending's set (acts.ts): the Coal Age's four; ORDER also holds the Previews. */
+export const ACT_I: string[] = C.acts?.find((a) => a.ending)?.ending?.sectors ?? ORDER;
 export const TARGET = C.global.wellbeingTarget;
 export const cheap = (s: GameState) => model.upgradeViews({ ...s, flags: { ...s.flags, revealed: false } }, C);
 export const REVEAL_IDS = C.upgrades.filter((u) => u.effects.some((e) => e.type === 'reveal')).map((u) => u.id);
@@ -67,6 +69,11 @@ export function foundAll(s: GameState, log: Log, ok: (n: GameState, e: SectorId)
     }
   }
   return s;
+}
+
+/** M4 balance (as tools/balance.ts lineUse): the use a line is judged on: fullR on a full-account line, else own R. */
+export function lineUse(s: GameState, x: { resourceUse: number; fullR?: number | null }, e: SectorId): number {
+  return s.sectors[e]?.budget?.account === 'full' && x.fullR != null ? x.fullR : x.resourceUse;
 }
 
 /** R at which the sector's smog would settle at half of collapse (the budget player's boom ceiling). */
@@ -130,7 +137,7 @@ export function budgetStep(s: GameState, m: Memo, marketOff: boolean): GameState
     for (const e of ORDER) {
       const x = d.sectors[e];
       if (!x || x.budgetR === null) continue;
-      const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5) || x.secondsLeft < 1200;
+      const over = lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5) || x.secondsLeft < 1200;
       const caps = views.filter((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
       const suf = views.find((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible && l.canRaise) ?? null;
       const on = caps.find((l) => l.level > 0);
@@ -170,7 +177,7 @@ export function pushToSink(s: GameState, m: Memo, every: number, heldFor: number
   for (const e of ORDER) {
     const x = d.sectors[e], es = s.sectors[e];
     if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null) continue;
-    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (es.pressure <= x.clearP || lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
     if (s.time - (m.lastPush[e] ?? -Infinity) < every) continue;
     const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null
       && s.mandate >= (v.nextCost ?? 0) + 100 && d.mandatePerSec - upkeepStep(s, v.def.id) > 0.05)
@@ -224,7 +231,7 @@ export function humanStep(s: GameState, m: Memo & { budgetAt?: number; over?: Re
     if (!x || x.budgetR === null) continue;
     const cap = model.leverViews(s, C).find((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
     if (!cap) continue;
-    const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE);
+    const over = lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE);
     if (over) m.over[e] ??= s.time; else delete m.over[e];
     if (!(cap.level === 0 || (over && s.time - m.over[e] >= 60))) continue;
     // the cap at its last level: the Industry's sufficiency next (tools/balance.ts)
@@ -258,7 +265,7 @@ export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number
         if (up) { const nx = model.buyUpgrade(s, C, up.def.id); if (nx !== s) { s = nx; } }
       }
     }
-    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (es.pressure <= x.clearP || lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
     if (s.time - (m.lastSky[e] ?? -Infinity) < every) continue;
     const p0 = m.skyP[e];
     m.skyP[e] = es.pressure;
@@ -273,6 +280,14 @@ export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number
     if (n !== s) s = n;
   }
   return s;
+}
+
+/** M4 balance (as tools/balance.ts): the i-th unlock checklist item of e that the next Reckoning meets by itself. */
+export function reckonBrings(s: GameState, e: SectorId, i: number): boolean {
+  const w = C.sectors[e]?.unlock?.when;
+  const kids = w && 'all' in w ? (w as { all: unknown[] }).all : w ? [w] : [];
+  const c = kids[i] as { feature?: string } | undefined;
+  return !!c && c.feature === 'settlement' && s.meta.achievements?.steadyState === true;
 }
 
 /** M3 finish (tools/balance.ts pursuing): worth staying in the run for the first ending: not yet won this run, and four
@@ -349,7 +364,7 @@ export function instRank(d: InstitutionDef): number {
 }
 
 /** Between runs: restraint buys Institutions by rank then Know-how and seats the best loadout; backfire buys Know-how. */
-export function spend(s: GameState, restraint: boolean, capsOnly = false): GameState {
+export function spend(s: GameState, restraint: boolean, capsOnly = false, cheapestFirst = false): GameState {
   // M3 finish (tools/balance.ts): once Settlement has arrived, the restraint player saves for the room to settle
   let saving = false;
   if (restraint && (!C.features?.settlement || s.meta.features?.settlement !== undefined)) {
@@ -363,7 +378,9 @@ export function spend(s: GameState, restraint: boolean, capsOnly = false): GameS
     }
   }
   for (let guard = 0; guard < 400 && !saving; guard++) {
-    const inst = model.institutionViews(s, C).filter((v) => v.canBuy).sort((a, b) => instRank(a.def) - instRank(b.def) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
+    // M4 balance: the human-like player buys the cheapest Institution first (tools/balance.ts spends for `human` in its
+    // `levers` mode), the budget player by rank
+    const inst = model.institutionViews(s, C).filter((v) => v.canBuy).sort((a, b) => (cheapestFirst ? 0 : instRank(a.def) - instRank(b.def)) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
     const kh = model.knowhowViews(s, C).filter((v) => v.canBuy).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
     const n = restraint && inst.length ? model.buyInstitution(s, C, inst[0].def.id) : kh.length ? model.buyKnowhow(s, C, kh[0].def.id) : s;
     if (n === s) break;
@@ -418,8 +435,14 @@ export function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameSt
   const hold = { since: null as number | null, steady: 0 };
   let lastDecisions = s.run.decisions;
   const okLine = (pre: GameState) => (n: GameState, e: SectorId) => {
-    const x = D(n).sectors[e]!;
-    return x.budgetR !== null ? x.resourceUse <= x.budgetR * (1 + BUDGET_TOLERANCE) : x.resourceUse <= safeR(pre, e);
+    const dn = D(n);
+    const x = dn.sectors[e]!;
+    // M4 balance: on the full account a founding can break another Industry's line (tools/balance.ts budgetFoundOk)
+    for (const f of ORDER) {
+      const y = dn.sectors[f];
+      if (f !== e && y && y.budgetR !== null && n.sectors[f]?.budget?.account === 'full' && lineUse(n, y, f) > y.budgetR * (1 + BUDGET_TOLERANCE)) return false;
+    }
+    return x.budgetR !== null ? lineUse(n, x, e) <= x.budgetR * (1 + BUDGET_TOLERANCE) : x.resourceUse <= safeR(pre, e);
   };
   const ending = opts.ending !== false;
   const settleOn = !!opts.settle || ending;
@@ -505,7 +528,8 @@ export function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameSt
       const sure = ORDER.some((e) => !s.run.steadySectors[e] && !s.sectors[e]?.settled && (s.sectors[e]?.clearYears ?? 0) > 0);
       const streaking = sure || (coming && s.time - (hold.since ?? s.time) <= 2700);
       const opening = s.time < 7200 && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
-      const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c) => c.met));
+      // M4 balance (tools/balance.ts reckonBrings): an unmet Settlement feature counts once a Steady State is held
+      const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c, i) => c.met || reckonBrings(s, x.id, i)));
       const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);
       if (s.time >= 1800 && marginal < 0.9 * avg && !streaking && !opening) break;
       if (s.time >= 2400 && gated && (!streaking || steadyNow > 0) && !opening) break;
@@ -546,7 +570,7 @@ export function campaign(mode: Mode, runs: number, opts: Opts & { firstTwo?: Mod
     ends.push(end);
     cumS += r.seconds;
     s = model.reckon(end, C);
-    if (m !== 'idle') s = spend(s, mode === 'budget' || mode === 'market' || mode === 'human', opts.capsOnly);
+    if (m !== 'idle') s = spend(s, mode === 'budget' || mode === 'market' || mode === 'human', opts.capsOnly, mode === 'human');
   }
   return { runs: out, ends };
 }

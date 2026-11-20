@@ -26,14 +26,15 @@ import type { SectorContent } from '../helpers';
 
 /**
  * K, the banks' natural size in tons (SectorDef.reserve). With REGEN it sets the most the banks can bear,
- * MSY = REGEN × K / 4. M4 balance: 107,000 (MSY 80 tons a second at REGEN 0.003); the Fishing lane's toy model gave 1,200,000 (MSY
- * 1,500), but in the real game Fishing opens at about 80 tons a second and the burning player reaches only about 350
- * thirty minutes later and 820 by the end of a three-hour run, so at 1.2 M nobody's stock ever fell below 70% and the
- * lesson never landed. At 96,000 the burning player passes MSY within minutes of the capital cards and crosses θ in its
- * first Fishing run; a restraint line drawn at today's landings (about 90) holds under MSY until the foreign share,
- * which grows with the home fleet's cheapness, takes the total over it (the over-allocation the design wants taught).
+ * MSY = REGEN × K / 4. M4 balance: 60,000 (MSY 45 tons a second at REGEN 0.003). The Fishing lane's toy model gave
+ * 1,200,000 (MSY 1,500), but in the real game Fishing opens at about 80 tons a second and the burning player reaches only
+ * about 350 thirty minutes later, so at 1.2 M nobody's stock ever fell below 70% and the lesson never landed (107,000 at
+ * REGEN 0.003, MSY 80, was tried: still no poor season within the half hour). At 60,000 the opening catch is above MSY:
+ * the burning player reaches a poor season about nine minutes after opening and crosses θ about fifteen minutes in; the
+ * budget player, whose line is drawn at today's landings, reaches the poor season too, and with it the Board's free
+ * survey (catch per trip 0.81 against a true 0.50), and saves the banks if it reads the card.
  */
-const K = 107_000;
+const K = 60_000;
 /**
  * r, regrowth per second (RenewableDef.regen). M4 balance: 0.003/s = 0.06 per model year (the Fishing lane's 0.005
  * with K = 1.2 M). 1/r ≈ 5.5 minutes: the stock follows the catch with a lag of several minutes, so a fleet fishing at
@@ -158,6 +159,11 @@ const sector: SectorDef = {
    * line was drawn and not rising, i.e. the stock has regrown (contract: SectorDef.pressureSource 'depletion').
    */
   steady: {
+    /* M4 balance: clear at a stock of three quarters of K or more, whatever the day the line was drawn (floor =
+     * ceiling = 25% of collapse). With the global 1% floor a line drawn on a nearly full bank asked for a stock of 99%
+     * (a catch of almost nothing) before it counted clear; drawn after a poor season, the ceiling (25%) already held. */
+    clearFloor: 0.25,
+    clearCeiling: 0.25,
     decadeChoices: decadeSequence([
       ['div.fishing.closedMonth', 'div.fishing.newSlip'],
       ['div.fishing.boardGrant', 'div.fishing.pennySupper'],
@@ -166,7 +172,7 @@ const sector: SectorDef = {
 
   /*
    * Opens in run 6 (≥ 5 Reckonings) with Settlement arrived, once Steam has the trawlers' engines and the fish train's
-   * lines (the compound engine owned, Railways founded), at the run's mid-run window (minute 20; design §9: an Industry opening is
+   * lines (High-pressure steam owned, Railways founded), at the run's mid-run window (minute 20; design §9: an Industry opening is
    * the run's mid-run arrival). `after` defaults to the Industry before it in sectorOrder (Iron). Never a price gate.
    * The Act lane may tighten the window with its features rule (e.g. "no other arrival within five minutes").
    */
@@ -175,10 +181,10 @@ const sector: SectorDef = {
     when: {
       all: [
         { feature: 'settlement', label: 'Settlement has come to the House' },
-        /* M4 balance: the compound engine (the trawlers' engine: steam trawling paid once compounding came in, the
-         * 1880s), not Steamships founded: a restraint player under a held line seldom founds Steamships, so Fishing
-         * opened only in some runs (Act lane's measurement). */
-        { owns: 'steam.compound', label: 'Own the compound engine in Steam' },
+        /* M4 balance: high-pressure steam (the engine a steam trawler needs), not Steamships founded: a restraint player
+         * under a held line seldom founds Steamships, so Fishing opened only in some runs (the Act lane's measurement);
+         * the compound engine was tried and held the opening to minute 40 or so for the restraint players. */
+        { owns: 'steam.highPressure', label: 'Own High-pressure steam' },
         { owns: 'steam.railways', label: 'Found Railways in Steam' },
         { stat: 'time', op: '>=', value: 1_200, label: 'Twenty minutes into the run' },
       ],

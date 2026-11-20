@@ -107,7 +107,12 @@ const sector: SectorDef = {
    * makes it hard under a line alone: the smoke inspector, the slag fund and the scrap bounty with the duty reach it.
    */
   steady: {
-    clearBelow: 0.4,
+    /* M4 balance: 0.5 (was 0.4): the slag tips' slow absorption held a restrained Iron at 2–9× its clear level for whole
+     * runs; with Iron in the Act I ending's set the order book's restraint must be able to clear in a run. */
+    clearBelow: 0.5,
+    /* M4 balance: floor 3% of collapse (the global 1%): a line drawn as Iron opens has almost no slag under it, and at 1%
+     * clear skies asked for a third of Iron's opening output (the human-like player draws three minutes in). */
+    clearFloor: 0.03,
     decadeChoices: decadeSequence([
       ['div.iron.bankedFurnaces', 'div.iron.railRebate'],
       ['div.iron.slagFund', 'div.iron.blowingIn'],

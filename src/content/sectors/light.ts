@@ -87,8 +87,12 @@ const sector: SectorDef = {
    * cooked from coal), so the sink comes from hydro, lights out and the gasworks' rebuild, not the allowance alone.
    */
   steady: {
-    clearBelow: 0.3,
-    clearFloor: 0.005,
+    /* M4 balance: 0.4 (M2/M3: 0.3). The Act I ending needs Light settled with the other three; at 0.3 the human-like
+     * player's fog sat at 1.3–1.5× its clear level for whole three-hour runs, and Light settled last for every player. */
+    clearBelow: 0.4,
+    /* M4 balance: floor 1.5% of collapse (M2/M3: 0.5%). A line drawn as Light opens (the human-like player draws three
+     * minutes in) has under 2% of fog under it, so the floor decided: 0.5% asked for a third of the opening use. */
+    clearFloor: 0.015,
     decadeChoices: decadeSequence([
       ['div.light.earlyClosing', 'div.light.lateOpening'],
       ['div.light.fogWardens', 'div.light.meterRebate'],

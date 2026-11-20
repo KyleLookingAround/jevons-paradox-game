@@ -131,3 +131,34 @@ Measured with `bun run tools/balance.ts <player> 1 --total-hours=24 --commons --
 `src/balance.long.test.ts` (BAL_LONG=1). Motion is the last to settle for the restraint players: its sprawl holds its
 smoke up until the cap has been tightened several times (about three hours into the run); a player who does not found
 the sprawl uses clears it in forty minutes. Persistent Settlement across Reckonings was not needed.
+
+## M4: the Coal Age complete (balance lane, 20 Nov 2026)
+
+Act I is now the Coal Age's four Industries (Steam, Light, Iron & Steel, Fishing); Motion, Compute and Code open after the
+Act I ending as Previews. The Act I ending is every Coal Age Industry settled at once for fifty years. From run 4 a run
+still brings at most two new things, and an Industry opening is the run's mid-run arrival (design/m4-design.md §9). The
+mid-run window is minutes 25–29 (clear of any Industry's opening by five minutes); the Reckoning arrivals are unchanged.
+
+| Run | At the Reckoning | Mid-run | Scripted players (budget · mixed · human) |
+|---|---|---|---|
+| 1–3 | as M3, without Motion | | Light 0.86 · 0.77 · 0.65 h; first Steady State 3.3 · 2.2 · 2.5 h (run 3) |
+| 4 | the Commons | **Iron & Steel opens** (minute 10–15) | Iron 3.59 · 3.32 · 3.26 h |
+| 5 | Settlement | the seams (minute 25) | first settlement 6.7 · 6.4 · 5.7 h |
+| 6 | — | **Fishing opens** (minute 20); **the Board's Survey** at its first poor season (minute 31–39) | Fishing 7.67 · 7.42 · 7.42 h; Survey 7.84 · 7.60 · 7.74 h (catch per trip 0.81, the stock 0.50) |
+| 7 | the household survey | the load curve | |
+| 8 | Histories | the Archive | |
+| 9 | — | (levers that bite back, once a lever has bitten) | **the Act I ending 15.90 · 15.40 · 15.88 h** |
+| 10+ | the capstone | Motion (Preview) at minute 5; Compute the run after; Code after | capstone defence 1–2% of Mandate, never in arrears |
+
+Measured with `bun run tools/balance.ts <player> 1 --total-hours=24 --json --no-series --unlocks --commons
+--dispatch=thoughtful --survey=board` (design/scratch/m4-balance/final-*.json; summarise with
+design/scratch/m4-balance/an.py and crit.py); asserted in src/balance.long.test.ts and src/balance.test.ts.
+
+What sets the pace (no clock anywhere): the first Steady State needs Steam's line held under its clear level for fifty
+years (Steam's coal is 760,000 tons since M4, so a held line no longer runs out before it clears); Fishing waits for
+Settlement and five Reckonings; the Act I ending waits for the Settlement Commission's first sitting (5,000 Hindsight:
+room for the fourth settlement, bought after run 8), the Fishery Board or survey cruises (Fishing cannot be settled
+unsurveyed) and Light's clear sky. Every player meets the Board's Survey in the run Fishing opens, before hour 8.
+
+Longest gap between firsts (features, Industry openings, the first poor season, the first survey, each Industry's first
+settlement): to hour 14 budget 1.97 h, mixed 2.07 h, human 1.97 h; from hour 14 to the ending 1.63 / 1.13 / 1.88 h.

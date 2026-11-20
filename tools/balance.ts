@@ -462,12 +462,27 @@ function raiseLevers(s: GameState, ctx: RunCtx): GameState {
 
 interface BudgetMemo { revealAt: number | null; lastSpare?: number; budgetAt?: number; overSince?: Record<string, number>; lastStock?: number; stockP?: Record<string, number>; lastPush?: Record<string, number>; lastSky?: Record<string, number>; skyP?: Record<string, number> }
 
+/** M4 balance: the use a sector's line is judged on: its full account (fullR) when the line was drawn on it (after the
+ *  Board's Survey, feature 'estimates'), else its own R. The bots compared own R with every line, so a full-account line
+ *  broken by Iron's coke read as held (the human-like player sat over its Steam line for three hours, its streak at 0). */
+function lineUse(s: GameState, x: { resourceUse: number; fullR?: number | null }, e: SectorId): number {
+  return s.sectors[e]?.budget?.account === 'full' && x.fullR != null ? x.fullR : x.resourceUse;
+}
+
 function budgetFoundOk(prev: GameState): (next: GameState, e: SectorId) => string | null {
   return (next, e) => {
-    const d = model.derive(next, C).sectors[e]!;
+    const dd = model.derive(next, C);
+    const d = dd.sectors[e]!;
     const es = next.sectors[e];
+    // M4 balance: on the full account a founding can break another Industry's line (Iron's feeds land on the fed lines)
+    for (const f of ORDER) {
+      const y = dd.sectors[f];
+      if (f === e || !y || y.budgetR === null || next.sectors[f]?.budget?.account !== 'full') continue;
+      if (lineUse(next, y, f) > y.budgetR * (1 + BUDGET_TOLERANCE)) return `${f}'s line would be broken (${n(lineUse(next, y, f))} over ${n(y.budgetR)})`;
+    }
     if (d.budgetR !== null) {
-      return d.resourceUse > d.budgetR * (1 + BUDGET_TOLERANCE) ? `R would be ${n(d.resourceUse)} over the line ${n(d.budgetR)}` : null;
+      const u = lineUse(next, d, e);
+      return u > d.budgetR * (1 + BUDGET_TOLERANCE) ? `R would be ${n(u)} over the line ${n(d.budgetR)}` : null;
     }
     const safe = safeR(prev, e);
     void es;
@@ -508,7 +523,7 @@ function holdTheLine(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
       const x = d.sectors[e];
       if (!x || x.budgetR === null) continue;
       // Tighten too when the held line would empty the reserve within 20 minutes (a finite stock)
-      const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5) || x.secondsLeft < 1200;
+      const over = lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE * 0.5) || x.secondsLeft < 1200;
       const capViews = views.filter((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
       const sufViews = views.filter((l) => l.def.sector === e && l.def.kind === 'sufficiency' && l.visible);
       const capOn = capViews.find((l) => l.level > 0);
@@ -597,7 +612,7 @@ function pushToSink(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
   for (const e of ORDER) {
     const x = d.sectors[e], es = s.sectors[e];
     if (!x || !es?.open || es.settled || x.budgetR === null || x.clearP === null) continue;
-    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (es.pressure <= x.clearP || lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
     if (s.time - (memo.lastPush[e] ?? -Infinity) < every) continue;
     const l = model.leverViews(s, C).filter((v) => v.def.sector === e && order.includes(v.def.kind) && v.visible && v.canRaise && v.nextCost !== null)
       .filter((v) => s.mandate >= (v.nextCost ?? 0) + 100 && d.mandatePerSec - upkeepStep(s, v.def.id) > 0.05)
@@ -634,7 +649,7 @@ function towardsSky(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
         if (up) { const nx = model.buyUpgrade(s, C, up.def.id); if (nx !== s) { s = nx; } }
       }
     }
-    if (es.pressure <= x.clearP || x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
+    if (es.pressure <= x.clearP || lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE) || es.steadyYears * 20 < heldFor) continue;
     if (s.time - (memo.lastSky[e] ?? -Infinity) < every) continue;
     const p0 = memo.skyP[e];
     memo.skyP[e] = es.pressure;
@@ -651,6 +666,15 @@ function towardsSky(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
     ctx.ev.push({ t: s.time, text: `lever ${l.def.id} → L${l.level + 1} (towards a clear sky to settle: P ${n(es.pressure)} > ${n(x.clearP)})` });
   }
   return s;
+}
+
+/** M4 balance: the i-th item of sector e's unlock checklist is one the next Reckoning will meet by itself: the feature
+ *  'settlement' once the Steady State achievement is held (it arrives AT the Reckoning after the first Steady State). */
+function reckonBrings(s: GameState, e: SectorId, i: number): boolean {
+  const w = C.sectors[e]?.unlock?.when as import('../src/types').Cond | undefined;
+  const kids = w && 'all' in w ? (w as { all: import('../src/types').Cond[] }).all : w ? [w] : [];
+  const c = kids[i] as { feature?: string } | undefined;
+  return !!c && c.feature === 'settlement' && s.meta.achievements?.steadyState === true;
 }
 
 /** --ending: the run is worth staying in for the first ending: not yet won this run, and four or more Industries
@@ -698,7 +722,7 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     if (!x || x.budgetR === null) continue;
     const cap = views.find((l) => l.def.sector === e && l.def.kind === 'cap' && l.visible);
     if (!cap) continue;
-    const over = x.resourceUse > x.budgetR * (1 + BUDGET_TOLERANCE);
+    const over = lineUse(s, x, e) > x.budgetR * (1 + BUDGET_TOLERANCE);
     if (over) memo.overSince[e] ??= s.time; else delete memo.overSince[e];
     const prompted = cap.level === 0 || (over && s.time - memo.overSince[e] >= 60);
     if (!prompted) continue;
@@ -711,7 +735,7 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
     if (next !== s) {
       const w0 = d.wellbeing;
       s = next; ctx.firsts.firstLever ??= s.time; delete memo.overSince[e];
-      ctx.ev.push({ t: s.time, text: `lever ${want.def.id} → L${want.level + 1} (human) W ${n(w0)} R/line ${n(x.resourceUse / x.budgetR)}` });
+      ctx.ev.push({ t: s.time, text: `lever ${want.def.id} → L${want.level + 1} (human) W ${n(w0)} R/line ${n(lineUse(s, x, e) / x.budgetR)}` });
     }
   }
   // a stock nothing absorbs (Code's) is tended once it has cost a crisis this run: the crisis is the prompt
@@ -721,7 +745,7 @@ function humanStep(s: GameState, ctx: RunCtx, memo: BudgetMemo): GameState {
   s = pushToSink(s, ctx, memo, 300, 600);
   s = towardsSky(s, ctx, memo, 300, 600);
   s = humanBite(s, ctx);
-  for (const e of ORDER) { const nx = settleIfHeld(s, e); if (nx !== s) { s = nx; ctx.ev.push({ t: s.time, text: `SETTLED ${e} (human)` }); } }
+  for (const e of ORDER) { const nx = settleIfHeld(s, e); if (nx !== s) { s = nx; ctx.firsts[`settle:${e}`] ??= s.time; ctx.ev.push({ t: s.time, text: `SETTLED ${e} (human)` }); } }
   return s;
 }
 
@@ -997,7 +1021,16 @@ const SURVEY = flag('survey', STEWARD ? 'cruise' : 'never');
 const DUMP_ENDING = flag('dump-ending', 'false');
 const DUMP_DIR = DUMP_ENDING === 'true' ? 'design/scratch/m4-fixtures' : DUMP_ENDING;
 const dumped = new Set<string>();
-let M4R: { endingHour: number | null; arrears: number; minStock: Record<string, number>; surveyedMin: Record<string, number>; crossed: Record<string, boolean>; capDefence: number; capDefenceN: number; accounts: Record<string, string> } =
+/** M4 balance: --dump-survey[=<dir>]: write the state 5 s before the Board's first survey (hour6.json: Fishing open, the
+ *  gauge still the skippers') and at it (hour6-after.json: the reveal pending on the page), once per campaign. */
+const DUMP_SURVEY = flag('dump-survey', 'false');
+const SURVEY_DIR = DUMP_SURVEY === 'true' ? 'design/scratch/m4-balance' : DUMP_SURVEY;
+let preSurvey: GameState | null = null;
+let M4R: { endingHour: number | null; arrears: number; minStock: Record<string, number>; surveyedMin: Record<string, number>; crossed: Record<string, boolean>; capDefence: number; capDefenceN: number; accounts: Record<string, string>;
+  /** M4 balance: the Board's Survey card as the page got it (reported and true fractions, the variant) */
+  reveal?: { sector: string; reported: number; true: number; variant: string; min: number };
+  /** M4 balance: a renewable's true stock (Q/K) twenty minutes into the run, the first sample at or after 1,200 s */
+  stock20?: Record<string, number> } =
   { endingHour: null, arrears: 0, minStock: {}, surveyedMin: {}, crossed: {}, capDefence: 0, capDefenceN: 0, accounts: {} };
 const surveyLevers = (e: SectorId) => C.levers.filter((l) => l.sector === e && (l.effects ?? []).some((x) => x.type === 'survey' && x.sector === e));
 const isRenewable = (e: SectorId) => C.sectors[e]?.resourceKind === 'renewable';
@@ -1038,6 +1071,8 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     M4R.minStock[e] = Math.min(M4R.minStock[e] ?? 1, x.stock.world);
     if (x.stock.crossed) M4R.crossed[e] = true;
     if (x.stock.surveyed && M4R.surveyedMin[e] === undefined) M4R.surveyedMin[e] = s.time / 60;
+    if (s.time >= 1200 && (M4R.stock20 ??= {})[e] === undefined) M4R.stock20[e] = x.stock.world;
+    if (d.surveyReveal && !M4R.reveal) M4R.reveal = { sector: d.surveyReveal.sector, reported: d.surveyReveal.reported, true: d.surveyReveal.true, variant: d.surveyReveal.variant, min: s.time / 60 };
     if (x.settled) continue;
     // M4 balance: with --survey=board, a restraint player whose Fishing has reached Steady State unsurveyed (it cannot
     // be settled: SettleDef.requires) and has no Board seated pays for survey cruises, as a person reading the checklist
@@ -1065,6 +1100,15 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     }
   }
   d = model.derive(s, C);
+  if (DUMP_SURVEY !== 'false' && !dumped.has('hour6.json') && s.sectors.fishing?.open) {
+    if (!s.meta.flags?.['survey:fishing'] && !s.meta.features?.estimates) preSurvey = s;
+    else if (preSurvey) {
+      dumped.add('hour6.json');
+      writeFileSync(`${SURVEY_DIR}/hour6.json`, model.serialize(preSurvey));
+      writeFileSync(`${SURVEY_DIR}/hour6-after.json`, model.serialize(s));
+      log(`  states before and at the Board's Survey written to ${SURVEY_DIR}/hour6.json, hour6-after.json`);
+    }
+  }
   // records: arrears time, the capstone's share of the Mandate, the line accounts, the act's ending hour
   if (ORDER.some((e) => s.sectors[e]?.arrears)) M4R.arrears += 5;
   let capDef = 0;
@@ -1230,6 +1274,8 @@ function sampleRow(s: GameState, open: SectorId[], extra: boolean): string {
     row += ` │ ${pad(n(x.etaFold), 5)} ${pad(n(x.rFold), 5)} ${pad(pct(x.reserveFraction), 4)} ${pad(pct(x.pressureFraction), 4)}`;
     if (x.load) row += ` LF${x.load.factor.toFixed(2)} c${n(x.load.capCostEff)} p${n(x.servicePrice)}`;
     if (x.travel) row += ` v${x.travel.speed.toFixed(2)} h${x.travel.hoursPerHead.toFixed(2)}`;
+    // M4 balance: a renewable's catch (home R), the foreign share, catch per trip and whether surveyed
+    if (x.stock) row += ` R${n(x.resourceUse)} f${x.stock.foreign ? x.stock.foreign.share.toFixed(2) : '-'} rep${x.stock.reported.toFixed(2)}${x.stock.surveyed ? ' S' : ''}${x.stock.scar ? ` scar${x.stock.scar.yearsLeft.toFixed(0)}` : ''}`;
     // --sky: smoke over its clear level, the clear streak (years) and S when settled
     if (SKY) row += x.settled ? ' SETTLED' : ` P/clr ${x.clearP ? (s.sectors[e].pressure / x.clearP).toFixed(2) : '-'} cy${Math.floor(s.sectors[e].clearYears ?? 0)}`;
     if (extra) {
@@ -1504,7 +1550,10 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       const opening = s.time < MAX_OPEN && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
       if (s.time >= MIN_RUN && marginal < 0.9 * avg && !streaking && !opening) { stopReason = `marginal rate ${n(marginal)} below average ${n(avg)}`; break; }
       // progression: the next industry waits only on another Reckoning, so bank the run (once no streak is running)
-      const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c) => c.met));
+      // M4 balance: an unmet "Settlement has come to the House" counts as waiting on a Reckoning once a Steady State is
+      // held (Settlement arrives at the next Reckoning; Fishing's checklist names it): a person reading the checklist
+      // knows the Reckoning brings it, and without this nothing beckoned in runs 4–5 and every run sat out its cap
+      const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c, i) => c.met || reckonBrings(s, x.id, i)));
       // (once this run has paid a Steady State, the next industry outranks waiting for another)
       if (s.time >= PROGRESS_AT && gated && (!streaking || steadyNow > 0) && !opening) { stopReason = 'the next industry waits on a Reckoning'; break; }
       // the human player calls the Reckoning once the next Industry waits on one and nothing has been decided for 150 s

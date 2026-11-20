@@ -58,7 +58,10 @@ export const commons: CommonsDef[] = [
     cost: 36_000,
     wellbeing: { max: 1, perLevel: 2 },
     /* Lit by gas once Light is open; and what is taught is engines. */
-    intensity: { sector: 'light', perLevel: 42 } /* M3 balance: ×6 (lines drawn later leave a larger Light at run 4); ≥ 2% of its demand */,
+    /* M3 balance: ×6 (lines drawn later leave a larger Light at run 4); ≥ 2% of its demand. M4 balance: 19, the three
+     * Light projects ×0.45: Light's clear level is easier to reach (sectors/light.ts) and its run-4 line holds a smaller
+     * Light, so at M3's sizes the projects added 30% to its demand (the M2 rule: 2–15%). */
+    intensity: { sector: 'light', perLevel: 19 },
     effects: [{ type: 'etaMul', sector: 'steam', value: 1.03 }],
     requires: { owns: 'steam.condenser', label: 'Own the Separate condenser' },
   },
@@ -69,14 +72,14 @@ export const commons: CommonsDef[] = [
     blurb: 'Mr Ewart’s Act, 1850: the rate may build the room but not buy the books. Readers stay until the gas is turned down, later every year.',
     cost: 60_000, mandateCost: 100,
     wellbeing: { max: 1.5, perLevel: 3 },
-    intensity: { sector: 'light', perLevel: 108 },
+    intensity: { sector: 'light', perLevel: 49 }, // M4 balance: ×0.45 (see the institute)
   },
   {
     id: 'commons.clock', name: 'Town clock', icon: 'clock', sector: 'light',
     blurb: 'Four faces, gas-lit from behind, on the corporation’s new tower. Everyone knows the hour now, the foreman included.',
     cost: 27_000,
     wellbeing: { max: 0.8, perLevel: 1.6 },
-    intensity: { sector: 'light', perLevel: 60 },
+    intensity: { sector: 'light', perLevel: 27 }, // M4 balance: ×0.45 (see the institute)
     /* Time discipline: the night shift starts on the stroke. */
     effects: [sat('light', 1.03, 'light.nightShifts')],
   },
