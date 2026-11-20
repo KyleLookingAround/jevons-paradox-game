@@ -62,6 +62,20 @@
  * SectorDerived.fullR / embodied / yearsLeft, BudgetState.account); the 'quota' lever kind and settle.requires; wager
  * arms on letters. World-scoped records live under MetaState.world so that M7's prestige shift (The Inheritance) is a
  * migration, not a rewrite; ReckoningCause is open (M7 adds 'generation').
+ *
+ * M5 ("The Other Chair"): search for "M5:" for what M5 adds and "M5 CHANGE" for semantics that differ from M4 (every
+ * M5 CHANGE applies only when content uses the new field: content with no `chair`, `rival` or `office` never has a
+ * Ministry, and a sector with no `hiddenFlow` solves as M4, so the test fixture and M4 content play exactly as before).
+ * design/m5-contract-notes.md is the specification and design/m5-design.md the reasons; the lane briefs are
+ * briefs/m5-*.md. In one paragraph: Take office (OfficeDef, MetaState.office, GameState.officeOffer) turns every later
+ * run into a Ministry (GameState.chair): the Industries of an act with `chair: 'government'` are run by the rival
+ * (RivalDef, RivalState), who buys by the Market's rule with his own purse and answers each lever with the cheapest
+ * response on a table the player can read (comply, evade through a loophole rung, lobby, litigate; concealment of his
+ * returns beside them); the player legislates, inspects (inspect), amends loopholes (amend), wins elections on a
+ * Confidence line (ChairDef, PledgeDef, choosePledges, campaign; Opposition; ReckoningCause 'defeated'), and spends a
+ * Treasury fed by the rival's tax (compensate; LeverKind 'subsidy' and 'charge'). Plenty's hidden flow
+ * (SectorDef.hiddenFlow). The Treaty (treaty, Precedent, ArticleDef, PlaybookDef) is the second reset. Every M5 system
+ * is gated by an M5 feature (M5FeatureId).
  */
 
 /** M1 CHANGE: was the five-member union EraId. Ids are content-defined, e.g. 'steam'. */
@@ -154,6 +168,41 @@ export const SURVEY_SMALL_GAP = 0.15;
  * Nothing else M4 adds is feature-gated: the order book and the stock chart arrive with their Industries.
  */
 export type M4FeatureId = 'estimates';
+/* --- M5 constants --- */
+/** M5: Confidence (ChairState.confidence) is clamped to [0, CONFIDENCE_MAX]. */
+export const CONFIDENCE_MAX = 100;
+/** M5: default OfficeDef.prospectusItems: opening items the prospectus quotes (a repeated upgrade folds into one). */
+export const PROSPECTUS_ITEMS = 5;
+/** M5: FileView.accepted and FileView.declined hold at most this many entries each. */
+export const FILE_ITEMS = 3;
+/** M5: LoopholeDef.escape is clamped to [0, LOOPHOLE_ESCAPE_MAX]. */
+export const LOOPHOLE_ESCAPE_MAX = 0.9;
+/** M5: SectorDef.hiddenFlow: the return share r is clamped to [floor ?? 0, RETURN_SHARE_MAX]. */
+export const RETURN_SHARE_MAX = 0.95;
+/** M5: a 'subsidy' lever's value (the Treasury's share of a capital cost) is clamped to [0, SUBSIDY_MAX]. */
+export const SUBSIDY_MAX = 0.9;
+/** M5: StatKey 'yearsSinceInspection' reads this for a sector never inspected in this Ministry. */
+export const NEVER_INSPECTED_YEARS = 1e9;
+/**
+ * M5: the feature ids M5 adds (merged into FEATURE_IDS after 'estimates', in arrival order; design/m5-design.md §8).
+ * Each is switched on by its Content.features entry's `when` (content). A feature absent from Content.features is
+ * always on (as every feature), so content with no M5 features plays as before; every one of them gates something that
+ * exists only in a Ministry, so outside one they change nothing.
+ *   'chair'       Confidence, elections, pledges, Opposition, the answer line (LeverView.rivalAnswer) and the rival's
+ *                 panel (Derived.chair). Content's `when`: { flag: 'office' }. M5 CHANGE to the unfolding: takeOffice
+ *                 unlocks it at once (ignoring featureGapSeconds) when its `when` holds, so a Ministry never runs without
+ *                 it. While it is off in a Ministry (only a hand-built state), the Chair's rules do not run and
+ *                 Derived.chair is null; the rival still owns and buys (ownership is not a feature).
+ *   'loopholes'   ladders (LeverDef.ladder): no rung opens, the rival never evades (ResponseDef 'evade' unavailable),
+ *                 amend() refuses, ChairView.loopholes is [].
+ *   'inspection'  inspect() and Standing inspection refuse; the rival never conceals (concealment stays 0);
+ *                 SectorDerived.reportedR = R, inspectedUntil and found null; Derived.chair.inspectors total 0.
+ *   'treasury'    compensate() refuses; ChairView.treasury null (the tax still accrues into capital regardless).
+ *   'statecraft'  nothing in core: content gates the Statecraft nodes with KnowhowDef.when { feature: 'statecraft' }.
+ *   'charge'      nothing in core: content gates charge levers with LeverDef.requires ['charge'].
+ *   'treaty'      treaty() and buyArticle() refuse; Derived.treaty null; the Articles tab is not shown.
+ */
+export type M5FeatureId = 'chair' | 'loopholes' | 'inspection' | 'treasury' | 'statecraft' | 'charge' | 'treaty';
 /**
  * Save format version. M2 CHANGE: 3. M3 CHANGE: 4 (the v3 → v4 steps are at the end of this comment).
  * Migration rule (implemented in ModelApi.deserialize; versions chain: 1 → 2 → 3):
@@ -260,8 +309,37 @@ export type M4FeatureId = 'estimates';
  *   GameState.surveyReveal) are absent = none and need no step; a v5 save's are validated as their types say (non-finite
  *   numbers and unknown sector ids dropped). Modifier validation keeps a source 'survey:<s>' (arm 0) when s is a
  *   renewable sector with RenewableDef.firstSurvey (see ActiveModifier).
+ *
+ * M5 CHANGE: 6. Version 5 → 6 (versions chain 1 → 2 → 3 → 4 → 5 → 6; a version > 6 → null). Applied to a JSON copy, in
+ * this order; the deep merge from a fresh state supplies the rest (every M5 field is optional or has a fresh default):
+ *   1. MetaState: precedent 0, precedentEarned 0, articles {}, treaties 0, playbooks [], pledgesKept {}; office absent;
+ *      dispatches.lastPlayer absent (= {}).
+ *   2. GameState: chair null; officeOffer false, then step 6.
+ *   3. LeverState: since and raisedAt absent (= never). SectorState: decadesCertified absent (= all false). RunStats:
+ *      certifiedDecades absent (= 0).
+ *   4. Institutions "unlocked with no level": M5 represents it as meta.institutions[id] = 0 (an own key with 0). Every
+ *      reader that tests "owned" (level ≥ 1) is unchanged; the shop shows level 0 as "unlocked, not bought"
+ *      (InstitutionView.unlocked) and buyInstitution accepts level 1 at the level-1 cost (def.cost). v5 saves have no
+ *      zeros; nothing to migrate. M5 CHANGE to validation: a 0 is a valid level (it was dropped before as "not ≥ 1").
+ *   5. Previews: a v5 save after the Act I ending keeps Motion, Compute and Code openable as Previews until office is
+ *      taken (unchanged rules); at takeOffice Compute and Code close (ActDef.closedInOffice), their meta records kept.
+ *   6. After the state is built: if Derived.freshRun and meta.reckonings ≥ 1 and office is not taken and the last run
+ *      (meta.lastRun) satisfies OfficeDef.when as far as a summary can say (meta.endings.actOne exists and
+ *      lastRun.sectors.motion exists with resourceUsed > 0: a v5 RunSummary keeps no openFor, so "Motion ran in the last
+ *      run" stands in for "open five minutes"), officeOffer = true. (M5 adds RunSummary.sectors[s].openFor, so later
+ *      summaries can say it exactly; the stand-in names 'motion' and 'actOne' only in this migration step.)
+ *   7. Validation (element by element, invalid entries dropped): meta.articles and meta.playbooks (unknown ids dropped);
+ *      meta.pledgesKept (unknown ids dropped); meta.office (a profile with a non-finite number → RivalDef.defaultProfile;
+ *      handedOver unknown Know-how ids dropped, non-finite levels dropped; record numbers non-finite → 0; ministries
+ *      non-finite → 1; a prospectus or file that fails its shape → recomputed from meta as takeOffice would); chair (rebuilt
+ *      fresh, as inherit.ts builds a Ministry's, if it fails its shape; otherwise unknown lever, pledge, loophole and
+ *      sector ids dropped, numbers finite, confidence clamped to [0, CONFIDENCE_MAX]); orders.inspection (unknown sector
+ *      → null).
+ *   Round trip v6 lossless; v7 → null. No event is replayed. The owner has said there are no other players (20 Nov
+ *   2026): a v5 save must load without crashing, but no step above exists to preserve a mid-game state exactly; a
+ *   loaded state that fails a step may land somewhere odd (e.g. a Ministry rebuilt fresh).
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /* ------------------------------------------------------------------ */
 /* CONDITIONS (data-only "when X")                                     */
@@ -307,6 +385,27 @@ export type CmpOp = '<' | '<=' | '>' | '>=';
  *   that the feeds add; SectorDerived.fed.share), 0 with no feed; FALSE when R is 0. The combined factor into a sector is
  *   the existing 'feedFactor'.
  * M4: a sector stat read on a capstoned sector reads its settled (scaled) values, as on any settled sector.
+ * M5, global:
+ *   'confidence'        ChairState.confidence (0 outside office);
+ *   'inOffice'          1 while GameState.chair is non-null (a Ministry), else 0;
+ *   'inOpposition'      1 while ChairState.inOpposition, else 0;
+ *   'electionsWon'      ChairState.electionsWon (this Ministry; 0 outside office);
+ *   'ministries'        meta.office?.ministries ?? 0 (Ministries begun, this one included);
+ *   'treaties'          meta.treaties ?? 0;
+ *   'precedent'         meta.precedent ?? 0;
+ *   'settledFromChair'  office.record.settledFromChair + this run's chair sectors settled now (0 outside office);
+ *   'parliamentWagers'  wager arms answered by the player since this Parliament's start (GameState.dispatch.answered
+ *                       entries with by 'player', t ≥ parliament.start and a wager arm; 0 outside office);
+ *   'rivalCapital'      RivalState.capital (0 outside office).
+ * M5, sector (FALSE, as other sector stats, when absent or closed, and where marked):
+ *   'concealment'          the TRUE concealed share RivalState.concealment[s] (0 when none; FALSE outside office);
+ *   'yearsSinceInspection' (time − ChairState.inspected[s]) × YEARS_PER_SECOND, NEVER_INSPECTED_YEARS if never this
+ *                          Ministry (FALSE outside office);
+ *   'certifiedDecades'     count of true in SectorState.decadesCertified (0 when absent);
+ *   'waterApplied', 'waterConsumed', 'returnShare'   SectorDerived.water's applied, consumed, returnShare (FALSE
+ *                          without hiddenFlow);
+ *   'loopholesUsed'        rungs of the sector's levers whose LoopholeState.status is 'used' or 'closed' this run (0
+ *                          outside office).
  */
 export type StatKey =
   | 'time' | 'year' | 'wellbeing' | 'population' | 'capital' | 'mandate' | 'reckonings' | 'steadyYearsAll' | 'clicks'
@@ -324,7 +423,12 @@ export type StatKey =
   | 'openFor' | 'stockFraction' | 'reportedStock' | 'foreignShare' | 'scarYears' | 'surveyed' | 'budgetHeadroom'
   | 'feedFactor' | 'arrears' | 'capstoned'
   /* --- M4 (amend) --- */
-  | 'feedShare';
+  | 'feedShare'
+  /* --- M5 --- */
+  | 'confidence' | 'inOffice' | 'inOpposition' | 'electionsWon' | 'ministries' | 'treaties' | 'precedent'
+  | 'settledFromChair' | 'parliamentWagers' | 'rivalCapital'
+  | 'concealment' | 'yearsSinceInspection' | 'certifiedDecades' | 'waterApplied' | 'waterConsumed' | 'returnShare'
+  | 'loopholesUsed';
 
 /**
  * A data-only condition, evaluated by the core against a state (and the flows it derives).
@@ -356,6 +460,14 @@ export type StatKey =
  *     'steadyAll' is a valid id too, but content should not gate on it.
  *   - `owns` with a sector id is unchanged ("opened in any run"), which is what keeps the Previews of a save that already
  *     opened them (ActDef.preview).
+ * M5:
+ *   - { loophole: id, status? }: that rung's LoopholeState this run (ChairState.loopholes[id]); with `status`, true when
+ *     the rung's status equals it; without, true when it is 'used' or 'closed'. FALSE outside office or when the rung has
+ *     no state yet. (An exempt application's ApplicationDef.when is { loophole: id, status: 'used' }.)
+ *   - `owns` also resolves: a pledge id → in force now (ChairState.pledges) or kept in any Ministry (meta.pledgesKept);
+ *     an Article id → bought (meta.articles); a playbook id → learnt (meta.playbooks); a loophole id → used or closed
+ *     this run (as { loophole } without status).
+ *   - { flag: 'office' } is meta.flags.office, set by takeOffice (no new leaf).
  */
 export type Cond = (
   | { stat: StatKey; sector?: SectorId; app?: string; op: CmpOp; value: number }
@@ -373,6 +485,9 @@ export type Cond = (
   /* --- M4 --- */
   /** M4: true once meta.endings[ending] exists (see above). */
   | { ending: string }
+  /* --- M5 --- */
+  /** M5: a loophole rung's state this run (see above). */
+  | { loophole: string; status?: LoopholeStatus }
   | { all: Cond[] }
   | { any: Cond[] }
   | { not: Cond }
@@ -413,6 +528,8 @@ export type Cond = (
  * exactly as before.
  * M4: 'estimates' (see M4FeatureId), placed after 'survey'. (M3's 'survey' is the household return; M4's survey of a
  * stock is an effect, EffectDef 'survey', not a feature.)
+ * M5: 'chair', 'loopholes', 'inspection', 'treasury', 'statecraft', 'charge', 'treaty' (see M5FeatureId), placed after
+ * 'estimates' (so 'histories' and 'bank' move seven places later in the priority order).
  */
 export const FEATURE_IDS = [
   'reboundMeter', 'levers', 'population', 'market', 'moreLevers', 'charters', 'budget', 'leverRepeat', 'dividendChoice',
@@ -421,6 +538,8 @@ export const FEATURE_IDS = [
   'archive', 'ambient', 'dispatches', 'seams', 'load', 'travel', 'sideEffects', 'freeAtUse', 'survey',
   // M4 (M4FeatureId), inserted after 'survey' (design/m4-contract-notes.md §15.2).
   'estimates',
+  // M5 (M5FeatureId), inserted after 'estimates', in arrival order (design/m5-contract-notes.md §11).
+  'chair', 'loopholes', 'inspection', 'treasury', 'statecraft', 'charge', 'treaty',
   'histories', 'bank',
 ] as const;
 export type FeatureId = typeof FEATURE_IDS[number];
@@ -496,7 +615,12 @@ export interface Content {
    * M2: display names of Know-how trees (KnowhowDef.tree), keyed by tree id. Default for a missing tree: the UI shows
    * the tree id with its first letter capitalised. Content should name every tree it uses (the lint checks).
    */
-  knowhowTrees?: Record<string, { name: string; blurb?: string }>;
+  knowhowTrees?: Record<string, { name: string; blurb?: string;
+    /**
+     * M5: 'rival': an industrial tree. At takeOffice its levels move from meta.knowhow to meta.office.handedOver (the
+     * rival's head start; RivalDef.knowhowTransfer) and, while office is taken, its nodes are not bought (KnowhowView
+     * .held true, canBuy false; buyKnowhow refuses). Absent: the player's tree (Statecraft; any tree not held). */
+    holder?: 'rival' }>;
   /**
    * M2: player-facing wording of the recycle options (button name and one-line explanation). A lever may override the
    * blurb (LeverDef.recycleBlurb). Default for a missing option: name = the option id capitalised, blurb ''.
@@ -544,6 +668,21 @@ export interface Content {
     /** The headline printed on the step after the reveal ("Skippers dispute the survey…"), key 'surveyed'. Default: none. */
     followUp?: string;
   };
+  /* --- M5 (all optional; absent = the M4 game: no office is ever offered, no Ministry exists) --- */
+  /** M5: Take office: the invitation's condition and its texts (OfficeDef). Absent: office is never offered. */
+  office?: OfficeDef;
+  /** M5: the Chair's numbers (ChairDef). A Ministry needs `office`, `chair` and `rival` all present. */
+  chair?: ChairDef;
+  /** M5: the rival (RivalDef). */
+  rival?: RivalDef;
+  /** M5: every pledge, flat, in content order (the order the offer draw indexes; PledgeDef). Default []. */
+  pledges?: PledgeDef[];
+  /** M5: every loophole rung, flat (ids unique game-wide; LoopholeDef). Default []. */
+  loopholes?: LoopholeDef[];
+  /** M5: the Treaty's Articles, in display order (ArticleDef). Default []. */
+  articles?: ArticleDef[];
+  /** M5: the rival's playbooks (PlaybookDef). Default []. */
+  playbooks?: PlaybookDef[];
 }
 
 /**
@@ -581,8 +720,31 @@ export interface ActDef {
    * (SectorDerived.preview). They are never part of an act's ending set. Content sets it on Acts II and III in M4; M5
    * removes it from Act II. Default false. Re-gating the Previews is content only: their unlock.when becomes
    * { all: [ { any: [ { ending: 'actOne' }, { owns: '<self>' } ] }, …opening conditions… ] }.
+   * M5 CHANGE: SectorDerived.preview = act.preview || (act.chair === 'government' && !meta.office).
    */
   preview?: boolean;
+  /* --- M5 --- */
+  /**
+   * M5: the chair this act is played from once office is taken. 'government': while MetaState.office is absent the
+   * act's sectors open as Previews under Act I's rules (exactly as `preview: true` in M4; SectorDerived.preview true);
+   * from takeOffice on, every run is a Ministry (GameState.chair non-null) and the act's sectors are CHAIR SECTORS: they
+   * open under the Chair, are run by the rival (RivalDef; buyUpgrade and foundApp refuse them; the Market skips them;
+   * the rival buys and founds at order ticks) and are not Previews (SectorDerived.rival true). An act with `chair` has
+   * no `ending` in M5 (the Act II ending is M6–M7's), so steadyYearsAll stays 0 while it is current. Default: absent
+   * (the industrialist's chair: M4 behaviour).
+   * Words: "chair sector" in this file = an open sector of an act with chair 'government', in a Ministry. "Rival
+   * sector" = a chair sector or a capstoned sector (CapstoneRecord) in a Ministry: the rival owns both, reports both,
+   * and conceals in both (the capstone is "held by Pryce Consolidated under the Settlement Acts").
+   */
+  chair?: 'government';
+  /**
+   * M5: the act's sectors cannot open while office is taken (a Ministry): Act III in M5. Their SectorState stays closed
+   * (not opened, not in Derived.nextSectors); those in meta.sectorsOpened are listed in Derived.office.sealed so the
+   * page can show a sealed postcard ("The Attention Age · in preparation · your record: …"); their meta records
+   * (sectorsOpened, steadySectors, milestones, archive) are kept. Before office is taken they open as before (Previews).
+   * Default false.
+   */
+  closedInOffice?: boolean;
 }
 
 /**
@@ -1390,6 +1552,21 @@ export interface SectorDef {
   resourceStock?: SectorId;
   /** M4: the renewable stock (required with resourceKind 'renewable'; ignored otherwise). Default: none. */
   renewable?: RenewableDef;
+  /* --- M5 (optional, absent = M4 behaviour) --- */
+  /**
+   * M5: hidden flow (Plenty): a share of the resource applied returns to the reserve. With
+   *   r = clamp(returnShare × Π returnShareMul effects on this sector, floor ?? 0, RETURN_SHARE_MAX)
+   * the PRICE side uses water APPLIED: pPre = p_r / η + c (as now) and R_applied = D / η (after substitution, as R is);
+   * the RESOURCE side uses water CONSUMED: R = R_applied × (1 − r). The reserve drains by R (× (1 − circularity) as
+   * before), pressure with pressureSource 'resource' is fed by R, and budget lines, caps and quotas (with LeverDef.basis
+   * 'consumed', the default), decades, clear skies, the sink line, the instruments, Hindsight's intensity and
+   * SectorDerived.resourceUse all read R (consumed). A cap or charge with basis 'applied' reads R_applied instead (see
+   * LeverDef.basis). The shadow solve freezes η AND r at their values when the baseline was recorded (etaAtBase and
+   * SectorState.returnAtBase). SectorDerived.water reports both flows. Settled: frozen as R is. Default: absent (R = D / η, M4).
+   * (Pressure fed by applied water is not offered: content wanting nitrogen tied to output uses pressureSource
+   * 'service'.)
+   */
+  hiddenFlow?: { returnShare: number; floor?: number };
 
   applications: ApplicationDef[];
 }
@@ -1466,6 +1643,16 @@ export interface ApplicationDef {
    * see it as they see f. Absent satMul: as before (no field, no change).
    */
   feeds?: { sector: SectorId | '*'; capCostMul: number; /** M4 (finish) */ satMul?: number; /** M4 (finish) */ app?: string }[];
+  /* --- M5 --- */
+  /**
+   * M5: available only while this holds, in addition to visibleBelow (calendar-dated uses: { stat: 'year', … }; the
+   * exempt use of a loophole: { loophole: '<rung id>', status: 'used' }). Evaluated on the state at the start of each
+   * step, as visibleBelow is. A FOUNDED application whose `when` stops holding keeps its adoption but cannot grow: its
+   * effective saturation (S_i after population, satMul, effects and spill) is capped at the value it had on the last
+   * step `when` held (AppState.frozenSat; it may still fall) until `when` holds again. An unfounded one becomes unavailable (AppState.available false) and is
+   * not offered to anyone. Default: always.
+   */
+  when?: Cond;
 }
 
 /**
@@ -1495,6 +1682,13 @@ export interface ApplicationDef {
  *   mandateAdd takes what there is: capital and Mandate floor at 0.
  *   'reserveAdd' in a dispatch arm or a modifier acts at the moment granted, like a purchase (stock: reserve and
  *   reserveMax += value × reserve; flow: capacity while in force).
+ * M5 sources of standing effects (all only in a Ministry except Articles and playbooks, which are inert outside one by
+ *   their effect types): the pledges in force (ChairState.pledges; once each), the Articles bought (meta.articles; once
+ *   each), the playbooks learnt (meta.playbooks; once each), a loophole rung's effects while its status is 'used'
+ *   (LoopholeDef.effects, times = the lever's effective level), and the Know-how transfer (an etaMul on every chair
+ *   sector: RivalDef.knowhowTransfer). M5 ONE-OFF: 'confidenceAdd' (wherever one-offs fire; letters in practice).
+ * M5: a lever's effective level (ChairState: carve-outs and litigation; LeverView.effectiveLevel) replaces its level
+ *   wherever a level multiplies an effect (measure effects, side effects' times, rung effects).
  */
 export type EffectDef =
   | { type: 'etaMul'; sector: SectorId; value: number }          // efficiency ×value
@@ -1595,7 +1789,38 @@ export type EffectDef =
    * seven terms' sum is multiplied by max(0, 1 + letterShare) (HindsightTerms.letters is the difference): a letter's
    * stake in what Hindsight is made of, the same share of a short run as of a long one.
    */
-  | { type: 'hindsightShare'; value: number };
+  | { type: 'hindsightShare'; value: number }
+  /* --- M5 (standing unless marked ONE-OFF). Effects that make no sense outside a Ministry are inert there. --- */
+  /** M5: Plenty's return share r × value on the sector (SectorDef.hiddenFlow; multiplicative across effects; an
+   *  irrigation card's value < 1). Ignored on a sector without hiddenFlow. */
+  | { type: 'returnShareMul'; sector: SectorId; value: number }
+  /** M5: Inspectors + value (ChairState.inspectors; additive; the total floors at 0). */
+  | { type: 'inspectorAdd'; value: number }
+  /** M5: an amendment's drafting years × value (multiplicative; amend()). */
+  | { type: 'amendYearsMul'; value: number }
+  /** M5: pledges offered at an election + value (additive; `keep` unchanged; ChairDef.elections.offer). */
+  | { type: 'pledgeOfferAdd'; value: number }
+  /** M5: the rival's litigation delay (ResponseDef.litigate.delayYears) × value (multiplicative). */
+  | { type: 'litigateYearsMul'; value: number }
+  /** M5: ChairDef.inspection.fineMul × value (multiplicative): the fine at inspection and the expected fine the
+   *  concealment rule weighs. */
+  | { type: 'fineMul'; value: number }
+  /** M5: every lever's LeverDef.popularity.years × value (multiplicative): support arrives sooner. */
+  | { type: 'popularityYearsMul'; value: number }
+  /** M5: compensate()'s cost × value (multiplicative). */
+  | { type: 'compensationMul'; value: number }
+  /** M5: the rival's quiet period + value model years (additive; negative from a playbook; the total floors at 0). */
+  | { type: 'quietYearsAdd'; value: number }
+  /** M5: every Parliament after the first lasts termYears + value model years (additive; floors at 1). */
+  | { type: 'termYearsAdd'; value: number }
+  /** M5: no lever is repealed in Opposition while in force (the Ratchet Clause). */
+  | { type: 'ratchet' }
+  /** M5: the rival's concealment on the sector is held at 0 while in force (an Independent Statistics Board). */
+  | { type: 'certify'; sector: SectorId }
+  /** M5: the cost to the rival of `response` × value (multiplicative across effects; playbooks: lobbying cheaper). */
+  | { type: 'rivalCostMul'; response: ResponseKind; value: number }
+  /** M5: ONE-OFF: Confidence += value at once (letters; clamped to [0, CONFIDENCE_MAX]; inert outside office). */
+  | { type: 'confidenceAdd'; value: number };
 
 export interface UpgradeDef {
   id: string;              // 'steam.condenser'
@@ -1680,7 +1905,23 @@ export type LeverKind =
    *  (permit price, leak via value2, squeeze limit, levy, recycle). value 0 = a moratorium (D held at the price-proof
    *  floors only). Range 0–1. Requires a budget line as a cap does (drawn at today's R if absent). The tightest of the
    *  sector's caps and quotas applies. */
-  | 'quota';
+  | 'quota'
+  /** M5: the Treasury pays `value` (0–SUBSIDY_MAX) of the capital cost of the lever's LeverDef.targets (upgrade or
+   *  application ids of its sector) when the RIVAL buys or founds one: his payback is computed at (1 − value) × cost; the
+   *  Treasury (GameState.capital) is charged value × cost at the purchase, if it can pay in full (else the rival pays
+   *  the whole and nothing is charged). Several subsidy levers naming one target: the largest value applies. No effect
+   *  outside a Ministry (the player's own purchases are never subsidised). Revenue: none (it is spending). Range
+   *  0–SUBSIDY_MAX. value2 unused. */
+  | 'subsidy'
+  /** M5: a price on the service, fixed when enacted (unlike a duty, which tops the price back up as η rises). On enact
+   *  from level 0, LeverState.ref = p_s (the service price at that moment) or, with LeverDef.basis, the resource price
+   *  p_r per unit of that water. chargePart (per unit of service) = value × ref, or with `basis` value × ref × R_basis /
+   *  D (R_basis = R_applied or R consumed); it is added to the service price after the duty (p_s = pPre + permitPart +
+   *  dutyPart + chargePart; the duty's p_ref compares the price BEFORE the charge). Levy revenue = chargePart × D (×
+   *  (1 − concealment) in a Ministry: the rival pays on what he reports); recycled as a duty's (LeverDef.recycle).
+   *  Several charges in a sector add. Works in and out of a Ministry (content gates it with requires ['charge']). Range
+   *  0–1 (repeat allowed). value2 unused. */
+  | 'charge';
 
 /**
  * M1: where a levy's revenue goes (meaningful for 'duty' and 'cap' only).
@@ -1787,6 +2028,35 @@ export interface LeverDef {
     blurb: string;
     unlessLabel?: string;
   };
+  /* --- M5 --- */
+  /**
+   * M5: the lever's term in Confidence's target C* (ChairDef, §2.1 of the notes) per level held, moving from `start` to
+   * `after` over `years` model years of being held at ≥ 1 (since LeverState.since):
+   *   term = effectiveLevel × (start + (after − start) × min(1, held / (years × Π popularityYearsMul)))
+   *   held = (time − LeverState.since) × YEARS_PER_SECOND (0 while the level is 0).
+   * The congestion charge: start −3, after +1, years 10 (Stockholm). LeverView.popularity reports the term now. Inert
+   * outside a Ministry. Default: none (the lever's effect on Confidence is only through prices and jobs).
+   */
+  popularity?: { start: number; after: number; years: number };
+  /**
+   * M5: the loophole ladder of this lever: LoopholeDef ids, in rung order (each LoopholeDef.lever must be this id). Only
+   * in a Ministry, only while feature 'loopholes' is on. Rules: LoopholeDef. Default: none (no ladder).
+   */
+  ladder?: string[];
+  /** M5: 'subsidy' only: the upgrade or application ids (of the lever's sector) it pays towards. Ignored on other kinds. */
+  targets?: string[];
+  /**
+   * M5: on a sector with SectorDef.hiddenFlow, which water a 'cap', 'quota' or 'charge' is written on: 'applied' (metered
+   * at the pump: R_applied) or 'consumed' (R; the default). A cap (or quota) on 'applied' follows the budget line's
+   * path but is written in applied water: on enact from level 0, LeverState.ref = R_applied at that moment, and
+   *   capR_applied = value × ref × budgetR(t) / BudgetState.r0
+   * (the line's decline, applied to the pumped figure); the permit is solved so that R_applied ≤ capR_applied (squeeze
+   * limit and leak as a cap's, in applied water). So a licence holds applied water while consumed water can rise as the
+   * return share falls (the lesson). A charge on 'applied' charges per unit of R_applied (LeverKind 'charge'). Budget
+   * lines, decades and the instruments still read R (consumed). Ignored on a sector without hiddenFlow. Default
+   * 'consumed'.
+   */
+  basis?: 'applied' | 'consumed';
 }
 
 export interface LeverLevelDef {
@@ -1827,6 +2097,9 @@ export interface KnowhowDef {
   /** M1: exclusive fork group. Once any node of a branch has level ≥ 1, every other node with the same branch id is
    *  excluded. M2 CHANGE: until a respec (ModelApi.respecKnowhow) clears the branch. Default: none. */
   branch?: string;
+  /** M5: visible and buyable only while this holds, evaluated on the state between runs (Statecraft: { feature:
+   *  'statecraft' }). Levels already owned stay owned and act. Default: always. */
+  when?: Cond;
 }
 
 /** M1: a further level of an institution. Its effects are added to those of the levels below. */
@@ -1931,8 +2204,31 @@ export type HeadlineKey =
   | 'foreignFleets'   // the foreign share first passes ForeignDef.announceAt this run (no event)
   /* --- M4 (polish) --- */
   | 'achievement'     // an achievement with a `headline` is granted: the text is AchievementDef.headline, never a variant
-  | 'actEnding';      // an Act's ending is reached ({name} = ActDef.title, {year}); with Content.acts it replaces
+  | 'actEnding'       // an Act's ending is reached ({name} = ActDef.title, {year}); with Content.acts it replaces
                       //   M3's 'ending' headline (printed once ever per act, after 'steadyAll')
+  /* --- M5 (Content.headlines must list each key; an empty array falls back to the core's one-line default). {name} is
+   *     the lever, pledge, rung, Article or playbook named; {n} the number stated. Order within a step: EventKind. --- */
+  | 'acquisition'     // takeOffice: the Gazette's "PRYCE CONSOLIDATED ACQUIRES THE WORKS" (text: OfficeDef.text, never a
+                      //   variant; the key marks the item; printed before 'officeTaken'); headline only
+  | 'officeTaken'     // takeOffice: "New Ministry formed; the first election is due in {year}" ({year} = polling year)
+  | 'electionCalled'  // the pledge offer is drawn ({year} = the polling year)
+  | 'electionWon'     // polling day, won ({n} = Confidence, integer)
+  | 'electionLost'    // polling day, lost ({n} = Confidence, integer)
+  | 'leverRepealed'   // the incoming government repeals a lever level ({name} = the lever)
+  | 'ministryDefeated' // the second loss in a row: the Reckoning 'defeated' falls due
+  | 'concealmentFound' // an inspection finds concealment ({sector}; {n} = the share found, integer per cent)
+  | 'inspectedClean'  // an inspection finds nothing ({sector}); headline only
+  | 'rivalAnswered'   // the rival's answer to a lever changes kind ({name} = the lever; the variant may be keyed by
+                      //   sectorHeadlines; no headline for 'comply' after no previous answer: the first comply is silent)
+  | 'loopholeOpened'  // a rung opens ({name} = the rung)
+  | 'loopholeUsed'    // the rival evades through a rung ({name} = the rung)
+  | 'loopholeClosed'  // an amendment closes a rung ({name} = the rung)
+  | 'litigated'       // the rival takes a lever to court ({name} = the lever)
+  | 'carveOut'        // lobbying wins a carve-out ({name} = the lever)
+  | 'compensated'     // compensation is paid ({sector})
+  | 'treaty'          // the Treaty is signed (between runs, printed into the rebuilt run's news)
+  | 'playbookLearnt'  // the rival learns a playbook ({name})
+  | 'articleBought';  // an Article is bought ({name})
 
 /* ------------------------------------------------------------------ */
 /* M3 CONTENT: the cast, dispatches, ambient news, Histories, Archive  */
@@ -2001,6 +2297,15 @@ export interface DispatchArm {
     win: WagerBranch;
     lose: WagerBranch;
   };
+  /* --- M5 --- */
+  /**
+   * M5: tags the arm for the rival's `pliant` reading (RivalDef.profileFrom.casts: player answers with stance 'accept' ÷
+   * all player answers to those casts' dispatches) and for the file card (FileView.accepted / declined: 'accept' →
+   * accepted; 'refuse' → declined; 'bargain' counts as an answer, in neither list). Content tags every arm of the Pryce
+   * letters (both generations, Act I and the Previews): a content-only change to M3/M4 dispatches, no save impact.
+   * Default: untagged (counts as an answer when its dispatch is of a counted cast, in neither list).
+   */
+  stance?: 'accept' | 'refuse' | 'bargain';
 }
 
 /** M4: one outcome of a wager arm (DispatchArm.wager). */
@@ -2109,6 +2414,8 @@ export interface HistoryDef {
  *   upgrade, lever, Commons project, seam: first owned (level ≥ 1, built, sunk) by anyone;
  *   application: first available; sector: first opened; dispatch: first offered; Charter or History: first chosen;
  *   cast member: their first dispatch offered; an achievement: earned. Unknown subject → never (lint).
+ *   M5: a loophole rung: first given a state (opened) in any Ministry; a pledge: first in force (meta.pledgesKept); an
+ *   Article: bought; a playbook: learnt; the rival's id (RivalDef.id): office taken.
  * Facts only from design/research/*.md marked [V], or verified by the writer with the source recorded here.
  */
 export interface ArchiveDef {
@@ -2150,6 +2457,395 @@ export interface ProprietorText {
 export interface EndingText {
   credits: { title: string; lines: string[]; continueLabel: string };
   retrospective: { key: string; headline: string }[];
+}
+
+/* ------------------------------------------------------------------ */
+/* M5 CONTENT: office, the Chair, the rival, loopholes, the Treaty     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * M5 ("The Other Chair"; design/m5-contract-notes.md §§1–9). Everything here is optional content: with no
+ * Content.office no office is ever offered, and with no Content.chair or Content.rival no Ministry can be built
+ * (takeOffice refuses). Every new rule reads the state at the start of the step, as M2–M4's do; nothing is random
+ * (deterministic draws use mix32, GameState.charterOffer) and nothing reads the wall clock. "YPS" below is
+ * YEARS_PER_SECOND; "a model-year boundary" is a step from t0 to t1 with floor(t1 × YPS) > floor(t0 × YPS) (tick and
+ * fastForward alike); "an order tick" is the M2 rule (OrdersState).
+ */
+
+/**
+ * M5: Take office (Content.office). The invitation, the acquisition, the prospectus and the file.
+ * THE OFFER: reckon() evaluates `when` on the run being ended (its last state, before the reset); if it holds and office
+ * is not taken, the fresh run has GameState.officeOffer = true (else false). A run that does not take office ("Not
+ * yet": the page simply starts the run; no action) is offered again at its own Reckoning only if `when` holds again
+ * (it does for any later run with Motion open five minutes).
+ * M5 content: { all: [ { ending: 'actOne' }, { stat: 'openFor', sector: 'motion', op: '>=', value: 300 } ] }.
+ */
+export interface OfficeDef {
+  when: Cond;
+  /** The texts (OfficeText). */
+  text: OfficeText;
+  /** How many opening items the prospectus quotes (repeats of one upgrade fold into one item). Default PROSPECTUS_ITEMS. */
+  prospectusItems?: number;
+}
+
+/**
+ * M5: the texts of Take office (OfficeDef.text). Placeholders, formatted by the PAGE with content/words.ts's formatter
+ * from ProspectusView / FileView (the core stores the figures, not the words): {item:n} (the n-th prospectus item's name,
+ * 1-based), {t:n} (its run time, seconds; words.ts prints ordinals: "the eighteenth second", "a minute and twenty-six
+ * seconds"), {count:n} (its count), {every:n} (mean interval of a folded repeat, seconds), {share} (FileView
+ * .automatedShare, integer per cent), {seasons} (FileView.seasons), {year} (the first polling year), {label} and
+ * {dispatch} (in file lines), plus the usual headline placeholders where a NewsItem carries them.
+ */
+export interface OfficeText {
+  /** The Gazette: headline 'acquisition' ("PRYCE CONSOLIDATED ACQUIRES THE WORKS") and its sub-line. */
+  acquisition: { headline: string; sub: string };
+  /** The Minister's letter (a card, not a dispatch, so it cannot be defaulted away): writer (a cast id), body, button. */
+  letter: { cast: string; body: string; button: string };
+  /** The Reckoning card's two buttons: "Take office", "Not yet". */
+  offer: { take: string; notYet: string };
+  /**
+   * The prospectus: title; `first` (the first-opening paragraph, with {item:n} … placeholders up to prospectusItems);
+   * `firstDefault` (when ProspectusView.defaulted: "the trade's usual method"); `chair` (the paragraph on the last run's
+   * foundings in chair sectors; omitted when ProspectusView.motion is null); `close` ("The directors are confident…");
+   * `button` ("File it").
+   */
+  prospectus: { title: string; first: string; firstDefault: string; chair: string; close: string; button: string };
+  /**
+   * The file card: title; `accepted` and `declined` line templates ({label}, {dispatch}, {year}); `automated` ("Of the
+   * purchases made in the Works' name in its last {seasons} seasons, {share}% were made by standing order"); the
+   * conclusion by pliant band (the first entry whose pliantBelow > FileView.pliant, else the last); `button`.
+   */
+  file: {
+    title: string; accepted: string; declined: string; automated: string;
+    conclusion: { pliantBelow: number; text: string }[];
+    button: string;
+  };
+  /** The broadsheet line printed once when Compute and Code close ("The machines are to be the next Age's business…"),
+   *  key 'officeTaken', after the officeTaken headline. Default: none. */
+  sealed?: string;
+}
+
+/**
+ * M5: the Chair (Content.chair). All numbers are content; the core supplies only the defaults named.
+ *
+ * CONFIDENCE (ChairState.confidence, 0–CONFIDENCE_MAX), in the step at each model-year boundary (tick and fastForward
+ * alike), in a Ministry while feature 'chair' is on (in office and in Opposition alike):
+ *   C ← clamp(C + relaxPerYear × (C* − C) − lobbyPerYear × L, 0, CONFIDENCE_MAX)       L = levers the rival is lobbying
+ *   C* = base + perWellbeing × (W − wellbeingTarget)
+ *          + perPriceShare × priceShare + perJobShare × jobShare + perCommonsLevel × Σ GameState.commons.levels
+ *          + Σ over pledges in force PledgeDef.confidence + Σ over levers at level ≥ 1 their popularity term
+ *   priceShare = Σ_s w_s × levyPart'_s / p_s over open chair sectors (w_s = wellbeingWeight_s ÷ Σ of theirs; capstoned
+ *     sectors have no levy and are left out); levyPart'_s = Σ over the sector's levies (duty part, permit part, charge
+ *     part) of the part × (1 for 'treasury' or 'commons' recycling, −0.5 for 'dividend': a dividend offsets).
+ *   jobShare = Σ over open chair sectors not compensated now (ChairState.compensated[s] > time) of
+ *     max(0, 1 − income_s / RivalState.peakIncome[s]) (0 when peakIncome is 0).
+ *   W = Derived.wellbeing; all flows from the state at the start of the step.
+ * ONE-OFFS act on C at once (clamped), not at the boundary: fineFound at an inspection that finds concealment; crisis at
+ * any crisis in an open sector (any sector, chair or not, capstone arrears crises included); campaignPerMandate × Mandate
+ * spent by campaign(); a 'confidenceAdd' effect; PledgeDef.atPoll at polling day.
+ * Before the first boundary C = confidence.start (set when the Ministry is built). Outside a Ministry nothing runs.
+ *
+ * ELECTIONS: ChairState.parliament; polling-day rules at ChairState. INSPECTION: ChairState and RivalState. TREASURY:
+ * GameState.capital in a Ministry (see ChairDef.treasury). AMENDMENT: LoopholeDef.
+ */
+export interface ChairDef {
+  confidence: {
+    /** C at the start of every Ministry (55). */
+    start: number;
+    /** Polling: won ⇔ C + Σ chosen atPoll ≥ winAt (50). */
+    winAt: number;
+    /** Share of the gap to C* closed at each model-year boundary, 0–1 (0.15). */
+    relaxPerYear: number;
+    /** C* with nothing happening (50). */
+    base: number;
+    /** Per point of wellbeing above GlobalParams.wellbeingTarget (negative below). */
+    perWellbeing: number;
+    /** Per unit of priceShare (normally negative). */
+    perPriceShare: number;
+    /** Per unit of jobShare (normally negative). */
+    perJobShare: number;
+    /** Per Commons level built this run. */
+    perCommonsLevel: number;
+    /** M5 (contract): a POSITIVE magnitude, subtracted from C at each boundary per lever the rival is lobbying. (The
+     *  notes call it negative and also subtract it; the contract fixes the sign here.) */
+    lobbyPerYear: number;
+    /** One-off when an inspection finds concealment (positive). */
+    fineFound: number;
+    /** One-off at any crisis in an open sector (negative). */
+    crisis: number;
+    /** campaign(): C += campaignPerMandate × Mandate spent. */
+    campaignPerMandate: number;
+  };
+  /**
+   * Parliaments: the first (caretaker, index 0) lasts firstTermYears model years from the Ministry's start; each later
+   * one termYears + Σ termYearsAdd (floored at 1). The pledge offer is drawn noticeYears before polling day: `offer`
+   * pledges (+ Σ pledgeOfferAdd), of which the player keeps `keep`. A won election pays winMandate Mandate.
+   * Content: 10, 15, 3, 3, 2, winMandate a first guess.
+   */
+  elections: { firstTermYears: number; termYears: number; noticeYears: number; offer: number; keep: number;
+               winMandate: number };
+  /** Opposition: lever levels repealed per lost election (1); losses in a row that end the Ministry (2). */
+  opposition: { repealPerParliament: number; lostInARowEnds: number };
+  /**
+   * Inspection (feature 'inspection'): inspectors (2) before inspectorAdd; an Inspector rests cooldownYears (5) after an
+   * inspection; true R is shown for revealYears (10) after one; the rival's quiet period quietYears (6; see RivalDef
+   * .policy for his adjustment); concealment ramps concealPerYear (0.02 of true R per model year) up to concealMax (0.2);
+   * fineMul scales the fine and the expected fine (see ChairState, the inspection rules).
+   */
+  inspection: { inspectors: number; cooldownYears: number; revealYears: number; quietYears: number;
+                concealPerYear: number; concealMax: number; fineMul: number };
+  /**
+   * The Treasury (GameState.capital in a Ministry). Income per second = taxShare × the rival's income per second (chair
+   * and capstoned sectors) + levyShare × levy revenue routed 'treasury' (the Mandate share of 'treasury' recycling,
+   * GlobalParams.levy.mandateShare, is unchanged and separate). Both 0–1.
+   */
+  treasury: { taxShare: number; levyShare: number };
+  /** compensate(s): cost (£, from the Treasury) = costYears / YPS × max(0, peakIncome_s − income_s) × Π compensationMul
+   *  (costYears model years of the income per second the rival has lost); the jobs term ignores s for `years` model
+   *  years (ChairState.compensated). */
+  compensation: { costYears: number; years: number };
+  /** Default amendment cost (Mandate) and drafting time (model years), where a LoopholeDef has no `amend`. */
+  amend: { mandateCost: number; years: number };
+  /**
+   * Hindsight in a Ministry: these fields overlay GlobalParams.hindsight while office is taken (a field present here
+   * replaces the global one), plus perParliamentWon (HindsightTerms.parliaments = perParliamentWon × electionsWon).
+   * Default: no overlay, perParliamentWon 0.
+   */
+  hindsight?: Partial<GlobalParams['hindsight']> & { perParliamentWon?: number };
+  /**
+   * The Treaty (feature 'treaty'): offered between runs while `when` holds (content: { stat: 'settledFromChair', op:
+   * '>=', value: 1 }); Precedent paid = max(1, round(perCertifiedDecade × record.certifiedDecades + perSettledFromChair ×
+   * record.settledFromChair + perParliamentWon × record.parliamentsWon + perWellbeingYear × record.wellbeingYears)) over
+   * MetaState.office.record. Absent: no Treaty.
+   */
+  treaty?: { when: Cond; perCertifiedDecade: number; perSettledFromChair: number; perParliamentWon: number;
+             perWellbeingYear: number };
+  /** ChairView.target and ChairView.forecast are shown (non-null) only while this holds (Statecraft's Polling:
+   *  { owns: '<node>' }). Default: always shown. */
+  showTarget?: Cond;
+}
+
+/**
+ * M5: a pledge (Content.pledges), offered on the manifesto sheet before polling day (ChairState.parliament.offer).
+ * Chosen pledges come INTO FORCE at polling day (ChairState.pledges) and bind the Ministry's hands for the whole of the
+ * next Parliament, won or lost; in force they add `confidence` to C* and their `effects` stand. Text: name ≤ 40
+ * characters ("No new taxes on motoring"), blurb one line.
+ */
+export interface PledgeDef {
+  id: string;
+  name: string;
+  blurb: string;
+  /** Added to C* while in force. */
+  confidence: number;
+  /** Added to C once, at the polling day it is chosen for (and counted in the won test). Default: `confidence`. */
+  atPoll?: number;
+  /**
+   * Binds: while in force, setLever (and the Civil Service) refuse a raise above `max` on the lever `lever`, or on every
+   * lever of `leverKind` (in `sector` if given). Lowering is always allowed. LeverView.bound carries the pledge's name.
+   * Default: binds nothing.
+   */
+  binds?: { lever?: string; leverKind?: LeverKind; sector?: SectorId; max: number };
+  /** Standing effects while in force (a railway for every town: a substitution flowCap through effects…). Default []. */
+  effects?: EffectDef[];
+  /** M5 (contract): while in force, Treasury income × (1 − treasuryShare) (0–1): a promise the Treasury pays for.
+   *  Default 0. */
+  treasuryShare?: number;
+  /** Offered only while this holds (sector open, feature on…), evaluated when the offer is drawn. Default: always. */
+  when?: Cond;
+}
+
+/** M5: the rival's character, five readings 0–1, distilled once at takeOffice (MetaState.office.profile). */
+export interface RivalProfile {
+  /** Purchases per minute in the first ten minutes of meta.firstOpening, scaled by RivalDef.profileFrom.hasteAtPerMinute. */
+  haste: number;
+  /** Share of the first opening's actions that founded rather than improved. */
+  founder: number;
+  /** Share of the first opening's fork purchases that took the arm with the larger demand effect (0.5 if none). */
+  volume: number;
+  /** 1 − min(1, earliest firstBudgetAt over meta.runs / drawnBySeconds); 0 if no line was ever drawn. */
+  drawn: number;
+  /** Player answers with stance 'accept' ÷ player answers, over the counted casts' dispatches (0.5 if none). */
+  pliant: number;
+}
+
+/**
+ * M5: a kind of answer the rival may give a lever. OPEN union: M6 adds 'offshore' and 'capture'; core and UI handle an
+ * unknown kind with a default label and treat it as never available unless a core function prices it.
+ */
+export type ResponseKind = 'comply' | 'evade' | 'lobby' | 'litigate' | 'conceal' | (string & {});
+
+/**
+ * M5: one row of the rival's table (RivalDef.responses). Costs are a model year of his money (£), on the state at the
+ * start of the order tick; I = the sector's income per second to him (m × pPre × D, as the player's income was) × 1 /
+ * YPS (a model year of it). Every cost × costScale × Π rivalCostMul effects for the kind.
+ *   comply    available always. cost = max(0, I(lever at level 0) − I(lever at the level being answered)), each one
+ *             solve of the sector with everything else as now. (Notes §3.4's "previous answered level" would price every
+ *             periodic re-answer at 0; the contract reads "rule off" literally.) Effect: none.
+ *   evade     available while the lever has a rung with status 'open' whose closedBy does not hold (and feature
+ *             'loopholes'). cost = LoopholeDef.premium × I. Effect: that rung → 'used' (LoopholeDef rules).
+ *   lobby     available while C > carveOutAt' (= lobby.carveOutAt + profile.drawn × policy.drawnLobby) and no carve-out
+ *             of this lever was won this Parliament. cost = lobby.costPerPoint × max(0, C − carveOutAt') × I / 100 (a
+ *             large firm's points cost more). Effect: RivalState.lobbying[id] = true (C falls lobbyPerYear at each
+ *             boundary); at the first order tick with C < carveOutAt', ChairState.carveOuts[id] = parliament.index
+ *             ('carveOut' event and headline) and lobbying[id] is cleared.
+ *   litigate  available while (time − LeverState.raisedAt) × YPS ≤ litigate.windowYears and the lever has not been
+ *             litigated at this level this run. cost = litigate.feeYears × I. Effect: ChairState.litigation[id] = { from:
+ *             the level he last answered (RivalState.answers[id].level, 0 if none), until: time + delayYears × Π
+ *             litigateYearsMul / YPS } ('litigated' event and headline).
+ *   conceal   never a candidate in the answer: a 'conceal' row in RivalDef.responses ENABLES concealment of returns
+ *             (ChairState, the inspection rules; gated by its `feature`); its costScale is unused.
+ * Ties between equal costs: comply, evade, lobby, litigate, then unknown kinds in table order. An unavailable kind's cost
+ * is Infinity.
+ */
+export interface ResponseDef {
+  kind: ResponseKind;
+  /** Multiplies this response's cost (a balance knob; playbooks multiply it further). Default 1. */
+  costScale?: number;
+  /** Available only once this feature is unlocked (evade: 'loopholes'; conceal: 'inspection'). Default: always. */
+  feature?: FeatureId;
+  /** 'lobby' only: £ per Confidence point (× I / 100) and the carve-out line. */
+  lobby?: { costPerPoint: number; carveOutAt: number };
+  /** 'litigate' only: the window after a raise, the delay won, the fee in model years of I. */
+  litigate?: { windowYears: number; delayYears: number; feeYears: number };
+}
+
+/**
+ * M5: the rival (Content.rival): Pryce Consolidated. He acts only in a Ministry, only on rival sectors (ActDef.chair).
+ *
+ * THE POLICY from the profile (MetaState.office.profile), fixed for the save:
+ *   paybackMax = lerp(paybackSlow, paybackFast, haste); foundPaybackMax = lerp(foundSlow, foundFast, founder);
+ *   fork arms: of each fork (upgrades listing each other in `excludes`) he considers only the arm whose demand effect
+ *     (Π of its satMul and halfPriceMul effect values on its own sector; 1 if none) is the larger when volume ≥ 0.5, the
+ *     other arm(s) when volume < 0.5 (ties: content order, first arm = "larger");
+ *   carveOutAt' = lobby.carveOutAt + drawn × drawnLobby (ResponseDef);
+ *   quiet period = inspection.quietYears + round((0.5 − drawn) × quietSpread) + Σ quietYearsAdd (floored at 0);
+ *   letters: every dispatch of cast `cast` has weight × (1 + pliant) in the draw while office is taken.
+ *
+ * THE YEARLY DECISION, at each order tick in a Ministry (never while fresh or a Reckoning is pending, never in
+ * projections), after the step's other rules and BEFORE the player's standing orders:
+ *   0. Income (every step, not only at ticks): capital += (1 − taxShare) × Σ over rival sectors income_s × dt (income_s
+ *      = m × pPre × D, or a capstoned sector's scaled income); the Treasury takes the taxShare (ChairDef.treasury).
+ *   1. Purchase: per open, unsettled chair sector in sectorOrder, at most one action, by exactly the Market's candidate
+ *      rule and payback (OrdersState: the same core function), with capital = RivalState.capital, upgrades judged
+ *      against paybackMax and foundings against foundPaybackMax, fork arms by `volume` (the Market never buys forks; he
+ *      does), 'research' and 'prospect' cards never (as the Market), a subsidised target's payback at (1 − value) ×
+ *      cost (LeverKind 'subsidy'). Recorded with actor 'rival': capital charged to him, run.opening (if room), events
+ *      'upgradeBought' / 'appFounded' / 'stageReached' by 'rival'; NOT run.automated nor run.decisions (they are not the
+ *      player's). GameState.orderLog[s] is written as the Market's is.
+ *   2. Answers: per lever of a chair sector at level ≥ 1 whose level differs from RivalState.answers[id].level, or with
+ *      no answer, or whose answer is older than steady.decadeYears (default 10) model years, or marked due (a rung
+ *      closed or returned to 'open'): evaluate every row's cost (ResponseDef), choose the cheapest, record it in
+ *      answers[id] (with the comply cost) and apply its effect; 'rivalAnswered' (id = lever, label = kind) when the kind
+ *      changed. A lever now at level 0 loses its answer, lobbying and litigation entries.
+ *   3. Concealment ramp (ChairState, the inspection rules), per rival sector.
+ * Purchases in a later sector of the same tick see the capital spent in earlier ones.
+ */
+export interface RivalDef {
+  /** 'pryce'. */
+  id: string;
+  /** "Pryce Consolidated" (as printed). */
+  name: string;
+  /** The cast id of his letters ('pryceChair'). */
+  cast: string;
+  /** The profile used when meta.firstOpening is absent (the balancer's `efficiency` opening). */
+  defaultProfile: RivalProfile;
+  /** His table (ResponseDef). Content lists comply first. */
+  responses: ResponseDef[];
+  /** Profile → policy (above). Paybacks in seconds; drawnLobby in Confidence points; quietSpread in model years. */
+  policy: { paybackSlow: number; paybackFast: number; foundSlow: number; foundFast: number; drawnLobby: number;
+            quietSpread: number };
+  /**
+   * The profile from the opening (pure, once, at takeOffice; RivalProfile):
+   *   haste = clamp((purchases with t < 600 in meta.firstOpening.actions / 10 − a) / (b − a), 0, 1), [a, b] =
+   *     hasteAtPerMinute; founder = founds / actions (0.5 if no actions); volume as RivalProfile; drawn uses
+   *     drawnBySeconds; pliant counts the dispatches of the cast ids in `casts` (the Pryce letters of both generations).
+   */
+  profileFrom: { hasteAtPerMinute: [number, number]; drawnBySeconds: number; casts: string[] };
+  /** "Pryce has read your notebooks": a standing etaMul of min(cap, 1 + k × Σ office.handedOver levels) on every chair
+   *  sector, in every Ministry (k 0.01, cap 1.25). */
+  knowhowTransfer: { k: number; cap: number };
+  /** His opening purse: each time a chair sector opens in a Ministry, capital += startCapitalSeconds × that sector's
+   *  income per second at its first solve (with the transfer applied). */
+  startCapitalSeconds: number;
+}
+
+/** M5: a loophole rung's state (LoopholeState.status). */
+export type LoopholeStatus = 'open' | 'used' | 'drafting' | 'closed';
+
+/**
+ * M5: one rung of a lever's ladder (Content.loopholes; LeverDef.ladder). Rungs are run state (ChairState.loopholes),
+ * rebuilt empty each Ministry; only in a Ministry; only while feature 'loopholes' is on.
+ * RULES:
+ *   - When a laddered lever first reaches level ≥ 1 in a Ministry, its first rung whose `when` holds gets a state
+ *     'open' (since = time; 'loopholeOpened'). Rungs whose `when` fails are skipped (M6's rungs that need Abroad).
+ *   - Evade (ResponseDef) sets the first 'open' rung 'used' ('loopholeUsed'); if it has an `app` not yet founded, the
+ *     rival founds it free (by 'rival'; its ApplicationDef.when should be { loophole: id, status: 'used' }).
+ *   - While 'used' (and while 'drafting' after use): the lever's grip escapes by `escape`: a measure's effects act with
+ *     times × (1 − escape); a duty's dutyPart and a charge's chargePart × (1 − escape); a cap's or quota's target ÷
+ *     (1 − escape) (composed with concealment's ÷ (1 − c)); the rung's `effects` stand with times = the lever's effective
+ *     level. A sufficiency, substitution, circularity or other kind: only `effects`.
+ *   - closedBy: while it holds the rung is unavailable to the rival (evade cost Infinity); a 'used' rung whose closedBy
+ *     holds at an order tick returns to 'open' (its escape and effects stop; its exempt app keeps adoption, frozen by its
+ *     own `when`) and the lever's answer falls due.
+ *   - amend(id): ModelApi.amend. At draftUntil (the first step whose end time ≥ it, in office; an amendment that
+ *     completes in Opposition is held and closes on the first step back in office): status 'closed' ('loopholeClosed');
+ *     the next rung of the ladder whose `when` holds gets 'open' ('loopholeOpened'); the lever's answer falls due.
+ * Text: name ≤ 40 characters ("Light trucks"), blurb one line ("Vans are counted separately").
+ */
+export interface LoopholeDef {
+  /** Unique game-wide ('motion.mileage.lightTrucks'). */
+  id: string;
+  /** The lever whose ladder holds it (LeverDef.ladder lists this id). */
+  lever: string;
+  name: string;
+  blurb: string;
+  /** The exempt application the rival founds (free) when he first uses this rung. Default: none. */
+  app?: string;
+  /** Share of the lever's grip that escapes while used, 0–LOOPHOLE_ESCAPE_MAX. */
+  escape: number;
+  /** Standing effects while used, times = the lever's effective level (the heavier vehicle: satMul on the exempt app).
+   *  Default []. */
+  effects?: EffectDef[];
+  /** The evade cost: premium × I (ResponseDef). */
+  premium: number;
+  /** Amendment: Mandate cost (no effect scales it) and drafting years (× Π amendYearsMul) and the button's label ("Count every vehicle under 8,500 lb"). Default: ChairDef.amend with label = `name`.
+   *  Absent WITH closedBy: the rung cannot be amended, only closed by pairing (LoopholeView.canAmend false). */
+  amend?: { mandateCost: number; years: number; label: string };
+  /** The robust rung: unavailable to the rival while this holds (a duty in force: { owns: 'motion.duty' }). Default:
+   *  none. LoopholeView.robustLabel = its label. */
+  closedBy?: Cond;
+  /** M5 (contract): the rung opens only if this holds when its turn comes; otherwise it is skipped. Default: always. */
+  when?: Cond;
+  /** Scene prop key for the exempt thing ('vans', 'borehole'); unknown → none. */
+  prop?: string;
+}
+
+/**
+ * M5: a Treaty Article (Content.articles), bought with Precedent between runs (buyArticle), kept for good: its effects
+ * stand in every Ministry. Offered while `requires` holds (between runs). Text: name ("The Ratchet Clause"), blurb.
+ */
+export interface ArticleDef {
+  id: string;
+  name: string;
+  blurb: string;
+  /** Precedent. */
+  cost: number;
+  effects: EffectDef[];
+  /** Default: always. */
+  requires?: Cond;
+}
+
+/**
+ * M5: a playbook the rival learns at a Treaty (Content.playbooks): the one with `treaty` === meta.treaties after the
+ * increment joins meta.playbooks (treaty 1 = the first treaty() call, which is the second Treaty counting Take office).
+ * Its effects stand in every later Ministry (quietYearsAdd negative, rivalCostMul…).
+ */
+export interface PlaybookDef {
+  id: string;
+  name: string;
+  blurb: string;
+  treaty: number;
+  effects: EffectDef[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -2326,6 +3022,20 @@ export interface GameState {
     sector: SectorId; reported: number; true: number; variant: 'small' | 'large' | 'failed'; year: number;
     followed: boolean;
   } | null;
+  /* --- M5 (optional: absent = false / null, so M4 states and hand-built test states stay valid) --- */
+  /**
+   * M5: the invitation to take office stands on this run: reckon() sets it on the fresh run when OfficeDef.when held on
+   * the run just ended and office is not taken; false otherwise; takeOffice clears it. Kept by the between-runs rebuilds
+   * (as charterOffer). The page offers Take office only while it is true and Derived.freshRun. Absent = false.
+   */
+  officeOffer?: boolean;
+  /**
+   * M5: the Ministry (ChairState), or null / absent outside office. Built by takeOffice, and by reckon() and
+   * createState(content, meta) whenever meta.office is present: the ONE carry-over step (core inherit.ts) builds it
+   * fresh each Ministry (confidence.start, the first Parliament, empty maps, the rival's state with capital 0 until a
+   * chair sector opens; RivalDef.startCapitalSeconds). A Reckoning discards it.
+   */
+  chair?: ChairState | null;
 }
 
 /** M3: a dispatch waiting for an answer (GameState.dispatch.pending). */
@@ -2357,11 +3067,147 @@ export interface ActiveModifier {
   branch?: 'win' | 'lose';
 }
 
+/**
+ * M5: the Ministry's run state (GameState.chair). Run-scoped: built fresh each Ministry by inherit.ts; a Reckoning
+ * discards it. Rules below run in the step (tick and fastForward alike unless marked), in a Ministry, while feature
+ * 'chair' is on (inspection rules also need 'inspection'; loophole rules 'loopholes').
+ *
+ * THE PARLIAMENT CLOCK:
+ *   - Offer: on the first LIVE step (never inside fastForward or useBank: the offer waits for a live step, as letters
+ *     do) whose end time ≥ pollAt − noticeYears / YPS while offer is null: E = every PledgeDef whose `when` holds, in
+ *     content order; n = elections.offer + Σ pledgeOfferAdd; if |E| ≤ n, offer = E; else draw without replacement from
+ *     the remaining list Rm (initially E), for k = 0 … n − 1: idx = mix32(seed ^ Math.imul(index + 1, 0x9E3779B1) ^ k)
+ *     mod |Rm|, take Rm[idx] and remove it; then sort the drawn ids into content order (so "the first `keep`", the
+ *     default, are the mildest: content puts them first). seed = state.seed. 'electionCalled' event and headline.
+ *   - choosePledges(ids) sets chosen (ModelApi.choosePledges).
+ *   - POLLING DAY, the step whose end time ≥ pollAt (in this order): (1) chosen ?? the first `keep` of offer ?? [] →
+ *     pledges (in force for the next Parliament; each id into meta.pledgesKept); (2) won ⇔ C + Σ over them (atPoll ??
+ *     confidence) ≥ winAt; then C += that Σ (clamped); (3) won: electionsWon += 1, lostInARow = 0, inOpposition = false,
+ *     Mandate += winMandate; 'electionWon'. Lost: lostInARow += 1, inOpposition = true, 'electionLost'; unless a standing
+ *     'ratchet' effect is in force, the incoming government lowers by repealPerParliament levels (floored at 0) the
+ *     chair-sector lever at level ≥ 1 with the largest RivalState.answers[id].comply (ties: content order; a lever with
+ *     no answer counts 0), appending { lever, parliament: index } to `repealed` per level ('leverRepealed' by
+ *     'opposition'); (4) if lostInARow ≥ lostInARowEnds: 'ministryDefeated' and a Reckoning becomes pending with cause
+ *     'defeated' (Derived.pendingReckoning); (5) else the next Parliament: index + 1, start = end time, pollAt = end time
+ *     + max(1, termYears + Σ termYearsAdd) / YPS, offer = chosen = null.
+ *   - IN OPPOSITION: setLever (and the Civil Service) refuse every raise; lowering is allowed; amend() is allowed (an
+ *     amendment completing in Opposition waits, LoopholeDef); campaign() is allowed only here; the rival goes on as
+ *     before. The pledges in force bind as ever.
+ *
+ * INSPECTION AND CONCEALMENT (feature 'inspection'; design/m5-contract-notes.md §4):
+ *   - Inspectors: total = max(0, inspection.inspectors + Σ inspectorAdd). inspectors[i] = run time Inspector i is ready
+ *     (entries beyond the array, or ≤ time, are ready; the array grows as needed).
+ *   - Concealment ramp, at each order tick, per rival sector s (step 3 of the rival's decision), only if RivalDef has a
+ *     'conceal' row whose feature is on: let quiet = the rival's quiet period (RivalDef.policy) and fm = fineMul × Π
+ *     fineMul; coverage = min(1, Inspectors total ÷ open rival sectors). If a standing 'certify' effect names s:
+ *     concealment[s] = 0. Else if (time − (inspected[s] ?? 0)) × YPS ≥ quiet AND (s is capstoned OR (s has a duty,
+ *     charge, cap or quota at effective level ≥ 1 AND fm × coverage < 1)): concealment[s] = min(concealMax,
+ *     concealment[s] + concealPerYear × the tick's model years); else unchanged.
+ *   - What it does (c = concealment[s]): SectorDerived.reportedR = R × (1 − c) (R stays the TRUE figure everywhere it was
+ *     read before: decades, clear skies, Steady State, the budget streaks, pressure, the reserve, Hindsight); levy
+ *     revenue (duty, permit, charge) × (1 − c); a cap's or quota's target is enforced on the reported figure: the solver's
+ *     target becomes capR / (1 − c) (composed with a used rung's ÷ (1 − escape)). For a CAPSTONED sector the scaled
+ *     record's R is the reported figure, the true R = R_rec / (1 − c), and the excess (true − reported) is stepped into
+ *     its pressure as arrears are (SettledState, M4 arrears stepping; held below ARREARS_COLLAPSE_HOLD), without
+ *     entering arrears; after c returns to 0 its pressure decays back to the recorded P as after arrears.
+ *   - inspect(s): ModelApi.inspect. The fine (Mandate) = fm × c × L_s × quiet / YPS, with L_s = the sector's levy revenue
+ *     per second at the true R × (GlobalParams.levy.mandateShare ?? 0.1): the Mandate the dodged levy would have
+ *     earned over the quiet period (0 for a capstoned sector: Confidence and the headline only).
+ *   - Certified decades: a decade recorded in office on a chair or capstoned sector is certified when inspected[s] falls
+ *     inside its ten-model-year window (SectorState.decadesCertified; RunStats.certifiedDecades).
+ *   - Standing inspection (OrdersState.inspection, available while a standing orderUnlock 'inspection' is in force):
+ *     at each model-decade boundary of run time (floor(t × YPS / 10) rises), if on, a sector is chosen and open, and an
+ *     Inspector is ready: inspects it as inspect() does, by 'inspectorate' (run.automated += 1; not a decision).
+ */
+export interface ChairState {
+  /** C, 0–CONFIDENCE_MAX. */
+  confidence: number;
+  parliament: {
+    /** 0 for the first (caretaker) Parliament. */
+    index: number;
+    /** Run time it began. */
+    start: number;
+    /** Run time of polling day. */
+    pollAt: number;
+    /** The pledges offered (ids, in content order), or null before the offer is drawn. */
+    offer: string[] | null;
+    /** Chosen by choosePledges (exactly `keep` ids of offer), or null. */
+    chosen: string[] | null;
+  };
+  /** Pledges in force: binding this Parliament (chosen at the last polling day). [] in the first Parliament. */
+  pledges: string[];
+  inOpposition: boolean;
+  lostInARow: number;
+  /** This Ministry's elections won. */
+  electionsWon: number;
+  /** M5 (contract): elections lost this Ministry (RunSummary.ministry.lost). Absent = 0. */
+  electionsLost?: number;
+  /** Ready times of the Inspectors (run time; see above). */
+  inspectors: number[];
+  /** Sector → run time of its last inspection this Ministry (absent: never; the quiet period counts from 0). */
+  inspected: Record<SectorId, number>;
+  /** Sector → what the last inspection found: the concealed share and the run time (only when c > 0). */
+  found: Record<SectorId, { share: number; t: number }>;
+  /** M5 (contract): inspections this Ministry, and those that found concealment (RunSummary.ministry). Absent = 0. */
+  inspections?: number;
+  findings?: number;
+  /** Sector → run time until which compensation holds (the jobs term ignores it while time < this). */
+  compensated: Record<SectorId, number>;
+  /** Rung id → its state (LoopholeState). */
+  loopholes: Record<string, LoopholeState>;
+  /** Lever id → parliament index of a carve-out won by lobbying (the lever acts one level lower that Parliament). */
+  carveOuts: Record<string, number>;
+  /** Lever id → a raise held up in court: the lever acts at `from` until run time `until`, then at its level. */
+  litigation: Record<string, { from: number; until: number }>;
+  /** M5 (contract): lever id → the level last litigated this Ministry (litigate's "not litigated at this level"). */
+  litigatedAt?: Record<string, number>;
+  /** Levers repealed by an incoming government, in order (for the page and the retrospective). */
+  repealed: { lever: string; parliament: number }[];
+  /** M5 (contract): lever ids whose answer has fallen due (a rung closed or reopened); cleared when answered. */
+  due?: Record<string, true>;
+  rival: RivalState;
+}
+
+/**
+ * M5: the rival's run state (ChairState.rival). Rebuilt each Ministry (capital 0, maps empty) by inherit.ts.
+ * THE EFFECTIVE LEVEL of a lever in a Ministry (one helper, core leverLevels.ts, used by flows, effects, side effects,
+ * popularity, rung effects and views; LeverView.effectiveLevel):
+ *   effectiveLevel = litigation[id] && time < litigation[id].until ? litigation[id].from
+ *                  : level − (carveOuts[id] === parliament.index ? 1 : 0)
+ *   floored at 0. Outside a Ministry it is the level. Mandate costs, upkeep, maxLevel and the answer's "level changed"
+ *   test read the LEVEL (the player pays for what was enacted).
+ */
+export interface RivalState {
+  /** £, his purse (RivalDef: income, purchases, the opening purse). */
+  capital: number;
+  /** Sector → his peak income per second this Ministry (the jobs term). */
+  peakIncome: Record<SectorId, number>;
+  /** Sector → true minus reported, as a share of true R (0–concealMax), per rival sector. */
+  concealment: Record<SectorId, number>;
+  /** Lever id → his last answer: kind, the lever level it answered, run time, its yearly cost to him (£ a model year),
+   *  and the comply cost at that answer (the repeal rule reads it). */
+  answers: Record<string, { kind: ResponseKind; level: number; t: number; cost: number; comply: number }>;
+  /** Lever ids he is lobbying now (answer 'lobby', no carve-out yet this Parliament). */
+  lobbying: Record<string, boolean>;
+}
+
+/** M5: a rung's state (ChairState.loopholes). `since` = run time of the last status change; draftUntil while drafting. */
+export interface LoopholeState {
+  status: LoopholeStatus;
+  since: number;
+  draftUntil?: number;
+  /** M5 (contract): the status before drafting began ('open' or 'used'): while drafting, the rung acts as it did then. */
+  before?: 'open' | 'used';
+}
+
 /** M2: who took an action or caused an event. 'default' = the rules themselves (a lapse, an overflow, an offline hold).
  *  Later: 'dispatch' (M3), 'rival' (M5), 'agent' (M7). */
 export type Actor = 'player' | 'market' | 'civilService' | 'treasury' | 'default'
   /** M3: the standing dispatch order (OrdersState.dispatch) answered a dispatch with its default arm. */
-  | 'dispatch';
+  | 'dispatch'
+  /** M5: the rival (his purchases, foundings, answers, evasions); Standing inspection; the incoming government (a
+   *  repeal in Opposition). */
+  | 'rival' | 'inspectorate' | 'opposition';
 
 /** M2: one decade dividend offer (GameState.pendingDividends). */
 export interface PendingDividend {
@@ -2436,6 +3282,32 @@ export interface PendingDividend {
  *   without acts.
  * M4 order within a step: the M3 order up to 'archiveUnlocked', then 'thresholdCrossed', 'scarHealed', 'surveyed',
  *   'arrears' / 'arrearsCleared' (each in sectorOrder), then (if orders tick) the standing orders' events.
+ * M5 kinds (each with the headline of the same name where HeadlineKey has one):
+ *   'officeTaken'       — takeOffice (between runs; printed into the rebuilt Ministry with the 'acquisition' and
+ *                         'officeTaken' headlines, in that order)
+ *   'electionCalled'    n (parliament index) — the offer is drawn
+ *   'electionWon' / 'electionLost'   n (parliament index), label (Confidence at polling, integer, as a string)
+ *   'leverRepealed'     sector, id (lever), n (its new level), by 'opposition'
+ *   'ministryDefeated'  — the second loss in a row (the Reckoning 'defeated' is then pending)
+ *   'inspected'         sector, n (round(c × 100) found; 0 when clean), by ('player' | 'inspectorate')
+ *   'concealmentFound'  sector, n (as 'inspected') — after its 'inspected'
+ *   'rivalAnswered'     sector, id (lever), label (the ResponseKind) — when the kind changed (a first answer counts)
+ *   'loopholeOpened' / 'loopholeUsed' / 'loopholeClosed'   sector, id (rung), label (the lever id); 'loopholeUsed' by
+ *                       'rival'
+ *   'litigated'         sector, id (lever), n (the level held up), by 'rival'
+ *   'carveOut'          sector, id (lever), by 'rival'
+ *   'compensated'       sector, by 'player'
+ *   'treaty'            n (meta.treaties after) — between runs, in the rebuilt run's list
+ *   'playbookLearnt'    id (playbook) — after 'treaty'
+ *   'articleBought'     id (Article) — between runs
+ *   M5 CHANGES: 'upgradeBought', 'appFounded' and 'stageReached' may carry by 'rival'; a loophole's exempt app is
+ *   founded by 'rival'; 'reckoning' may carry id 'defeated'.
+ * M5 order within a step: the M4 order, then 'electionCalled', 'electionWon' / 'electionLost', 'leverRepealed',
+ *   'ministryDefeated', 'loopholeClosed' (draft completions) and the 'loopholeOpened' it causes, then (if orders tick)
+ *   the rival's decision ('upgradeBought' / 'appFounded' / 'stageReached' by 'rival', 'rivalAnswered', 'loopholeUsed',
+ *   'litigated', 'carveOut'), then Standing inspection ('inspected', 'concealmentFound'), then the player's standing
+ *   orders' events. Actions emit theirs at once; a laddered lever's first raise to ≥ 1 in a Ministry (setLever, or the
+ *   Civil Service) opens its first rung at once ('loopholeOpened' after 'leverEnacted').
  */
 export type EventKind =
   | 'appAvailable' | 'appFounded' | 'upgradeBought' | 'stageReached' | 'leverEnacted' | 'leverLapsed'
@@ -2448,7 +3320,11 @@ export type EventKind =
   | 'seamSunk' | 'biteBack' | 'dispatchArrived' | 'dispatchAnswered' | 'modifierEnded' | 'historyChosen'
   | 'historyCleared' | 'returnFiled' | 'returnPublished' | 'returnWithdrawn' | 'archiveUnlocked' | 'ending' | 'bankUsed'
   /* --- M4 --- */
-  | 'thresholdCrossed' | 'scarHealed' | 'surveyed' | 'arrears' | 'arrearsCleared' | 'capstoned';
+  | 'thresholdCrossed' | 'scarHealed' | 'surveyed' | 'arrears' | 'arrearsCleared' | 'capstoned'
+  /* --- M5 --- */
+  | 'officeTaken' | 'electionCalled' | 'electionWon' | 'electionLost' | 'leverRepealed' | 'ministryDefeated'
+  | 'inspected' | 'concealmentFound' | 'rivalAnswered' | 'loopholeOpened' | 'loopholeUsed' | 'loopholeClosed'
+  | 'litigated' | 'carveOut' | 'compensated' | 'treaty' | 'playbookLearnt' | 'articleBought';
 
 /** M2: one event (GameState.events). Plain JSON. */
 export interface GameEvent {
@@ -2480,7 +3356,10 @@ export interface OfflineReport {
   heldBy: 'crisis' | 'collapse' | 'exhausted' | 'cap' | 'pending' | null
     /** M4: it stopped one step before a capstoned sector would go into arrears (holdBefore 'crisis' or 'collapse';
      *  heldSector names it). Banked like 'crisis' (GlobalParams.offline.bankRate). */
-    | 'arrears';
+    | 'arrears'
+    /** M5: it stopped one step before a polling day the Ministry would LOSE (holdBefore 'crisis' or 'collapse'): a
+     *  player is never voted out while away. Banked like 'crisis'. A polling day that would be won is crossed. */
+    | 'election';
   /** The sector whose crisis, collapse or exhaustion was held off (heldBy 'crisis' | 'collapse' | 'exhausted'; M4: or
    *  'arrears'). */
   heldSector?: SectorId;
@@ -2763,6 +3642,13 @@ export interface SectorState {
   /** M4: on a feed SOURCE, the peak rAdded into each target this run (SectorDerived.feeds), sampled at each
    *  HistorySample (every 5 s of run time) rather than every step: RunSummary.sectors[s].feedR. */
   feedPeak?: Record<SectorId, number>;
+  /* --- M5 (optional: absent = none / all false) --- */
+  /** M5: parallel to decadesWithin: true where that decade was certified (recorded in office with an inspection of the
+   *  sector inside its ten-model-year window; ChairState). Absent = all false. Display and Precedent only. */
+  decadesCertified?: boolean[];
+  /** M5: hiddenFlow sectors: the return share r when the baseline was recorded (with etaAtBase); the shadow solve
+   *  freezes r here. Absent: r at its base (returnShare × the run-start effects). */
+  returnAtBase?: number;
 }
 
 export interface AppState {
@@ -2774,6 +3660,9 @@ export interface AppState {
   peakD: number;
   /** M2: highest AppDerived.adoption this run (0–1), updated every step (for the run summary's picture). */
   peakAdoption: number;
+  /** M5: a founded application whose ApplicationDef.when fails: its effective saturation is capped here (the value on
+   *  the last step `when` held). Absent while `when` holds (or the app has none). */
+  frozenSat?: number;
 }
 
 export interface LeverState {
@@ -2791,6 +3680,13 @@ export interface LeverState {
   bitten?: boolean;
   /** M4 (amend): LeverDef.when has held this run (written by the step, checked about once a real second). Absent = false. */
   seen?: boolean;
+  /* --- M5 (absent = never this run) --- */
+  /** M5: run time the lever last rose from 0 (LeverDef.popularity's clock); removed when it returns to 0. */
+  since?: number;
+  /** M5: run time of the lever's last raise, any level (the rival's litigation window). */
+  raisedAt?: number;
+  /* M5: a 'charge' (and a cap or quota with basis 'applied') keeps its fixed reference in `ref` (LeverKind 'charge',
+   * LeverDef.basis), snapshotted on the raise from 0 as a duty's is. */
 }
 
 export interface NewsItem {
@@ -2813,6 +3709,11 @@ export interface HistorySample {
    *  M4: a depletion sector's is recorded only while it is surveyed (its sinkR reads null otherwise). */
   sink?: Record<SectorId, number>;
   wellbeing: number;
+  /** M5: ChairState.confidence at the sample time, in a Ministry (the Confidence sparkline); absent outside office. */
+  confidence?: number;
+  /** M5: sector id → SectorDerived.reportedR / baseR for rival sectors while feature 'inspection' is on (the "as
+   *  reported" line beside the true one); absent otherwise. */
+  reported?: Record<SectorId, number>;
 }
 
 export interface RunStats {
@@ -2842,6 +3743,8 @@ export interface RunStats {
    * order does (run.automated), and the between-runs actions (Know-how, Institutions, loadout, Charter, respec).
    * M3: also sinkSeam and answerDispatch (by the player). Not counted: fileReturn, withdrawReturn, useBank,
    * chooseHistory, and default or standing-order answers.
+   * M5: also inspect, amend, choosePledges, campaign and compensate. Not counted: takeOffice, treaty, buyArticle
+   * (between runs), anything the rival or Standing inspection does.
    */
   decisions: number;
   /** M2: decisions per model decade of this run: index k counts decisions taken at run time t with
@@ -2879,6 +3782,9 @@ export interface RunStats {
   /** M3 (finish): a household return has been published in this run (one publication a run; see ModelApi.fileReturn).
    *  Absent = false. A save without it is migrated from its news (a 'return' item). */
   returnPublished?: boolean;
+  /* --- M5 --- */
+  /** M5: decades certified this run, all sectors (SectorState.decadesCertified); absent = 0. Feeds office.record. */
+  certifiedDecades?: number;
 }
 
 /** M2: one recorded opening action (for M5's rival profile). `t` is run time in seconds (game time, not wall time). */
@@ -2903,7 +3809,10 @@ export interface OpeningRecord {
 /** M2: which standing order. */
 export type OrderId = 'market' | 'civilService' | 'treasury'
   /** M3: the standing dispatch order (default answers for chosen cast members). */
-  | 'dispatch';
+  | 'dispatch'
+  /** M5: Standing inspection (ChairState, the inspection rules); available while a standing orderUnlock 'inspection'
+   *  is in force; OrdersView.kind 'closing'. */
+  | 'inspection';
 
 /**
  * M2: standing orders, automation as policy (MetaState.orders: they persist across Reckonings as the player's settings;
@@ -2976,6 +3885,11 @@ export interface OrdersState {
   };
   /** M3: cast id → answer that cast member's dispatches with the default arm (missing = no). */
   dispatch: { on: boolean; cast: Record<string, boolean> };
+  /** M5: Standing inspection: on, and the sector it inspects each model decade (null: none chosen). Absent = { on:
+   *  false, sector: null }. Persists across Reckonings with the other orders.
+   *  M5 CHANGE to the Market: in a Ministry no sector is the player's to buy in (chair sectors are the rival's, the
+   *  capstone is settled), so the player's Market takes no action; its settings are kept; OrdersView.market.rival. */
+  inspection?: { on: boolean; sector: SectorId | null };
 }
 
 /** M2: a partial update for ModelApi.setOrders: given fields replace the stored ones (maps and lists are replaced whole,
@@ -2986,6 +3900,8 @@ export interface OrdersPatch {
   treasury?: { on?: boolean; keepSeconds?: number; projects?: string[] };
   /** M3: dispatch.cast is merged key by key; unknown cast ids dropped. */
   dispatch?: { on?: boolean; cast?: Record<string, boolean> };
+  /** M5: an unknown sector id is dropped (stored as null). */
+  inspection?: { on?: boolean; sector?: SectorId | null };
 }
 
 export interface MetaState {
@@ -2993,7 +3909,9 @@ export interface MetaState {
   hindsightEarned: number;
   reckonings: number;
   knowhow: Record<string, number>;
-  /** M1 CHANGE: institution id → level owned (≥ 1). Was boolean. */
+  /** M1 CHANGE: institution id → level owned (≥ 1). Was boolean.
+   *  M5 CHANGE: 0 is valid: "unlocked, no level" (written by takeOffice and treaty(); InstitutionView.unlocked). Every
+   *  "owned" test stays level ≥ 1. */
   institutions: Record<string, number>;
   achievements: Record<string, boolean>;
   /** Sectors that have reached Steady State at least once. */
@@ -3037,7 +3955,11 @@ export interface MetaState {
   /* --- M3 --- */
   /** M3: dispatch history across the save: times offered, answers per arm by anyone, and per arm by the player
    *  (arrays indexed by arm, extended with zeros). M5's rival and the retrospective read it. */
-  dispatches: { seen: Record<string, number>; arms: Record<string, number[]>; playerArms: Record<string, number[]> };
+  dispatches: { seen: Record<string, number>; arms: Record<string, number[]>; playerArms: Record<string, number[]>;
+    /** M5 (contract): dispatch id → the player's most recent answer to it: arm, calendar year (integer), run
+     *  (meta.reckonings + 1 then). Written by answerDispatch (by 'player') from M5 on; read by the file card (FileView).
+     *  Absent = {} (answers before M5 have no year: the file lists them with year null). */
+    lastPlayer?: Record<string, { arm: number; year: number; run: number }> };
   /** M3: the History in force this run (chosen while fresh), or null. reckon() resets it to null (recorded in the
    *  RunSummary). */
   history: string | null;
@@ -3084,6 +4006,44 @@ export interface MetaState {
     /** Scars by renewable sector id (RenewableDef.scar). `since` = meta.totalSeconds when written. */
     scars?: Record<SectorId, { yearsLeft: number; since: number }>;
   };
+  /* --- M5 (all optional: absent = the value stated; a fresh meta has none of them) --- */
+  /**
+   * M5: set by takeOffice, never removed. While present every run is a Ministry (GameState.chair). Fields:
+   *   run         meta.reckonings when office was taken;  at  meta.totalSeconds then;
+   *   profile     the RivalProfile distilled then (RivalDef.profileFrom), fixed for the save;
+   *   sources     the raw figures behind each reading, for the rival's panel ("12 purchases in your first ten minutes"):
+   *               haste { n: purchases with t < 600, d: null }; founder { n: founds, d: actions }; volume { n: fork
+   *               purchases of the larger-demand arm, d: fork purchases }; drawn { n: earliest firstBudgetAt seconds,
+   *               or −1 if none, d: drawnBySeconds }; pliant { n: accepting answers, d: answers }. (Notes: strings; the
+   *               contract stores figures and the page words them.)
+   *   handedOver  the player's Know-how levels in rival-held trees at that moment (the head start; RivalDef
+   *               .knowhowTransfer);
+   *   prospectus, file   computed once by takeOffice (the page can show them again);
+   *   ministries  Ministries begun (1 after takeOffice; +1 at each Reckoning in office);
+   *   record      the Precedent terms accumulated since the last Treaty, added at each Reckoning in office:
+   *               certifiedDecades += run.certifiedDecades; settledFromChair += chair sectors settled at the Reckoning;
+   *               parliamentsWon += ChairState.electionsWon; wellbeingYears += run.wellbeingYears. Zeroed by treaty().
+   */
+  office?: {
+    run: number; at: number; profile: RivalProfile;
+    sources: Record<keyof RivalProfile, { n: number; d: number | null }>;
+    handedOver: Record<string, number>;
+    prospectus: ProspectusView; file: FileView;
+    ministries: number;
+    record: { certifiedDecades: number; settledFromChair: number; parliamentsWon: number; wellbeingYears: number };
+  };
+  /** M5: Precedent to spend on Articles (buyArticle), and all ever earned. Absent = 0. */
+  precedent?: number;
+  precedentEarned?: number;
+  /** M5: Articles bought (kept for good). Absent = {}. */
+  articles?: Record<string, true>;
+  /** M5: treaty() calls made (Take office not counted). Absent = 0. */
+  treaties?: number;
+  /** M5: playbook ids the rival has learnt, in order. Absent = []. */
+  playbooks?: string[];
+  /** M5 (contract): pledge ids that have been in force in any Ministry (Cond `owns` with a pledge id). Absent = {}.
+   *  (Notes §11 cites "§14 pledgesKept", which §14 does not define; this is it.) */
+  pledgesKept?: Record<string, true>;
 }
 
 /**
@@ -3164,6 +4124,9 @@ export interface RunSummary {
      *  whether it crossed its threshold (renewable); the peak rAdded into each fed target (SectorState.feedPeak; feed
      *  sources); capstoned this run. */
     minStock?: number; crossed?: boolean; feedR?: Record<SectorId, number>; capstoned?: boolean;
+    /** M5: SectorState.openFor at the end (seconds; the offer's "open five minutes" for later summaries). M5 also:
+     *  certified decades this run, and whether the rival ran it (a chair sector in a Ministry). */
+    openFor?: number; certified?: number; rival?: boolean;
   }>;
   /** M1: the Hindsight breakdown at the Reckoning. Absent on summaries migrated from v1. */
   hindsightTerms?: HindsightTerms;
@@ -3190,6 +4153,11 @@ export interface RunSummary {
   dispatchesDefaulted?: number;
   /** run.peakWellbeing is `peakWellbeing`; this is state.peakPopulation. */
   peakPopulation?: number;
+  /* --- M5 (present only for a run that was a Ministry) --- */
+  /** M5: the Ministry: elections won and lost, inspections made and those that found concealment, rungs closed by
+   *  amendment, the Treasury at the end (GameState.capital), chair sectors settled at the end, and the profile in force. */
+  ministry?: { electionsWon: number; lost: number; inspections: number; found: number; loopholesClosed: number;
+               treasury: number; settledFromChair: SectorId[]; profile?: RivalProfile };
 }
 
 /**
@@ -3198,7 +4166,10 @@ export interface RunSummary {
  * RunSummary with an unknown cause must load and display. (A depletion sector never collapses and a capstoned sector
  * never ends a run, so M4 adds no cause.)
  */
-export type ReckoningCause = 'exhausted' | 'collapse' | 'chosen';
+export type ReckoningCause = 'exhausted' | 'collapse' | 'chosen'
+  /** M5: the Ministry lost ChairDef.opposition.lostInARowEnds elections in a row (ChairState, polling day). No
+   *  causeSector. The UI keeps a default label for causes it does not know (M7's 'generation' coexists). */
+  | 'defeated';
 /*
  * M4 (amend), DEFERRED (recorded, not in the contract): a second crisis name per Industry (SectorDef.pressure has one
  * crisisName; later names live in the crisis headlines); per-level effects on a 'quota' lever; per-Act credits in
@@ -3242,6 +4213,12 @@ withheld?: number;
    * stays ≥ 1). Present only when run.letterShare ≠ 0 (absent = 0, so content without hindsightShare has the M3 shape).
    */
   letters?: number;
+  /**
+   * M5: in a Ministry, (ChairDef.hindsight.perParliamentWon ?? 0) × ChairState.electionsWon: an eighth weighted term,
+   * counted in "the sum of the seven terms" wherever that phrase is used (letters, withheld, total). Present only in
+   * office (absent = 0). In a Ministry every other term's weight is GlobalParams.hindsight overlaid by ChairDef.hindsight.
+   */
+  parliaments?: number;
   /** M2 CHANGE: max(1, round(sum of the seven weighted terms − (withheld ?? 0))) — equals hindsightOnReckon. */
   total: number;
 }
@@ -3383,6 +4360,32 @@ export interface Derived {
     sector: SectorId; reported: number; true: number; variant: 'small' | 'large' | 'failed';
     headline: string; body: string;
   } | null;
+  /* --- M5 (optional: absent = null / as stated, as from a core before M5; the M5 core always writes them). M5 CHANGES
+   *     to existing fields in a Ministry: incomePerSec is the TREASURY's income per second (ChairDef.treasury, net of
+   *     pledges' treasuryShare); clickValue is 0 (click is refused); pendingReckoning.cause may be 'defeated';
+   *     nextSectors leaves out sectors of closedInOffice acts; hindsightIfReckonNow and hindsightTerms use the overlay. --- */
+  /**
+   * M5: office. offered = GameState.officeOffer && freshRun && office not taken (the page shows Take office / Not yet);
+   * taken = meta.office present; prospectus / file = meta.office's (null before office); sealed = sectors of
+   * closedInOffice acts that are in meta.sectorsOpened, while office is taken (the sealed postcards; [] otherwise).
+   * For the offer card before office is taken, `preview` is the prospectus and file as takeOffice WOULD store them now
+   * (null unless offered).
+   */
+  office?: {
+    offered: boolean; taken: boolean; prospectus: ProspectusView | null; file: FileView | null; sealed: SectorId[];
+    preview: { prospectus: ProspectusView; file: FileView } | null;
+  };
+  /** M5: the Ministry for the page (ChairView); null outside office, or while feature 'chair' is off. */
+  chair?: ChairView | null;
+  /**
+   * M5: the Treaty, between runs: available = feature 'treaty' on, freshRun, office taken, ChairDef.treaty present and
+   * its `when` holds (treaty() would accept); precedentIfNow = the Precedent treaty() would pay now; terms = the four
+   * weighted terms by name ('certifiedDecades', 'settledFromChair', 'parliamentsWon', 'wellbeingYears'), unrounded.
+   * Also: precedent = meta.precedent ?? 0; articles = ArticleView for every Article (content order). null while feature
+   * 'treaty' is off or office is not taken.
+   */
+  treaty?: { available: boolean; precedentIfNow: number; terms: Record<string, number>; precedent: number;
+             articles: ArticleView[] } | null;
 }
 
 /** M3: Derived.dispatch. */
@@ -3519,6 +4522,10 @@ export interface OrdersView {
     paybackChoices: number[];
     /** Resolved switch for every OPEN sector (true where the stored map has no key). */
     sectors: Record<SectorId, boolean>;
+    /** M5: in a Ministry, true: the Market row is shown as the rival's policy ("Pryce Consolidated: buys whatever pays
+     *  back within {n} seconds. (Your Market; his purse.)", n = ChairView.rival.paybackMax); `available` reads false
+     *  (the player's Market has nothing to buy). Absent = false. */
+    rival?: boolean;
   };
   civilService: { available: boolean; on: boolean; levers: Record<SectorId, string[]> };
   treasury: { available: boolean; on: boolean; keepSeconds: number; projects: string[] };
@@ -3532,8 +4539,12 @@ export interface OrdersView {
   /** M3: the standing dispatch order. */
   dispatch: { available: boolean; on: boolean; cast: Record<string, boolean> };
   /** M3: shift 3's label per order, fixed by the contract: market 'opening'; civilService, treasury and dispatch
-   *  'closing'. The UI shows it only once meta.flags.proprietor is true. */
+   *  'closing'. The UI shows it only once meta.flags.proprietor is true. M5: inspection 'closing'. */
   kind: Record<OrderId, 'opening' | 'closing'>;
+  /* --- M5 (optional; absent = as stated) --- */
+  /** M5: Standing inspection: available (a standing orderUnlock 'inspection' and feature 'inspection'), the stored
+   *  settings. Absent = unavailable. */
+  inspection?: { available: boolean; on: boolean; sector: SectorId | null };
 }
 
 /** M1 CHANGE (was EraDerived). */
@@ -3760,6 +4771,32 @@ export interface SectorDerived {
    * Both assume no new seam (the formula sheet says so).
    */
   yearsLeft?: { flat: number | null; growing: number | null } | null;
+  /* --- M5 (each optional: absent = the value stated, as from a core before M5; the M5 core always writes every one).
+   *     M5 CHANGES to existing fields: `preview` per ActDef.chair; resourceUse is always the TRUE R (consumed water on a
+   *     hiddenFlow sector); levyRevenue is net of concealment; servicePrice includes chargePart; income on a chair
+   *     sector is the rival's. --- */
+  /** M5: the official gauge: R × (1 − concealment) on a rival sector while feature 'inspection' is on; R otherwise. The
+   *  page shows this as the Industry's R ("as reported") unless inspectedUntil is in the future. Absent = resourceUse. */
+  reportedR?: number;
+  /** M5: run time until which the true R is shown (last inspection + revealYears / YPS), or null. */
+  inspectedUntil?: number | null;
+  /** M5: what the last inspection found (ChairState.found[s]), or null. */
+  found?: { share: number; t: number } | null;
+  /** M5: run time of the last inspection this Ministry (ChairState.inspected[s]), or null if never ("last inspected
+   *  1961" / "never"). */
+  inspectedAt?: number | null;
+  /** M5: run by the rival: a chair sector or a capstoned sector in a Ministry. Absent = false. */
+  rival?: boolean;
+  /** M5: the charge part of the service price now (LeverKind 'charge'; 0 without one). Absent = 0. */
+  chargePart?: number;
+  /** M5: hidden flow (SectorDef.hiddenFlow only; null otherwise): water applied (R_applied) and consumed (R) per
+   *  second, and the return share r now. Settled: frozen. */
+  water?: { applied: number; consumed: number; returnShare: number } | null;
+  /** M5: decades certified this run (count of true in SectorState.decadesCertified). Absent = 0. */
+  certifiedDecades?: number;
+  /** M5: the rival's upgrade purchases in this sector this run (count of levels; "Pryce has bought 14"). null outside a
+   *  rival sector. */
+  rivalBought?: number | null;
 }
 
 /** M3: SectorDerived.seams. */
@@ -3847,6 +4884,13 @@ export interface AppDerived {
   feeds?: Record<SectorId, number> | null;
   /** M4 (amend): false while the sector's mechanic.feedsKnownWhen fails (feeds then null); true otherwise. Absent = true. */
   feedsKnown?: boolean;
+  /* --- M5 --- */
+  /** M5: 'elastic' when (p_seen / p_i)^k_i > 1 (adoption below half: cheaper service clears more land: Jevons), else
+   *  'saturated' (cheaper service spares land: Borlaug); p_seen = priceSeen, p_i the effective halfPrice. A label on
+   *  any sector, no new arithmetic. Absent = not computed. M5 CHANGE: canFound is false in a chair sector. */
+  regime?: 'elastic' | 'saturated';
+  /** M5: ApplicationDef.when fails now (frozen or unavailable; AppState.frozenSat). Absent = false. */
+  frozen?: boolean;
 }
 
 export interface UpgradeView {
@@ -3890,6 +4934,14 @@ export interface UpgradeView {
    *  Here: for a visible, unmaxed card with a priceSeen effect (a business model, a flat rate), under feature
    *  'freeAtUse', buying it now (its other effects included). */
   wantedChange?: number | null;
+  /* --- M5 --- */
+  /** M5: a card of a chair sector in a Ministry: the rival's order book, read-only (affordable false; buyUpgrade
+   *  refuses); `level` counts his purchases. Absent = false. */
+  byRival?: boolean;
+  /** M5: with byRival: his payback on it now (seconds; Infinity if no gain; subsidies applied), or null. Absent = null. */
+  rivalPayback?: number | null;
+  /** M5: with byRival: a 'subsidy' lever in force pays this share of its cost (0 if none). Absent = 0. */
+  subsidised?: number;
 }
 
 export interface LeverView {
@@ -3922,6 +4974,38 @@ export interface LeverView {
   /** M4 (amend): while LeverDef.when hides the lever, its label (Cond.label or the core's fallback); else null. Absent =
    *  null (a core before the amendment). */
   waiting?: string | null;
+  /* --- M5 (optional: absent = null / the value stated; the M5 core always writes them). M5 CHANGE: canRaise is false
+   *     in Opposition and above a pledge's max. --- */
+  /**
+   * M5: the answer line, for a lever of a chair sector while feature 'chair' is on (else null): every row of the rival's
+   * table priced (ResponseDef) for the lever at its NEXT level (its current level if maxed), on the current state, in
+   * ascending cost (ties: comply, evade, lobby, litigate, table order), with whether each is available (an unavailable
+   * one has cost Infinity); chosen = the cheapest available kind, which is exactly what the rival would answer at the
+   * next order tick if the player enacted that level now and nothing else changed (exit criterion 4 asserts equality).
+   * Computed at most once per lever per PROJECTION_BUCKET (20 s) while nothing structural changes, as temptation views.
+   * `level` is the level priced.
+   */
+  rivalAnswer?: { level: number; options: { kind: ResponseKind; cost: number; available: boolean }[];
+                  chosen: ResponseKind } | null;
+  /** M5: the rival's current answer to the lever (RivalState.answers[id]), or null. */
+  answered?: { kind: ResponseKind; cost: number; since: number } | null;
+  /** M5: the effective level (RivalState doc); = level outside a Ministry. Absent = level. */
+  effectiveLevel?: number;
+  /** M5: the name of the pledge in force that binds it (PledgeDef.binds), or null. */
+  bound?: string | null;
+  /** M5: the max level that pledge allows, or null. */
+  boundMax?: number | null;
+  /** M5: run time a litigation holds it until, or null. */
+  litigatedUntil?: number | null;
+  /** M5: a carve-out won by lobbying acts this Parliament. Absent = false. */
+  carvedOut?: boolean;
+  /** M5: the rival is lobbying against it now (the hoarding). Absent = false. */
+  lobbied?: boolean;
+  /** M5: its current term in C* (LeverDef.popularity), or null without popularity or outside office. */
+  popularity?: number | null;
+  /** M5: the lever's rungs that have a state this Ministry (LoopholeView, ladder order); [] without a ladder, outside
+   *  office or while feature 'loopholes' is off. Absent = []. */
+  ladder?: LoopholeView[];
 }
 
 /** M2: one Commons project for the Commons panel (ModelApi.commonsViews, content order). */
@@ -3961,6 +5045,12 @@ export interface KnowhowView {
   affordable: boolean;
   /** requirementsMet, not maxed, not excluded, affordable, and Derived.freshRun. */
   canBuy: boolean;
+  /** M5: the node's tree is held by the rival while office is taken (knowhowTrees[tree].holder 'rival'): shown as
+   *  "Industrial Know-how: held by Pryce Consolidated", canBuy false. Absent = false. M5 CHANGE: canBuy (and the node's
+   *  visibility, `visible`) also need KnowhowDef.when. */
+  held?: boolean;
+  /** M5: KnowhowDef.when holds (or the node has none). Absent = true. */
+  visible?: boolean;
 }
 
 /** M1: one Institution for the Hindsight shop and the loadout. */
@@ -3987,7 +5077,158 @@ export interface InstitutionView {
   /** M4 (polish): the label of the next level's unmet `needs` (canBuy is false while it is set); null when there is none
    *  or it holds. Absent = null. */
   needs?: string | null;
+  /** M5: unlocked: meta.institutions has an own key for it (level ≥ 0). An unlocked Institution at level 0 (after Take
+   *  office or a Treaty) is shown as "unlocked, not bought", is visible whatever its `when`, and its level 1 ignores
+   *  `needs` (it was bought once); it cannot be seated until level ≥ 1. Absent = level ≥ 1. */
+  unlocked?: boolean;
 }
+
+/* --- M5 views --- */
+
+/**
+ * M5: the prospectus (MetaState.office.prospectus; Derived.office). Computed once, by takeOffice, from meta:
+ *   first     meta.firstOpening.actions folded: consecutive or not, every purchase of one upgrade id is ONE item (t = its
+ *             first time, count = purchases, every = mean interval between them in seconds, null if count 1); a founding
+ *             is its own item (count 1); items in order of first time, the first prospectusItems of them; names from
+ *             content (UpgradeDef / ApplicationDef name; the id if unknown). [] when defaulted.
+ *   defaulted true when meta.firstOpening is absent or empty: the page uses OfficeText.prospectus.firstDefault.
+ *   motion    the foundings in chair-act sectors (ActDef.chair) in meta.opening (the run just ended), in order, as { id,
+ *             name, t }; null when there are none. (Named for Motion; no sector id is hard-coded.)
+ */
+export interface ProspectusView {
+  defaulted: boolean;
+  first: { id: string; name: string; t: number; count: number; every: number | null; kind: 'upgrade' | 'found' }[];
+  motion: { id: string; name: string; t: number }[] | null;
+}
+
+/**
+ * M5: the file on the late proprietor (MetaState.office.file; Derived.office). Computed once, by takeOffice:
+ *   accepted / declined  the player's answers to dispatches of RivalDef.profileFrom.casts whose arm has stance 'accept'
+ *             / 'refuse' (from meta.dispatches.lastPlayer where present, year and recency from it; else from playerArms,
+ *             one entry per dispatch and arm answered, year null, after the dated ones, in content order); at most
+ *             FILE_ITEMS each, most recent first; label = the arm's label.
+ *   pliant    MetaState.office.profile.pliant.
+ *   automatedShare  Σ automated ÷ Σ (automated + decisions) over meta.runs (0 if none): "{share}% were made by standing
+ *             order" (an approximation: run summaries keep actions, not purchases).
+ *   seasons   the number of meta.runs entries counted.
+ */
+export interface FileView {
+  accepted: { dispatch: string; label: string; year: number | null }[];
+  declined: { dispatch: string; label: string; year: number | null }[];
+  pliant: number;
+  automatedShare: number;
+  seasons: number;
+}
+
+/** M5: Derived.chair. Every figure is from the current state; times are seconds of run time. */
+export interface ChairView {
+  /** C now, and C* (null unless ChairDef.showTarget holds). */
+  confidence: number;
+  target: number | null;
+  /** C projected to polling day if C* stayed as now: C* + (C − C*) × (1 − relaxPerYear)^(years to polling, whole
+   *  boundaries) (null unless showTarget holds). */
+  forecast: number | null;
+  /** ChairDef.confidence.winAt (the line on the chart). */
+  winAt: number;
+  /** The Parliament: index, seconds to polling day, the offer (PledgeView, null before it is drawn), chosen ids, how
+   *  many to keep, and the polling calendar year (integer). */
+  parliament: { index: number; pollIn: number; offer: PledgeView[] | null; chosen: string[] | null; keep: number;
+                pollYear: number };
+  /** Pledges in force. */
+  pledges: PledgeView[];
+  inOpposition: boolean;
+  lostInARow: number;
+  electionsWon: number;
+  /** campaign() would accept now (in Opposition, Mandate > 0). */
+  canCampaign: boolean;
+  /** Inspectors (feature 'inspection'; total 0 while off): ready now, total, seconds until the next is ready (null if
+   *  one is ready or there are none). */
+  inspectors: { ready: number; total: number; nextReadyIn: number | null;
+    /** M5 (contract): per Inspector, in index order, seconds until ready (0 = ready): the sill's cooldown rings. */
+    readyIn: number[] };
+  rival: RivalView;
+  /** The Treasury (feature 'treasury'; null while off): income per second, the tax part, the levy part. */
+  treasury: { perSec: number; taxPerSec: number; levyPerSec: number } | null;
+  /** Every rung with a state this Ministry, in content order (feature 'loopholes'; [] while off). */
+  loopholes: LoopholeView[];
+  repealed: { lever: string; parliament: number }[];
+  /** Per open chair sector: compensate() would accept now, its cost, and the run time compensation holds until (or
+   *  null). Empty while feature 'treasury' is off. */
+  compensation: Record<SectorId, { canCompensate: boolean; cost: number; until: number | null }>;
+}
+
+/** M5: ChairView.rival. */
+export interface RivalView {
+  name: string;
+  capital: number;
+  /** His income per second after tax. */
+  incomePerSec: number;
+  profile: RivalProfile;
+  /** The raw figures behind each reading (MetaState.office.sources). */
+  sources: Record<keyof RivalProfile, { n: number; d: number | null }>;
+  paybackMax: number;
+  foundPaybackMax: number;
+  /** His quiet period now (model years; RivalDef.policy). */
+  quietYears: number;
+  /** Per open chair sector: the candidate he would take at the next tick (id, payback in seconds), or null. */
+  next: Record<SectorId, { id: string; payback: number } | null>;
+  /** His current answer to each lever (content order). */
+  answers: { lever: string; kind: ResponseKind; cost: number; since: number }[];
+  /** The playbooks he has learnt (ids, in order). */
+  playbooks: string[];
+}
+
+/** M5: one pledge for the manifesto sheet. binds: the bound lever's or kind's description in words from content names
+ *  ("Fuel duty escalator at most level 1"), or null. */
+export interface PledgeView {
+  id: string; name: string; blurb: string; confidence: number; atPoll: number; binds: string | null;
+}
+
+/** M5: one rung for the lever card and the Ministry panel. */
+export interface LoopholeView {
+  id: string;
+  lever: string;
+  status: LoopholeStatus;
+  name: string;
+  blurb: string;
+  /** amend() would accept now. */
+  canAmend: boolean;
+  /** Mandate cost of amending, or null if it cannot be amended (closedBy without amend). */
+  amendCost: number | null;
+  /** The amendment's label (LoopholeDef.amend.label ?? name), or null if it cannot be amended. */
+  amendLabel: string | null;
+  /** Drafting years it would take now (× amendYearsMul), or null. */
+  amendYears: number | null;
+  /** Seconds of drafting left while 'drafting', else null. */
+  draftLeft: number | null;
+  /** M5 (contract): the whole drafting time in seconds while 'drafting' (draftUntil − since: the drafting bar), else
+   *  null. */
+  draftTotal: number | null;
+  /** closedBy's label (Cond.label or the core's fallback), or null. */
+  robustLabel: string | null;
+  /** closedBy holds now (the rung is shut to the rival). */
+  robust: boolean;
+  prop: string | null;
+}
+
+/** M5: one Article for the Articles tab (Derived.treaty.articles). */
+export interface ArticleView {
+  def: ArticleDef;
+  bought: boolean;
+  /** `requires` holds (or none). */
+  offered: boolean;
+  /** offered, not bought, Precedent ≥ cost, Derived.freshRun, feature 'treaty' on. */
+  canBuy: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* M5 (amend): reserved for the one consolidated amendment (week two).  */
+/* ------------------------------------------------------------------ */
+/*
+ * M5 (amend): the lanes' gap reports are routed by the coordinator to the contract lane for ONE amendment commit. Each
+ * amendment goes here as a list entry naming the type it changes and the hunk marked `M5 (amend):` at that type.
+ * Entries: (none yet)
+ */
 
 /* ------------------------------------------------------------------ */
 /* MODEL API                                                           */
@@ -4374,6 +5615,101 @@ export interface ModelApi {
   archiveViews(state: GameState, content: Content): ArchiveView[];
   /** M3: the retrospective Gazette from meta.milestones and Content.ending (oldest first; see EndingText). */
   retrospective(state: GameState, content: Content): RetroItem[];
+
+  /* --- M5 actions (design/m5-contract-notes.md §13) ---
+   * M5 CHANGES to existing actions (each only in a Ministry, i.e. GameState.chair non-null, unless stated):
+   *   - buyUpgrade and foundApp refuse a chair sector's cards and applications (they are the rival's: UpgradeView.byRival).
+   *   - click is refused (Derived.clickValue 0).
+   *   - setLever refuses raises while ChairState.inOpposition, and a raise above a pledge's binds.max (LeverView.bound);
+   *     a raise records LeverState.raisedAt (and `since` on a raise from 0, removed on a return to 0); a 'charge' (and a
+   *     cap or quota with basis 'applied') snapshots `ref` on the raise from 0; a laddered lever's first raise to ≥ 1
+   *     opens its first rung (LoopholeDef). The Civil Service is bound the same way.
+   *   - buyKnowhow refuses a node of a rival-held tree while office is taken, and any node whose KnowhowDef.when fails
+   *     (in or out of office). buyInstitution accepts level 1 of an unlocked (level 0) Institution at def.cost, ignoring
+   *     `when` and the level-1 `needs`. setLoadout refuses an Institution at level 0 (not owned).
+   *   - settle in a Ministry is allowed on chair sectors (a settlement from the Chair) as on any sector; the Reckoning
+   *     adds the chair sectors settled at its moment to office.record.settledFromChair.
+   *   - reckon: cause 'defeated' when pending (ChairState); in office, office.ministries += 1 and office.record is added
+   *     to (MetaState.office); RunSummary.ministry and sectors[s].openFor / certified / rival recorded; OfficeDef.when
+   *     evaluated on the ended run sets the fresh run's officeOffer (not in office); the new run is built by inherit.ts
+   *     as a Ministry when office is taken (the chair state fresh; the rival's capital per RivalDef.startCapitalSeconds;
+   *     rungs empty; the capstone held by the rival; Compute and Code closed by closedInOffice).
+   *   - createState(content, meta) with meta.office present builds a Ministry the same way.
+   *   - hindsightOnReckon: the overlay and the `parliaments` term (HindsightTerms).
+   *   - fastForward: with holdBefore 'crisis' or 'collapse' it holds one step before a polling day the Ministry would
+   *     lose (OfflineReport.heldBy 'election'); it draws no pledge offer while away.
+   *   - answerDispatch (by the player) writes meta.dispatches.lastPlayer[id].
+   *   - deserialize: v6 (SAVE_VERSION).
+   * Every M5 in-run action below is refused while a Reckoning is pending, outside a Ministry, and while its feature is
+   * off ('chair' for choosePledges and campaign; 'inspection' for inspect; 'loopholes' for amend; 'treasury' for
+   * compensate); it returns the same reference when refused.
+   */
+  /**
+   * M5: Take office (§1). Allowed only while Derived.freshRun, GameState.officeOffer, office not taken, and Content
+   * .office, .chair and .rival present. Not a decision. Effect (the first Treaty reset, D2), in order:
+   *   1. meta.office = { run: meta.reckonings, at: meta.totalSeconds, profile and sources (RivalDef.profileFrom, from
+   *      meta; defaultProfile when meta.firstOpening is absent), handedOver = every meta.knowhow entry of a tree whose
+   *      knowhowTrees[tree].holder is 'rival' (those entries removed from meta.knowhow; knowhowPeak kept), prospectus,
+   *      file, ministries: 1, record zeros };
+   *   2. meta.hindsight = 0; every meta.institutions entry → 0 (kept unlocked); meta.loadout = []; meta.flags.office =
+   *      true (meta.charter and meta.history are left as chosen);
+   *   3. feature 'chair' unlocked at once if its `when` holds (M5FeatureId);
+   *   4. the run rebuilt as a Ministry (createState with the same seed; GameState.chair built; officeOffer false), its
+   *      news and events kept as a between-runs rebuild keeps them;
+   *   5. 'officeTaken' event; headlines 'acquisition' (OfficeText.acquisition.headline) then 'officeTaken' (then
+   *      OfficeText.sealed, if any sector was sealed).
+   */
+  takeOffice(state: GameState, content: Content): GameState;
+  /**
+   * M5: send the soonest-ready Inspector to sector `sector` (§4). Refused unless feature 'inspection' is on, the sector
+   * is an open rival sector, and an Inspector is ready. Effect: that Inspector is ready again at time + cooldownYears /
+   * YPS; inspected[s] = time; inspections += 1; if c = concealment[s] > 0: Mandate += the fine (ChairState), C +=
+   * fineFound, found[s] = { share: c, t: time }, concealment[s] = 0, findings += 1, events 'inspected' (n = round(c ×
+   * 100)) then 'concealmentFound', headline 'concealmentFound'; else 'inspected' (n 0) and headline 'inspectedClean'.
+   * The true R is shown until time + revealYears / YPS (SectorDerived.inspectedUntil). A decision.
+   */
+  inspect(state: GameState, content: Content, sector: SectorId): GameState;
+  /**
+   * M5: draft an amendment closing rung `loopholeId` (§5). Refused unless feature 'loopholes' is on, the rung has a state
+   * 'open' or 'used', it can be amended (LoopholeDef.amend, or no closedBy), and Mandate ≥ its cost. Allowed in
+   * Opposition. Effect: Mandate −= cost; status 'drafting' (before = the old status) with draftUntil = time + years ×
+   * Π amendYearsMul / YPS; while drafting the rung acts as `before`; completion per LoopholeDef. A decision.
+   */
+  amend(state: GameState, content: Content, loopholeId: string): GameState;
+  /**
+   * M5: choose the pledges to stand on (§2). Refused unless the offer is drawn and polling day not passed, `ids` are
+   * exactly `keep` distinct ids of the offer, and they differ from `chosen`. Effect: parliament.chosen = ids in content
+   * order. May be called again before polling day. A decision.
+   */
+  choosePledges(state: GameState, content: Content, ids: string[]): GameState;
+  /**
+   * M5: campaign in Opposition (§2): spend `mandate` Mandate for Confidence. Refused unless in Opposition, mandate is
+   * finite and > 0, and Mandate ≥ mandate. Effect: Mandate −= mandate; C += campaignPerMandate × mandate (clamped). A
+   * decision.
+   */
+  campaign(state: GameState, content: Content, mandate: number): GameState;
+  /**
+   * M5: compensate the rival's displaced workers in `sector` (§6). Refused unless feature 'treasury' is on, the sector is
+   * an open chair sector with income below the rival's peak there, not compensated now, and the Treasury (capital) ≥ the
+   * cost (ChairDef.compensation). Effect: capital −= cost; compensated[s] = time + years / YPS; 'compensated' event and
+   * headline. A decision.
+   */
+  compensate(state: GameState, content: Content, sector: SectorId): GameState;
+  /**
+   * M5: the Treaty (§9). Allowed only while Derived.freshRun and Derived.treaty.available. Not a decision. Effect:
+   * meta.precedent and precedentEarned += precedentIfNow; office.record zeroed; meta.hindsight = 0; every meta.knowhow
+   * entry of a tree NOT held by the rival → removed (a respec without refund; knowhowPeak kept); every Institution →
+   * level 0 (kept unlocked); loadout []; meta.treaties += 1; the PlaybookDef with treaty === meta.treaties (if any)
+   * appended to meta.playbooks; the run rebuilt (createState, same seed; officeOffer and charterOffer kept as a rebuild
+   * keeps them); events 'treaty' then 'playbookLearnt' (if one), headlines likewise.
+   */
+  treaty(state: GameState, content: Content): GameState;
+  /**
+   * M5: buy an Article (§9). Allowed only while Derived.freshRun, feature 'treaty' on, office taken, the Article offered
+   * (requires), not bought, and meta.precedent ≥ its cost. Effect: precedent −= cost; meta.articles[id] = true; the run
+   * rebuilt as buyKnowhow; 'articleBought' event and headline. Not a decision.
+   */
+  buyArticle(state: GameState, content: Content, id: string): GameState;
 
   /* --- persistence --- */
   serialize(state: GameState): string;
