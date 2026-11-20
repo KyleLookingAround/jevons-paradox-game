@@ -303,6 +303,9 @@ export type CmpOp = '<' | '<=' | '>' | '>=';
  *   'feedFactor'     Π of every feed factor into this sector now (1 if none; SectorDerived.feeds of the sources);
  *   'arrears'        1 or 0 (SectorState.arrears).
  * M4, global: 'capstoned' (count of sectors with SectorState.capstoned this run).
+ * M4 (amend), sector: 'feedShare' = Σ over feed sources of rAdded into this sector ÷ its R now (the share of its burn
+ *   that the feeds add; SectorDerived.fed.share), 0 with no feed; FALSE when R is 0. The combined factor into a sector is
+ *   the existing 'feedFactor'.
  * M4: a sector stat read on a capstoned sector reads its settled (scaled) values, as on any settled sector.
  */
 export type StatKey =
@@ -319,7 +322,9 @@ export type StatKey =
   | 'seamsSunk' | 'loadFactor' | 'travelHours' | 'sprawl' | 'bite'
   /* --- M4 --- */
   | 'openFor' | 'stockFraction' | 'reportedStock' | 'foreignShare' | 'scarYears' | 'surveyed' | 'budgetHeadroom'
-  | 'feedFactor' | 'arrears' | 'capstoned';
+  | 'feedFactor' | 'arrears' | 'capstoned'
+  /* --- M4 (amend) --- */
+  | 'feedShare';
 
 /**
  * A data-only condition, evaluated by the core against a state (and the flows it derives).
@@ -1336,7 +1341,16 @@ export interface SectorDef {
    * Industry"): e.g. { name: 'The seams', rebound: 'Supply-side', blurb: 'Cheap pumping reaches deeper coal.' }.
    * Required by the lint for every Industry from M3; Code's names its existing mechanic. Default: absent (no heading).
    */
-  mechanic?: { name: string; rebound: string; blurb: string };
+  mechanic?: {
+    name: string; rebound: string; blurb: string;
+    /**
+     * M4 (amend): on a feed source (Iron): until this holds, the sector's feeds are not known to the page: AppDerived
+     * .feeds reads null and AppDerived.feedsKnown false, SectorDerived.feeds (the order book) reads null, and an
+     * application's wantedChange leaves out the fed Industries. The feeds still act. Iron: { owns: '<the research
+     * card>' } ("Of the Economy of Fuel"). Default: known.
+     */
+    feedsKnownWhen?: Cond;
+  };
 
   /* --- M4 (each optional, absent = M3 behaviour) --- */
   /**
@@ -1707,6 +1721,13 @@ export interface LeverDef {
   /** M3: the standing effects of a 'measure' lever (see LeverKind 'measure'). Ignored on other kinds. Default []. */
   effects?: EffectDef[];
   /**
+   * M4 (amend): the lever is hidden and cannot be raised until this holds (Fishing's fishery limits wait for the foreign
+   * share). Once it has held in a run (LeverState.seen) the lever stays shown for the rest of the run, so it does not
+   * flicker; a lever already above level 0 counts as seen. LeverView.waiting carries the condition's label while it
+   * hides the lever. Default: always (no condition).
+   */
+  when?: Cond;
+  /**
    * M3: a lever that bites back: its own success breeds its undoing, unless paired with the right companion.
    *   bite (LeverState.bite, 0–1) is a ramp in model years. Each step, with dy = dt × YEARS_PER_SECOND:
    *     active = level ≥ 1 AND NOT `unless` (evaluated on the state at the start of the step);
@@ -1794,6 +1815,13 @@ export interface InstitutionDef {
   /** Hindsight cost of level 1 (unlocking it). */
   cost: number;
   requires?: string[];     // other institution ids (level ≥ 1)
+  /**
+   * M4 (amend): the Institution is offered (InstitutionView.visible; buyInstitution accepts it) only while this holds,
+   * evaluated on the state between runs (meta-scoped leaves are the useful ones: { owns: '<sector>' } is "opened in any
+   * run"). One already owned is always shown and can always be seated. The Fishery Board: { owns: 'fishing' }.
+   * Default: always.
+   */
+  when?: Cond;
   /** Effects of level 1. */
   effects: EffectDef[];
   /** M1: levels 2, 3… (nextLevels[0] is level 2). Default: none (a one-level institution). */
@@ -2714,6 +2742,8 @@ export interface LeverState {
   bite?: number;
   /** M3: the bite has reached 0.5 this run ('biteBack' fired). Absent = false. */
   bitten?: boolean;
+  /** M4 (amend): LeverDef.when has held this run (written by the step, checked about once a real second). Absent = false. */
+  seen?: boolean;
 }
 
 export interface NewsItem {
@@ -2980,6 +3010,11 @@ export interface MetaState {
    * 'clearSkies:<s>'; 'steady:<s>'; 'settled:<s>'; 'seam:<s>' (first seam sunk); 'dispatch' (first answered);
    * 'history' (first cleared); 'proprietor' (the Proprietor's Day); 'won'. run 0 / at 0 mark "before the records began"
    * (migrated saves).
+   * M4 (amend), keys written by the core: 'feed:<source>' (the first founding of an application with feeds in that
+   * sector); 'crisis:<s>' (the first crisis of a 'renewable' sector: the first poor season; other sectors write none);
+   * 'threshold:<s>' (the first crossing below θK); 'surveyed:<s>' (the first step surveyed, the Board's first survey
+   * included); 'scarHealed:<s>'; with Content.acts, 'ending:<actId>' at an act's ending and 'capstone' (the first run
+   * built with one) and NOT 'won' (the M3 key is written only by the M3 rule, content without acts).
    */
   milestones: Record<string, { run: number; at: number; year: number }>;
   /** M3: banked seconds (GlobalParams.offline.bankRate; ModelApi.useBank). 0 when banking is off. */
@@ -3114,6 +3149,11 @@ export interface RunSummary {
  * never ends a run, so M4 adds no cause.)
  */
 export type ReckoningCause = 'exhausted' | 'collapse' | 'chosen';
+/*
+ * M4 (amend), DEFERRED (recorded, not in the contract): a second crisis name per Industry (SectorDef.pressure has one
+ * crisisName; later names live in the crisis headlines); per-level effects on a 'quota' lever; per-Act credits in
+ * EndingText; a content slot for UI strings (src/content/boardSurvey.ts exports the Survey card's meanwhile).
+ */
 
 /* ------------------------------------------------------------------ */
 /* DERIVED (recomputed from state every frame, never stored)           */
@@ -3603,6 +3643,14 @@ export interface SectorDerived {
    * null when this sector has no application with feeds, or none founded.
    */
   feeds?: { to: SectorId; factor: number; rAdded: number | null; lineShare: number | null }[] | null;
+  /**
+   * M4 (amend): on a feed TARGET (Steam), what every source feeds into it, as one figure for the order book and the
+   * letters: factor = Π of every feed factor into it (stat 'feedFactor'); rAdded = Σ over sources of their rAdded into it
+   * (each source removed alone; per derive bucket, as SectorDerived.feeds); share = rAdded ÷ its R (stat 'feedShare'),
+   * null when R is 0. null when nothing feeds it now (no founded feeding application of an open source). Not gated by
+   * feedsKnownWhen (the target's own price shows it). Absent = null.
+   */
+  fed?: { factor: number; rAdded: number | null; share: number | null } | null;
   /** M4: the label of the failing settle.requires while the sector is at Steady State (clearYears ≥
    *  STEADY_STATE_YEARS and sinkHeld) and unsettled, else null. (Cond.label, or the core's plain fallback.) */
   settleBlocked?: string | null;
@@ -3738,6 +3786,8 @@ export interface AppDerived {
    *  application with feeds, wantedChange (once its conditions hold) also counts the fed Industries' R change
    *  (core: temptation.ts). */
   feeds?: Record<SectorId, number> | null;
+  /** M4 (amend): false while the sector's mechanic.feedsKnownWhen fails (feeds then null); true otherwise. Absent = true. */
+  feedsKnown?: boolean;
 }
 
 export interface UpgradeView {
@@ -3810,6 +3860,9 @@ export interface LeverView {
   bite: { value: number; growing: boolean; unlessMet: boolean; blurb: string; unlessLabel: string } | null;
   /** M3: a forbid effect is in force on it (canRaise false; lowering allowed). */
   forbidden: boolean;
+  /** M4 (amend): while LeverDef.when hides the lever, its label (Cond.label or the core's fallback); else null. Absent =
+   *  null (a core before the amendment). */
+  waiting?: string | null;
 }
 
 /** M2: one Commons project for the Commons panel (ModelApi.commonsViews, content order). */
@@ -3870,6 +3923,8 @@ export interface InstitutionView {
   canBuy: boolean;
   /** Owned, not seated, free seats ≥ slots, and Derived.freshRun. */
   canSeat: boolean;
+  /** M4 (amend): owned, or InstitutionDef.when holds (canBuy needs it too). Absent = true (a core before the amendment). */
+  visible?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
