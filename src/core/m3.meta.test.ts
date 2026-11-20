@@ -138,7 +138,7 @@ describe("M3 returns and the Proprietor's Day", () => {
     expect(s.news.find((n) => n.key === 'return')!.text).toBe('Workday down 50%');
     expect(ev(s, 'returnPublished').at(-1)!.n).toBe(-50);
     expect(s.meta.milestones.proprietor).toBeDefined();
-    expect(model.derive(s, M).orders.kind).toEqual({ market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing' });
+    expect(model.derive(s, M).orders.kind).toEqual({ market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing', inspection: 'closing' }); // M5: the inspection order (OrderId)
   });
   test('at most one publication per run: a filing in a run that has published waits for the next reckon()', () => {
     let s = { ...fresh(M), capital: 1e6 };

@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { YEARS_PER_SECOND } from '../types';
 import type { Content, GameState } from '../types';
-import { fixtureM5, fixtureM4Acts, M5_CHAIR, M5_RIVAL } from './fixture';
+import { fixtureM5Quiet as fixtureM5, fixtureM4Acts, M5_RIVAL } from './fixture';
 import { forceSettle, openWith, run4 } from './m4.testkit';
 import { model } from './index';
 import { freshChairForTest } from './m5.testkit';
@@ -71,7 +71,9 @@ describe('M5 inspection: concealment', () => {
     for (let i = 0; i < 1600; i++) {
       // inspect irregularly: sometimes late (finds concealment), sometimes early
       if (i % 270 === 0 || i % 410 === 0) s = inspect(s, C, 'motor');
-      s = adv(s, C, 1);
+      const nx = adv(s, C, 1);
+      if (nx.time === s.time) break;
+      s = nx;
       const t = s.chair!.inspected.motor;
       if (t !== undefined && (s.time - t) * YEARS_PER_SECOND < q - 1e-9) { expect(s.chair!.rival.concealment.motor ?? 0).toBe(0); checked++; }
     }
@@ -126,7 +128,7 @@ describe('M5 inspection: concealment', () => {
 
 describe('M5 inspection: the capstone under the rival', () => {
   test('concealment on a capstoned sector steps the excess into its pressure (held below collapse); none without it', () => {
-    const CA: Content = { ...fixtureM4Acts, chair: M5_CHAIR, rival: M5_RIVAL };
+    const CA: Content = { ...fixtureM4Acts, chair: fixtureM5.chair, rival: M5_RIVAL };
     let w = openWith(CA, ['iron', 'fish', 'light'], ['steam.pumping', 'steam.mills', 'iron.rails', 'iron.pots', 'fish.market']);
     w = run4(w, 2, CA);
     for (const id of ['steam', 'iron', 'fish']) w = forceSettle(w, CA, id);
@@ -153,7 +155,9 @@ describe('M5 inspection: E3 (exit criterion 14 on the fixture)', () => {
       const end = s.time + 60 / YEARS_PER_SECOND;
       while (s.time < end) {
         if (insp && canInspect(s, C, 'motor')) s = inspect(s, C, 'motor');
-        s = adv(s, C, 1);
+        const nx = adv(s, C, 1);
+      if (nx.time === s.time) break;
+      s = nx;
         gap = Math.max(gap, s.chair!.rival.concealment.motor ?? 0);
       }
       return { decades: s.sectors.motor.decadesWithin.length, gap };

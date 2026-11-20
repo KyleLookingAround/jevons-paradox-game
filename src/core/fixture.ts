@@ -620,3 +620,10 @@ export const fixtureM5: Content = {
 };
 /** E1's control: the same Ministry without the repeatable demand card. */
 export const fixtureM5NoTail: Content = { ...fixtureM5, upgrades: m5Upgrades.filter((u) => u.id !== 'motor.roads') };
+/** Core A's tests and experiments: fixtureM5 with the Parliament clock out of the way (no polling day for a million
+ *  model years) and Confidence held where a test puts it (relaxPerYear 0), so the rival's rules are seen alone. */
+const quietChair: import('../types').ChairDef = {
+  ...M5_CHAIR, confidence: { ...M5_CHAIR.confidence, relaxPerYear: 0, lobbyPerYear: 0 }, elections: { ...M5_CHAIR.elections, firstTermYears: 1e6, termYears: 1e6 },
+};
+export const fixtureM5Quiet: Content = { ...fixtureM5, chair: quietChair };
+export const fixtureM5NoTailQuiet: Content = { ...fixtureM5NoTail, chair: quietChair };

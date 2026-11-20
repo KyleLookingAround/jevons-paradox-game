@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { YEARS_PER_SECOND } from '../types';
 import type { Content, GameState, MetaState } from '../types';
-import { fixtureM5, fixtureM5NoTail } from './fixture';
+import { fixtureM5Quiet as fixtureM5, fixtureM5NoTailQuiet as fixtureM5NoTail } from './fixture';
 import { adv, ministry } from './m5.testkit';
 import { leverChairFields, priceResponses, rivalAnswerView, rivalDecide, rivalPolicy, rivalProfile, rivalView } from './chair/rival';
 import { effectiveLevel } from './leverLevels';

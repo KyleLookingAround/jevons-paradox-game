@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { YEARS_PER_SECOND } from '../types';
 import type { Content, GameState } from '../types';
-import { fixtureM5 } from './fixture';
+import { fixtureM5Quiet as fixtureM5 } from './fixture';
 import { adv, ministry } from './m5.testkit';
 import { amend, evadeRung, loopholeStep, loopholeViews, robustReopen } from './chair/loopholes';
 import { leverEscape } from './chair/acting';
@@ -114,7 +114,9 @@ describe('M5 loopholes: E5 (exit criterion 13 on the fixture)', () => {
     const end = s.time + 30 / YEARS_PER_SECOND;
     while (s.time < end) {
       if (doAmend) for (const id in s.chair!.loopholes) { const t = amend(s, C, id); if (t !== s) s = t; }
-      s = adv(s, C, 1);
+      const nx = adv(s, C, 1);
+      if (nx.time === s.time) break;
+      s = nx;
     }
     return computeFlows(s, C).sectors.motor!.R;
   };

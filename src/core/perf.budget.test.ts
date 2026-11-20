@@ -97,7 +97,7 @@ describe('per-call cost budgets (late game, five Industries)', () => {
 /* ------------------------------------------------------------------ */
 /* M5 (Core A): the rival's yearly decision and a Ministry step         */
 /* ------------------------------------------------------------------ */
-import { fixtureM5 } from './fixture';
+import { fixtureM5Quiet as fixtureM5 } from './fixture';
 import { adv as advM5, ministry as ministryM5 } from './m5.testkit';
 import { rivalDecide, rivalAnswerView } from './chair/rival';
 import { step as stepM5 } from './step';
