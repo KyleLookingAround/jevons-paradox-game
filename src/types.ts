@@ -1151,6 +1151,16 @@ export interface ForeignDef {
   share0: number;
   growth: number;
   cap: number;
+  /**
+   * M4 (finish): the foreign fleets fill the room the home fleet leaves: besides the share above, they take
+   *   R_room = room × foreignMul × max(0, G(Q) − R_home)
+   * (the surplus the bank grows beyond the home catch), so a home fleet held back on a healthy bank draws boats in, as
+   * the commons do. R_foreign = R_home × share / (1 − share) + R_room; the reported foreign share (StatKey
+   * 'foreignShare', SectorDerived.stock.foreign.share) is R_foreign / (R_foreign + R_home); the sink line and the survey
+   * quota count it (the home catch that holds the clear level with the room taken). room in [0, 1) (lint). Default 0
+   * (no field, no change).
+   */
+  room?: number;
   /** The share at which the 'foreignFleets' headline is printed, the first time it passes it in a run (no event;
    *  SectorState.foreignAnnounced). Default FOREIGN_ANNOUNCE_AT (0.15). */
   announceAt?: number;
@@ -1436,8 +1446,16 @@ export interface ApplicationDef {
    * shadow solve of the TARGET sees the same factor (it is not efficiency of the target, so it is not frozen out): the
    * target's rebound meter stays its own direct rebound, and the feed shows in its frontierFold, as spill does.
    * capCostMul in (0, 1] (lint). Default: none.
+   *
+   * M4 (finish): a feed may also widen the target's DEMAND (rails let the railways carry more; iron plate enlarges the
+   * steamers): `satMul` (≥ 1, lint) multiplies the saturation of the target's application `app` (an id of the target's
+   * own applications), or of every application of the target when `app` is absent, by
+   *   g = 1 + (satMul − 1) × a,    a as above
+   * in the same solve (several multiply). With '*' `app` must be absent. The full account hands this application's share
+   * of the source's R to its targets in proportion to (1 − f_t) + (g_t − 1); the order book's rAdded and a 'full' line
+   * see it as they see f. Absent satMul: as before (no field, no change).
    */
-  feeds?: { sector: SectorId | '*'; capCostMul: number }[];
+  feeds?: { sector: SectorId | '*'; capCostMul: number; /** M4 (finish) */ satMul?: number; /** M4 (finish) */ app?: string }[];
 }
 
 /**
@@ -1561,7 +1579,13 @@ export type EffectDef =
    *  sectors only (ignored elsewhere). */
   | { type: 'survey'; sector: SectorId }
   /** M4: the sector's foreign share (ForeignDef) × value (multiplicative across effects; the fishery limits). */
-  | { type: 'foreignMul'; sector: SectorId; value: number };
+  | { type: 'foreignMul'; sector: SectorId; value: number }
+  /**
+   * M4 (finish): ONE-OFF (dispatch arms and wager branches only; lint): RunStats.letterShare += value. At a Reckoning the
+   * seven terms' sum is multiplied by max(0, 1 + letterShare) (HindsightTerms.letters is the difference): a letter's
+   * stake in what Hindsight is made of, the same share of a short run as of a long one.
+   */
+  | { type: 'hindsightShare'; value: number };
 
 export interface UpgradeDef {
   id: string;              // 'steam.condenser'
@@ -2816,6 +2840,9 @@ export interface RunStats {
    * save-version change: an older save simply has no time away recorded; deserialize keeps the field only when finite.
    */
   hindsightWithheld?: number;
+  /** M4 (finish): Σ of the hindsightShare one-offs answered this run (EffectDef 'hindsightShare'); absent = 0. Reset at a
+   *  Reckoning with the rest of RunStats. deserialize keeps it only when finite. */
+  letterShare?: number;
   /* --- M3 --- */
   /** M3: dispatches the player answered this run (each also counts in decisions). */
   dispatchesAnswered: number;
@@ -3186,7 +3213,12 @@ export interface HindsightTerms {
    * pay, because it accrued while away (GlobalParams.offline.hindsightRate). Not a weighted term. Present only when
    * > 0 (absent = 0), so a run never fast-forwarded has exactly the M2 shape.
    */
-  withheld?: number;
+withheld?: number;
+  /**
+   * M4 (finish): the letters' stake: (sum of the seven terms) × clamp(run.letterShare, −1, ∞), added to the total (which
+   * stays ≥ 1). Present only when run.letterShare ≠ 0 (absent = 0, so content without hindsightShare has the M3 shape).
+   */
+  letters?: number;
   /** M2 CHANGE: max(1, round(sum of the seven weighted terms − (withheld ?? 0))) — equals hindsightOnReckon. */
   total: number;
 }
