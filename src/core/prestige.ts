@@ -21,6 +21,7 @@ import { clearedThisRun } from './history';
 import { publish } from './returns';
 import { sprawlOf } from './travel';
 import { createState, isFreshRun, withMeta } from './state';
+import { milestone } from './milestones';
 import { clamp, fin } from './util';
 
 export { isFreshRun } from './state';
@@ -64,6 +65,10 @@ export function reckon(state: GameState, content: Content): GameState {
       if (v !== undefined) summary[s].speed = v;
       summary[s].sprawl = es.settled?.travel ? es.settled.travel.sprawl : sprawlOf(def, es);
     }
+    // M4: the lowest stock and the crossing; the order book's peaks; capstoned
+    if (def.resourceKind === 'renewable') { summary[s].minStock = es.minStock ?? (es.reserveMax > 0 ? clamp(es.reserve / es.reserveMax, 0, 1) : 0); summary[s].crossed = !!es.crossed; }
+    if (es.feedPeak) summary[s].feedR = { ...es.feedPeak };
+    if (es.capstoned) summary[s].capstoned = true;
   }
   const charter = state.meta.charter ?? null;
   let commonsLevels = 0;
@@ -110,7 +115,11 @@ export function reckon(state: GameState, content: Content): GameState {
   const s = { ...s0, charterOffer: offer };
   const year = calendarYear(s, content);
   const out = { ...s, ...newsWith(s, content, [headline(s, content, 'reckoning', 0, { year }, fl.pending?.sector), ...fItems]) };
-  const r = emit(out, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }, ...fEv], 0, year);
+  // M4: one 'capstoned' event per capstoned sector after 'reckoning'; the milestone 'capstone' the first time
+  const capEv: EvDraft[] = [];
+  for (const x of idx(content).ids) if (out.sectors[x]?.capstoned) capEv.push({ kind: 'capstoned', sector: x, id: out.meta.world?.capstone?.[x]?.act });
+  const out2 = capEv.length ? { ...out, meta: milestone(out.meta, 'capstone', null, year) } : out;
+  const r = emit(out2, [{ kind: 'reckoning', id: cause, ...(fl.pending?.sector ? { sector: fl.pending.sector } : {}) }, ...capEv, ...fEv], 0, year);
   // M3: an unpublished household return is published into the new run's news (only once the Proprietor's Day has come)
   return r.meta.flags?.proprietor === true ? publish(r, content, 0, true) : r;
 }

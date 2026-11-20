@@ -8,11 +8,12 @@ import { MODIFIERS_MAX } from '../types';
 import type { ActiveModifier, Content, GameState, ModifierView } from '../types';
 import { idx } from './contentIndex';
 import { fin } from './util';
+import { modifierEffects } from './effects';
 
 /** The list with a modifier added: the same source and arm refreshes `until` to the later of the two (never stacks with
  *  itself); different sources stack; beyond MODIFIERS_MAX the one ending soonest is removed (no event). */
 export function addModifier(list: ActiveModifier[], m: ActiveModifier): ActiveModifier[] {
-  const i = list.findIndex((x) => x.source === m.source && x.arm === m.arm);
+  const i = list.findIndex((x) => x.source === m.source && x.arm === m.arm && x.branch === m.branch); // M4: and branch
   if (i >= 0) {
     if (list[i].until >= m.until) return list;
     const out = list.slice();
@@ -42,9 +43,17 @@ export function modifierViews(state: GameState, content: Content): ModifierView[
   const ix = idx(content);
   const out: ModifierView[] = [];
   for (const m of state.modifiers ?? []) {
+    const remaining = Math.max(0, fin(m.until - state.time));
+    // M4: the Board's first survey and wager branches
+    if (m.source.startsWith('survey:')) {
+      const effs = modifierEffects(ix, m);
+      if (effs) out.push({ source: m.source, arm: m.arm, label: content.sectors[m.source.slice(7)]?.renewable?.firstSurvey?.label ?? "The Board's survey", effects: effs, remaining });
+      continue;
+    }
     const arm = ix.dispatches.get(m.source)?.arms[m.arm];
-    if (!arm?.modifier) continue;
-    out.push({ source: m.source, arm: m.arm, label: arm.modifier.label ?? arm.label, effects: arm.modifier.effects.slice(), remaining: Math.max(0, fin(m.until - state.time)) });
+    const md = m.branch ? arm?.wager?.[m.branch]?.modifier : arm?.modifier;
+    if (!arm || !md) continue;
+    out.push({ source: m.source, arm: m.arm, label: md.label ?? arm.label, effects: md.effects.slice(), remaining });
   }
   return out.sort((a, b) => a.remaining - b.remaining);
 }

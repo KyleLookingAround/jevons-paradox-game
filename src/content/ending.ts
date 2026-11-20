@@ -13,22 +13,28 @@
 import type { EndingText } from '../types';
 
 export const ending: EndingText = {
+  /*
+   * M4 (the text lane): the first ending is now the Act I ending (design/m4-design.md §7.2): the Coal Age's four
+   * Industries settled at once and held fifty years. The credits close the Coal Age, not the game; the Previews follow.
+   * (M3's credits, "Fifty Years Within the Line", spoke for five Industries and every Age; they are retired with the
+   * M3 rule. A later Act's credits need EndingText per act: a contract gap noted for M5.)
+   */
   credits: {
-    title: 'Fifty Years Within the Line',
+    title: 'The Coal Age, settled',
     lines: [
       'Every engine in this ledger was thriftier than the one before it.',
-      'Nearly every one of them burned more than the last: coal, gas, oil, power, attention.',
-      'That was not a failure of engineering. It was what cheap power was bought for.',
-      'Mr Jevons said as much in 1865, and was read, and thanked, and filed.',
+      'Nearly every one of them burned more than the last.',
+      'The iron that saved coal at the furnace spent it in every engine its rails made cheaper.',
+      'The fleet that found the fish found the last of them, and the catch per trip said nothing.',
+      'Mr Jevons said as much of the coal in 1865, and was read, and thanked, and filed.',
       'What held at last was not a better engine.',
-      'It was a line, drawn on a chart and defended in Parliament.',
-      'A duty that rose as the engines improved; a cap that fell as the decades passed.',
-      'Money from the levies spent on baths, books and parks instead of furnaces.',
-      'And a public that decided, now and then, that it had enough.',
-      'For fifty years every Industry has been settled at its sink line, burning no more than the sky can carry off;',
-      'none of them was settled while anyone went without.',
-      'The efficiency gauge is still rising. This time the consumption gauge is not.',
-      'The Statistics Office notes that this has not happened before, and may not last.',
+      'It was a line drawn on a chart and a survey paid for, and both defended in Parliament.',
+      'The pits are worked to the sink line and no further.',
+      'The furnaces are banked to the order book.',
+      'The banks are fished to what they bear; the Board counts them every spring.',
+      'The lamps are lit at dusk and put out at midnight.',
+      'For fifty years the Coal Age has burned no more than the sky and the sea could carry.',
+      'The Statistics Office notes that this has not happened before, and that the next Age has not been asked.',
     ],
     continueLabel: 'The ledger continues',
   },
@@ -44,6 +50,21 @@ export const ending: EndingText = {
     { key: 'settled:*', headline: '{year}: {sector} settles at its sink line, and stays there' },
     { key: 'history', headline: '{year}: a History cleared, in run {run}' },
     { key: 'proprietor', headline: '{year}: the Statistics Office publishes the proprietor’s day' },
-    { key: 'won', headline: '{year}: every Industry settled at once; the ledger balances, for now' },
+    /* M3's record (milestone 'won', written by M3's rule or by the v3 → v4 migration): kept, under its own words. */
+    { key: 'won', headline: '{year}: everything settled, under the earlier rule' },
+    /* --- M4 (the text lane) --- */
+    /* The contract's two new milestone keys: an Act's ending ('ending:<act id>') and the first run with a capstone. */
+    { key: 'ending:actOne', headline: '{year}: the Coal Age settled and held fifty years, at hour {hours}' },
+    { key: 'capstone', headline: '{year}: run {run} opens on a settled Coal Age' },
+    /*
+     * The Act I firsts the design lists (§7.2). The contract does not yet name milestone keys for them; these are the
+     * keys proposed to the core lane (design/scratch/m4-text-progress.md). A template whose key is never written is
+     * inert.
+     */
+    { key: 'feed:*', headline: '{year}: cheap iron makes {sector}’s machines cheaper, and busier' },
+    { key: 'crisis:fishing', headline: '{year}: a poor season on the banks; the catch per trip holds' },
+    { key: 'threshold:*', headline: '{year}: the banks fail, and {sector} ties up the fleet' },
+    { key: 'surveyed:*', headline: '{year}: the Board’s first survey of {sector}; the skippers dispute it' },
+    { key: 'scarHealed:*', headline: '{year}: {sector} recovers, after long years; the gulls come back' },
   ],
 };

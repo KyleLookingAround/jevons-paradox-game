@@ -23,7 +23,7 @@ import {
 
 const I = 'iron';
 /** Iron's coke duty (the Iron lane's duty lever). */
-const COKE_DUTY = 'iron.duty';
+const COKE_DUTY = 'iron.cokeDuty';
 
 /* M4 stats are not in kit.ts's `sec`; a local, typed leaf. */
 const st = (stat: StatKey, sector: SectorId, op: '<' | '<=' | '>' | '>=', value: number, label?: string): Cond =>
@@ -133,7 +133,7 @@ export const ironDispatches: DispatchDef[] = [
          */
         wager: {
           when: st('clear', I, '>=', 1, 'Iron’s sky clear'),
-          hint: 'Pays if the sky over Iron is clear when the licences are eased',
+          hint: 'Pays if Iron & Steel’s sky is clear when the licences are eased',
           win: {
             outcome: 'The sky had room: the furnaces keep within it, and the institute fills on lecture nights.',
             effects: [mandate(30)],
@@ -339,7 +339,7 @@ export const ironDispatches: DispatchDef[] = [
          */
         wager: {
           when: st('feedFactor', 'steam', '<=', 0.9, 'Iron feeds Steam a tenth or more'),
-          hint: 'Pays if Iron’s order book makes Steam’s engines a tenth cheaper',
+          hint: 'Pays if the order book makes Steam’s engines a tenth cheaper',
           win: {
             outcome: 'The feed was large: the duty slows the railways’ growth, and Steam’s coal with it.',
             effects: [mandate(30)],

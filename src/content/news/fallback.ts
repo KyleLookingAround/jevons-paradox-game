@@ -256,7 +256,7 @@ export const headlines: Record<HeadlineKey, string[]> = {
     '{sector} crosses a line that does not run both ways',
     'What is left of {sector}’s stock is too thin to mend itself',
     'Surveys find no sign of recovery in {sector}; the remnant is too small',
-    '{sector}: what renewed itself every year will not renew itself this one',
+    '{sector}: what renewed itself every year will not do so this year',
     'The stock behind {sector} falls past the point of recovery',
   ],
   scarHealed: [
@@ -277,7 +277,7 @@ export const headlines: Record<HeadlineKey, string[]> = {
     '{sector} in arrears: the settlement is not being kept',
     'Defence of {sector} unpaid; the settlement holds on paper only',
     'The House cannot find the money to keep {sector} settled',
-    '{sector}’s settlement lapses for want of funds; the old trouble returns',
+    '{sector}’s settlement lapses for want of funds; the trouble returns',
     'Arrears on {sector}; the settled years end at a quarter-day',
   ],
   foreignFleets: [

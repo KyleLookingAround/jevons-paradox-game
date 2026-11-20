@@ -266,6 +266,64 @@ function migrateV3(raw: Record<string, unknown>, content: Content): Record<strin
   return r;
 }
 
+/** M4: v4 → v5 (types.ts SAVE_VERSION, steps 1–6), on a JSON copy; step 7 (validation) runs for every version. */
+function migrateV4(raw: Record<string, unknown>): Record<string, unknown> {
+  const r: Record<string, unknown> = JSON.parse(JSON.stringify(raw));
+  const meta: Record<string, unknown> = isObj(r.meta) ? r.meta : {};
+  r.meta = meta;
+  meta.world = { capstone: {}, scars: {} }; // 1 (2, 5, 6: nothing; 3: meta.endings.steadyAll kept as it is)
+  if (isObj(r.flags) && r.flags.won === true) r.steadyYearsAll = 0; // 4: the Act I streak starts from the new rule
+  r.version = 5;
+  return r;
+}
+
+/* ---- M4 validation ---- */
+/** MetaState.world: capstone records of known sectors and acts with a valid SettledState; scars of renewable sectors. */
+function validWorld(x: unknown, content: Content): NonNullable<MetaState['world']> | undefined {
+  if (!isObj(x)) return undefined;
+  const ix = idx(content);
+  const out: NonNullable<MetaState['world']> = {};
+  if (isObj(x.capstone)) {
+    const cap: NonNullable<NonNullable<MetaState['world']>['capstone']> = {};
+    for (const [k, v] of Object.entries(x.capstone)) {
+      if (!ix.pos.has(k) || !isObj(v) || typeof v.act !== 'string' || !ix.acts.some((a) => a.id === v.act) || !isNum(v.year)) continue;
+      const st = validSettled(v.settled);
+      if (st) cap[k] = { act: v.act, year: v.year, settled: st };
+    }
+    out.capstone = cap;
+  }
+  if (isObj(x.scars)) {
+    const sc: NonNullable<NonNullable<MetaState['world']>['scars']> = {};
+    for (const [k, v] of Object.entries(x.scars)) {
+      if (!ix.renewable.includes(k) || !isObj(v) || !isNum(v.yearsLeft) || v.yearsLeft < 0) continue;
+      sc[k] = { yearsLeft: v.yearsLeft, since: isNum(v.since) ? v.since : 0 };
+    }
+    out.scars = sc;
+  }
+  return out;
+}
+/** The optional M4 SectorState fields, as their types say (anything else dropped). */
+function m4Sector(es: Record<string, unknown>, content: Content): Partial<SectorState> {
+  const ix = idx(content);
+  const out: Partial<SectorState> = {};
+  for (const k of ['capstoned', 'arrears', 'crossed', 'foreignAnnounced'] as const) if (es[k] === true) out[k] = true;
+  if (isNum(es.minStock)) out.minStock = clamp(es.minStock, 0, 1);
+  const ls = es.lastSurvey;
+  if (isObj(ls) && isNum(ls.t) && isNum(ls.year) && (ls.sinkR === null || isNum(ls.sinkR))) out.lastSurvey = { sinkR: ls.sinkR as number | null, t: ls.t, year: ls.year };
+  if (isObj(es.feedPeak)) {
+    const fp: Record<SectorId, number> = {};
+    for (const [k, v] of Object.entries(es.feedPeak)) if (ix.pos.has(k) && isNum(v)) fp[k] = v;
+    out.feedPeak = fp;
+  }
+  return out;
+}
+const M4_SECTOR_KEYS = ['capstoned', 'arrears', 'crossed', 'foreignAnnounced', 'minStock', 'lastSurvey', 'feedPeak'] as const;
+function validReveal(x: unknown, content: Content): GameState['surveyReveal'] {
+  if (!isObj(x) || typeof x.sector !== 'string' || !idx(content).renewable.includes(x.sector) || !isNum(x.reported) || !isNum(x.true) || !isNum(x.year)) return undefined;
+  if (x.variant !== 'small' && x.variant !== 'large' && x.variant !== 'failed') return undefined;
+  return { sector: x.sector, reported: clamp(x.reported, 0, 1), true: clamp(x.true, 0, 1), variant: x.variant, year: x.year, followed: x.followed === true };
+}
+
 /* ---- element-by-element validation of the M2 map- and array-valued fields ---- */
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -277,6 +335,7 @@ const EVENT_KINDS = new Set([
   'featureUnlocked',
   'seamSunk', 'biteBack', 'dispatchArrived', 'dispatchAnswered', 'modifierEnded', 'historyChosen', 'historyCleared', 'returnFiled',
   'returnPublished', 'returnWithdrawn', 'archiveUnlocked', 'ending', 'bankUsed',
+  'thresholdCrossed', 'scarHealed', 'surveyed', 'arrears', 'arrearsCleared', 'capstoned',
 ]);
 function validEvents(x: unknown, maxSeq: number): GameEvent[] {
   if (!Array.isArray(x)) return [];
@@ -374,8 +433,16 @@ function validModifiers(x: unknown, content: Content): ActiveModifier[] {
   const out: ActiveModifier[] = [];
   for (const m of x) {
     if (!isObj(m) || typeof m.source !== 'string' || !isNum(m.arm) || !isNum(m.since) || !isNum(m.until)) continue;
-    if (!ix.dispatches.get(m.source)?.arms[m.arm]?.modifier) continue;
-    out.push({ source: m.source, arm: m.arm, since: m.since, until: m.until });
+    // M4: the Board's first survey ('survey:<s>', arm 0, a renewable sector with firstSurvey) and wager branches
+    if (m.source.startsWith('survey:')) {
+      const sd = content.sectors[m.source.slice(7)];
+      if (m.arm === 0 && ix.renewable.includes(m.source.slice(7)) && sd?.renewable?.firstSurvey) out.push({ source: m.source, arm: 0, since: m.since, until: m.until });
+      continue;
+    }
+    const branch = m.branch === 'win' || m.branch === 'lose' ? m.branch : undefined;
+    const arm = ix.dispatches.get(m.source)?.arms[m.arm];
+    if (branch ? !arm?.wager?.[branch]?.modifier : !arm?.modifier) continue;
+    out.push(branch ? { source: m.source, arm: m.arm, since: m.since, until: m.until, branch } : { source: m.source, arm: m.arm, since: m.since, until: m.until });
   }
   return out.slice(-MODIFIERS_MAX);
 }
@@ -388,7 +455,11 @@ function validDispatch(x: unknown, content: Content, fresh: GameState['dispatch'
     .map((p) => ({ id: p.id as string, arrivedAt: p.arrivedAt as number, expiresAt: p.expiresAt as number })).slice(0, 3);
   const answered: AnsweredDispatch[] = (Array.isArray(x.answered) ? x.answered : [])
     .filter((a): a is Record<string, unknown> => isObj(a) && known(a.id) && isNum(a.arm) && isNum(a.t) && typeof a.by === 'string' && ACTORS.has(a.by))
-    .map((a) => ({ id: a.id as string, arm: a.arm as number, t: a.t as number, by: a.by as AnsweredDispatch['by'] })).slice(-ANSWERED_MAX);
+    .map((a) => {
+      const out: AnsweredDispatch = { id: a.id as string, arm: a.arm as number, t: a.t as number, by: a.by as AnsweredDispatch['by'] };
+      if (typeof a.won === 'boolean') out.won = a.won; // M4: a wager's result
+      return out;
+    }).slice(-ANSWERED_MAX);
   const standing: [string, number][] = (Array.isArray(x.standing) ? x.standing : [])
     .filter((e): e is [string, number] => Array.isArray(e) && e.length === 2 && known(e[0]) && isNum(e[1]) && !!ix.dispatches.get(e[0])?.arms[e[1]])
     .map((e) => [e[0], e[1]]);
@@ -474,6 +545,7 @@ function validBudget(x: unknown, content: Content, s: SectorId): BudgetState | n
   if (Number.isFinite(heldAt)) b.heldAt = heldAt;
   const clearAt = numOr(x.clearAt, NaN);
   if (Number.isFinite(clearAt)) b.clearAt = clearAt;
+  if (x.account === 'full') b.account = 'full'; // M4: absent = 'own'
   return b;
 }
 
@@ -494,6 +566,7 @@ export function deserialize(text: string, content: Content): GameState | null {
     }
     if (version < 3) raw = migrateV2(raw, content);
     if (version < 4) raw = migrateV3(raw, content);
+    if (version < 5) raw = migrateV4(raw);
   } catch { return null; }
   try {
     const ix = idx(content);
@@ -539,6 +612,7 @@ export function deserialize(text: string, content: Content): GameState | null {
       loadout,
       // the unfolding: known feature ids with finite stamps; a save from before it (no features object) is grandfathered
       ...validMeta3(merged0 as unknown as Record<string, unknown>, content),
+      world: validWorld(savedMeta.world, content), // M4
       features: isObj(savedMeta.features)
         ? Object.fromEntries(Object.entries(savedMeta.features).filter(([k, v]) => FEATURE_SET.has(k) && typeof v === 'number' && Number.isFinite(v)))
         : grandfathered(content, merged0, isObj(raw.flags) && raw.flags.revealed === true),
@@ -558,8 +632,11 @@ export function deserialize(text: string, content: Content): GameState | null {
       }
       const settled = es.open ? validSettled(es.settled) : null;
       const nSeams = content.sectors[s].resourceKind === 'stock' ? content.sectors[s].seams?.length ?? 0 : 0;
+      const es4 = { ...es } as Record<string, unknown>;
+      for (const k of M4_SECTOR_KEYS) delete es4[k];
       sectors[s] = {
-        ...es,
+        ...(es4 as unknown as SectorState),
+        ...m4Sector(es as unknown as Record<string, unknown>, content),
         seamsSunk: clamp(Math.floor(numOr(es.seamsSunk, 0)), 0, nSeams),
         apps,
         budget: validBudget(es.budget, content, s),
@@ -613,6 +690,7 @@ export function deserialize(text: string, content: Content): GameState | null {
       historyLifted: merged.historyLifted === true,
       // M3 (finish): the headline rotation, kept only when well formed (absent = {})
       headlineUse: isObj(merged.headlineUse) ? amountMap(merged.headlineUse) : undefined,
+      surveyReveal: validReveal(merged.surveyReveal, content), // M4
       news: Array.isArray(merged.news)
         ? merged.news.filter((n) => isObj(n) && typeof n.text === 'string' && typeof n.time === 'number')
           .map((n) => (typeof n.year === 'number' ? n : { ...n, year: Math.floor(START_YEAR + n.time * YEARS_PER_SECOND) }))

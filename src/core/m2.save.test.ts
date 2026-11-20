@@ -41,7 +41,7 @@ describe('M2 save version 3', () => {
     const raw = toV2(r);
     const b = model.deserialize(JSON.stringify(raw), C)!;
     expect(b).not.toBeNull();
-    expect(b.version).toBe(4);
+    expect(b.version).toBe(5);
     // 1
     expect(b.pendingDividends).toEqual([]);
     expect(b.commons).toEqual({ levels: {}, fund: 0 });
@@ -93,7 +93,7 @@ describe('M2 save version 3', () => {
     const n = model.deserialize(JSON.stringify(toV2(model.createState(C))), C)!;
     expect(n.charterOffer).toEqual([]);
   });
-  test('a v4 save → null; a v3 round trip with every M2 structure is lossless; unknown ids are dropped', () => {
+  test('a v6 save → null; a v3 round trip with every M2 structure is lossless; unknown ids are dropped', () => {
     let s = decoupling();
     s = patchSector(s, 'steam', { budget: { r0: 10 * steamD(s, CALM).resourceUse, since: s.time, drawnYear: 1800, w0: 1e3, p0: 0, pace: 'firm' }, steadyYears: 9.99 });
     s = model.tick(s, CALM, 1); // a pending dividend
@@ -107,7 +107,7 @@ describe('M2 save version 3', () => {
     const text = model.serialize(s);
     const back = model.deserialize(text, CALM)!;
     expect(JSON.parse(model.serialize(back))).toEqual(JSON.parse(text));
-    expect(model.deserialize(JSON.stringify({ ...JSON.parse(text), version: 5 }), CALM)).toBeNull();
+    expect(model.deserialize(JSON.stringify({ ...JSON.parse(text), version: 6 }), CALM)).toBeNull();
     // unknown ids
     const raw = JSON.parse(text);
     raw.commons.levels.nope = 3;

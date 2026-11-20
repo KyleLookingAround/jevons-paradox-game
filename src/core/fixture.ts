@@ -420,3 +420,94 @@ export const fixtureM3Gated: Content = {
     freeAtUse: { when: atRk(1) }, survey: { when: atRk(1) }, histories: { when: atRk(1) }, bank: { when: atRk(1) },
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* M4: fixtureM4 — fixtureM3 plus every M4 mechanism                   */
+/* ------------------------------------------------------------------ */
+/*
+ * Kept apart so the M2 and M3 tests stay as they were. Iron draws on Steam's reserve (resourceStock) with three
+ * applications, two of which feed (iron.rails into Steam at 0.8; iron.girders into every other sector at 0.9); Fish is
+ * a renewable stock (K 100k) with a ForeignDef, a threshold at 0.3 (its last crisis at 0.7), a scar (× 0.5 for 20 years,
+ * start at 0.4 K while scarred), the Board's first survey (2 crises or 600 s), two applications, a quota lever, a
+ * measure lever carrying the survey and one carrying the fishery limits (foreignMul), settle.requires on 'surveyed',
+ * and drawsOn Steam. Two dispatches with wager arms (one on capital, one on Fish's stockFraction). The survey reveal
+ * card. Feature 'estimates' arrives with the survey flag. Variant fixtureM4Acts: Act I (Steam, Iron, Fish; a capstone;
+ * endingYears 2) and a Preview Act II (the later ages).
+ */
+const iron = sector({
+  id: 'iron', basePrice: 9, capCost: 0.05, margin: 0.2, resourceStock: 'steam', reserve: 1, pressureIntensity: 0.001,
+  settle: { dividend: [], upkeepPerSpill: 1, blurb: 'Iron settles.' },
+  unlock: { minReckonings: 0, after: ['steam'], when: { stat: 'time', op: '>=', value: 1e9 } },
+  applications: [
+    { ...app('iron.rails', 0.8, 200, 2), feeds: [{ sector: 'steam', capCostMul: 0.8 }] },
+    { ...app('iron.girders', 0.6, 300, 2, Infinity, 100), feeds: [{ sector: '*', capCostMul: 0.9 }] },
+    app('iron.pots', 1.2, 100, 1.5),
+  ],
+});
+const fish = sector({
+  id: 'fish', basePrice: 1, capCost: 0.05, alpha: 0.5, resourceKind: 'renewable', reserve: 100_000,
+  pressureSource: 'depletion', pressureIntensity: 0, absorption: 0, collapseAt: 100, crisisAt: [0.4, 0.7],
+  pressureWellbeingCost: 5, drawsOn: { sector: 'steam', perService: 0.05 },
+  renewable: {
+    regen: 0.02, threshold: 0.3, collapsed: 0.2, beta: 0.4, scar: { mul: 0.5, years: 20 }, startScarred: 0.4,
+    foreign: { share0: 0.1, growth: 1, cap: 0.6, announceAt: 0.15 },
+    firstSurvey: { atCrisis: 2, afterSeconds: 600, years: 10 },
+  },
+  settle: { dividend: [], upkeepPerSpill: 1, requires: { stat: 'surveyed', sector: 'fish', op: '>=', value: 1, label: 'The stock surveyed' } },
+  unlock: { minReckonings: 0, after: ['steam'], when: { stat: 'time', op: '>=', value: 1e9 } },
+  applications: [app('fish.market', 1.5, 300, 1.5), app('fish.trawlers', 0.5, 2_000, 2, Infinity, 200)],
+});
+const m4Levers: LeverDef[] = [
+  ...m3Levers,
+  lever('fish.quota', 'fish', 'quota', [L(50, 0.02, 0.9), L(100, 0.04, 0.5)], { repeat: { valueStep: -0.25, costGrowth: 1.5, upkeepGrowth: 1.2 } }),
+  lever('fish.board', 'fish', 'measure', [L(30, 0.01, 1)], { effects: [{ type: 'survey', sector: 'fish' }] }),
+  lever('fish.limits', 'fish', 'measure', [L(30, 0.01, 1)], { effects: [{ type: 'foreignMul', sector: 'fish', value: 0.5 }] }),
+  lever('iron.duty', 'iron', 'duty', [L(50, 0.02, 0.3)]),
+];
+const wagerDispatches: import('../types').DispatchDef[] = [
+  { id: 'd.bet', cast: 'correspondent', headline: 'A wager', body: '', arms: [
+    arm('Decline'),
+    arm('Bet', { cost: { mandate: 5 }, effects: [{ type: 'mandateAdd', value: 1 }], reply: 'The proprietor bets.', wager: {
+      when: { stat: 'capital', op: '>=', value: 1_000 }, hint: 'Pays if the books are fat',
+      win: { outcome: 'It pays', effects: [{ type: 'mandateAdd', value: 20 }], reply: 'The bet pays.' },
+      lose: { outcome: 'It does not', effects: [{ type: 'mandateAdd', value: 2 }] },
+    } }),
+  ] },
+  { id: 'd.shoals', cast: 'correspondent', sector: 'fish', headline: 'The shoals', body: '', arms: [
+    arm('Leave it'),
+    arm('Build boats', { wager: {
+      when: { stat: 'stockFraction', sector: 'fish', op: '>=', value: 0.5 }, hint: 'Pays if the shoals are as thick as the catch says',
+      win: { outcome: 'Full nets', modifier: { effects: [{ type: 'satMul', sector: 'fish', value: 1.2 }], years: 5, label: 'Full nets' } },
+      lose: { outcome: 'Empty nets', effects: [{ type: 'etaMul', sector: 'fish', value: 0.9 }] },
+    } }),
+  ] },
+];
+export const fixtureM4: Content = {
+  ...fixtureM3,
+  sectors: { ...fixtureM3.sectors, iron, fish },
+  sectorOrder: ['steam', 'iron', 'fish', 'light', 'motion', 'compute', 'code'],
+  ages: [
+    { ...fixtureM3.ages[0], sectors: ['steam', 'iron', 'fish', 'light'] },
+    ...fixtureM3.ages.slice(1),
+  ],
+  levers: m4Levers,
+  dispatches: [...(fixtureM3.dispatches ?? []), ...wagerDispatches],
+  features: { estimates: { when: { flag: 'survey:fish' } } },
+  surveyReveal: {
+    variants: [
+      { when: 'small', headline: 'Survey confirms the skippers: {reported}% against {true}%', body: 'Small.' },
+      { when: 'large', headline: 'Survey finds {true}% where the skippers report {reported}%', body: 'Large.' },
+      { when: 'failed', headline: 'The {sector} banks have failed, {year}', body: 'Failed.' },
+    ],
+    columns: { reported: "The skippers' report", surveyed: "The Board's survey" }, footer: 'Two notes.', button: 'File the survey',
+    followUp: 'Skippers dispute the survey',
+  },
+};
+export const fixtureM4Acts: Content = {
+  ...fixtureM4,
+  global: { ...fixtureM4.global, endingYears: 2 },
+  acts: [
+    { id: 'actOne', name: 'Act I', title: 'The Coal Age', ages: ['coal'], ending: { id: 'actOne', sectors: ['steam', 'iron', 'fish'] }, capstone: { incomeShare: 0.25 } },
+    { id: 'actTwo', name: 'Act II', title: 'The Great Acceleration', ages: ['acceleration', 'attention'], preview: true },
+  ],
+};

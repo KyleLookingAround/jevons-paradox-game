@@ -57,7 +57,7 @@ export function foreignShareOf(r: RenewableDef, es: SectorState, ps: number, for
 export const foreignCatch = (Rhome: number, share: number): number => (share > 0 && share < 1 ? fin(Rhome * share / (1 - share)) : 0);
 
 /**
- * The stock's step (RenewableDef): Q ← Q + (G(Q) − R_home × (1 − circ) − R_foreign) × dt, split into
+ * The stock's step (RenewableDef): dQ/dt = G(Q) − R_home × (1 − circ) − R_foreign over dt (integrated by RK4), split into
  * n = min(MAX, ceil(|dQ| / (SHARE × K))) substeps when |dQ| over the step exceeds SHARE × K; G re-evaluated per substep
  * (R_home and R_foreign held at the step's); clamped to [FLOOR × K, K] after each substep. Returns Q and the lowest Q
  * passed through.
@@ -68,8 +68,14 @@ export function stepStock(r: RenewableDef, K: number, Q0: number, Rhome: number,
   const d0 = (growthOf(r, K, Q0, sMul) - out) * dt;
   const n = Math.abs(d0) > RENEWABLE_SUBSTEP_SHARE * K ? Math.min(RENEWABLE_SUBSTEPS_MAX, Math.ceil(Math.abs(d0) / (RENEWABLE_SUBSTEP_SHARE * K))) : 1;
   const h = dt / n;
+  const rate = (q: number) => growthOf(r, K, clamp(q, lo, K), sMul) - out;
   let Q = Q0;
-  for (let i = 0; i < n; i++) Q = clamp(fin(Q + (growthOf(r, K, Q, sMul) - out) * h, lo), lo, K);
+  for (let i = 0; i < n; i++) {
+    // classical Runge–Kutta on dQ/dt = G(Q) − out (explicit; G re-evaluated within the substep, the catch held): the
+    // logistic recovery tracks its closed form to about 1e-9 K over 200 s at a one-second step, where Euler drifts 5e-4 K
+    const k1 = rate(Q), k2 = rate(Q + 0.5 * h * k1), k3 = rate(Q + 0.5 * h * k2), k4 = rate(Q + h * k3);
+    Q = clamp(fin(Q + (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4), lo), lo, K);
+  }
   return Q;
 }
 

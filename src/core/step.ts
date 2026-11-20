@@ -43,6 +43,10 @@ import { expireModifiers } from './modifiers';
 import { publishOnFlag } from './returns';
 import { stepBites } from './sideEffects';
 import { decayedPeak } from './travel';
+import type { ActDef } from '../types';
+import { actStreak } from './acts';
+import { actEndingMeta, arrearsStep, depletionP, drainOfDrawers, drawLine, mirrorDrawers, newM4Step, stepCapstone, stepM4, stepRenewableSector } from './world';
+import type { M4Step } from './world';
 
 /* ------------------------------------------------------------------ */
 /* Tick                                                                */
@@ -88,17 +92,21 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let levers = state.levers;
   const sectors = { ...state.sectors };
   const tmp = state; // headlines read the seed, the news count and the open sectors, not the time (passed apart)
+  const m4 = ix.anyM4;
+  const w4: M4Step = newM4Step(); // M4: news and events after the M3 ones; meta.world changes
 
   for (const s of ix.ids) {
     const es0 = state.sectors[s];
     const f = fl.sectors[s];
     if (!es0?.open || !f) continue;
     if (es0.settled) {
-      // M2: a settled sector is frozen; only its clock and its burn move.
+      // M2: a settled sector is frozen; only its clock and its burn move. (M4: a capstone's burn is per head.)
       const st = es0.settled;
-      resourceUsed[s] = (resourceUsed[s] ?? 0) + st.R * dt;
-      sectors[s] = { ...es0, openFor: es0.openFor + dt, serviceDelivered: (es0.serviceDelivered ?? 0) + st.D * dy };
+      resourceUsed[s] = (resourceUsed[s] ?? 0) + f.R * dt;
+      sectors[s] = { ...es0, openFor: es0.openFor + dt, serviceDelivered: (es0.serviceDelivered ?? 0) + f.D * dy };
+      if (es0.capstoned) crisisCount += stepCapstone(state, content, s, f, mods, sectors, time, hc, items, ev, dt); // M4: arrears
       if (W >= target) anyDecoupling = true;
+      void st;
       continue;
     }
     const def = content.sectors[s];
@@ -145,12 +153,17 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
 
     // resource
     if (def.resourceKind === 'stock') {
-      es.reserve = Math.max(0, es0.reserve - f.R * (1 - lev.circ) * dt + f.reserveGain * dt);
-      es.reserveMax = es0.reserveMax + f.reserveGain * dt;
-      if (es.reserve <= EXHAUSTED_BELOW * es.reserveMax) {
-        items.push(headline(tmp, content, 'exhausted', time, hc, s));
-        ev.push({ kind: 'exhausted', sector: s });
+      if (!m4 || !ix.ownerOf.has(s)) { // M4: a drawer's reserve is its owner's (mirrored after the loop)
+        const drawn = m4 && ix.drawers.has(s) ? drainOfDrawers(state, content, fl, levs, s) : 0; // M4: the owner's drawers
+        es.reserve = Math.max(0, (drawn > 0 ? es0.reserve - drawn * dt : es0.reserve) - f.R * (1 - lev.circ) * dt + f.reserveGain * dt);
+        es.reserveMax = es0.reserveMax + f.reserveGain * dt;
+        if (es.reserve <= EXHAUSTED_BELOW * es.reserveMax) {
+          items.push(headline(tmp, content, 'exhausted', time, hc, s));
+          ev.push({ kind: 'exhausted', sector: s });
+        }
       }
+    } else if (def.resourceKind === 'renewable') {
+      es = stepRenewableSector(state, content, s, es, f, lev, mods, dt, time, hc, w4); // M4: the stock, crossing, scar
     } else {
       es.reserve = es.reserveMax = f.capacity;
     }
@@ -159,7 +172,8 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
 
     // pressure
     const absorption = absorptionOf(def, mods);
-    es.pressure = Math.max(0, fin(es0.pressure * Math.exp(-absorption * dt) + (f.pressureIn - f.deletionOut) * dt));
+    es.pressure = def.pressureSource === 'depletion' ? depletionP(def, es.reserve) // M4: derived from the stock
+      : Math.max(0, fin(es0.pressure * Math.exp(-absorption * dt) + (f.pressureIn - f.deletionOut) * dt));
     while (es.crisesFired < def.crisisAt.length && def.collapseAt > 0 && es.pressure >= def.crisisAt[es.crisesFired] * def.collapseAt) {
       es.crisesFired++;
       crisisCount++;
@@ -207,9 +221,9 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
 
     // budget auto-draw for an active cap (M2: the default pace, the line's own day)
-    if (fBudget && Number.isFinite(lev.capFrac) && !es0.budget && f.D > 0 && f.R > 0
+    if (fBudget && (Number.isFinite(lev.capFrac) || Number.isFinite(lev.quotaFrac)) && !es0.budget && f.D > 0 && f.R > 0
       && es0.openFor * YEARS_PER_SECOND >= standingDrawYearsOf(def, content) - 1e-9) {
-      es.budget = newBudget(content, s, f.R, state.time, year, W, es0.pressure);
+      es.budget = m4 ? drawLine(state, content, fl, s, f.R, state.time, year, W, es0.pressure) : newBudget(content, s, f.R, state.time, year, W, es0.pressure); // M4: the account
       items.push(headline(tmp, content, 'budgetDrawn', time, hc, s));
       ev.push({ kind: 'budgetDrawn', sector: s, id: es.budget.pace, by: 'default' });
     }
@@ -314,6 +328,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
   }
 
+  if (m4) mirrorDrawers(content, sectors); // M4: drawers' reserve gauges follow the owner's
   // population
   const growth = popGrowthRate(W, content, mods);
   let population = state.population * Math.exp(clamp(growth * dt, -50, 50));
@@ -323,6 +338,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   // mandate & lapse (M2: settlement defences count as upkeep; once no lever upkeep is left, the largest defence unsettles)
   let mandate = state.mandate + (fl.mandateGain - fl.upkeep) * dt + crisisCount * g.crisisMandate + one.mandate;
   const unsettleList: SectorId[] = [];
+  const arrearsList: SectorId[] = [];
   if (mandate <= 0) {
     mandate = 0;
     let upkeep = fl.upkeep;
@@ -338,10 +354,10 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
         let ws: SectorId | null = null, wd = 0;
         for (const s of ix.ids) {
           const d = fl.settled[s];
-          if (d && d.defence > wd && !unsettleList.includes(s)) { wd = d.defence; ws = s; }
+          if (d && d.defence > wd && !unsettleList.includes(s) && !arrearsList.includes(s)) { wd = d.defence; ws = s; }
         }
         if (ws === null) break;
-        unsettleList.push(ws);
+        if (state.sectors[ws]?.capstoned) arrearsList.push(ws); else unsettleList.push(ws); // M4: a capstone goes into arrears
         upkeep -= wd;
         continue;
       }
@@ -355,6 +371,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     }
   }
   mandate = fin(mandate);
+  if (m4) mandate = arrearsStep(state, content, fl, sectors, arrearsList, mandate, dt, time, hc, w4); // M4: into and out of arrears
   // M3: side effects bite (after Mandate and lapses)
   const bites = stepBites(state, content, levers, dt);
   levers = bites.levers;
@@ -366,7 +383,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     const s = ix.ids[k];
     if (state.sectors[s]?.open || !canOpen(state, content, s)) continue;
     const def = content.sectors[s];
-    sectors[s] = freshSector(def, mods, true);
+    sectors[s] = freshSector(def, mods, true, state.meta);
     const age = ix.ageOf.get(s);
     const ageNew = !!age && !(age.sectors ?? []).some((o) => state.sectors[o]?.open || opened.includes(o));
     opened.push(s);
@@ -387,7 +404,19 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let flags = state.flags;
   if (revealNow && !flags.revealed) { flags = { ...flags, revealed: true }; firsts.push('reveal'); }
   let ending = false;
-  if (ix.ids.length > 0 && unsettleList.length === 0 && ix.ids.every((s) => !!state.sectors[s]?.open && !!state.sectors[s]?.settled)) {
+  let actWon: ActDef | null = null;
+  if (ix.acts.length) { // M4: the act's ending set (acts.ts); without acts the M3 rule below, unchanged
+    const r = actStreak(state, content, unsettleList, dy);
+    steadyYearsAll = r.years;
+    if (r.act && steadyYearsAll >= endingYearsOf(content) - 1e-9 && !flags.won) {
+      flags = { ...flags, won: true };
+      actWon = r.act;
+      items.push(headline(tmp, content, 'steadyAll', time, hc));
+      ev.push({ kind: 'won' });
+      items.push(headline(tmp, content, 'actEnding', time, { ...hc, name: r.act.title }));
+      ev.push({ kind: 'ending', id: r.act.ending!.id });
+    }
+  } else if (ix.ids.length > 0 && unsettleList.length === 0 && ix.ids.every((s) => !!state.sectors[s]?.open && !!state.sectors[s]?.settled)) {
     steadyYearsAll += dy;
     if (steadyYearsAll >= endingYearsOf(content) - 1e-9 && !flags.won) {
       flags = { ...flags, won: true };
@@ -437,6 +466,8 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   };
   if (firsts.length) for (const k of firsts) meta = milestone(meta, k, null, year);
   if (ending) meta = firstEnding(meta, endingRecord({ ...state, time, meta }, year), year) ?? meta;
+  if (m4 && w4.world) meta = { ...meta, world: w4.world }; // M4: scars written and healed
+  if (actWon) meta = actEndingMeta(state, content, actWon, { ...state, time, meta }, year); // M4: the record and the capstone
   const commonsIn = fl.commonsLevy > 0 ? commonsCfg(content).fundShare * fl.commonsLevy * dt : 0;
 
   let next: GameState = {
@@ -461,6 +492,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     next = { ...next, history: pushHistory(state.history, historySample(next, content, computeFlows(next, content))) };
   }
   next = stepM3(state, next, content, year, secondTick, bites.bitten, lite, away);
+  if (m4) next = stepM4(state, next, content, fl, mods, year, lite, away, w4); // M4: surveys, the order book's peaks, M4 events
   next = runOrders(state, next, content, lite);
   return next;
 }

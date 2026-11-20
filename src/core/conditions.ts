@@ -11,6 +11,10 @@ import { idx } from './contentIndex';
 import { computeFlows, instruments, reserveFractionOf, steadyView } from './flows';
 import { budgetROf, isWithin } from './steady';
 import { hoursPerHead, sprawlOf } from './travel';
+import { renewableOf, reportedOf, sizeOf } from './renewable';
+import { modsOf } from './effects';
+import { lineR } from './account';
+import { feedMulOf } from './feeds';
 import { clamp, isObj } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -42,6 +46,8 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
     case 'historiesCleared': { let n = 0; const h = state.meta.histories ?? {}; for (const k in h) if (h[k]?.cleared) n++; return n; }
     case 'totalHours': return state.meta.totalSeconds / 3600;
     case 'bankedSeconds': return state.meta.bankedSeconds ?? 0;
+    /* M4, global */
+    case 'capstoned': { let n = 0; for (const k of idx(content).ids) if (state.sectors[k]?.capstoned) n++; return n; }
     case 'adoption': case 'appDemand': {
       const loc = cond.app ? idx(content).apps.get(cond.app) : undefined;
       const f = loc ? fl.sectors[loc.sector] : undefined;
@@ -96,6 +102,29 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
       for (const l of idx(content).leversBySector[s] ?? []) b = Math.max(b, state.levers[l.id]?.bite ?? 0);
       return b;
     }
+    /* M4, sector */
+    case 'openFor': return es.openFor;
+    case 'stockFraction': case 'reportedStock': case 'scarYears': {
+      const rn = renewableOf(def);
+      if (!rn) return null;
+      const K = sizeOf(def);
+      if (cond.stat === 'stockFraction') return clamp(es.reserve / K, 0, 1);
+      if (cond.stat === 'reportedStock') return reportedOf(rn, K, es.reserve);
+      return state.meta.world?.scars?.[s]?.yearsLeft ?? 0;
+    }
+    case 'foreignShare': {
+      const rn = renewableOf(def);
+      if (!rn?.foreign) return null;
+      return f.ren && !es.settled ? f.ren.share : 0;
+    }
+    case 'surveyed': return modsOf(state, content).survey.has(s) ? 1 : 0;
+    case 'budgetHeadroom': {
+      const b = budgetROf(es, def, content, state.time);
+      if (b === null || !(b > 0)) return null;
+      return 1 - lineR(state, content, fl, s) / b;
+    }
+    case 'feedFactor': return feedMulOf(idx(content), fl.sectors, state, s);
+    case 'arrears': return es.arrears ? 1 : 0;
     default: return null;
   }
 }
@@ -168,6 +197,7 @@ export function evalCond(state: GameState, content: Content, cond: Cond): boolea
   if ('feature' in c) return typeof c.feature === 'string' && FEATURE_SET.has(c.feature) && featureOn(content, state.meta, c.feature as FeatureId);
   if ('returned' in c) return returnedLeaf(state, c);
   if ('answered' in c) return answeredLeaf(state, c);
+  if ('ending' in c) return typeof c.ending === 'string' && state.meta.endings?.[c.ending] !== undefined; // M4
   if ('all' in c) return Array.isArray(c.all) && (c.all as Cond[]).every((x) => evalCond(state, content, x));
   if ('any' in c) return Array.isArray(c.any) && (c.any as Cond[]).some((x) => evalCond(state, content, x));
   if ('not' in c) return isObj(c.not) && !evalCond(state, content, c.not as Cond);
@@ -218,6 +248,7 @@ function condLabel(content: Content, cond: Cond): string {
   if ('feature' in c) return content.features?.[c.feature as FeatureId]?.name ?? `${c.feature} arrived`;
   if ('returned' in c) return 'A household return on file';
   if ('answered' in c) return `Answer ${ix.names.get(c.answered as string) ?? c.answered}`;
+  if ('ending' in c) { const a = ix.acts.find((x) => x.ending?.id === c.ending); return a ? `${a.title} settled` : `The ending ${c.ending}`; }
   if ('all' in c) return 'All of these';
   if ('any' in c) return 'Any of these';
   if ('not' in c && isObj(c.not)) return `Not: ${condLabel(content, c.not as Cond)}`;

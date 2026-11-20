@@ -7,6 +7,7 @@ import { EXHAUSTED_BELOW, CAPSTONE_INCOME_SHARE } from '../types';
 import type { Content, GameState, ReckoningCause, RenewableDef, SectorDef, SectorId, SectorState, SettledState } from '../types';
 import { POP_MIN, REBOUND_MIN_FOLD, FLOW_MIN_CAPACITY_SHARE, DEFAULT_FREE_EXCESS, CAP_SQUEEZE_MAX } from './constants';
 import { feedMulOf, handedByFeeds } from './feeds';
+import { lineR } from './account';
 import { renewableOf, renewablePrice, scarMulOf, depletionSinkR, foreignShareOf, foreignCatch, growthOf, reportedOf, sizeOf } from './renewable';
 import { addCommonsIntensity, commonsWellbeing } from './commons';
 import { idx } from './contentIndex';
@@ -248,6 +249,15 @@ function solveFlows(state: GameState, content: Content, reuse: Flows | null, foc
   return flows;
 }
 
+/** M4: the true sink line of a depletion sector now (its foreign share and scar as they stand). */
+export function depletionSink(state: GameState, content: Content, s: SectorId, f: SectorFlow, clearP: number | null): number | null {
+  const def = content.sectors[s];
+  const rn = renewableOf(def);
+  if (!rn || !f.ren) return null;
+  const lev = sectorLevers(state, content)[s] ?? NO_LEVERS;
+  return depletionSinkR(def, rn, clearP, lev.circ, f.ren.share, scarMulOf(rn, state.meta, s));
+}
+
 /** M4: a quota at value 0 (a moratorium) holds demand at the price-proof floors: the cap's squeeze limit, nearly all. */
 export const MORATORIUM_SQUEEZE = 0.999;
 
@@ -345,7 +355,7 @@ export function instruments(state: GameState, content: Content, fl: Flows, s: Se
 }
 
 export function reserveFractionOf(def: SectorDef, es: SectorState, f: SectorFlow): number {
-  return def.resourceKind === 'stock'
+  return def.resourceKind !== 'flow' // M4: a renewable's is the true Q / K (reserveMax = K); a drawer's mirrors its owner's
     ? (es.reserveMax > 0 ? clamp(es.reserve / es.reserveMax, 0, 1) : 0)
     : clamp(1 - f.util, 0, 1);
 }
@@ -370,7 +380,7 @@ export function steadyView(state: GameState, content: Content, fl: Flows, s: Sec
   }
   const st = sectorSteady(content, s);
   const budgetR = budgetROf(es!, def, content, state.time, st);
-  const withinBudget = !!f && isWithin(f.R, budgetR);
+  const withinBudget = !!f && isWithin(es.budget?.account === 'full' ? lineR(state, content, fl, s) : f.R, budgetR); // M4: the line's account
   const decadeW = decadeWellbeingOf(es, content, s, st);
   const clearP = clearPOf(es, def, content, st);
   if (es.settled) {
@@ -381,7 +391,8 @@ export function steadyView(state: GameState, content: Content, fl: Flows, s: Sec
   const clear = isClear(es, def, content, f.pressureIn, f.deletionOut, ab, clearP);
   return {
     budgetR, withinBudget, decadeW, decoupling: withinBudget && W >= decadeW && !fl.pending, clearP, clear,
-    sinkR: withSink ? sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, ab, clearP) : null,
+    sinkR: !withSink ? null : f.ren && def.pressureSource === 'depletion' ? depletionSink(state, content, s, f, clearP)
+      : sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, ab, clearP),
     sinkHeld: withinBudget && W >= target && clear && !fl.pending,
   };
 }

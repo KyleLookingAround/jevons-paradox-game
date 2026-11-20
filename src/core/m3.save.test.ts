@@ -37,7 +37,7 @@ describe('M3 save version 4', () => {
     const v3 = toV3(s);
     const b = model.deserialize(JSON.stringify(v3), M)!;
     expect(b).not.toBeNull();
-    expect(b.version).toBe(4);
+    expect(b.version).toBe(5);
     // 1
     expect(b.modifiers).toEqual([]);
     expect(b.ambientLast).toEqual({});
@@ -76,16 +76,16 @@ describe('M3 save version 4', () => {
     const pre = model.deserialize(JSON.stringify({ ...v3, meta: { ...(v3.meta as Record<string, unknown>), features: undefined } }), fixtureM3Gated)!;
     expect(Object.keys(pre.meta.features!).some((k) => ['archive', 'dispatches', 'seams', 'histories'].includes(k))).toBe(false);
   });
-  test('v1 and v2 chain to v4; v5 → null', () => {
+  test('v1 and v2 chain to v5; v6 → null', () => {
     const v1 = { time: 5, eras: { steam: { open: true, eta: 1, reserve: 1000, reserveMax: 1000, pressure: 0, apps: {} } }, meta: { furthestEra: 1 } };
     const a = model.deserialize(JSON.stringify(v1), M)!;
-    expect(a.version).toBe(4);
+    expect(a.version).toBe(5);
     expect(a.dispatch.nextAt).toBeGreaterThan(5);
     expect(a.meta.milestones['sectorOpened:steam']).toBeDefined();
     const s = model.createState(M);
     const v2 = { ...toV3(s), version: 2 };
-    expect(model.deserialize(JSON.stringify(v2), M)!.version).toBe(4);
-    expect(model.deserialize(JSON.stringify({ ...JSON.parse(model.serialize(s)), version: 5 }), M)).toBeNull();
+    expect(model.deserialize(JSON.stringify(v2), M)!.version).toBe(5);
+    expect(model.deserialize(JSON.stringify({ ...JSON.parse(model.serialize(s)), version: 6 }), M)).toBeNull();
   });
   test('a v4 round trip with every M3 structure is lossless; unknown ids are dropped', () => {
     let s = { ...foundAll(model.createState(M), M, 'steam'), capital: 1e6, mandate: 1e3, time: 10 };

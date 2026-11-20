@@ -8,11 +8,11 @@ import { HISTORY_MAX, DEFAULT_MARKET_PAYBACK, DEFAULT_KEEP_SECONDS } from './con
 import { idx } from './contentIndex';
 import { computeMods, etaAt, flowCapacity, modsOf, NO_SOURCES } from './effects';
 import type { Mods } from './effects';
-import { computeFlows } from './flows';
+import { computeFlows, depletionSink } from './flows';
 import type { Flows } from './flows';
 import { leverMaxLevel } from './levers';
 import type { SectorFlow } from './solver';
-import { budgetROf, sinkROf } from './steady';
+import { budgetROf, clearPOf, sinkROf } from './steady';
 import { absorptionOf } from './effects';
 import { fin } from './util';
 import { featureOn } from './features';
@@ -103,7 +103,9 @@ export function historySample(state: GameState, content: Content, flows: Flows):
     if (b !== null && es.baseR > 0) { budget[s] = fin(b / es.baseR); anyBudget = true; }
     if (b !== null && es.baseR > 0 && !es.settled && skies) {
       const def = content.sectors[s];
-      const sr = sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, absorptionOf(def, modsOf(state, content)));
+      // M4: a depletion sector's sink line is recorded only while it is surveyed
+      const sr = def.pressureSource === 'depletion' ? (modsOf(state, content).survey.has(s) ? depletionSink(state, content, s, f, clearPOf(es, def, content)) : null)
+        : sinkROf(es, def, content, f.R, f.pressureIn, f.deletionOut, absorptionOf(def, modsOf(state, content)));
       if (sr !== null) { sink[s] = fin(sr / es.baseR); anySink = true; }
     }
   }

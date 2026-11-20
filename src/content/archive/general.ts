@@ -255,3 +255,44 @@ export const generalArchive: ArchiveDef[] = [
     sources: [{ cite: 'Northcote–Trevelyan Report (1854); Order in Council of 4 June 1870', url: 'https://en.wikipedia.org/wiki/Northcote%E2%80%93Trevelyan_Report', grade: 'S' }],
   },
 ];
+
+/*
+ * M4 (the text lane): the Act I credits note and "years at this year's rate" (the reach backwards of The Survey: "years of coal
+ * left" was always years at this year's rate). A separate export until the Act lane registers the letter its first
+ * note hangs on: archive/index.ts appends ...generalArchiveM4 after ...generalArchive. The Act lane may re-point
+ * arc.general.coalAgeEnd at the Act I achievement ("The Coal Age, Settled") once its id exists; until then it unlocks
+ * with the Gazette's supplement letter, which asks for exactly this history.
+ */
+export const generalArchiveM4: ArchiveDef[] = [
+  {
+    id: 'arc.general.coalAgeEnd',
+    subject: 'd.age.coal.supplement',
+    title: 'The end of the Coal Age, 1913',
+    date: '1913',
+    text:
+      'Great Britain raised 287.3 million tons of coal in 1913, the most it ever raised in a year. The engines that ' +
+      'burned it were the thriftiest the world had seen, and the iron that carried it was the cheapest; the railways, ' +
+      'the steamers, the furnaces and the gasworks had all grown on the saving. The next year the war came, and output ' +
+      'never reached that figure again. The Coal Age did not end because the coal ran out or because anyone settled it. ' +
+      'It ended because something else became cheaper.',
+    sources: [hansardCoal1913],
+  },
+  {
+    id: 'arc.general.yearsLeft',
+    subject: 'steam.coalQuestion',
+    title: 'Years at this year’s rate',
+    date: '1871–1913',
+    text:
+      'The number of years a reserve will last is the reserve divided by a year’s use, and the answer depends entirely on ' +
+      'which year. The Royal Commission on Coal Supplies, reporting in 1871, divided by something close to the year it ' +
+      'had: a retrospective of 1901 found its chief error in supposing that exports would stay at about twelve million ' +
+      'tons. Output nearly tripled instead, to 287.3 million tons in 1913. No figure in the report was false. The ' +
+      'arithmetic was sound and the assumption sat in the divisor, where nobody reads it.',
+    sources: [
+      { cite: 'The Press (Christchurch), 6 July 1901, retrospective on the Royal Commission of 1871 (Papers Past)', url: 'https://paperspast.natlib.govt.nz/newspapers/CHP19010706.2.33', grade: 'S' },
+      { cite: 'The Spectator, 12 August 1871, “The Exhaustion of Coal”', url: 'https://archive.spectator.co.uk/article/12th-august-1871/9/the-exhaustion-of-coal', grade: 'S' },
+      energy('§1.5 (the Commission, 1866–1871; the exports assumption) and §1.2 (output to 1913)'),
+      hansardCoal1913,
+    ],
+  },
+];

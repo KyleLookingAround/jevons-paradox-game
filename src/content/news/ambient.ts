@@ -8,7 +8,7 @@
  * Lines that need a later system (the budget, the Commons, Steady State) wait for it in their `when`.
  * Content is data (see ../README.md); the lint is in dispatches/dispatches.test.ts.
  */
-import type { AmbientDef, Cond } from '../../types';
+import type { AmbientDef, Cond, SectorId, StatKey } from '../../types';
 import { BUDGET, COMMONS, all, owns, rk, sec, year } from '../dispatches/kit';
 
 const g = (stat: 'population' | 'wellbeing' | 'mandate' | 'decisions' | 'commonsLevels' | 'steadySectors' | 'dispatchesAnswered',
@@ -129,4 +129,54 @@ export const ambient: AmbientDef[] = [
   { id: 'amb.code.agentTickets', sector: 'code', when: owns('code.agentsForAgents'), text: ['Added: agents now file tickets for other agents to close'] },
   { id: 'amb.code.deleted', sector: 'code', when: owns('code.deletion'), text: ['Removed: 11,000 lines; nobody noticed, which was the point'] },
   { id: 'amb.code.outageFix', sector: 'code', when: sec('crises', 'code', '>=', 1), text: ['Fixed: the outage; Known issue: the fix'] },
+];
+
+/*
+ * M4 (the text lane): the small print for Iron and Fishing, and one line for The Survey. A separate export until the Act
+ * lane registers both Industries (the lint resolves sectors): Content.ambient becomes [...ambient, ...ambientM4]
+ * (appended, so the least-recently-printed order of the M3 lines is unchanged). Iron prints the iron market report
+ * (pig iron, furnaces in blast, Wolverhampton and Ravensdale); Fishing prints harbour notes and landings.
+ * The gulls follow the TRUE stock, as the scene and the sound do (design §5.3): the world tells the truth in the small
+ * print, while the catch per trip, quoted beside it, does not. {pct} on fractions only: reportedStock, stockFraction,
+ * foreignShare and feedFactor are fractions (the lint's FRACTION_STATS needs them; m4-registry-text.md).
+ */
+const m4 = (stat: StatKey, sector: SectorId, op: '<' | '<=' | '>' | '>=', value: number): Cond => ({ stat, sector, op, value });
+
+export const ambientM4: AmbientDef[] = [
+  /* ---- Iron & Steel: the iron market report ---- */
+  {
+    id: 'amb.iron.cokeFold', sector: 'iron', when: m4('rFold', 'iron', '>=', 2), stat: { stat: 'rFold', sector: 'iron' },
+    text: ['Iron market: coke up {fold}-fold since the first year; more in blast', 'More furnaces in blast; coke up {fold}-fold, the report notes'],
+  },
+  { id: 'amb.iron.wolverhampton', sector: 'iron', when: { owns: 'iron.hotBlast' }, text: ['Pig iron firm at Wolverhampton; three furnaces blown in at Ravensdale', 'Iron market: buyers plentiful, coke plentiful, prices easier'] },
+  { id: 'amb.iron.glare', sector: 'iron', when: m4('pressureFraction', 'iron', '>=', 0.2), text: ['Dudley complains of the glare; Ravensdale lit all night, as usual', 'Slag tip at Ravensdale now taller than the church; a footpath diverted'] },
+  {
+    id: 'amb.iron.feedSteam', sector: 'iron', when: m4('feedFactor', 'steam', '<=', 0.95), stat: { stat: 'feedFactor', sector: 'steam' },
+    text: ['Iron market: rails bring Steam’s engines to {pct}% of their old cost', 'Engine builders’ prices at {pct}% of the old list; iron cheaper'],
+  },
+  { id: 'amb.iron.sharedCoal', sector: 'iron', when: m4('reserveFraction', 'steam', '<', 0.5), text: ['Coke dearer as the valley’s coal runs down; ironmasters buy on'] },
+  { id: 'amb.iron.converter', sector: 'iron', when: { owns: 'iron.bessemer' }, text: ['Steel quoted lower at Sheffield; the railways relay their lines'] },
+
+  /* ---- Fishing: harbour notes and landings ---- */
+  {
+    id: 'amb.fishing.catchPerTrip', sector: 'fishing', when: m4('reportedStock', 'fishing', '>=', 0.4), stat: { stat: 'reportedStock', sector: 'fishing' },
+    text: ['Landings at Grimsby: catch per trip {pct}% of the old; prime firm', 'Skippers put the catch per trip at {pct}%, and call it good'],
+  },
+  { id: 'amb.fishing.gulls', sector: 'fishing', when: m4('stockFraction', 'fishing', '<', 0.35), text: ['Fewer gulls follow the boats out; the catch per trip unchanged', 'No porpoises in the bay this summer; the fleet reports a fair season'] },
+  {
+    id: 'amb.fishing.foreign', sector: 'fishing', when: m4('foreignShare', 'fishing', '>=', 0.15), stat: { stat: 'foreignShare', sector: 'fishing' },
+    text: ['Foreign boats land {pct}% of the Dogger catch, the Board counts'],
+  },
+  { id: 'amb.fishing.glut', sector: 'fishing', when: m4('appsFounded', 'fishing', '>=', 3), text: ['Billingsgate glutted on Monday; the late cod sold to the meal works', 'Fish train runs late; the fried fish shops send to the next town'] },
+  {
+    id: 'amb.fishing.surveyed', sector: 'fishing', when: m4('surveyed', 'fishing', '>=', 1), stat: { stat: 'stockFraction', sector: 'fishing' },
+    text: ['The Board’s survey puts the banks at {pct}% of their natural stock'],
+  },
+  {
+    id: 'amb.fishing.scar', sector: 'fishing', when: m4('scarYears', 'fishing', '>', 0), stat: { stat: 'scarYears', sector: 'fishing' },
+    text: ['Harbour notes: the Board expects the banks to need {value} years yet', 'Boats laid up at Grimsby; the Board finds no sign of the shoals'],
+  },
+
+  /* ---- The Survey ---- */
+  { id: 'amb.gen.twoRates', when: { feature: 'estimates' }, text: ['Years of coal left now printed twice, at two rates; both correct'] },
 ];

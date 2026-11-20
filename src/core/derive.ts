@@ -29,7 +29,13 @@ import { ordersView } from './orders';
 import { popGrowthRate } from './population';
 import { isFreshRun, slotsUsed, respecRefunds } from './prestige';
 import { stageOf } from './purchases';
-import { canSettle, settleRoom } from './settlement';
+import { canSettle, settleRoom, roomCount, settleBlockedOf } from './settlement';
+import { accountOn, fullAccount } from './account';
+import { drawnByOf, secondsLeftOf, stockView, surveyRevealView, yearsLeftOf } from './views4';
+import { appFeedsView, feedsView } from './orderBook';
+import { renewableOf } from './renewable';
+import { evalCond } from './conditions';
+import { currentAct, endingAct, endingSectors } from './acts';
 import { standingDrawYearsOf } from './steady';
 import { nextSectorsOf } from './unlocks';
 import { featuresView, featureOn } from './features';
@@ -47,13 +53,18 @@ export function derive(state: GameState, content: Content): Derived {
   const mods = modsOf(state, content);
   const sectors: Record<SectorId, SectorDerived> = {};
   const features = featuresView(state, content);
+  const m4 = ix.anyM4;
+  const acct = accountOn(content, state.meta) ? fullAccount(state, content, fl) : null;
   for (const s of ix.ids) {
     const f = fl.sectors[s];
     const es = state.sectors[s];
     if (!f || !es) continue;
     const def = content.sectors[s];
     const lev = levs[s] ?? NO_LEVERS;
+    void lev;
     const ins = instruments(state, content, fl, s);
+    const rn = renewableOf(def);
+    const hidden = !!rn && def.pressureSource === 'depletion' && !mods.survey.has(s); // M4: no sink line while unsurveyed
     const apps: Record<string, AppDerived> = {};
     const frozenSeen = es.settled?.appPriceSeen;
     let freeBill = 0, freeD = 0, anySeen = false;
@@ -73,13 +84,10 @@ export function derive(state: GameState, content: Content): Derived {
         canFound: !!st?.available && !st.founded && state.capital >= cost && !fl.pending && !es.settled && !forbidden,
         priceSeen: seen, foundCost: cost, forbidden,
         wantedChange: es.budget ? appWanted(state, content, s, a) : null,
+        feeds: m4 ? appFeedsView(state, content, s, i) : null,
       };
     });
-    let secondsLeft = Infinity;
-    if (def.resourceKind === 'stock' && !es.settled) {
-      const drain = f.R * (1 - lev.circ) - f.reserveGain;
-      if (drain > 0) secondsLeft = Math.max(0, es.reserve - EXHAUSTED_BELOW * es.reserveMax) / drain;
-    }
+    const secondsLeft = secondsLeftOf(state, content, fl, levs, s);
     const sv = steadyView(state, content, fl, s);
     const budgetR = sv.budgetR;
     const withinBudget = sv.withinBudget;
@@ -98,8 +106,8 @@ export function derive(state: GameState, content: Content): Derived {
       trendR: es.trendR, budgetR, withinBudget,
       decoupling: sv.decoupling,
       steadyYears: es.steadyYears, budgetDecades: es.decadesWithin.length, wellbeingShare: f.wellbeingShare, apps,
-      decadeWellbeing: sv.decadeW, leanDecades: lean, pace: es.budget?.pace ?? null, clearP: features.clearSkies ? sv.clearP : null, clear: sv.clear,
-      sinkR: features.clearSkies ? sv.sinkR : null, clearYears: es.clearYears ?? 0, sinkHeld: sv.sinkHeld, settled: !!es.settled,
+      decadeWellbeing: sv.decadeW, leanDecades: lean, pace: es.budget?.pace ?? null, clearP: features.clearSkies && !hidden ? sv.clearP : null, clear: sv.clear,
+      sinkR: features.clearSkies && !hidden ? sv.sinkR : null, clearYears: es.clearYears ?? 0, sinkHeld: sv.sinkHeld, settled: !!es.settled,
       canSettle: canSettle(state, content, s), settleExcess: sd?.excess ?? 0, settleDefence: sd?.defence ?? 0,
       stage: stageOf(state, content, s),
       standingDrawIn: Number.isFinite(lev.capFrac) && !es.budget
@@ -112,6 +120,15 @@ export function derive(state: GameState, content: Content): Derived {
         share: f.capacity > 0 ? Math.min(0.95, fin(es.pressure * def.pressureUpkeep / f.capacity)) : 0,
         deletionOut: f.deletionOut, pressureIn: f.pressureIn,
       } : null,
+      // M4 (always written)
+      preview: ix.preview.has(s), capstoned: !!es.capstoned, arrears: !!es.arrears,
+      drawnBy: m4 && ix.drawers.has(s) ? drawnByOf(state, content, fl, levs, s) : null,
+      feeds: m4 && ix.feedTargets.has(s) ? feedsView(state, content, s) : null,
+      settleBlocked: settleBlockedOf(state, content, s, sv.sinkHeld),
+      stock: m4 && rn ? stockView(state, content, s, f, mods) : null,
+      fullR: acct ? acct.fullR[s] ?? null : null,
+      embodied: acct ? acct.embodied[s] ?? [] : null,
+      yearsLeft: yearsLeftOf(state, content, s, secondsLeft, acct !== null),
     };
   }
   const terms = hindsightTerms(state, content);
@@ -146,8 +163,9 @@ export function derive(state: GameState, content: Content): Derived {
     history: { id: state.meta.history ?? null, cleared: (state.meta.history ?? null) !== null && clearedThisRun(state), lifted: !!state.historyLifted },
     survey: surveyView(state, content),
     bank: bankView(state, content),
-    ending: endingView(state, content),
+    ending: ix.acts.length ? actEndingView(state, content) : { ...endingView(state, content), act: null },
     archive: archiveCounts(state, content),
+    surveyReveal: surveyRevealView(state, content),
   };
 }
 
@@ -163,15 +181,39 @@ function endingView(state: GameState, content: Content): Derived['ending'] {
     allOpen: ix.ids.every((x) => !!state.sectors[x]?.open),
     settled, total: ix.ids.length, years, yearsNeeded: need,
     room: Math.min(ix.ids.length, settleRoom(state, content)),
-    hold: holdTotal(content, settled), nextHold: settled < ix.ids.length ? holdTotal(content, settled + 1) : holdTotal(content, settled),
+    hold: holdTotal(content, roomCount(state, content)), nextHold: settled < ix.ids.length ? holdTotal(content, roomCount(state, content) + 1) : holdTotal(content, roomCount(state, content)),
     next: nextToSettle(state, content),
   };
 }
 
-/** Derived.ending.next: the first Industry in sectorOrder not settled, and what it waits on (M3 finish). */
-function nextToSettle(state: GameState, content: Content): Derived['ending']['next'] {
+/** M4: Derived.ending read from the ending act E (acts.ts endingAct): its set, its record; without E zeros. */
+function actEndingView(state: GameState, content: Content): Derived['ending'] {
   const ix = idx(content);
-  const s = ix.ids.find((x) => !(state.sectors[x]?.open && state.sectors[x]?.settled));
+  const E = endingAct(content, state.meta);
+  const need = endingYearsOf(content);
+  const years = Math.max(0, state.steadyYearsAll);
+  const n = roomCount(state, content);
+  const base = {
+    years, yearsNeeded: need, room: Math.min(ix.ids.length, settleRoom(state, content)),
+    hold: holdTotal(content, n), nextHold: holdTotal(content, n + 1),
+  };
+  if (!E) return { ...base, reached: false, record: null, progress: 0, allOpen: false, settled: 0, total: 0, next: null, act: null };
+  const set = endingSectors(content, E);
+  const record = state.meta.endings?.[E.ending!.id] ?? null;
+  const settled = set.filter((x) => state.sectors[x]?.open && state.sectors[x].settled).length;
+  const current = currentAct(content, state.meta) === E;
+  return {
+    ...base, reached: !!record, record,
+    progress: record && !current ? 1 : need > 0 ? clamp(years / need, 0, 1) : settled === set.length && set.length > 0 ? 1 : 0,
+    allOpen: set.every((x) => !!state.sectors[x]?.open), settled, total: set.length,
+    next: nextToSettle(state, content, set), act: { id: E.id, name: E.name, title: E.title },
+  };
+}
+
+/** Derived.ending.next: the first Industry in sectorOrder not settled, and what it waits on (M3 finish). */
+function nextToSettle(state: GameState, content: Content, set?: SectorId[]): Derived['ending']['next'] {
+  const ix = idx(content);
+  const s = (set ?? ix.ids).find((x) => !(state.sectors[x]?.open && state.sectors[x]?.settled));
   if (s === undefined) return null;
   const es = state.sectors[s];
   const years = Math.max(0, fin(es?.clearYears ?? 0));
@@ -182,7 +224,9 @@ function nextToSettle(state: GameState, content: Content): Derived['ending']['ne
   if (!steadyView(state, content, fl, s).sinkHeld) return { sector: s, need: 'clear', years };
   if (years < STEADY_STATE_YEARS - 1e-9) return { sector: s, need: 'years', years };
   if (!featureOn(content, state.meta, 'settlement')) return { sector: s, need: 'feature', years };
-  return { sector: s, need: settledCount(state, content) >= settleRoom(state, content) ? 'room' : 'clear', years };
+  const req = content.sectors[s].settle?.requires;
+  if (req && !evalCond(state, content, req)) return { sector: s, need: 'requires', years }; // M4
+  return { sector: s, need: roomCount(state, content) >= settleRoom(state, content) ? 'room' : 'clear', years };
 }
 
 /** SeamsView with the temptation's trade for the next seam (M3 finish; null when no line is drawn). */

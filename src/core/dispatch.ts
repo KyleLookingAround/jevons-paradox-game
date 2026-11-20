@@ -5,7 +5,7 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import { ANSWERED_MAX, YEARS_PER_SECOND } from '../types';
-import type { Actor, CastDef, Content, DispatchDef, DispatchesView, GameState, NewsItem, PendingDispatchView } from '../types';
+import type { Actor, AnsweredDispatch, CastDef, Content, DispatchDef, DispatchesView, GameState, NewsItem, PendingDispatchView, WagerBranch } from '../types';
 import { calendarYear, currentAge } from './calendar';
 import { evalCond } from './conditions';
 import { DISPATCH_QUEUE_MAX } from './constants';
@@ -70,9 +70,13 @@ function resolve(state: GameState, content: Content, index: number, arm: number,
   const cost = armCost(d, arm, income);
   let capital = Math.max(0, state.capital - cost.capital);
   let mandate = Math.max(0, state.mandate - cost.mandate);
+  // M4: a wager is judged on the true state after the cost, before any effect (a player's answer only: defaults never wager)
+  const won = a.wager && by === 'player' ? evalCond({ ...state, capital, mandate }, content, a.wager.when) : undefined;
+  const br = won === undefined ? undefined : won ? a.wager!.win : a.wager!.lose;
   const one: OneOffs = { capital: 0, mandate: 0, slots: 0 };
   const effects = a.effects ?? [];
   fireOneOffs(effects, 1, income, one);
+  if (br) fireOneOffs(br.effects ?? [], 1, income, one);
   capital = Math.max(0, fin(capital + one.capital));
   mandate = Math.max(0, fin(mandate + one.mandate));
   // reserveAdd acts at once, like a purchase (stock: reserve and reserveMax; flow: capacity, recomputed while in force)
@@ -90,10 +94,11 @@ function resolve(state: GameState, content: Content, index: number, arm: number,
   };
   reserveNow(effects);
   if (a.modifier) reserveNow(a.modifier.effects);
-  const hasStanding = effects.some((ef) => !ONE_OFF_TYPES.has(ef.type));
+  if (br) { reserveNow(br.effects ?? []); if (br.modifier) reserveNow(br.modifier.effects); }
+  const hasStanding = effects.some((ef) => !ONE_OFF_TYPES.has(ef.type)) || !!br && (br.effects ?? []).some((ef) => !ONE_OFF_TYPES.has(ef.type));
   const ds = state.dispatch;
   const queue = a.next ? [...ds.queue, a.next].slice(-DISPATCH_QUEUE_MAX) : ds.queue;
-  const answered = [...ds.answered, { id: d.id, arm, t: time, by }];
+  const answered: AnsweredDispatch[] = [...ds.answered, won === undefined ? { id: d.id, arm, t: time, by } : { id: d.id, arm, t: time, by, won }];
   const gapAt = time + dispatchGap(state.seed, ds.draws, content);
   let s: GameState = {
     ...state, capital, mandate, sectors,
@@ -101,7 +106,7 @@ function resolve(state: GameState, content: Content, index: number, arm: number,
       ...ds, pending, queue, answered: answered.length > ANSWERED_MAX ? answered.slice(answered.length - ANSWERED_MAX) : answered,
       standing: hasStanding ? [...ds.standing, [d.id, arm]] : ds.standing, nextAt: Math.max(ds.nextAt, gapAt),
     },
-    modifiers: a.modifier ? addModifier(state.modifiers ?? [], { source: d.id, arm, since: time, until: time + Math.max(0, fin(a.modifier.years)) / YEARS_PER_SECOND }) : state.modifiers,
+    modifiers: withBranchModifier(a.modifier ? addModifier(state.modifiers ?? [], { source: d.id, arm, since: time, until: time + Math.max(0, fin(a.modifier.years)) / YEARS_PER_SECOND }) : state.modifiers, d.id, arm, br, won, time),
     run: by === 'player'
       ? { ...state.run, dispatchesAnswered: (state.run.dispatchesAnswered ?? 0) + 1 }
       : { ...state.run, dispatchesDefaulted: (state.run.dispatchesDefaulted ?? 0) + 1 },
@@ -115,10 +120,17 @@ function resolve(state: GameState, content: Content, index: number, arm: number,
   meta = milestone(meta, 'dispatch', null, year);
   s = { ...s, meta };
   s = applyM3OneOffs(s, content, one);
-  if (hasStanding || a.modifier) s = refreshEta(s, content);
+  if (hasStanding || a.modifier || br?.modifier) s = refreshEta(s, content);
   if (a.reply) items.push(textItem('answered', fillText(s, content, a.reply, { year, cast: idx(content).cast.get(d.cast)?.name }, d.sector), time, year, d.sector));
-  ev.push({ kind: 'dispatchAnswered', id: d.id, n: arm, by, ...(d.sector !== undefined ? { sector: d.sector } : {}) });
+  if (br?.reply) items.push(textItem('answered', fillText(s, content, br.reply, { year, cast: idx(content).cast.get(d.cast)?.name }, d.sector), time, year, d.sector));
+  ev.push({ kind: 'dispatchAnswered', id: d.id, n: arm, by, ...(d.sector !== undefined ? { sector: d.sector } : {}), ...(won !== undefined ? { label: won ? 'won' : 'lost' } : {}) });
   return s;
+}
+
+/** M4: the modifiers with a wager branch's modifier added (source = the dispatch, arm, branch). */
+function withBranchModifier(list: GameState['modifiers'], id: string, arm: number, br: WagerBranch | undefined, won: boolean | undefined, time: number): GameState['modifiers'] {
+  if (!br?.modifier || won === undefined) return list;
+  return addModifier(list ?? [], { source: id, arm, since: time, until: time + Math.max(0, fin(br.modifier.years)) / YEARS_PER_SECOND, branch: won ? 'win' : 'lose' });
 }
 
 /** Emit gathered news and events at (time, year). */
@@ -245,6 +257,8 @@ export function dispatchesView(state: GameState, content: Content): DispatchesVi
           label: a.label, outcome: fillText(state, content, a.outcome, ctx, d.sector), price: a.price, capital: c.capital, mandate: c.mandate,
           affordable: !fl.pending && state.mandate >= c.mandate && state.capital >= c.capital,
           effects: (a.effects ?? []).slice(), modifier: a.modifier ? { ...a.modifier, effects: a.modifier.effects.slice() } : null,
+          // M4: a wager's hint and both outcomes (never which way it would go)
+          wager: a.wager ? { hint: fillText(state, content, a.wager.hint, ctx, d.sector), win: fillText(state, content, a.wager.win.outcome, ctx, d.sector), lose: fillText(state, content, a.wager.lose.outcome, ctx, d.sector) } : null,
         };
       }),
     });

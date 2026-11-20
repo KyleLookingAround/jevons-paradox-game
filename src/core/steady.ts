@@ -103,8 +103,10 @@ export const standingDrawYearsOf = (def: SectorDef, content: Content): number =>
 export const isWithin = (R: number, budgetR: number | null): boolean => budgetR !== null && R <= budgetR * (1 + BUDGET_TOLERANCE);
 
 /** A new line drawn now (every route: drawBudget, a lever raise, a standing cap). */
-export function newBudget(content: Content, s: SectorId, R: number, time: number, year: number, W: number, P: number, pace?: string): BudgetState {
-  return { r0: R, since: time, drawnYear: Math.floor(year), w0: fin(W), p0: Math.max(0, fin(P)), pace: paceOf(content, s, pace).id };
+export function newBudget(content: Content, s: SectorId, R: number, time: number, year: number, W: number, P: number, pace?: string, account?: 'full'): BudgetState {
+  const b: BudgetState = { r0: R, since: time, drawnYear: Math.floor(year), w0: fin(W), p0: Math.max(0, fin(P)), pace: paceOf(content, s, pace).id };
+  if (account === 'full') b.account = 'full'; // M4: drawn on the full account (R is then fullR)
+  return b;
 }
 
 /* ------------------------------------------------------------------ */

@@ -14,6 +14,7 @@ import { featureOn } from './features';
 import { computeFlows } from './flows';
 import { sectorLevers, NO_LEVERS } from './levers';
 import { solveSector } from './solver';
+import { idx } from './contentIndex';
 import { fin } from './util';
 
 /** The feature that shows a sector's mechanic, or null when it has none of the four. */
@@ -27,6 +28,7 @@ function mechanicFeature(def: SectorDef): FeatureId | null {
 
 /** The application is its Industry's temptation: a non-default load profile, a travel use that locks in, a seen price. */
 export function temptingApp(def: SectorDef, a: ApplicationDef): boolean {
+  if ((a.feeds?.length ?? 0) > 0) return true; // M4: an input to other Industries (the order book)
   if (def.load && (a.profile ?? def.load.defaultProfile) !== def.load.defaultProfile) return true;
   if (def.travel && (!def.travel.apps || def.travel.apps.includes(a.id)) && (a.lockIn ?? 0) > 0) return true;
   return !!a.priceSeen;
@@ -52,7 +54,17 @@ function wantedR(state: GameState, content: Content, s: SectorId, es: SectorStat
   const draft = upgrades === state.upgrades ? state : { ...state, upgrades };
   const mods = modsOf(draft, content);
   const lev = sectorLevers(state, content)[s] ?? NO_LEVERS;
-  return solveSector(content.sectors[s], es, Math.max(0.01, fin(state.population, 1)), mods, lev, inp?.extraD ?? 0, inp?.spillMul ?? 1, Infinity).R;
+  return solveSector(content.sectors[s], es, Math.max(0.01, fin(state.population, 1)), mods, lev, inp?.extraD ?? 0, inp?.spillMul ?? 1, Infinity,
+    undefined, inp?.feedMul ?? 1, inp?.pr ?? NaN, inp?.seam ?? 1).R;
+}
+
+/** M4: the R the fed Industries burn now, and with application `a` of s founded (whole-state solves). */
+function fedR(state: GameState, content: Content, s: SectorId, withEs: SectorState): number {
+  const draft: GameState = { ...state, sectors: { ...state.sectors, [s]: withEs } };
+  const a = computeFlows(state, content), b = computeFlows(draft, content);
+  let d = 0;
+  for (const t of idx(content).feedTargets.get(s) ?? []) if (a.sectors[t] && b.sectors[t]) d += b.sectors[t].R - a.sectors[t].R;
+  return d;
 }
 
 /** wanted(with) / wanted(now) − 1, cached per bucket; null when R now is 0. */
@@ -66,7 +78,9 @@ function change(state: GameState, content: Content, s: SectorId, key: string, wi
   const hit = m.get(k);
   if (hit !== undefined) return hit;
   const r0 = wantedR(state, content, s, es, state.upgrades);
-  const out = r0 > 0 ? fin(wantedR(state, content, s, withEs, withUp) / r0 - 1, 0) : null;
+  // M4: an application with feeds also counts what the fed Industries add (ApplicationDef.feeds)
+  const fed = key.startsWith('app:') && idx(content).feedTargets.has(s) ? fedR(state, content, s, withEs) : 0;
+  const out = r0 > 0 ? fin((wantedR(state, content, s, withEs, withUp) + fed) / r0 - 1, 0) : null;
   if (m.size > 400) m.clear();
   m.set(k, out);
   return out;
@@ -76,7 +90,8 @@ function change(state: GameState, content: Content, s: SectorId, key: string, wi
 export function appWanted(state: GameState, content: Content, s: SectorId, a: ApplicationDef): number | null {
   const def = content.sectors[s], es = state.sectors[s];
   const st = es?.apps[a.id];
-  if (!st?.available || st.founded || !temptingApp(def, a) || !tradeShown(state, content, s)) return null;
+  const feeds = (a.feeds?.length ?? 0) > 0; // M4: the order book needs no feature, only a line
+  if (!st?.available || st.founded || !temptingApp(def, a) || !(feeds ? !!es?.open && !es.settled && !!es.budget : tradeShown(state, content, s))) return null;
   const withEs: SectorState = { ...es, apps: { ...es.apps, [a.id]: { ...st, founded: true } } };
   return change(state, content, s, `app:${a.id}`, withEs, state.upgrades);
 }
