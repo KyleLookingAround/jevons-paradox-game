@@ -272,6 +272,30 @@ R ≥ 1.15×; letters: thoughtful ≥ 1.05× default ≥ random; the CLAUDE.md p
 **Size:** about 43 agent-days (41 as first designed, +6.5 for the shift, −4.5 of cuts: no new Histories or Commons, no
 Age dissolve, six fewer letters, two revivals, four achievements).
 
+**Built (20 Nov 2026; balance and finishing pass).** Every lane landed; the balance lane then a finishing pass (one
+agent) made the shift bite. Contract additions in the finish (`M4 (finish):`, additive): a feed may widen the fed
+Industry's demand (`ApplicationDef.feeds[].satMul`, `app`); foreign fleets take a share of the surplus the home fleet
+leaves (`ForeignDef.room`); a wager may stake a share of the run's Hindsight (`EffectDef 'hindsightShare'`,
+`RunStats.letterShare`, `HindsightTerms.letters`). Measured arc (scripted players; `design/unlock-schedule.md`, M4): Iron
+in run 4 at 3.3–3.6 h, Fishing in run 6 at 7.4–7.7 h, the Board's Survey at 7.6–7.8 h (catch per trip 0.81 against a true
+0.50), the Act I ending at 16.65 h (`budget`), 15.31 h (`mixed`), 17.27 h (`human`), the capstone's defence 0–1% of Mandate,
+Motion five minutes into the first run after.
+
+Criteria (§15), as measured; tests in `src/balance.test.ts` and `src/balance.long.test.ts`:
+- **Met:** 3 (two new things a run), 4, 5 (Steam's coal 1.25× with Iron's feeds, by the demand feeds), 7, 8 for the
+  burner, 10, 11, 12 (a held home line draws the foreign boats in, share 0.20; the limits at Fifty miles: home catch ×1.35
+  without the survey quota), 13 for `budget` (thoughtful +14.7% over default, random −1.1%), 14, 15 (Iron's forks 1%,
+  Charters ±15%), 16, 17, 18, 22, 23 (Steam's full account 1.43× its chimney at the Survey), 24, 25 (soft: feeding Iron
+  uses 2.0 a run before the Survey, 1.0 after).
+- **Missed:** 1 for `human` (17.27 h against 13–17); 2 (to hour 14 up to 2.31 h against 2; from hour 14 to the ending
+  up to 3.10 h against 2.5: run 9 brings no first); 6 (the order book's income across Iron and the fed Industries: −6% to
+  +13% a minute; Iron's own ×5); 9 (0.84× without the survey, against ≤ 0.6); 13 for `efficiency` (+2.2%: a 17-minute
+  burning run receives about three letters, few of them wagers). Carried from M2/M3: E5 (drawing at every peak 0.77×
+  budget, target ≤ 0.5), E6 in run 4 (1.39×, Iron's first-backfire lump; 1.5× from run 5), E7 (1.14×, target 1.2), the
+  human-like player's run-4 margin (1.19×, target 1.5), the caps-only Steady State (2.3 h, target ≥ 3).
+- **Withdrawn:** 8 for `budget` (the free survey comes at the first poor season, and a player who reads it can save the
+  bank; the threat is live: `budget` and `mixed` crossed in some measured campaigns); 19–21 belong to the page lanes.
+
 ---
 
 ## M5 — "The Other Chair" (layer 2: the Treaty as government; Plenty)

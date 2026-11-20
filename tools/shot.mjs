@@ -1683,19 +1683,33 @@ const M4_MAKE = (variant) => {
     st.eta = def.baseEta;
     for (const a of def.applications) if (a.visibleBelow === Infinity) { st.apps[a.id].available = true; if (a.foundCost <= 0) st.apps[a.id].founded = true; }
   }
-  for (let i = 0; i < 50; i++) s = m.tick(s, C, 0.1);
+  // M4 (finish, the balance lane): everything bought at once with a fortune now burns Steam to its fog and the banks to
+  // nothing within a minute (Iron's feeds widen the railways and the steamers; the banks are 60,000 tons): hold every
+  // smoke under a fifth of its fog and the banks full while the state is made, so the page shows the views, not a Reckoning
+  const calm = (st) => {
+    st = JSON.parse(JSON.stringify(st));
+    for (const id of open) {
+      const x = st.sectors[id];
+      x.pressure = Math.min(x.pressure, 0.2 * C.sectors[id].collapseAt); x.crisesFired = 0;
+      if (C.sectors[id].resourceKind === 'renewable') x.reserve = x.reserveMax || C.sectors[id].reserve;
+      else if (C.sectors[id].resourceKind === 'stock' && x.reserveMax) x.reserve = Math.max(x.reserve, 0.6 * x.reserveMax);
+    }
+    if (st.meta.world && st.meta.world.scars) st.meta.world.scars = {};
+    return st;
+  };
+  for (let i = 0; i < 50; i++) { s = m.tick(s, C, 0.1); if (i % 5 === 4) s = calm(s); }
   for (let k = 0; k < 4; k++) {
     for (const id of open) {
       for (const a of C.sectors[id].applications) { const t = m.foundApp(s, C, a.id); if (t !== s) s = t; }
       for (const u of C.upgrades.filter((u) => u.sector === id)) { const t = m.buyUpgrade(s, C, u.id); if (t !== s) s = t; }
     }
-    for (let i = 0; i < 100; i++) s = m.tick(s, C, 0.1);
+    for (let i = 0; i < 100; i++) { s = m.tick(s, C, 0.1); if (i % 5 === 4) s = calm(s); }
   }
   if (variant === 'reveal' || variant === 'revealLarge' || variant === 'estimates') { s = JSON.parse(JSON.stringify(s)); s.sectors.fishing.openFor = 1790; s.time = Math.max(s.time, 1800); }
   // The large gap: the banks fished down to about a third before the Board's vessel puts out.
   if (variant === 'revealLarge') s.seed = (s.seed ^ 0x5eed) >>> 0; // another save, as far as the card's once-a-save key goes
   if (variant === 'revealLarge') s.sectors.fishing.reserve = 0.34 * (s.sectors.fishing.reserveMax || C.sectors.fishing.reserve);
-  for (let i = 0; i < 60; i++) s = m.tick(s, C, 0.5);
+  for (let i = 0; i < 60; i++) { s = m.tick(s, C, 0.5); if (variant !== 'revealLarge') s = calm(s); }
   if (variant === 'estimates') s = m.drawBudget(s, C, 'steam');
   // A settlement made from the Industry's flows now (the page needs only a believable SettledState to draw).
   const settledOf = (st, id) => {

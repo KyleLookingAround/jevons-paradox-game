@@ -1030,6 +1030,8 @@ const dumped = new Set<string>();
 const DUMP_SURVEY = flag('dump-survey', 'false');
 const SURVEY_DIR = DUMP_SURVEY === 'true' ? 'design/scratch/m4-balance' : DUMP_SURVEY;
 let preSurvey: GameState | null = null;
+/** M4 (finish): the last state (5 s sampled) with every Act I Industry settled and the ending not yet reached. */
+let preEnding: GameState | null = null;
 let M4R: { endingHour: number | null; arrears: number; minStock: Record<string, number>; surveyedMin: Record<string, number>; crossed: Record<string, boolean>; capDefence: number; capDefenceN: number; accounts: Record<string, string>;
   /** M4 balance: the Board's Survey card as the page got it (reported and true fractions, the variant) */
   reveal?: { sector: string; reported: number; true: number; variant: string; min: number };
@@ -1137,7 +1139,10 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     const settled = set.filter((e) => s.sectors[e]?.open && s.sectors[e].settled).length;
     const write = (name: string) => { if (dumped.has(name)) return; dumped.add(name); writeFileSync(`${DUMP_DIR}/${name}`, model.serialize(s)); log(`  state written to ${DUMP_DIR}/${name}`); };
     if (settled >= set.length - 1 && set.length > 1 && !s.meta.endings?.[act.ending.id]) write('act1-late.json');
-    if (s.meta.endings?.[act.ending.id] && s.flags.won) write('act1-ending.json');
+    // M4 (finish): act1-ending.json is the state five seconds BEFORE the ending (all settled, the streak a step short), so
+    // a page loading it plays into the ending event and its credits; the step of the ending itself had already fired it
+    if (settled === set.length && !s.meta.endings?.[act.ending.id]) preEnding = s;
+    if (s.meta.endings?.[act.ending.id] && s.flags.won && preEnding) write('act1-ending.json');
   }
   return s;
 }
@@ -1583,7 +1588,7 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
   // five-second look: write the Act I ending fixture here too
   if (M4C && DUMP_ENDING !== 'false' && !dumped.has('act1-ending.json')) {
     const act = C.acts?.find((a) => a.ending);
-    if (act?.ending && s.meta.endings?.[act.ending.id] && s.flags.won) { dumped.add('act1-ending.json'); writeFileSync(`${DUMP_DIR}/act1-ending.json`, model.serialize(s)); log(`  state written to ${DUMP_DIR}/act1-ending.json`); }
+    if (act?.ending && s.meta.endings?.[act.ending.id] && s.flags.won && preEnding) { dumped.add('act1-ending.json'); writeFileSync(`${DUMP_DIR}/act1-ending.json`, model.serialize(preEnding)); log(`  state written to ${DUMP_DIR}/act1-ending.json`); }
   }
   if (series[series.length - 1] !== sampleRow(s, open(), extra)) pushSample();
   check(s, `run ${idx} end`);
