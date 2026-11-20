@@ -12,7 +12,7 @@
  *
  * `voice` is for writers and never shown. Read each letter aloud in its writer's voice before keeping it.
  */
-import type { CastDef } from '../types';
+import type { CastDef, Cond } from '../types';
 import { all, any, BUDGET, owns, rk, sec, year } from './dispatches/kit';
 
 export const cast: CastDef[] = [
@@ -128,5 +128,63 @@ export const cast: CastDef[] = [
       'labour-saving machine save no labour?”) and does not answer it. Writes only the pamphlet and its follow-ups.',
     figure: 'whitlow',
     when: { flag: 'proprietor' },
+  },
+];
+
+/*
+ * M4 (the text lane): three more, for Iron and Fishing. A separate export until the Act lane registers Iron and Fishing
+ * (their `when`s name both Industries, which the lint resolves only once they are in content): Content.cast becomes
+ * [...cast, ...castM4]. Each writes only in the Coal Age's own Act: once the Act I ending is reached ({ ending:
+ * 'actOne' }) the Coal Age is settled for good and an ironmaster of 1860 has no business writing to a motor works.
+ *
+ * The elder Pryce's arrival is why the younger Mr Pryce (above) needs no change: his `when` is owns('motion'), and
+ * Motion now opens only after the Act I ending (a Preview), so his letters, Steam's and Light's among them, fall in the
+ * Preview, and the elder writes in Iron's run 4 instead. Same family, same handshake, a century earlier.
+ */
+const BEFORE_ACT_ONE_END: Cond = { not: { ending: 'actOne' } };
+
+export const castM4: CastDef[] = [
+  {
+    id: 'prycePater',
+    name: 'Mr Josiah Pryce',
+    role: 'Ironmaster, of the Ravensdale works',
+    voice:
+      'The founder: the first Pryce, who made the family’s money in pig iron and taught every later Pryce the ' +
+      'handshake. Genial, expansive, a self-made man who enjoys saying so; always for the cheaper thing, and right ' +
+      'that cheap iron builds the kingdom. Talks tons, furnaces in blast and the price at Wolverhampton. Never a ' +
+      'villain; never sees that the coal his furnaces save is burnt in every engine his rails make cheaper. Signs off ' +
+      'with an invitation to see the works lit at night. His grandson’s company will buy the Works in a later Act: ' +
+      'write him so that the reader likes him.',
+    figure: 'pryceElder',
+    when: { all: [{ owns: 'iron' }, BEFORE_ACT_ONE_END] },
+  },
+  {
+    id: 'tench',
+    name: 'Skipper Ewart Tench',
+    role: 'Trawler skipper, of Grimsby',
+    voice:
+      'Proud, practical, plain. Thirty years at sea and the catch per trip in his head to the stone. Trusts what ' +
+      'comes up in the net, distrusts what comes out of a report, and says both outright. Writes short, in the ' +
+      'quay’s words (the Dogger, the Silver Pits, prime, offal, a good trip), for his crew before himself. Wrong ' +
+      'about the sea for honest reasons: the fleet always finds the fish that are left. Never a figure of fun.',
+    figure: 'skipper',
+    when: { all: [{ owns: 'fishing' }, BEFORE_ACT_ONE_END] },
+  },
+  {
+    id: 'isbister',
+    name: 'Miss Isbister',
+    role: 'Naturalist to the Fishery Board',
+    voice:
+      'Precise, underfunded, right. Counts what is in the sample jar, not what is on the quay, and says what she ' +
+      'cannot know as carefully as what she can. Asks for small sums for exact purposes (a vessel for a summer, a ' +
+      'second assistant). Never says “I told you so”; prints the table. Dry wit, all in the footnotes. Arrives with ' +
+      'Fishing’s first poor season, or with the Board’s first survey.',
+    figure: 'naturalist',
+    when: {
+      all: [
+        { any: [{ stat: 'crises', sector: 'fishing', op: '>=', value: 1 }, { flag: 'survey:fishing' }] },
+        BEFORE_ACT_ONE_END,
+      ],
+    },
   },
 ];

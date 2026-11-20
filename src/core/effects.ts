@@ -74,6 +74,11 @@ export interface Mods {
   spillMul: Record<string, number>;
   /** settleSlotAdd: extra Industries that may be settled at once. */
   settleSlots: number;
+  /* M4 */
+  /** Sectors with a 'survey' effect in force. */
+  survey: Set<string>;
+  /** foreignMul per sector (multiplicative). */
+  foreignMul: Record<string, number>;
 }
 
 function emptyMods(): Mods {
@@ -85,6 +90,7 @@ function emptyMods(): Mods {
     resourcePriceMul: {}, intensityMul: {}, incomeMul: {}, incomeMulAll: 1, costMulOf: {}, forbids: [], travelSpeed: {},
     travelRoads: {}, priceSeenApp: {}, priceSeenSector: {}, anyPriceSeen: false, runVarying: false,
     leverCost: [], suspendOrder: new Set(), leakMul: {}, spillMul: {}, settleSlots: 0,
+    survey: new Set(), foreignMul: {},
   };
 }
 /** A shallow copy deep enough for an overlay (every record and set copied). */
@@ -98,6 +104,7 @@ function cloneMods(b: Mods): Mods {
     costMulOf: { ...b.costMulOf }, forbids: b.forbids.slice(), travelSpeed: { ...b.travelSpeed }, travelRoads: { ...b.travelRoads },
     priceSeenApp: { ...b.priceSeenApp }, priceSeenSector: { ...b.priceSeenSector },
     leverCost: b.leverCost.slice(), suspendOrder: new Set(b.suspendOrder), leakMul: { ...b.leakMul }, spillMul: { ...b.spillMul },
+    survey: new Set(b.survey), foreignMul: { ...b.foreignMul },
   };
 }
 const seenBetter = (a: { share: number; flat: number } | undefined, share: number, flat: number): boolean =>
@@ -157,6 +164,9 @@ function applyEffect(m: Mods, ef: EffectDef, times: number): void {
     case 'leakMul': mul(m.leakMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
     case 'spillMul': mul(m.spillMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
     case 'settleSlotAdd': m.settleSlots += Math.max(0, fin(ef.value)) * times; break;
+    /* M4 */
+    case 'survey': if (typeof ef.sector === 'string') m.survey.add(ef.sector); break;
+    case 'foreignMul': mul(m.foreignMul, ef.sector, Math.max(0, fin(ef.value, 1)), times); break;
     default: break;
   }
 }
@@ -330,16 +340,35 @@ function overlayMods(s: GameState, c: Content, base: Mods): Mods {
     if (t > 0) for (const ef of def.sideEffects!.effects) applyEffect(get(), ef, t);
   }
   for (const md of modifiers) {
-    const effs = ix.dispatches.get(md.source)?.arms[md.arm]?.modifier?.effects;
+    const effs = modifierEffects(ix, md);
     if (effs) for (const ef of effs) applyEffect(get(), ef, 1);
   }
   for (const [id, arm] of standing) {
-    const effs = ix.dispatches.get(id)?.arms[arm]?.effects;
-    if (effs) for (const ef of effs) if (!ONE_OFF.has(ef.type)) applyEffect(get(), ef, 1);
+    const a = ix.dispatches.get(id)?.arms[arm];
+    if (!a) continue;
+    for (const ef of a.effects ?? []) if (!ONE_OFF.has(ef.type)) applyEffect(get(), ef, 1);
+    // M4: a wager arm's branch standing effects, resolved from the run's answer (AnsweredDispatch.won)
+    if (a.wager) {
+      const ans = (s.dispatch?.answered ?? []).find((x) => x.id === id && x.arm === arm && x.won !== undefined);
+      const br = ans ? (ans.won ? a.wager.win : a.wager.lose) : undefined;
+      for (const ef of br?.effects ?? []) if (!ONE_OFF.has(ef.type)) applyEffect(get(), ef, 1);
+    }
   }
   const out = m ?? base;
   overlayCache.set(s.levers, { base, mods: modifiers, standing, content: c, out });
   return out;
+}
+
+/** M4: the effects of a timed modifier: a dispatch arm's own modifier, a wager branch's (`branch`), or the Board's first
+ *  survey (source 'survey:<s>', resolved by the core). undefined when the source no longer resolves. */
+export function modifierEffects(ix: ReturnType<typeof idx>, md: { source: string; arm: number; branch?: 'win' | 'lose' }): EffectDef[] | undefined {
+  if (md.source.startsWith('survey:')) {
+    const s = md.source.slice(7);
+    return ix.renewable.includes(s) ? [{ type: 'survey', sector: s }] : undefined;
+  }
+  const a = ix.dispatches.get(md.source)?.arms[md.arm];
+  if (md.branch) return a?.wager?.[md.branch]?.modifier?.effects;
+  return a?.modifier?.effects;
 }
 
 /* ------------------------------------------------------------------ */
@@ -364,7 +393,9 @@ export function costMulOfId(mods: Mods, id: string, sector?: string): number {
 }
 /** Institution seated, or loaned by an institutionLoan in force (LeverDef.requires). */
 export const isSeatedOrLoaned = (meta: MetaState, mods: Mods, id: string): boolean => isSeated(meta, id) || (mods.loans[id] ?? 0) >= 1;
-export const absorptionOf = (def: SectorDef, mods: Mods): number => Math.max(0, def.absorption + (mods.absorptionAdd[def.id] ?? 0));
+/** M4: a 'depletion' sector absorbs nothing (its P is derived from the stock; its net rate is carried in pressureIn). */
+export const absorptionOf = (def: SectorDef, mods: Mods): number =>
+  def.pressureSource === 'depletion' ? 0 : Math.max(0, def.absorption + (mods.absorptionAdd[def.id] ?? 0));
 
 function staticEta(def: SectorDef, mods: Mods): number {
   return def.baseEta * (mods.etaMul[def.id] ?? 1);

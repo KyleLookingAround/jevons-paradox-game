@@ -159,6 +159,7 @@ export const HEADLINE_KEYS: HeadlineKey[] = [
   'appFounded', 'appAvailable', 'sectorOpened', 'crisis', 'collapse', 'exhausted', 'backfire', 'reveal', 'leverEnacted',
   'leverLapsed', 'steadySector', 'steadyAll', 'reckoning', 'efficiency', 'ageBegins', 'budgetDrawn', 'decade', 'budgetBroken',
   'clearSkies', 'settled', 'unsettled', 'commonsBuilt', 'charter',
+  'threshold', 'scarHealed', 'surveyed', 'arrears', 'foreignFleets', 'actEnding',
 ];
 const headlines = Object.fromEntries(HEADLINE_KEYS.map((k) => [k, [`${k}: {sector} {age} {app} {resource} {service} {year} #{n}{name}`]])) as Record<HeadlineKey, string[]>;
 

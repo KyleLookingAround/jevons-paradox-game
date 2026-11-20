@@ -41,6 +41,10 @@ export interface SectorFlow {
   appSeen: number[] | null;
   /** The seam price multiplier in force (1 without seams sunk). */
   seamMul: number;
+  /** M4: a renewable sector's regrowth G(Q), foreign share, foreign catch and reported stock now (null otherwise;
+   *  filled by flows.ts after the solve). For a 'depletion' sector pressureIn then carries the net depletion rate
+   *  collapseAt / K × (R × (1 − circ) + R_foreign − G), so the clear-skies test reads it as any sector's. */
+  ren: { G: number; share: number; rForeign: number; reported: number } | null;
 }
 
 /* ---- M3: per-sector mechanic data (cached per SectorDef) ---- */
@@ -103,13 +107,20 @@ function loadFactor(mech: Mech, x: number[], active: number[], extraD: number): 
 // scratch outputs for supply(); cC = the capital cost per unit in force (c, or M3's c_eff at the last mix tried)
 let sSigma = 0, sR = 0, sPrBase = 0, sPre = 0, sPermitPart = 0, sDutyPart = 0, sCust = 0, cC = 0;
 
+/**
+ * M4 arguments (defaults leave the M3 solve unchanged): cMul, the feeds' factor on c (ApplicationDef.feeds), joined
+ * before load's c_eff; prOv, the resource price before this sector's own resourcePriceMul when it is not its own stock's
+ * (a resourceStock drawer: the owner's p_r; a renewable: the reported stock's), with seamOv the seam multiplier to
+ * report; squeeze, the cap's squeeze limit (a moratorium quota squeezes further).
+ */
 export function solveSector(
   def: SectorDef, es: SectorState, N: number, mods: Mods, lev: SectorLevers, extraD: number, spillMul: number,
-  capR: number, etaOverride?: number,
+  capR: number, etaOverride?: number, cMul = 1, prOv = NaN, seamOv = 1, squeeze = CAP_SQUEEZE_MAX,
 ): SectorFlow {
   const sid = def.id;
   const eta = Math.max(1e-12, fin(etaOverride ?? es.eta, def.baseEta || 1));
-  const c = Math.max(0, def.capCost * (mods.capMul[sid] ?? 1));
+  const c0 = def.capCost * (mods.capMul[sid] ?? 1);
+  const c = Math.max(0, cMul === 1 ? c0 : c0 * cMul);
   const im = mods.incomeMulAll * (mods.incomeMul[sid] ?? 1);
   const m0 = Math.max(0, def.margin + (mods.marginAdd[sid] ?? 0));
   const m = im === 1 ? m0 : Math.max(0, m0 * im);
@@ -224,16 +235,18 @@ export function solveSector(
     capacity = flowCapacity(def, mods);
     const eff = Math.max(FLOW_MIN_CAPACITY_SHARE * capacity, capacity - fin(es.pressure) * def.pressureUpkeep);
     usable = Math.max(1e-12, eff * (1 - lev.delShare));
+  } else if (prOv === prOv) {
+    pr0 = prOv; // M4: the owner's or the reported stock's price (seams of the owner already in it)
   } else if (es.reserveMax > 0) {
     const q = Math.max(es.reserve, 1e-9 * es.reserveMax);
     pr0 = def.basePrice * Math.pow(es.reserveMax / q, def.alpha);
   }
   // M3: the deepest seam's multiplier (stock) and resourcePriceMul effects (both 1 by default)
-  const nSeams = isFlow ? 0 : es.seamsSunk ?? 0;
+  const nSeams = isFlow || prOv === prOv ? 0 : es.seamsSunk ?? 0;
   const seamDef = nSeams > 0 && def.seams && def.seams.length ? def.seams[Math.min(nSeams, def.seams.length) - 1] : undefined;
-  const seamMul = seamDef ? Math.max(0, fin(seamDef.priceMul, 1)) : 1;
+  const seamMul = prOv === prOv ? seamOv : seamDef ? Math.max(0, fin(seamDef.priceMul, 1)) : 1;
   const rpm = mods.resourcePriceMul[sid] ?? 1;
-  const prMul = seamMul * rpm;
+  const prMul = prOv === prOv ? rpm : seamMul * rpm;
   if (!isFlow && prMul !== 1) pr0 *= prMul;
   const dutyOn = lev.dutyS > 0 && lev.dutyRef > 0;
   const flowMul = isFlow ? rpm : 1;
@@ -285,7 +298,7 @@ export function solveSector(
     }
     const rFloor = ((1 - sigmaOf(dInf)) * dInf) / eta;
     const rFree = R;
-    const capTarget = (capEff: number): number => Math.max(capEff, rFloor + (1 - CAP_SQUEEZE_MAX) * Math.max(0, rFree - rFloor));
+    const capTarget = (capEff: number): number => Math.max(capEff, rFloor + (1 - squeeze) * Math.max(0, rFree - rFloor));
     if (R > capTarget(capR)) {
       const rAt = (pp: number): number => {
         const d = demand(pp);
@@ -421,6 +434,6 @@ export function solveSector(
     capacity, usable: fin(usable), util: fin(util), unrev,
     appD, appSat, reserveGain: fin(reserveGain), pressureIn: fin(pressureIn), deletionOut: fin(deletionOut),
     wellbeingShare: fin(wb),
-    load: loadOut, travel: travelOut, appSeen, seamMul,
+    load: loadOut, travel: travelOut, appSeen, seamMul, ren: null,
   };
 }

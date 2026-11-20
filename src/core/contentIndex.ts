@@ -4,7 +4,7 @@
  * Part of the simulation core (see README.md): pure, no DOM, no clock, no randomness; never mutates its inputs.
  */
 import type {
-  AchievementDef, AgeDef, ArchiveDef, CastDef, CharterDef, CommonsDef, Content, DispatchDef, DividendDef, HistoryDef, InstitutionDef,
+  ActDef, AchievementDef, AgeDef, ArchiveDef, CastDef, CharterDef, CommonsDef, Content, DispatchDef, DividendDef, HistoryDef, InstitutionDef,
   KnowhowDef, LeverDef, SectorId, SeamDef, UpgradeDef,
 } from '../types';
 
@@ -48,6 +48,27 @@ export interface ContentIndex {
   archive: Map<string, ArchiveDef>;
   /** Any sector with an M3 mechanic kind (load, travel, priceSeen on an app), or applications with lockInDecay. */
   anyMechanic: boolean;
+  /* M4 */
+  /** Content.acts (valid entries, in order) and each age's act. */
+  acts: ActDef[];
+  actOfAge: Map<string, ActDef>;
+  /** Sectors whose age belongs to a Preview act (ActDef.preview). */
+  preview: Set<SectorId>;
+  /** SectorDef.resourceStock, valid only (both 'stock', the owner in content and drawing on no one): drawer → owner,
+   *  and owner → its drawers in sectorOrder. */
+  ownerOf: Map<SectorId, SectorId>;
+  drawers: Map<SectorId, SectorId[]>;
+  /** Feeds accepted into the solve order (ApplicationDef.feeds, '*' expanded), by target in solve order of their
+   *  sources: source sector, the app's index in it, capCostMul. A feed that would close a cycle is refused. */
+  feedsInto: Record<SectorId, { src: SectorId; app: number; mul: number }[]>;
+  /** Feed sources → their targets (accepted, sectorOrder). */
+  feedTargets: Map<SectorId, SectorId[]>;
+  /** Feeds refused because they would close a cycle in the solve order (the lint's job; the core ignores them). */
+  refusedFeeds: { app: string; sector: SectorId }[];
+  /** 'renewable' sectors with a RenewableDef, in sectorOrder. */
+  renewable: SectorId[];
+  /** Content uses any M4 kind (acts, resourceStock, feeds, renewable): a fast exit for the M4 rules. */
+  anyM4: boolean;
 }
 const indexCache = new WeakMap<Content, ContentIndex>();
 export function idx(content: Content): ContentIndex {
@@ -62,6 +83,8 @@ export function idx(content: Content): ContentIndex {
     dividends: new Map(), commons: new Map(), charters: new Map(), stagedBySector: {},
     seams: new Map(), measureLevers: [], sideLevers: [], dispatches: new Map(), cast: new Map(), histories: new Map(),
     archive: new Map(), anyMechanic: false,
+    acts: [], actOfAge: new Map(), preview: new Set(), ownerOf: new Map(), drawers: new Map(), feedsInto: {},
+    feedTargets: new Map(), refusedFeeds: [], renewable: [], anyM4: false,
   };
   for (const a of content.ages ?? []) for (const s of a.sectors ?? []) if (!ix.ageOf.has(s)) ix.ageOf.set(s, a);
   const conflict = (a: string, b: string) => {
@@ -101,17 +124,65 @@ export function idx(content: Content): ContentIndex {
     if (d.resourceKind === 'stock') (d.seams ?? []).forEach((m, i) => { ix!.seams.set(m.id, { sector: s, idx: i, def: m }); ix!.names.set(m.id, m.name); });
     if (d.load || d.travel || d.applications.some((a) => a.priceSeen || (a.lockInDecay ?? 0) > 0)) ix.anyMechanic = true;
   }
+  // M4: acts, previews, shared reserves, renewables
+  for (const a of content.acts ?? []) {
+    if (!a || typeof a.id !== 'string' || !Array.isArray(a.ages)) continue;
+    ix.acts.push(a);
+    for (const g of a.ages) if (!ix.actOfAge.has(g)) ix.actOfAge.set(g, a);
+  }
+  for (const s of ids) {
+    const d = sectors[s];
+    const act = ix.ageOf.get(s) ? ix.actOfAge.get(ix.ageOf.get(s)!.id) : undefined;
+    if (act?.preview) ix.preview.add(s);
+    const o = d.resourceStock;
+    if (o !== undefined && o !== s && d.resourceKind === 'stock' && sectors[o] && ix.pos.has(o) && sectors[o].resourceKind === 'stock' && sectors[o].resourceStock === undefined) {
+      ix.ownerOf.set(s, o);
+      const l = ix.drawers.get(o) ?? [];
+      l.push(s);
+      ix.drawers.set(o, l);
+    }
+    if (d.resourceKind === 'renewable' && d.renewable) ix.renewable.push(s);
+  }
   // Solve order (Kahn): a source of spill / drawsOn is solved before its target; ties go to the later sector in
   // sectorOrder, which for v1-shaped content (spill and drawsOn point backwards) is simply the reverse order.
-  const targets = (s: SectorId): SectorId[] => {
+  // M4: a feed is an edge source → target too ('*' expanded to every other sector); a feed edge that would close a
+  // cycle is refused (not added), so content without feeds keeps exactly the M3 order.
+  const edges = new Map<SectorId, SectorId[]>(ids.map((s) => [s, []]));
+  for (const s of ids) {
     const d = sectors[s];
-    const t: SectorId[] = [];
-    if (d.spill && ix!.pos.has(d.spill.to) && d.spill.to !== s) t.push(d.spill.to);
-    if (d.drawsOn && ix!.pos.has(d.drawsOn.sector) && d.drawsOn.sector !== s) t.push(d.drawsOn.sector);
-    return t;
+    const t = edges.get(s)!;
+    if (d.spill && ix.pos.has(d.spill.to) && d.spill.to !== s) t.push(d.spill.to);
+    if (d.drawsOn && ix.pos.has(d.drawsOn.sector) && d.drawsOn.sector !== s) t.push(d.drawsOn.sector);
+  }
+  const reaches = (from: SectorId, to: SectorId): boolean => {
+    const seen = new Set<SectorId>([from]);
+    const stack = [from];
+    while (stack.length) {
+      const x = stack.pop()!;
+      if (x === to) return true;
+      for (const y of edges.get(x) ?? []) if (!seen.has(y)) { seen.add(y); stack.push(y); }
+    }
+    return false;
   };
+  const feedList: { src: SectorId; tgt: SectorId; app: number; mul: number }[] = [];
+  for (const s of ids) {
+    sectors[s].applications.forEach((a, i) => {
+      for (const fd of a.feeds ?? []) {
+        if (!fd || typeof fd.capCostMul !== 'number' || !Number.isFinite(fd.capCostMul)) continue;
+        const explicit = fd.sector !== '*';
+        const tgts = explicit ? [fd.sector] : ids.filter((x) => x !== s);
+        for (const t of tgts) {
+          if (!ix!.pos.has(t) || t === s) continue;
+          if (reaches(t, s)) { if (explicit) ix!.refusedFeeds.push({ app: a.id, sector: t }); continue; }
+          const e = edges.get(s)!;
+          if (!e.includes(t)) e.push(t);
+          feedList.push({ src: s, tgt: t, app: i, mul: fd.capCostMul });
+        }
+      }
+    });
+  }
   const indeg = new Map(ids.map((s) => [s, 0]));
-  for (const s of ids) for (const t of targets(s)) indeg.set(t, (indeg.get(t) ?? 0) + 1);
+  for (const s of ids) for (const t of edges.get(s)!) indeg.set(t, (indeg.get(t) ?? 0) + 1);
   const left = new Set(ids);
   while (left.size) {
     let pick: SectorId | null = null;
@@ -119,8 +190,18 @@ export function idx(content: Content): ContentIndex {
     if (pick === null) for (let k = ids.length - 1; k >= 0; k--) if (left.has(ids[k])) { pick = ids[k]; break; } // cycle
     left.delete(pick!);
     ix.solveOrder.push(pick!);
-    for (const t of targets(pick!)) indeg.set(t, (indeg.get(t) ?? 1) - 1);
+    for (const t of edges.get(pick!)!) indeg.set(t, (indeg.get(t) ?? 1) - 1);
   }
+  const solvePos = new Map(ix.solveOrder.map((s, i) => [s, i]));
+  for (const f of feedList) {
+    if ((solvePos.get(f.src) ?? 0) >= (solvePos.get(f.tgt) ?? 0)) continue; // defensive: only edges the order honours
+    (ix.feedsInto[f.tgt] ??= []).push({ src: f.src, app: f.app, mul: f.mul });
+    const l = ix.feedTargets.get(f.src) ?? [];
+    if (!l.includes(f.tgt)) l.push(f.tgt);
+    ix.feedTargets.set(f.src, l);
+  }
+  for (const [k, l] of ix.feedTargets) ix.feedTargets.set(k, l.sort((a, b) => ix!.pos.get(a)! - ix!.pos.get(b)!));
+  ix.anyM4 = ix.acts.length > 0 || ix.ownerOf.size > 0 || feedList.length > 0 || ix.renewable.length > 0;
   indexCache.set(content, ix);
   return ix;
 }

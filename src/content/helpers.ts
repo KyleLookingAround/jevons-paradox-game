@@ -94,6 +94,8 @@ const REPEAT: Record<LeverKind, { valueStep: number; costGrowth: number; upkeepG
   sharedLibs: { valueStep: 0.05, costGrowth: 1.5, upkeepGrowth: 1.3, maxSteps: 6 },
   /* M3: a measure's level value is how many times its effects apply (1, 2, 3 authored; each Tighten one more). */
   measure: { valueStep: 1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 3 },
+  /* M4: a quota on the surveyed surplus tightens downwards like a cap (range 0–1; a level at 0 is a moratorium). */
+  quota: { valueStep: -0.05, costGrowth: 1.45, upkeepGrowth: 1.3, maxSteps: 6 },
 };
 
 /** Authored levels cost 1 : 3 : 9 in Mandate and 1 : 2.5 : 6.25 in upkeep, as in v1. */

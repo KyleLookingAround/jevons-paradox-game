@@ -21,7 +21,7 @@ export { leverMaxLevel, leverLevelDef } from './leverLevels';
 import { leverMaxLevel, leverLevelDef } from './leverLevels';
 
 export const recycleOptions = (def: LeverDef): LeverRecycle[] =>
-  def.kind === 'duty' || def.kind === 'cap' ? (def.recycle && def.recycle.length ? def.recycle : ['treasury']) : [];
+  def.kind === 'duty' || def.kind === 'cap' || def.kind === 'quota' ? (def.recycle && def.recycle.length ? def.recycle : ['treasury']) : [];
 export const recycleOf = (def: LeverDef, ls: LeverState | undefined): LeverRecycle | null => {
   const opts = recycleOptions(def);
   if (!opts.length) return null;
@@ -36,11 +36,14 @@ export interface SectorLevers {
   circ: number; green: number;
   delShare: number; delRate: number;
   review: number; libs: number;
+  /** M4: the tightest 'quota' (a fraction of the true sink line), its leak and recycle; Infinity when none. */
+  quotaFrac: number; quotaLeak: number; quotaRecycle: LeverRecycle | null;
 }
 function noLevers(): SectorLevers {
   return {
     dutyS: 0, dutyRef: 0, dutyRecycle: null, capFrac: Infinity, leakAbove: Infinity, capRecycle: null, sufTarget: 1,
     sufRate: 0, subShare: 0, subCap: 0, circ: 0, green: 0, delShare: 0, delRate: 0, review: 0, libs: 0,
+    quotaFrac: Infinity, quotaLeak: Infinity, quotaRecycle: null,
   };
 }
 export const NO_LEVERS = noLevers();
@@ -81,6 +84,11 @@ export function sectorLevers(state: GameState, content: Content): Record<string,
         break;
       case 'reviewGate': a.review = clamp(Math.max(a.review, v), 0, 1); break;
       case 'sharedLibs': a.libs = clamp(a.libs + v, 0, 0.95); break;
+      case 'quota': {
+        const f = clamp(v, 0, 1);
+        if (f < a.quotaFrac) { a.quotaFrac = f; a.quotaLeak = v2 !== undefined && v2 > 0 ? v2 : Infinity; a.quotaRecycle = recycleOf(def, ls); }
+        break;
+      }
       default: break;
     }
   }
@@ -114,6 +122,7 @@ export function leverVisible(state: GameState, content: Content, def: LeverDef, 
   if (def.locked && !mods.unlocked.has(def.id)) return false;
   const inst = (mods.startLevers[def.id] ?? 0) > 0;
   if (!inst && (!state.flags.revealed || !featureOn(content, state.meta, 'levers'))) return false;
+  if (def.kind === 'quota' && !mods.survey.has(def.sector)) return false; // M4: the quota needs the survey
   const ix = idx(content);
   return (def.requires ?? []).every((r) =>
     r === 'revealed' ? state.flags.revealed

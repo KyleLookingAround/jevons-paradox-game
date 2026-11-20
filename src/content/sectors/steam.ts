@@ -400,6 +400,30 @@ const steamUpgrades: UpgradeDef[] = withStages([
     },
     effects: [{ type: 'metaFlag', flag: 'proprietor' }],
   },
+  /*
+   * M4 (Iron lane): Iron's revivals in Steam (design/m4-design.md §4.3). Each appears once Iron & Steel owns the card it
+   * needs this run (UpgradeDef.when) and is a plain card the Market may buy (no `excludes`), so the embodied rebound
+   * arrives in Steam by itself unless the player turns the Market off here. Costs: about a run-5 Steam card (the
+   * compound engine is £14,000, triple expansion £28,000).
+   */
+  {
+    /* η × 1.15 (design): open-hearth plate lets the boilers run at higher pressure. */
+    id: 'steam.steelBoilers', sector: 'steam', kind: 'efficiency',
+    name: 'Steel boilers',
+    blurb: 'Open-hearth steel plate for the boiler shell: higher pressures, fewer bursts. The engine makers take fresh orders.',
+    cost: 20_000, requires: ['steam.highPressure'],
+    when: { owns: 'iron.siemens', label: 'Iron & Steel owns the Siemens open hearth' },
+    effects: [eta('steam', 1.15)],
+  },
+  {
+    /* Railways' saturation up and Steam's c down (design): heavier trains on rails that wear longer. */
+    id: 'steam.steelRails', sector: 'steam', kind: 'capital',
+    name: 'Steel rails',
+    blurb: 'Steel rails in place of wrought iron: they wear longer and carry heavier trains. Another branch line is promoted.',
+    cost: 16_000,
+    when: { owns: 'iron.bessemer', label: 'Iron & Steel owns the Bessemer converter' },
+    effects: [sat('steam', 1.2, 'steam.railways'), capCost('steam', 0.9)],
+  },
 ], { 'steam.condenser': [1, 'Watt engine'], 'steam.highPressure': [2, 'Cornish engine'], 'steam.turbine': [3, 'Turbine hall'] });
 
 /* ------------------------------------------------------------------ */

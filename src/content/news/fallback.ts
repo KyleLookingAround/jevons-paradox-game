@@ -244,4 +244,54 @@ export const headlines: Record<HeadlineKey, string[]> = {
     'The rebound runs out of road in {year}; the presses pause a minute',
     '{year}: enough, it turns out, and to spare',
   ],
+  /*
+   * M4 (the text lane). Fit for any Industry's paper: {sector} as a proper name, no props of one trade (no quay, no
+   * furnace). Fishing writes its own lines for its own keys in its file; these are the fallbacks. 'threshold' and
+   * 'scarHealed' are a renewable stock's (in M4 only Fishing has one); 'surveyed' is any survey after the Board's first
+   * (whose words are Content.surveyReveal's); 'arrears' is a capstoned Industry whose defence is unpaid; 'foreignFleets'
+   * the foreign share passing its announcement level; 'actEnding' an Act's ending ({name} = the Act's title, a proper
+   * name that begins with “The”, so it leads its line; {year}).
+   */
+  threshold: [
+    '{sector} crosses a line that does not run both ways',
+    'What is left of {sector}’s stock is too thin to mend itself',
+    'Surveys find no sign of recovery in {sector}; the remnant is too small',
+    '{sector}: what renewed itself every year will not renew itself this one',
+    'The stock behind {sector} falls past the point of recovery',
+  ],
+  scarHealed: [
+    '{sector} recovers at last; the old hands say they always knew it would',
+    'Signs of recovery in {sector} after long years; the Board is cautious',
+    'The damage to {sector} is mended, by time and by nothing else',
+    '{sector} comes back, slowly, and later than anyone was promised',
+    'Recovery complete in {sector}; the young do not remember the loss',
+  ],
+  surveyed: [
+    'Survey of {sector} published; the figures differ from the trade’s',
+    '{sector} surveyed; the official count is lower than the trade’s own',
+    'Survey vessel reports on {sector}; the trade disputes the method',
+    '{sector} counted properly this year, at the public expense',
+    'Survey finds less in {sector} than the trade reported, as surveys do',
+  ],
+  arrears: [
+    '{sector} in arrears: the settlement is not being kept',
+    'Defence of {sector} unpaid; the settlement holds on paper only',
+    'The House cannot find the money to keep {sector} settled',
+    '{sector}’s settlement lapses for want of funds; the old trouble returns',
+    'Arrears on {sector}; the settled years end at a quarter-day',
+  ],
+  foreignFleets: [
+    'Rivals from abroad take a growing share of {sector}',
+    'Foreign competition in {sector}; owners ask the Government to look',
+    'Foreigners join in {sector}; the trade calls it unsporting',
+    'More foreign hands at work in {sector}; the home trade wants them out',
+    'Foreign interest in {sector} grows with the home trade’s cheapness',
+  ],
+  actEnding: [
+    '{name}, settled: the Gazette prints the date, {year}',
+    '{name} closes its books in balance, in {year}',
+    '{name} is over, fifty years held; the presses pause a minute',
+    '{name} settled for good in {year}; the leader writer takes the day off',
+    '{name} ends within the sky’s means; the year is {year}',
+  ],
 };

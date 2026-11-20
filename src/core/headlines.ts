@@ -24,6 +24,9 @@ const FALLBACK: Record<HeadlineKey, string> = {
   seamSunk: '{name} is sunk', biteBack: '{name} bites back', dispatch: 'A letter to the proprietor', answered: 'The proprietor replies',
   ambient: 'From our correspondent', history: 'A history written: {name}', return: 'Household survey published',
   returnWithdrawn: 'The Household Survey is discontinued', ending: 'A steady state in every industry, {year}',
+  threshold: 'The {sector} stock falls below its threshold', scarHealed: 'The {sector} stock recovers',
+  surveyed: 'A survey of the {sector} stock', arrears: '{sector} in arrears', foreignFleets: 'Foreign fleets on the {sector} grounds',
+  actEnding: '{name} settled, {year}',
 };
 
 /** Common-noun placeholders: lower-cased mid-sentence (see Content.headlines). */
