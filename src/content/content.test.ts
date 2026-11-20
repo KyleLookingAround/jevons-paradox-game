@@ -2170,7 +2170,8 @@ describe('M5: the unfolding in a Ministry (design §8; the owner\'s rule)', () =
   const F = C.features ?? {};
   const isAtReckoning = (c: Cond) => leaves(c).some((x) => 'stat' in x && x.stat === 'time' && x.op === '<' && x.value <= 2);
   const isMid = (c: Cond) => leaves(c).some((x) => 'stat' in x && x.stat === 'time' && x.op === '>=' && x.value >= 1500);
-  const minFloor = (c: Cond) => Math.max(0, ...leaves(c).flatMap((x) => ('stat' in x && x.stat === 'ministries' && x.op === '>=' ? [x.value] : [])));
+  /** The least Ministry an `all` requires at its top level (a deeper `any` may add later paths). */
+  const minFloor = (c: Cond) => Math.max(0, ...('all' in c ? c.all : [c]).flatMap((x) => ('stat' in x && x.stat === 'ministries' && x.op === '>=' ? [x.value] : [])));
 
   test('every M5 feature waits on office; each arrives either at a Reckoning or mid-run, never both', () => {
     for (const id of M5_FEATURES) {

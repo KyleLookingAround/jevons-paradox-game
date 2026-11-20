@@ -16,13 +16,24 @@ import { fin } from './util';
  * The Market's view of one candidate: whole-state flows with the upgrade raised one level (η recomputed for every open
  * sector) or the application founded. No time passes.
  */
-export function flowsWithUpgrade(state: GameState, content: Content, id: string): Flows {
+export function flowsWithUpgrade(state: GameState, content: Content, id: string, reserve = false): Flows {
   const draft0: GameState = { ...state, upgrades: { ...state.upgrades, [id]: (state.upgrades[id] ?? 0) + 1 } };
   const mods = modsOf(draft0, content);
   const sectors = { ...state.sectors };
   for (const s of idx(content).ids) {
     const es = sectors[s];
     if (es?.open && !es.settled) sectors[s] = { ...es, eta: etaAt(content.sectors[s], mods, es.openFor) };
+  }
+  // M5 (follow-up), the rival only: a stock reserveAdd acts at the purchase (applyUpgrade), so the draft adds it here and
+  // its value is the dearer resource it spares (p_r falls with reserve / reserveMax). The Market's view is unchanged.
+  if (reserve) {
+    for (const ef of idx(content).upgrades.get(id)?.effects ?? []) {
+      if (ef.type !== 'reserveAdd') continue;
+      const sd = content.sectors[ef.sector], es = sectors[ef.sector];
+      if (!sd || !es?.open || es.settled || sd.resourceKind !== 'stock') continue;
+      const a = ef.value * sd.reserve;
+      sectors[ef.sector] = { ...es, reserve: es.reserve + a, reserveMax: es.reserveMax + a };
+    }
   }
   return computeFlows({ ...draft0, sectors }, content);
 }
@@ -64,6 +75,8 @@ export interface CandidateRule {
   foundPaybackMax: number;
   fork: ((u: UpgradeDef) => boolean) | null;
   share: ((id: string) => number) | null;
+  /** M5 (follow-up): value a card's stock reserveAdd (the rival; the Market: false/absent, as M4). */
+  reserve?: boolean;
 }
 export interface Candidate { kind: 'found' | 'upgrade'; id: string; payback: number; cost: number }
 export function bestCandidate(state: GameState, content: Content, s: SectorId, rule: CandidateRule): { best: Candidate | null; log: LogEntry } {
@@ -98,7 +111,7 @@ export function bestCandidate(state: GameState, content: Content, s: SectorId, r
     const cost = upgradeCost(u, lvl, mods) * (rule.share ? rule.share(u.id) : 1);
     if (!(cost <= rule.capital)) continue;
     affordable++;
-    consider('upgrade', u.id, cost, flowsWithUpgrade(state, content, u.id), rule.paybackMax);
+    consider('upgrade', u.id, cost, flowsWithUpgrade(state, content, u.id, rule.reserve === true), rule.paybackMax);
   }
   const t = state.time;
   if (best === null) {

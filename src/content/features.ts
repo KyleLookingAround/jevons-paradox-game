@@ -207,10 +207,10 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
   },
   /* Ministry 2, at the Reckoning: the Inspectors, and Pryce's concealment with them. */
   inspection: { when: { all: [OFFICE, ministries(2), ...AT_RECKONING] }, ...FEATURE_TEXT_M5.inspection },
-  /* Ministry 2, mid-run: the Treasury's balance, compensation. Never in a window Plenty may open in (Ministry 3) unless
-   * Plenty has opened in an earlier Ministry (a late Treasury then waits five minutes clear of the opening). */
+  /* Ministry 2, mid-run: the Treasury's balance, compensation. Never in Ministry 3's window, which is Plenty's opening
+   * (a Treasury that missed Ministry 2's window, after a short Ministry, comes in Ministry 4's). */
   treasury: {
-    when: { all: [OFFICE, ministries(2), { feature: 'inspection' }, ...MID_M5, { any: [{ stat: 'ministries', op: '<', value: 3 }, { owns: 'plenty' }] }] },
+    when: { all: [OFFICE, ministries(2), { feature: 'inspection' }, ...MID_M5, { any: [{ stat: 'ministries', op: '<', value: 3 }, { stat: 'ministries', op: '>=', value: 4 }] }] },
     ...FEATURE_TEXT_M5.treasury,
   },
   /* Ministry 3, at the Reckoning: the government's Know-how tree in the shop (KnowhowDef.when). */

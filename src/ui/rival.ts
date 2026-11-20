@@ -33,10 +33,11 @@ export interface LeverChair { el: HTMLElement; ladder: HTMLElement; update(v: Le
 export function leverChair(ctx: Ctx, leverId: string): LeverChair {
   const glyph = h('span', { class: 'ans-g', 'aria-hidden': 'true' });
   const word = h('span', { class: 'ans-w' });
+  const nextEl = h('span', { class: 'ans-c' });
   const list = h('ol', { class: 'ans-list', hidden: true, 'aria-label': ANSWER_LINE.listTitle });
   const line = h('button', { class: 'ans-line', type: 'button', 'aria-expanded': 'false', onclick: () => {
     const on = !!list.hidden; show(list, on); setAttr(line, 'aria-expanded', String(on));
-  } }, glyph, word, h('span', { class: 'ans-more', 'aria-hidden': 'true', text: '▾' }));
+  } }, glyph, h('span', null, word, nextEl), h('span', { class: 'ans-more', 'aria-hidden': 'true', text: '▾' }));
   const rec = h('p', { class: 'ans-rec' });
   const marks = h('p', { class: 'lev-marks' });
   const el = h('div', { class: 'lev-chair', hidden: true }, line, list, rec, marks);
@@ -57,7 +58,11 @@ export function leverChair(ctx: Ctx, leverId: string): LeverChair {
       const best = a.options.find((o) => o.kind === a.chosen);
       const next = a.options.find((o) => o.available && o.kind !== a.chosen);
       setText(glyph, answerText(a.chosen).g);
-      setText(word, fill(ANSWER_LINE.ifEnacted, { kind: rank(a.chosen, num(best?.cost)) }) + (next ? `; ${fill(ANSWER_LINE.nextCheapest, { kind: rank(next.kind, num(next.cost)) })}` : ''));
+      const lv = num(v.level);
+      // Not yet enacted: "If enacted now"; in force with a level to go: the same line for the raise; at its top: as it stands.
+      const frame = lv === 0 ? ANSWER_LINE.ifEnacted : a.level > lv ? ANSWER_LINE.ifEnacted.replace('enacted now', 'raised') : `${ANSWER_LINE.maxed}: {kind}`;
+      setText(word, fill(frame, { kind: rank(a.chosen, num(best?.cost)) }));
+      setText(nextEl, next ? `; ${fill(ANSWER_LINE.nextCheapest, { kind: rank(next.kind, num(next.cost)) })}` : '');
       setAttr(line, 'data-k', String(a.chosen));
       const lk = a.options.map((o) => `${o.kind}:${o.available ? Math.round(num(o.cost, Infinity)) : 'x'}`).join(',') + rung;
       if (lk !== listKey) {
@@ -124,7 +129,8 @@ function rungCard(ctx: Ctx, leverId: string): { el: HTMLElement; update(r: Looph
     el.setAttribute('data-s', r.status);
     cls(el, 'robust', r.robust);
     show(robust, !!r.robustLabel);
-    if (r.robustLabel) setText(robust, `${r.robust ? '✓ ' : ''}${fill(MT.robust, { label: lc(r.robustLabel) })}${r.amendCost == null ? `. ${MT.robustNote}` : ''}`);
+    // Content's label reads as a sentence ("Closed while the fuel duty escalator is in force"); a bare one gets the frame.
+    if (r.robustLabel) setText(robust, `${r.robust ? '✓ ' : ''}${/^(closed|shut)\b/i.test(r.robustLabel) ? r.robustLabel : fill(MT.robust, { label: lc(r.robustLabel) })}${r.amendCost == null ? `. ${MT.robustNote}` : ''}`);
     const drafting = r.status === 'drafting' && r.draftLeft != null;
     show(bar, drafting);
     if (drafting) {

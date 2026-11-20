@@ -455,9 +455,7 @@ export const institutions: InstitutionDef[] = [
    *
    * The Water Resources Board: the accounts of water consumed (applied less what returns to the aquifer). Plenty's
    * consumption cap and a charge written on water consumed require it SEATED (LeverDef.requires; the Plenty lane's
-   * levers). No effect of its own beyond the seat: the right gauge is the institution. Level 2 slows the aquifer's
-   * decline honestly (recharge works: absorption on Plenty's nitrogen is not water, so it is the start of a licence).
-   * Shown once Plenty has opened.
+   * levers). No effect of its own beyond the seat: the right gauge is the institution.
    *
    * The Independent Statistics Board: Pryce's returns from the capstoned Coal Age are compiled by the Board, not by
    * him: concealment held at 0 there (EffectDef 'certify'), so the Inspectors' rounds are Motion's and Plenty's. Level 1
@@ -465,12 +463,12 @@ export const institutions: InstitutionDef[] = [
    * Confidence): a real choice against the Inspectorate.
    */
   {
+    /* Offered from the fourth Ministry: Plenty opens mid-run in the third (its unlock), so the Board is in the shop at
+     * the first Reckoning after Plenty has been seen (a condition on the Ministry count, not on Plenty's id, so the
+     * Board stands whether or not Plenty's module is registered). One level: the right gauge is the whole of it. */
     id: 'inst.waterBoard', name: 'Water Resources Board',
     blurb: 'Accounts of water consumed as well as water pumped. A rule can be written on the gauge that matters.',
-    cost: 200, when: { owns: 'plenty', label: 'Plenty has opened' }, effects: [],
-    nextLevels: levels(200, [
-      { effects: [{ type: 'absorptionAdd', sector: 'plenty', value: 0.002 }], label: 'Catchment officers: the runoff clears a little faster' },
-    ], [2.5]),
+    cost: 200, when: { stat: 'ministries', op: '>=', value: 4, label: 'Plenty has opened (the fourth Ministry)' }, effects: [],
   },
   {
     id: 'inst.statisticsBoard', name: 'Independent Statistics Board',

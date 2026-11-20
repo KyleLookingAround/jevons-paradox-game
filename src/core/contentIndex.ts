@@ -71,6 +71,8 @@ export interface ContentIndex {
   anyM4: boolean;
   /** M4 (amend): levers with LeverDef.when. */
   whenLevers: LeverDef[];
+  /** M5 (follow-up): any application has ApplicationDef.when (a fast exit for its rules). */
+  whenApps: boolean;
 }
 const indexCache = new WeakMap<Content, ContentIndex>();
 export function idx(content: Content): ContentIndex {
@@ -86,7 +88,7 @@ export function idx(content: Content): ContentIndex {
     seams: new Map(), measureLevers: [], sideLevers: [], dispatches: new Map(), cast: new Map(), histories: new Map(),
     archive: new Map(), anyMechanic: false,
     acts: [], actOfAge: new Map(), preview: new Set(), ownerOf: new Map(), drawers: new Map(), feedsInto: {},
-    feedTargets: new Map(), refusedFeeds: [], renewable: [], anyM4: false, whenLevers: [],
+    feedTargets: new Map(), refusedFeeds: [], renewable: [], anyM4: false, whenLevers: [], whenApps: false,
   };
   for (const a of content.ages ?? []) for (const s of a.sectors ?? []) if (!ix.ageOf.has(s)) ix.ageOf.set(s, a);
   const conflict = (a: string, b: string) => {
@@ -206,6 +208,7 @@ export function idx(content: Content): ContentIndex {
     ix.feedTargets.set(f.src, l);
   }
   for (const [k, l] of ix.feedTargets) ix.feedTargets.set(k, l.sort((a, b) => ix!.pos.get(a)! - ix!.pos.get(b)!));
+  for (const s of ix.ids) if (content.sectors[s].applications.some((a) => !!a.when)) ix.whenApps = true;
   ix.anyM4 = ix.acts.length > 0 || ix.ownerOf.size > 0 || feedList.length > 0 || ix.renewable.length > 0;
   indexCache.set(content, ix);
   return ix;

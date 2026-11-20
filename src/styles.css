@@ -1814,3 +1814,5 @@ button.cm-gt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2p
 .lever.briefable .lev-fold{cursor:pointer}.lever.brief .lev-name::after{content:' ▸';color:var(--muted)}
 .lever.brief>.lev-blurb,.lever.brief>.lev-catch,.lever.brief>.lev-now,.lever.brief>.lev-next,.lever.brief>.recycle,.lever.brief>.lev-levy{display:none}
 .mfold>:not(.sec-h){display:none}.mf-tog{margin-left:auto}
+.of-pull .btn{white-space:nowrap}
+.sill-comp .btn{white-space:nowrap}

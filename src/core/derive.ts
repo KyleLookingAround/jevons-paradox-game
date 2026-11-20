@@ -35,7 +35,8 @@ import { drawnByOf, secondsLeftOf, stockView, surveyRevealView, yearsLeftOf } fr
 import { appFeedsView, feedsView, fedInto } from './orderBook';
 import { feedsKnown } from './temptation';
 import { renewableOf } from './renewable';
-import { evalCond } from './conditions';
+import { condCheck, evalCond } from './conditions';
+import { appWhenOk } from './appWhen';
 import { currentAct, endingAct, endingSectors } from './acts';
 import { standingDrawYearsOf } from './steady';
 import { nextSectorsOf } from './unlocks';
@@ -98,6 +99,11 @@ export function derive(state: GameState, content: Content): Derived {
       if (m5) {
         apps[a.id].regime = regimeOf(content, s, i, seen, mods);
         if (state.chair && chairSet.has(s)) apps[a.id].canFound = false; // the rival's
+      }
+      if (a.when) { // M5 (follow-up): ApplicationDef.when fails now: frozen (founded) or unavailable, with its label
+        const ok = appWhenOk(state, content, a);
+        apps[a.id].frozen = !ok;
+        apps[a.id].waiting = ok ? null : condCheck(state, content, a.when).label;
       }
     });
     const secondsLeft = secondsLeftOf(state, content, fl, levs, s);

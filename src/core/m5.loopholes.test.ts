@@ -128,3 +128,25 @@ describe('M5 loopholes: E5 (exit criterion 13 on the fixture)', () => {
     expect(R30(2, 1, false) / b).toBeGreaterThan(0.9);
   });
 });
+
+describe('M5 loopholes (follow-up): feature \'loopholes\' arriving mid-run', () => {
+  test('a lever raised before the feature: no rung before it; at the first order tick after it, the rung opens and he re-answers', () => {
+    const LF: Content = { ...C, features: { loopholes: { when: { stat: 'time', op: '>=', value: 200 } } } };
+    let s = adv(ministry(LF), LF, 60);
+    s = raise(s, 'motor.mileage', 1);
+    s = adv(s, LF, 30);
+    expect(s.chair!.rival.answers['motor.mileage'].kind).not.toBe('evade');
+    expect(Object.keys(s.chair!.loopholes)).toEqual([]);
+    let opened: number | null = null, arrived: number | null = null;
+    s = adv(s, LF, 200, (x) => {
+      if (arrived === null && (x.meta.features as Record<string, number> | undefined)?.loopholes !== undefined) arrived = x.time;
+      if (opened === null && x.chair!.loopholes[LT]) opened = x.time;
+    });
+    expect(arrived).not.toBeNull();
+    expect(opened).not.toBeNull();
+    expect(opened!).toBeGreaterThanOrEqual(arrived!);
+    expect((opened! * YEARS_PER_SECOND) % 1).toBeCloseTo(0, 9); // at an order tick
+    expect(s.chair!.rival.answers['motor.mileage'].kind).toBe('evade'); // answered again once the rung is there
+    expect(s.chair!.loopholes[LT].status).toBe('used');
+  });
+});

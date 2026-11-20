@@ -180,3 +180,46 @@ export const ambientM4: AmbientDef[] = [
   /* ---- The Survey ---- */
   { id: 'amb.gen.twoRates', when: { feature: 'estimates' }, text: ['Years of coal left now printed twice, at two rates; both correct'] },
 ];
+
+/*
+ * M5 (the text lane): the Ministry's small print, and Plenty's (the seed merchant's almanac and the drainage board's
+ * notices). Separate exports until the registry folds them in: Content.ambient becomes [...ambient, ...ambientM4,
+ * ...ambientM5] and, with Plenty, ...ambientM5Plenty. {pct} on fractions only: returnShare and reserveFraction are
+ * fractions (the lint's FRACTION_STATS needs returnShare); Confidence is a count ({value}).
+ */
+const IN_OFFICE: Cond = { flag: 'office' };
+const m5g = (stat: StatKey, op: '<' | '<=' | '>' | '>=', value: number): Cond => ({ stat, op, value });
+
+export const ambientM5: AmbientDef[] = [
+  { id: 'amb.chair.hoardings', when: IN_OFFICE, text: ['Hoardings at the crossroads: Pryce Consolidated wishes motorists well', 'New hoarding by the bypass: Pryce, building the future, it says'] },
+  {
+    id: 'amb.chair.poll', when: all(IN_OFFICE, { feature: 'chair' }, m5g('inOpposition', '<', 1)), stat: { stat: 'confidence' },
+    text: ['Opinion poll: the Ministry on {value}; nobody asked the weather', 'Latest poll puts the Ministry at {value}; the Opposition is unmoved'],
+  },
+  { id: 'amb.chair.drinks', when: IN_OFFICE, text: ['Ministry drinks cabinet restocked; the good pen still missing', 'Lost: one good pen, Ministry pattern; the finder may keep it'] },
+  { id: 'amb.chair.inspectorCar', when: all(IN_OFFICE, { feature: 'inspection' }), text: ['An Inspector’s car seen outside the refinery; the canteen goes quiet', 'Inspector’s bicycle found chained to the works gate at dawn'] },
+  { id: 'amb.chair.treasury', when: all(IN_OFFICE, { feature: 'treasury' }), text: ['Treasury receipts up again; the Chancellor thanks the motor trade', 'Treasury buoyant; officials attribute it to growth, and frown'] },
+  { id: 'amb.chair.opposition', when: all(IN_OFFICE, m5g('inOpposition', '>=', 1)), text: ['Opposition front bench rehearses its questions in the tea room', 'Former Minister seen on the back benches, taking notes'] },
+  {
+    id: 'amb.motion.vanSale', sector: 'motion', when: { loophole: 'motion.mileage.lightTrucks', status: 'used' },
+    text: ['For sale: family van, seven seats, counted as a truck; offers', 'Motor show: the new van has carpets, a radio and an exemption'],
+  },
+  { id: 'amb.motion.courtNotice', sector: 'motion', when: all(IN_OFFICE, { feature: 'chair' }), text: ['Pryce Motors’ counsel booked for the season; the clerks rejoice'] },
+];
+
+export const ambientM5Plenty: AmbientDef[] = [
+  {
+    id: 'amb.plenty.waterTable', sector: 'plenty', when: m4('reserveFraction', 'plenty', '<', 0.8), stat: { stat: 'reserveFraction', sector: 'plenty' },
+    text: ['Drainage board notes: the aquifer at {pct}% of its first measure', 'Fen wells deepened again; the aquifer stands at {pct}%'],
+  },
+  {
+    id: 'amb.plenty.soakBack', sector: 'plenty', when: m4('returnShare', 'plenty', '<', 0.4), stat: { stat: 'returnShare', sector: 'plenty' },
+    text: ['Water Board’s accounts: {pct}% of the water lifted soaks back', 'Ditches dry in March; only {pct}% of the pumping soaks back'],
+  },
+  { id: 'amb.plenty.greenTide', sector: 'plenty', when: m4('pressureFraction', 'plenty', '>=', 0.3), text: ['Weed on the drains at Fen End; the anglers write to the paper', 'River green by June; the water company blames the weather'] },
+  { id: 'amb.plenty.loaf', sector: 'plenty', when: { owns: 'plenty.haberBosch' }, text: ['Loaf a halfpenny cheaper; the bakers sell no more of it'] },
+  { id: 'amb.plenty.circles', sector: 'plenty', when: { owns: 'plenty.centrePivot' }, text: ['From the excursion train: green circles to the horizon', 'Almanac: the plains seen from the air are now mostly circles'] },
+  { id: 'amb.plenty.show', sector: 'plenty', when: { owns: 'plenty.drip' }, text: ['County show: a drip line wins silver, and its acreage the gold', 'Seed merchant reports record orders for thirsty varieties'] },
+  { id: 'amb.plenty.orchards', sector: 'plenty', when: { owns: 'plenty.orchards' }, text: ['Almond blossom on the old sheepwalk; the shepherd has retired'] },
+  { id: 'amb.plenty.airFreight', sector: 'plenty', when: { owns: 'plenty.airFreight' }, text: ['Strawberries at Christmas, by air; the greengrocer stops apologising'] },
+];

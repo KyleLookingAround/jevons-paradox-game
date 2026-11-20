@@ -21,6 +21,7 @@ import { freshChair, inheritWorld, stampCapstones } from './inherit';
 import { startStockOf, sizeOf } from './renewable';
 import { calendarYear } from './calendar';
 import { chairIdx } from './chair/chairIndex';
+import { appWhenOk, gateOpened } from './appWhen';
 
 const isChairSector = (content: Content, s: SectorId): boolean => chairIdx(content).chairSet.has(s);
 
@@ -156,6 +157,13 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
   };
   const chair = freshChair(content, m); // M5: a Ministry while office is taken
   if (chair) s.chair = chair;
+  // M5 (follow-up): ApplicationDef.when gates the uses of the sectors open at the start
+  if (ix.whenApps) {
+    const gated = { ...s.sectors };
+    let any = false;
+    for (const id of ix.ids) if (gated[id]?.open) { const g = gateOpened(s, content, id, gated[id], mods); if (g !== gated[id]) { gated[id] = g; any = true; } }
+    if (any) s = { ...s, sectors: gated };
+  }
   // initial availability check and baseline
   const flows = computeFlows(s, content);
   const next = { ...s.sectors };
@@ -165,7 +173,7 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
     let es = next[id];
     const apps = { ...es.apps };
     for (const a of content.sectors[id].applications) {
-      if (!apps[a.id].available && f.ps <= a.visibleBelow) apps[a.id] = { ...apps[a.id], available: true, founded: apps[a.id].founded || a.foundCost <= 0 };
+      if (!apps[a.id].available && f.ps <= a.visibleBelow && appWhenOk(s, content, a)) apps[a.id] = { ...apps[a.id], available: true, founded: apps[a.id].founded || a.foundCost <= 0 };
     }
     es = { ...es, apps };
     next[id] = snapshotBase(es, f);

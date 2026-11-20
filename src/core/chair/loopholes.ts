@@ -38,10 +38,15 @@ export function evadeRung(state: GameState, content: Content, id: string): Looph
 }
 
 /** The chair with lever `id`'s first rung opened if the lever acts (level ≥ 1) and none of its rungs has a state yet. */
-function openFirst(state: GameState, content: Content, ch: ChairState, id: string, time: number, ev: EvDraft[]): ChairState {
+function openFirst(state: GameState, content: Content, ch: ChairState, id: string, time: number, ev: EvDraft[], arrivedOnly = false): ChairState {
   const rungs = chairIdx(content).ladders.get(id);
-  if (!rungs || !((state.levers[id]?.level ?? 0) >= 1)) return ch;
+  const level = state.levers[id]?.level ?? 0;
+  if (!rungs || !(level >= 1)) return ch;
   if (rungs.some((r) => ch.loopholes[r.id] !== undefined)) return ch;
+  // M5 (follow-up): a lever the rival has already answered at this level was raised before feature 'loopholes' arrived;
+  // its first rung waits for the next order tick (openArrived), so it appears with the feature's arrival, and is answered
+  const before = ch.rival.answers[id]?.level === level;
+  if (before !== arrivedOnly) return ch;
   const r = rungs.find((x) => rungWhen(state, content, x));
   if (!r) return ch;
   ev.push({ kind: 'loopholeOpened', sector: content.levers?.find((l) => l.id === id)?.sector, id: r.id });
@@ -103,6 +108,23 @@ export function loopholeStep(next: GameState, content: Content): GameState {
     }
   }
   return ch === ch0 ? next : withNews({ ...next, chair: ch }, content, ev, time);
+}
+
+/**
+ * M5 (follow-up) at an order tick, before the answers: every laddered lever raised BEFORE feature 'loopholes' arrived
+ * (answered at its current level, no rung state yet) opens its first rung now and its answer falls due. Rungs never open
+ * or act while the feature is off.
+ */
+export function openArrived(state: GameState, content: Content): GameState {
+  const ch0 = state.chair;
+  if (!ch0 || !loopholesOn(state, content)) return state;
+  const ev: EvDraft[] = [];
+  let ch = ch0;
+  for (const id of chairIdx(content).ladders.keys()) {
+    const c2 = openFirst(state, content, ch, id, state.time, ev, true);
+    if (c2 !== ch) ch = { ...c2, due: { ...(c2.due ?? {}), [id]: true } };
+  }
+  return ch === ch0 ? state : withNews({ ...state, chair: ch }, content, ev, state.time);
 }
 
 /** At an order tick: a 'used' rung whose closedBy now holds returns to 'open' (escape and effects stop) and its lever's

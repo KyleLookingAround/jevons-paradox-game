@@ -29,7 +29,7 @@ import { clamp, fin } from '../util';
 import { chairIdx } from './chairIndex';
 import { effectiveOf } from './acting';
 import { concealTick, quietYearsOf, standingInspection } from './inspect';
-import { evadeRung, loopholeStep, loopholeViews, robustReopen, useRung } from './loopholes';
+import { evadeRung, loopholeStep, loopholeViews, openArrived, robustReopen, useRung } from './loopholes';
 import { rivalIncomeOf, subsidyShareOf, subsidySplit } from './treasury';
 
 /* ------------------------------------------------------------------ */
@@ -316,7 +316,7 @@ function purchases(state: GameState, content: Content, pol: RivalPolicy): GameSt
     if (!es?.open || es.settled) continue;
     const purse = out.chair!.rival.capital;
     const share = (id: string): number => 1 - subsidyShareOf(out, content, id);
-    const { best, log } = bestCandidate(out, content, s, { capital: purse, paybackMax: pol.paybackMax, foundPaybackMax: pol.foundPaybackMax, fork: pol.fork, share });
+    const { best, log } = bestCandidate(out, content, s, { capital: purse, paybackMax: pol.paybackMax, foundPaybackMax: pol.foundPaybackMax, fork: pol.fork, share, reserve: true });
     out = { ...out, orderLog: { ...(out.orderLog ?? {}), [s]: log } };
     if (!best) continue;
     const full = best.cost / Math.max(1e-12, share(best.id));
@@ -403,6 +403,7 @@ export function rivalDecide(state: GameState, content: Content, years: number): 
   if (!state.chair || !content.rival) return state;
   const ev: EvDraft[] = [];
   let s = housekeeping(state, content, ev);
+  s = openArrived(s, content); // M5 (follow-up): rungs of levers raised before 'loopholes' arrived
   s = robustReopen(s, content);
   const at = s;
   s = purchases(s, content, rivalPolicy(s, content));
@@ -469,7 +470,7 @@ function enacted(state: GameState, content: Content, def: LeverDef, level: numbe
   if (cur.level === 0) ls.since = state.time;
   const draft = refreshEta({ ...state, levers: { ...state.levers, [def.id]: ls } }, content);
   // what the next tick does before it answers: the first rung opened, robust rungs reopened, carve-outs and expiries
-  return housekeeping(robustReopen(loopholeStep(draft, content), content), content, []);
+  return housekeeping(robustReopen(openArrived(loopholeStep(draft, content), content), content), content, []);
 }
 
 const answerCache = new WeakMap<object, WeakMap<object, Map<string, LeverView['rivalAnswer']>>>();
@@ -535,7 +536,7 @@ export function rivalView(state: GameState, content: Content): RivalView | null 
     const es = state.sectors[s];
     if (!es?.open || es.settled) continue;
     const share = (id: string): number => 1 - subsidyShareOf(state, content, id);
-    const { best } = bestCandidate(state, content, s, { capital: ch.rival.capital, paybackMax: pol.paybackMax, foundPaybackMax: pol.foundPaybackMax, fork: pol.fork, share });
+    const { best } = bestCandidate(state, content, s, { capital: ch.rival.capital, paybackMax: pol.paybackMax, foundPaybackMax: pol.foundPaybackMax, fork: pol.fork, share, reserve: true });
     next[s] = best ? { id: best.id, payback: best.payback } : null;
   }
   const answersOut: RivalView['answers'] = [];

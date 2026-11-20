@@ -47,6 +47,17 @@ import type { ActDef } from '../types';
 import { actStreak } from './acts';
 import { drawLine } from './account';
 import { seenLevers } from './world';
+import { appWhenOk, gateOpened } from './appWhen';
+import { mechOf } from './solver';
+import type { SectorFlow } from './solver';
+import type { SectorDef } from '../types';
+
+/** M5 (follow-up): application i's effective saturation S_i in flow f (appSat, less travel's speed factor). */
+function effSat(def: SectorDef, f: SectorFlow, i: number): number {
+  const sat = f.appSat[i] ?? 0;
+  const tr = mechOf(def).isTravel;
+  return tr && tr[i] && f.travel && f.travel.v > 0 ? sat / f.travel.v : sat;
+}
 import { actEndingMeta, arrearsStep, depletionP, drainOfDrawers, mirrorDrawers, newM4Step, stepCapstone, stepM4, stepRenewableSector } from './world';
 import type { M4Step } from './world';
 import { capitalPerSec } from './chair/treasury';
@@ -141,7 +152,15 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
         ns.satMul = Math.min(target, ns.satMul + (target - ns.satMul) * (1 - Math.exp(-SUFFICIENCY_RECOVERY_RATE * dt)));
         changed = true;
       }
-      if (!ns.available && f.ps <= a.visibleBelow) {
+      // M5 (follow-up): ApplicationDef.when (state at the start of the step): unfounded → unavailable; founded → frozen
+      const wOk = !a.when || appWhenOk(state, content, a);
+      if (a.when) {
+        if (ns.founded) {
+          if (!wOk && ns.frozenSat === undefined) { ns.frozenSat = effSat(def, f, i); changed = true; }
+          else if (wOk && ns.frozenSat !== undefined) { delete ns.frozenSat; changed = true; }
+        } else if (!wOk && ns.available) { ns.available = false; changed = true; }
+      }
+      if (!ns.available && f.ps <= a.visibleBelow && wOk) {
         ns.available = true; changed = true;
         if (a.foundCost <= 0 || ns.founded) {
           ns.founded = true;
@@ -390,6 +409,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     if (state.sectors[s]?.open || !canOpen(state, content, s)) continue;
     const def = content.sectors[s];
     sectors[s] = freshSector(def, mods, true, state.meta);
+    if (ix.whenApps) sectors[s] = gateOpened(state, content, s, sectors[s], mods); // M5 (follow-up): ApplicationDef.when
     const age = ix.ageOf.get(s);
     const ageNew = !!age && !(age.sectors ?? []).some((o) => state.sectors[o]?.open || opened.includes(o));
     opened.push(s);

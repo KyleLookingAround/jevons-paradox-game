@@ -2778,6 +2778,9 @@ export type LoopholeStatus = 'open' | 'used' | 'drafting' | 'closed';
  * RULES:
  *   - When a laddered lever first reaches level ≥ 1 in a Ministry, its first rung whose `when` holds gets a state
  *     'open' (since = time; 'loopholeOpened'). Rungs whose `when` fails are skipped (M6's rungs that need Abroad).
+ *     M5 (amend): no rung opens, is used or acts while feature 'loopholes' is off. A lever raised BEFORE the feature
+ *     arrives (the rival has answered it at its current level) opens its first rung at the first order tick after the
+ *     arrival, and its answer falls due then (the first loophole appears with the feature, never silently before it).
  *   - Evade (ResponseDef) sets the first 'open' rung 'used' ('loopholeUsed'); if it has an `app` not yet founded, the
  *     rival founds it free (by 'rival'; its ApplicationDef.when should be { loophole: id, status: 'used' }).
  *   - While 'used' (and while 'drafting' after use): the lever's grip escapes by `escape`: a measure's effects act with
@@ -4891,6 +4894,9 @@ export interface AppDerived {
   regime?: 'elastic' | 'saturated';
   /** M5: ApplicationDef.when fails now (frozen or unavailable; AppState.frozenSat). Absent = false. */
   frozen?: boolean;
+  /** M5 (amend): while ApplicationDef.when fails, its label (Cond.label or the core's fallback, as LeverView.waiting);
+   *  else null. Absent = null (a core before the amendment; an application without `when`). */
+  waiting?: string | null;
 }
 
 export interface UpgradeView {
@@ -5088,7 +5094,8 @@ export interface InstitutionView {
 /**
  * M5: the prospectus (MetaState.office.prospectus; Derived.office). Computed once, by takeOffice, from meta:
  *   first     meta.firstOpening.actions folded: consecutive or not, every purchase of one upgrade id is ONE item (t = its
- *             first time, count = purchases, every = mean interval between them in seconds, null if count 1); a founding
+ *             first time, count = purchases, every = M5 (amend): the mean interval in seconds between its purchases made up to
+ *             the LAST QUOTED item's time (the pace it reads at), null with fewer than two in that window); a founding
  *             is its own item (count 1); items in order of first time, the first prospectusItems of them; names from
  *             content (UpgradeDef / ApplicationDef name; the id if unknown). [] when defaulted.
  *   defaulted true when meta.firstOpening is absent or empty: the page uses OfficeText.prospectus.firstDefault.
@@ -5227,7 +5234,11 @@ export interface ArticleView {
 /*
  * M5 (amend): the lanes' gap reports are routed by the coordinator to the contract lane for ONE amendment commit. Each
  * amendment goes here as a list entry naming the type it changes and the hunk marked `M5 (amend):` at that type.
- * Entries: (none yet)
+ * Entries:
+ *   - AppDerived.waiting (new, optional): the label of a failing ApplicationDef.when, as LeverView.waiting.
+ *   - ProspectusView doc: `every` is the mean interval among the card's purchases up to the last quoted item's time.
+ *   - LoopholeDef doc: rungs and feature 'loopholes' arriving mid-run (a lever raised before it opens its first rung at
+ *     the first order tick after the arrival; its answer falls due).
  */
 
 /* ------------------------------------------------------------------ */

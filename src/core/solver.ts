@@ -160,6 +160,7 @@ export function solveSector(
     if (!st || !st.founded) continue;
     S[i] = Math.max(0, fin(N * a.saturation * fin(st.satMul, 1) * satSector * (mods.satMulApp[a.id] ?? 1) * spillMul));
     if (satFeed) S[i] = fin(S[i] * (satFeed[a.id] ?? 1) * (satFeed['*'] ?? 1)); // M4 (finish): demand feeds
+    if (st.frozenSat !== undefined && S[i] > st.frozenSat) S[i] = st.frozenSat; // M5 (follow-up): ApplicationDef.when failed
     const hp = a.halfPrice * halfSector * (mods.halfMulApp[a.id] ?? 1);
     P[i] = hp > 0 ? hp : 1e-12;
     K[i] = a.steepness > 0 ? a.steepness : 1;

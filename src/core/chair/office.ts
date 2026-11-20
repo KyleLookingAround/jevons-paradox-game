@@ -49,11 +49,16 @@ export function prospectusOf(meta: MetaState, content: Content): ProspectusView 
       items.push(item);
     } else items.push({ id: a.id, name: nameOf(content, 'found', a.id), t: a.t, count: 1, every: null, kind: 'found' });
   }
+  items.sort((x, y) => x.t - y.t);
+  // M5 (follow-up): `every` is the mean interval among that card's purchases made up to the LAST QUOTED item's time (the
+  // pace the card reads at, not the whole opening's: a card bought every twenty seconds, then twice more late, reads
+  // "every twenty-odd seconds"); null with fewer than two purchases in that window. `count` is all its purchases.
+  const lastT = items.length ? items[Math.min(n, items.length) - 1].t : 0;
   for (const { item, times } of byId.values()) {
     item.count = times.length;
-    item.every = times.length > 1 ? fin((times[times.length - 1] - times[0]) / (times.length - 1)) : null;
+    const w = times.filter((t) => t <= lastT + 1e-9);
+    item.every = w.length > 1 ? fin((w[w.length - 1] - w[0]) / (w.length - 1)) : null;
   }
-  items.sort((x, y) => x.t - y.t);
   const cx = chairIdx(content);
   const ix = idx(content);
   const chairFounds = (meta.opening?.actions ?? []).filter((a) => a.kind === 'found' && cx.chairSet.has(ix.apps.get(a.id)?.sector ?? ''))

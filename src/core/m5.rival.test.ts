@@ -14,6 +14,7 @@ import { setLever } from './policy';
 import { computeFlows } from './flows';
 import { sectorLevers } from './levers';
 import { evalCond, statValue } from './conditions';
+import { bestCandidate } from './candidates';
 
 const C = fixtureM5;
 /** setLever, with raisedAt recorded as Core B's setLever does (a test written before it lands stays valid after). */
@@ -215,3 +216,22 @@ describe('M5 rival: views and conditions', () => {
 });
 
 export const _c: Content = C;
+
+describe('M5 rival (follow-up): a reserve card', () => {
+  test('a capital card whose only effect is reserveAdd: priced by the dearer oil it spares (rival), still nothing to the Market', () => {
+    const RC: Content = { ...C, upgrades: [...C.upgrades!, { id: 'motor.wells', sector: 'motor', name: 'Wells', blurb: '', kind: 'capital', cost: 500, effects: [{ type: 'reserveAdd', sector: 'motor', value: 0.5 }] }] };
+    const s0 = ministry(RC);
+    const low = { ...s0, time: 30, sectors: { ...s0.sectors, motor: { ...s0.sectors.motor, reserve: 0.3 * s0.sectors.motor.reserveMax } } };
+    const only = (u: { id: string }) => u.id === 'motor.wells';
+    const RCw: Content = { ...RC, upgrades: RC.upgrades!.filter(only) };
+    const pick = (s: GameState, reserve: boolean) => bestCandidate(s, RCw, 'motor', { capital: 1e12, paybackMax: 1e12, foundPaybackMax: 0, fork: null, share: null, reserve });
+    expect(pick(low, false).best).toBeNull(); // the Market's rule: no running cost saved
+    const r = pick(low, true).best!;
+    expect(r.id).toBe('motor.wells');
+    expect(Number.isFinite(r.payback)).toBe(true);
+    // worth more the emptier the field: at a full reserve it spares nothing
+    expect(pick(s0, true).best).toBeNull();
+    const lower = { ...low, sectors: { ...low.sectors, motor: { ...low.sectors.motor, reserve: 0.1 * s0.sectors.motor.reserveMax } } };
+    expect(pick(lower, true).best!.payback).toBeLessThan(r.payback);
+  });
+});

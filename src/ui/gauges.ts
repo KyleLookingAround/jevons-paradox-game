@@ -290,7 +290,7 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     setText(cons.val, fold(rShown));
     const tr = num(e?.trendR);
     const arrow = tr > 0.001 ? ' ↑' : tr < -0.001 ? ' ↓' : '';
-    if (rep != null) setText(cons.sub, trueOn ? `${fmt(rep)} · ${MT.trueTick} ${fmt(num(e?.resourceUse))}` : `${fmt(rep)} ${unit}/s ${MT.asReported.split(' ').slice(0, 2).join(' ').toLowerCase()}`);
+    if (rep != null) setText(cons.sub, trueOn ? `${fmt(rep)} · ${MT.trueTick} ${fmt(num(e?.resourceUse))}` : `${fmt(rep)} ${unit}/s reported`);
     else setText(cons.sub, `${fmt(num(e?.resourceUse))} ${unit}/s${arrow}`.trim());
     cls(cons.box, 'reported', rep != null);
     setAttr(cons.box, 'title', rep != null ? MT.asReported : null);

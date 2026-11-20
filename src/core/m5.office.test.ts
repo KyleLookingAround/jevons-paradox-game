@@ -172,3 +172,17 @@ describe('M5 office: closedInOffice and previews', () => {
     expect(free.sectors.code.open).toBe(true);
   });
 });
+
+describe('M5 office (follow-up): the prospectus pace', () => {
+  test('"and another every …" is the mean interval of that card\'s purchases up to the last quoted item\'s time', () => {
+    const A = (t: number, id: string, kind: 'upgrade' | 'found' = 'upgrade') => ({ t, kind, id, by: 'player' as const });
+    const meta = { ...freshMeta(C), firstOpening: { actions: [
+      A(18, 'motor.carburettor'), A(37, 'motor.roads'), A(58, 'motor.roads'), A(70, 'motor.overhead'), A(81, 'motor.roads'),
+      A(90, 'motor.lorries', 'found'), A(120, 'motor.injection5'), A(200, 'motor.turbo'), A(400, 'motor.roads'), A(600, 'motor.roads'),
+    ], firstBudgetAt: null, seconds: 700 } } as MetaState;
+    const p = prospectusOf(meta, C);
+    expect(p.first.map((i) => i.id)).toEqual(['motor.carburettor', 'motor.roads', 'motor.overhead', 'motor.lorries', 'motor.injection5']);
+    const roads = p.first[1];
+    expect([roads.count, roads.every]).toEqual([5, 22]); // (81 − 37) / 2, not (600 − 37) / 4 ≈ 141
+  });
+});

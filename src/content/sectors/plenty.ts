@@ -17,8 +17,8 @@
  * Exports beyond the SectorContent (the registry lane adds them; design/scratch/m5-registry-plenty.md):
  * PLENTY_LOOPHOLES (Content.loopholes) and PLENTY_PLEDGES (Content.pledges).
  */
-import type { Cond, HeadlineKey, LeverDef, LeverLevelDef, LoopholeDef, PledgeDef, SectorDef, UpgradeDef } from '../../types';
-import { eta, capCost, sat, half, fork, sig2, withStages, decadeSequence, RECYCLE, CAP_LABEL, CAP_VALUES, DIVIDEND, DUTY_VALUES, DUTY_LABEL, SUFF_VALUES, SUFF_LABEL, SHARE_VALUES } from '../helpers';
+import type { Cond, DividendDef, HeadlineKey, LeverDef, LeverLevelDef, LoopholeDef, PledgeDef, SectorDef, UpgradeDef } from '../../types';
+import { eta, capCost, sat, half, absorb, fork, sig2, withStages, decadeSequence, RECYCLE, CAP_LABEL, CAP_VALUES, DIVIDEND, DUTY_VALUES, DUTY_LABEL, SUFF_VALUES, SUFF_LABEL, SHARE_VALUES } from '../helpers';
 import type { SectorContent } from '../helpers';
 
 /* ------------------------------------------------------------------ */
@@ -111,7 +111,11 @@ const sector: SectorDef = {
     budgetFloor: 0.8,
     clearFloor: 0.35,
     clearCeiling: 0.35,
-    decadeChoices: decadeSequence([]),
+    /* Plenty's own two pairs (PLENTY_DIVIDENDS, below; the registry adds them to dividends.ts), option 0 the modest one. */
+    decadeChoices: decadeSequence([
+      ['div.plenty.fallowYear', 'div.plenty.newBorehole'],
+      ['div.plenty.waterBailiff', 'div.plenty.harvestFestival'],
+    ]),
   },
 
   /*
@@ -134,7 +138,9 @@ const sector: SectorDef = {
    * Treasury (Ministry 2) comes first: the subsidy is paid from it.
    */
   unlock: {
-    minReckonings: 0,
+    /* office is taken after the Act I ending (nine or more Reckonings); 3 keeps the M3 rule that a lever that bites back
+     * never meets a runs-1–2 player */
+    minReckonings: 3,
     after: ['motion'],
     when: {
       all: [
@@ -192,7 +198,7 @@ const sector: SectorDef = {
     },
     {
       id: 'plenty.biofuels', name: 'Biofuels', icon: 'pump',
-      blurb: 'Maize distilled into motor spirit. The field now feeds the car as well as the table.',
+      blurb: 'Grain distilled into motor spirit. The field now feeds the car as well as the table.',
       halfPrice: 0.5, saturation: 14_000, steepness: 3, visibleBelow: 0.5, foundCost: 80_000,
       when: { stat: 'openFor', sector: 'plenty', op: '>=', value: BIOFUELS_AT, label: 'The year 2000 on the farms' },
     },
@@ -232,8 +238,8 @@ const chainCards: UpgradeDef[] = [
     blurb: 'The horses go, and the acres that fed them grow food. One man ploughs what a team did.',
   },
   {
-    id: 'plenty.hybridMaize', name: 'Hybrid maize', cost: 100_000, effects: [eta('plenty', 1.2)],
-    blurb: 'The 1930s: seed bought new each spring from the merchant, and a fuller cob on every stalk.',
+    id: 'plenty.hybridMaize', name: 'Hybrid seed', cost: 100_000, effects: [eta('plenty', 1.2)],
+    blurb: 'The 1930s: hybrid seed bought new each spring from the merchant, and a fuller cob on every stalk.',
   },
   {
     id: 'plenty.centrePivot', name: 'Centre pivot', cost: 90_000, effects: [eta('plenty', 1.25), ret(PIVOT_RETURN)],
@@ -353,10 +359,11 @@ const plentyLevers: LeverDef[] = [
    */
   {
     id: 'plenty.licence', sector: 'plenty', kind: 'cap', basis: 'applied',
+    requires: ['budget'],
     name: 'Abstraction licence',
     blurb: 'A licence for every pump, and a ceiling on the acre-feet it may lift, falling with the line.',
     catch: 'It counts what the pumps lift. What the fields use up, it does not count.',
-    catchAfter: { moreLevers: DIVIDEND },
+    catchAfter: { moreLevers: DIVIDEND, chair: 'Pryce Consolidated will meter the pumps it reports.' },
     levels: capLevels(220, 0.1, 'Hold the pumps to the line'),
     repeat: { valueStep: -0.05, costGrowth: 1.45, upkeepGrowth: 1.3, maxSteps: 10, label: CAP_LABEL },
     recycle: RECYCLE,
@@ -368,11 +375,11 @@ const plentyLevers: LeverDef[] = [
    */
   {
     id: 'plenty.consumptionCap', sector: 'plenty', kind: 'cap', basis: 'consumed',
-    requires: [WATER_BOARD],
+    requires: ['budget', WATER_BOARD],
     name: 'Consumption cap',
     blurb: 'A ceiling on the water the fields use up, from the Board’s accounts of what never comes back.',
     catch: 'Dear to measure, unpopular to enforce, and the only figure the aquifer reads.',
-    catchAfter: { moreLevers: DIVIDEND },
+    catchAfter: { moreLevers: DIVIDEND, chair: 'Pryce Consolidated will account for the fields it reports.' },
     levels: capLevels(280, 0.14, 'Hold the use to the line'),
     repeat: { valueStep: -0.05, costGrowth: 1.45, upkeepGrowth: 1.3, maxSteps: 10, label: CAP_LABEL },
     recycle: RECYCLE,
@@ -428,10 +435,11 @@ const plentyLevers: LeverDef[] = [
     id: 'plenty.chargeApplied', sector: 'plenty', kind: 'charge', basis: 'applied', requires: ['charge'],
     name: 'Charge at the pump',
     blurb: 'A rate on every acre-foot lifted, read off the meter. Fixed when enacted.',
-    catch: 'Cheap to collect. It pays the farmer to apply less, not to use up less.',
+    catch: 'Cheap to collect. It asks the farmer to apply less, not to use up less.',
     levels: levels([0.2, 0.4, 0.7], 200, 0.06, ['A fifth of the water’s price', 'Two fifths of its price', 'Seven tenths of its price']),
     repeat: { valueStep: 0.15, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 2, label: 'Charge at {pct}% of its price' },
-    recycle: ['treasury', 'dividend'],
+    recycle: RECYCLE,
+    catchAfter: { chair: 'Pryce Consolidated will pay it on the acre-feet it reports.' },
     popularity: { start: -3, after: 5, years: 10 },
   },
   {
@@ -441,7 +449,8 @@ const plentyLevers: LeverDef[] = [
     catch: 'Dear to measure, and the farmers dispute every figure. It charges the aquifer’s loss.',
     levels: levels([0.3, 0.6, 1], 260, 0.08, ['Three tenths of its price', 'Six tenths of its price', 'The whole of its price']),
     repeat: { valueStep: 0.2, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 2, label: 'Charge at {pct}% of its price' },
-    recycle: ['treasury', 'dividend'],
+    recycle: RECYCLE,
+    catchAfter: { chair: 'Pryce Consolidated will pay it on the losses it reports.' },
     popularity: { start: -4, after: 5, years: 10 },
   },
   /* The fertiliser duty: a duty (the price held up as crop per drop rises; fewer calories, less nitrate). */
@@ -450,7 +459,7 @@ const plentyLevers: LeverDef[] = [
     name: 'Fertiliser duty',
     blurb: 'A duty on every sack of nitrogen, rising as the sack does more. Bread costs what it did.',
     catch: 'Dearer bread, and the farmers march on the capital with their tractors.',
-    catchAfter: { moreLevers: DIVIDEND },
+    catchAfter: { moreLevers: DIVIDEND, chair: 'Pryce Consolidated will pay it on the sacks it reports.' },
     levels: levels(DUTY_VALUES, 240, 0.11, DUTY_VALUES.map((v) => DUTY_LABEL.replace('{pct}', String(Math.round(v * 100))))),
     repeat: { valueStep: 0.03, costGrowth: 1.7, upkeepGrowth: 1.35, maxSteps: 3, label: DUTY_LABEL },
     recycle: RECYCLE,
@@ -521,6 +530,34 @@ export const PLENTY_PLEDGES: PledgeDef[] = [
 ];
 
 /* ------------------------------------------------------------------ */
+/* DECADE DIVIDENDS (Content.dividends; the registry appends them)      */
+/* ------------------------------------------------------------------ */
+
+/* Option 0 of each pair is the modest one (the default an unanswered offer resolves to); option 1 is the rebound arm. */
+export const PLENTY_DIVIDENDS: DividendDef[] = [
+  {
+    id: 'div.plenty.fallowYear', name: 'A fallow year',
+    blurb: 'The decade’s thrift rests a field in seven. A little less grown; the soil and the wells are glad of it.',
+    effects: [sat('plenty', 0.96)], // a small standing cut in appetite (the diet's gentle cousin)
+  },
+  {
+    id: 'div.plenty.newBorehole', name: 'A new borehole',
+    blurb: 'A deeper bore on every holding, paid for out of the decade. Water is cheaper to lift, so more is lifted.',
+    effects: [capCost('plenty', 0.95)], // the rebound arm: cheaper farming
+  },
+  {
+    id: 'div.plenty.waterBailiff', name: 'A water bailiff',
+    blurb: 'A man with a notebook who walks the ditches, clears the drains and reads the meters. Mrs Okonedo gives him tea.',
+    effects: [absorb('plenty', 0.0002)], // the ditches cleared: nitrate washes out a little faster (absorption 0.0015 → 0.0017)
+  },
+  {
+    id: 'div.plenty.harvestFestival', name: 'A harvest festival',
+    blurb: 'Loaves in the church and a show at the county ground. The prize marrow is enormous; so is next year’s order.',
+    effects: [half('plenty', 1.05, 'plenty.orchards')], // the rebound arm: produce for show, and for sale
+  },
+];
+
+/* ------------------------------------------------------------------ */
 /* HEADLINES (Content.sectorHeadlines.plenty): the farming page        */
 /* ------------------------------------------------------------------ */
 
@@ -536,7 +573,7 @@ const plentyHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'Farm notes: the new sprinklers lose nothing to the wind',
   ],
   sectorOpened: [
-    'Pryce Consolidated buys the farms; bread to be cheaper, says Sir Edmund',
+    'Pryce buys the farms; bread to be cheaper, says Sir Edmund',
     'The Ministry takes an interest in groundwater; the farmers take none',
     'Farm notes: a new well on every holding, and a deeper one next year',
   ],
@@ -555,7 +592,7 @@ const plentyHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   ],
   crisis: [
     'Green tide No. {n}: the river runs the colour of pea soup',
-    'Nitrate in the village tap; the Board advises boiling, which does nothing',
+    'Nitrate in the village tap; the Board advises patience',
     'Fish die in the estuary; Pryce blames the weather',
     'Farm notes: the ditches thick with weed, and the bathers stay away',
     'Bloom off the coast for a third week; the oyster beds closed',
@@ -563,6 +600,7 @@ const plentyHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   collapse: [
     'The rivers choked from source to sea; the Board closes the beaches',
     'Not a tap in the county fit to drink; bottled water by the lorryload',
+    'The green tide reaches the sea wall; the resort hotels close early',
   ],
   exhausted: [
     'The last boreholes run dry; the pivots stand still in the dust',
@@ -589,7 +627,7 @@ const plentyHeadlines: Partial<Record<HeadlineKey, string[]>> = {
     'The wells hold, the rivers run clear; the farm notes are short',
   ],
   budgetDrawn: [
-    'A line under the aquifer: so many acre-feet used up, and fewer each decade',
+    'A line under the aquifer: so many acre-feet, fewer each decade',
     'Water budget drawn; Pryce calls it guesswork in a good suit',
   ],
   decade: [
@@ -607,6 +645,22 @@ const plentyHeadlines: Partial<Record<HeadlineKey, string[]>> = {
   biteBack: [
     'Drip lines on every holding; orchards where the wheat was',
     'Subsidised kit waters thirstier crops; the Treasury is proud of it',
+    'Less water applied on the subsidised farms; the aquifer falls faster',
+  ],
+  clearSkies: [
+    'The river runs clear past the farms; the anglers are back',
+    'Nitrate in the tap below the limit; the Board takes the credit',
+    'No bloom in the estuary this summer; the oyster beds reopen',
+  ],
+  settled: [
+    'Plenty settled: the fields held to the water they use up',
+    'The Board counts what never comes back, and sets the pumps to suit',
+    'Water table level for a decade; the drillers find other work',
+  ],
+  unsettled: [
+    'Water settlement lapses; every borehole in the county is deepened',
+    'The farms have outgrown their agreement; the agreement goes',
+    'Plenty unsettled; Pryce orders a new pivot for every quarter',
   ],
 };
 
