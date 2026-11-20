@@ -402,6 +402,47 @@ const m4: AchievementDef[] = [
 ];
 list.push(...m4);
 
+/*
+ * M4 polish: the spring survey, three times. The Settlement Commission's first sitting (room for a fourth settlement,
+ * prestige.ts) waits on the third: a record of the banks kept, surveyed and clear of foreign boats, one run at a time
+ * ({ owns, earlier }: each spring after the first must follow one passed in an earlier run). What the player works in
+ * hours 8–15, in place of saving Hindsight towards one price. The numbers are Fishing's own: three quarters of K is its
+ * clear level (sectors/fishing.ts steady), fifteen decades its settle gate (FISHING_DECADES), a tenth the foreign share
+ * the fishery limits push under (they arrive at 15%).
+ */
+/** The Board raises its standard each spring: the stock it wants to find, and the foreign share it will accept. */
+export const SPRING_STEPS = [{ stock: 0.75, foreign: 0.1 }, { stock: 0.8, foreign: 0.07 }, { stock: 0.85, foreign: 0.05 }];
+const spring = (i: number): Cond => ({
+  all: [
+    { stat: 'surveyed', sector: 'fishing', op: '>=', value: 1 },
+    { stat: 'budgetDecades', sector: 'fishing', op: '>=', value: 15 },
+    { stat: 'stockFraction', sector: 'fishing', op: '>=', value: SPRING_STEPS[i].stock },
+    { stat: 'foreignShare', sector: 'fishing', op: '<', value: SPRING_STEPS[i].foreign },
+  ],
+});
+export const SPRINGS = ['ach.m4.springSurvey', 'ach.m4.secondSpring', 'ach.m4.thirdSpring'];
+const springs: AchievementDef[] = [
+  {
+    id: SPRINGS[0], name: 'The Spring Survey', feature: 'estimates',
+    blurb: 'Fishing surveyed after fifteen decades within its line, the banks at three quarters of their natural size or more, the foreign boats under a tenth of the catch.',
+    when: spring(0),
+    headline: 'Spring survey: the banks at three quarters, foreign boats under a tenth',
+  },
+  {
+    id: SPRINGS[1], name: 'A Second Spring', feature: 'estimates',
+    blurb: 'In a later run, the spring survey passed to a stricter standard: the banks at four fifths, the foreign boats under 7% of the catch.',
+    when: { all: [{ owns: SPRINGS[0], earlier: true }, spring(1)] },
+    headline: 'Second spring survey: banks at four fifths; the Board is encouraged',
+  },
+  {
+    id: SPRINGS[2], name: 'Three Springs', feature: 'estimates',
+    blurb: 'In a third run, the strictest survey yet: the banks at 85%, the foreign boats under a twentieth. The Settlement Commission will hear the case for a fourth settlement.',
+    when: { all: [{ owns: SPRINGS[1], earlier: true }, spring(2)] },
+    headline: 'Third spring survey passes; the Settlement Commission agrees to sit',
+  },
+];
+list.push(...springs);
+
 /**
  * The unfolding (QA): an achievement that names a system the player has not met is listed as hidden until that system
  * arrives (AchievementDef.feature; display only). Matched by id prefix.

@@ -366,11 +366,12 @@ export function instRank(d: InstitutionDef): number {
 /** Between runs: restraint buys Institutions by rank then Know-how and seats the best loadout; backfire buys Know-how. */
 export function spend(s: GameState, restraint: boolean, capsOnly = false, cheapestFirst = false): GameState {
   // M3 finish (tools/balance.ts): once Settlement has arrived, the restraint player saves for the room to settle
-  let saving = false;
+  let saving = false, keep = 0;
   if (restraint && (!C.features?.settlement || s.meta.features?.settlement !== undefined)) {
     for (let g = 0; g < 4; g++) {
       const room = model.institutionViews(s, C).find((v) => v.nextCost !== null && [v.def.effects, ...(v.def.nextLevels ?? []).map((l) => l.effects)].flat().some((e) => e.type === 'settleSlotAdd'));
       if (!room) break;
+      if (room.needs) { keep = room.nextCost ?? 0; break; } // M4 polish: evidence first (tools/balance.ts); keep the price in hand
       if (!room.canBuy) { saving = true; break; }
       const n = model.buyInstitution(s, C, room.def.id);
       if (n === s) break;
@@ -380,8 +381,8 @@ export function spend(s: GameState, restraint: boolean, capsOnly = false, cheape
   for (let guard = 0; guard < 400 && !saving; guard++) {
     // M4 balance: the human-like player buys the cheapest Institution first (tools/balance.ts spends for `human` in its
     // `levers` mode), the budget player by rank
-    const inst = model.institutionViews(s, C).filter((v) => v.canBuy).sort((a, b) => (cheapestFirst ? 0 : instRank(a.def) - instRank(b.def)) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
-    const kh = model.knowhowViews(s, C).filter((v) => v.canBuy).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
+    const inst = model.institutionViews(s, C).filter((v) => v.canBuy && (v.nextCost ?? 0) <= s.meta.hindsight - keep).sort((a, b) => (cheapestFirst ? 0 : instRank(a.def) - instRank(b.def)) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
+    const kh = model.knowhowViews(s, C).filter((v) => v.canBuy && (v.cost ?? 0) <= s.meta.hindsight - keep).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
     const n = restraint && inst.length ? model.buyInstitution(s, C, inst[0].def.id) : kh.length ? model.buyKnowhow(s, C, kh[0].def.id) : s;
     if (n === s) break;
     s = n;

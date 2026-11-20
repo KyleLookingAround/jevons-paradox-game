@@ -7,7 +7,7 @@ import type { AppDerived, Content, Derived, GameState, SectorDerived, SectorId }
 import { calendarYear, currentAge } from './calendar';
 import { idx } from './contentIndex';
 import { endingYearsOf, settledCount, holdTotal } from './ending';
-import { modsOf, isForbidden } from './effects';
+import { modsOf, isForbidden, institutionMax } from './effects';
 import { archiveCounts } from './archive';
 import { bankView } from './bank';
 import { dispatchesView } from './dispatch';
@@ -27,7 +27,7 @@ import { sectorLevers, NO_LEVERS } from './levers';
 import { offlineCapOf } from './offline';
 import { ordersView } from './orders';
 import { popGrowthRate } from './population';
-import { isFreshRun, slotsUsed, respecRefunds } from './prestige';
+import { isFreshRun, slotsUsed, respecRefunds, institutionNeeds } from './prestige';
 import { stageOf } from './purchases';
 import { canSettle, settleRoom, roomCount, settleBlockedOf } from './settlement';
 import { accountOn, fullAccount } from './account';
@@ -167,7 +167,7 @@ export function derive(state: GameState, content: Content): Derived {
     history: { id: state.meta.history ?? null, cleared: (state.meta.history ?? null) !== null && clearedThisRun(state), lifted: !!state.historyLifted },
     survey: surveyView(state, content),
     bank: bankView(state, content),
-    ending: ix.acts.length ? actEndingView(state, content) : { ...endingView(state, content), act: null },
+    ending: { ...(ix.acts.length ? actEndingView(state, content) : { ...endingView(state, content), act: null }), roomBy: roomByView(state, content) },
     archive: archiveCounts(state, content),
     surveyReveal: surveyRevealView(state, content),
   };
@@ -188,6 +188,18 @@ function endingView(state: GameState, content: Content): Derived['ending'] {
     hold: holdTotal(content, roomCount(state, content)), nextHold: settled < ix.ids.length ? holdTotal(content, roomCount(state, content) + 1) : holdTotal(content, roomCount(state, content)),
     next: nextToSettle(state, content),
   };
+}
+
+/** M4 (polish): Derived.ending.roomBy: the first Institution level in content order that adds room, not yet bought. */
+function roomByView(state: GameState, content: Content): NonNullable<Derived['ending']['roomBy']> | null {
+  for (const def of content.institutions ?? []) {
+    const level = state.meta.institutions[def.id] ?? 0;
+    if (level >= institutionMax(def)) continue;
+    const lv = level === 0 ? { cost: def.cost, effects: def.effects } : def.nextLevels![level - 1];
+    if (!lv.effects.some((e) => e.type === 'settleSlotAdd')) continue;
+    return { name: def.name, cost: lv.cost, needs: institutionNeeds(state, content, def, level) };
+  }
+  return null;
 }
 
 /** M4: Derived.ending read from the ending act E (acts.ts endingAct): its set, its record; without E zeros. */

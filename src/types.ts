@@ -359,7 +359,11 @@ export type StatKey =
  */
 export type Cond = (
   | { stat: StatKey; sector?: SectorId; app?: string; op: CmpOp; value: number }
-  | { owns: string }
+  | { owns: string;
+      /** M4 (polish): with an achievement id, true only if it was earned in an EARLIER run (MetaState.milestones
+       *  'ach:<id>', recorded when a `when` achievement is granted): a chain of achievements across runs ("three
+       *  springs"). Ignored for any other kind of id. Absent = false (plain owns). */
+      earlier?: boolean }
   | { flag: string }
   /* --- M3 --- */
   | { returned: string; figure?: string; op?: CmpOp; value?: number }
@@ -675,6 +679,12 @@ export interface GlobalParams {
     perSteadySector: number;
     perLeanDecade?: number;
     perSettledSector?: number;
+    /**
+     * M4 (polish): once the 'budget' feature is on, perUnburnt is further × min(1, full decades this run ÷ this): coal
+     * left in the ground counts when a line has been kept, not when the smoke stopped the burning first. Before the
+     * budget arrives (runs 1–2) the term is as before. Absent (or ≤ 0): no factor (M1–M4 behaviour).
+     */
+    unburntDecades?: number;
   };
   /**
    * Offline progress cap in seconds. M2 CHANGE: DEPRECATED, replaced by `offline.capSeconds`; read only when `offline`
@@ -1826,6 +1836,8 @@ export interface InstitutionLevelDef {
   effects: EffectDef[];
   /** One line saying what this level adds. */
   label?: string;
+  /** M4 (polish): this level is bought only while this holds (as InstitutionDef.needs). Absent = no condition. */
+  needs?: Cond;
 }
 
 /**
@@ -1846,6 +1858,12 @@ export interface InstitutionDef {
    * Default: always.
    */
   when?: Cond;
+  /**
+   * M4 (polish): level 1 is bought (buyInstitution accepts it, InstitutionView.canBuy) only while this holds, evaluated
+   * on the state between runs; unlike `when` the Institution is shown meanwhile, with InstitutionView.needs naming the
+   * condition (the evidence a sitting waits on: meta-scoped leaves, e.g. an achievement). Absent = no condition.
+   */
+  needs?: Cond;
   /** Effects of level 1. */
   effects: EffectDef[];
   /** M1: levels 2, 3… (nextLevels[0] is level 2). Default: none (a one-level institution). */
@@ -1868,6 +1886,9 @@ export interface AchievementDef {
    * any other id without `when` is never granted.
    */
   when?: Cond;
+  /** M4 (polish): printed in the broadsheet (key 'achievement') when the core grants it by `when`, for an achievement
+   *  that is a step the player works towards (the spring survey). At most 70 characters. Absent = granted silently. */
+  headline?: string;
 }
 
 export type HeadlineKey =
@@ -1908,6 +1929,8 @@ export type HeadlineKey =
                       //   Content.surveyReveal's variant headline instead, and its followUp on the next step
   | 'arrears'         // a capstoned Industry goes into arrears (event 'arrears')
   | 'foreignFleets'   // the foreign share first passes ForeignDef.announceAt this run (no event)
+  /* --- M4 (polish) --- */
+  | 'achievement'     // an achievement with a `headline` is granted: the text is AchievementDef.headline, never a variant
   | 'actEnding';      // an Act's ending is reached ({name} = ActDef.title, {year}); with Content.acts it replaces
                       //   M3's 'ending' headline (printed once ever per act, after 'steadyAll')
 
@@ -3342,6 +3365,10 @@ export interface Derived {
     /** M4: the ending act E (above): its id, name and title (the Act title card), or null (no acts, or no E). Absent =
      *  null (views from a core before M4). */
     act?: { id: string; name: string; title: string } | null;
+    /** M4 (polish): the next Institution level that makes room (a settleSlotAdd effect), so the page can say what more
+     *  room waits on: its name, its Hindsight price, and the label of its unmet `needs` (null when it has none or it
+     *  holds). null when no such level is left. Absent = null. */
+    roomBy?: { name: string; cost: number; needs: string | null } | null;
   };
   /** M3: Archive notes unlocked (in content) and in content. */
   archive: { unlocked: number; total: number };
@@ -3957,6 +3984,9 @@ export interface InstitutionView {
   canSeat: boolean;
   /** M4 (amend): owned, or InstitutionDef.when holds (canBuy needs it too). Absent = true (a core before the amendment). */
   visible?: boolean;
+  /** M4 (polish): the label of the next level's unmet `needs` (canBuy is false while it is set); null when there is none
+   *  or it holds. Absent = null. */
+  needs?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

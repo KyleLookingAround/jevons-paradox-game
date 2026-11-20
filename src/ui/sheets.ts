@@ -8,7 +8,7 @@ import { STEADY_STATE_YEARS, FEATURE_IDS } from '../types';
 import { h, svg, setText, setAttr, setStyle, show, cls, syncChildren } from './dom';
 import { fmt, fmtPrice, fold, pct, dur, num, clamp, lower, money, unitOne } from './fmt';
 import { UI_ICONS } from './icons';
-import { effectText } from './panels';
+import { effectText, lowerFirst } from './panels';
 import { download, copyText, readFileText, isPersisted, iosInBrowser, storageWorks } from './store';
 import { getPrefs, setPrefs, isOpen, setOpen, type TextSize, type Motion, type Detail } from './prefs';
 import { lapseBlock, type Lapse } from './timelapse';
@@ -247,7 +247,7 @@ function termsLedger(ctx: Ctx, get: () => HindsightTerms | null | undefined): { 
       for (const c of cells) {
         const v = num(t[c.k]);
         const f = needs[c.k];
-        show(c.row, !f || !!ctx.d?.features?.[f] || v > 0);
+        show(c.row, v > 0 || ((!f || !!ctx.d?.features?.[f]) && !(c.k === 'sectorsReached' && !num(ctx.content.global?.hindsight?.perSectorReached)))); // M4 polish: a weight of 0 hides its row
         setText(c.v, v > 0 ? `+${fmt(Math.round(v * 10) / 10)}` : '—');
         cls(c.row, 'zero', !(v > 0));
       }
@@ -593,7 +593,7 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
       const level = num(v?.level), max = num(v?.maxLevel, 1);
       setText(lvl, max > 1 ? `${level}/${max}` : level ? 'Founded' : '');
       const missing = (d.requires || []).filter((r) => !(num(ctx.state.meta?.institutions?.[r]) >= 1));
-      setText(req, !v?.requirementsMet && missing.length ? `Needs: ${missing.map(instName).join(', ')}` : '');
+      setText(req, !v?.requirementsMet && missing.length ? `Needs: ${missing.map(instName).join(', ')}` : v?.needs ? `Sits once: ${lowerFirst(v.needs)}` : ''); // M4 polish: InstitutionView.needs
       show(req, !!req.textContent);
       const nl = level === 0 ? { effects: d.effects, label: undefined as string | undefined } : d.nextLevels?.[level - 1];
       const effTxt = nl ? (nl.label ?? nl.effects.map((e) => effectText(ctx, e)).filter(Boolean).join(' · ')) : '';

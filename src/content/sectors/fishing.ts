@@ -511,7 +511,9 @@ const fishingLevers: LeverDef[] = [
     catch: 'Foreign boats leave the banks. Your own fleet will want the room, unless the Board sets the catch.',
     levels: levels([1, 2, 3, 4], 250, 0.08, ['Close the bays', 'Twelve miles', 'Fifty miles', 'Two hundred miles'], 2, 1.6),
     repeat: { valueStep: 1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 0, label: 'Limits, step {n}' },
-    when: FISHERY_LIMITS_WHEN,
+    /* M4 polish: or once the first spring survey has passed (achievements.ts SPRINGS): the later springs ask for fewer
+     * foreign boats than the 15% at which the limits are otherwise offered. */
+    when: { any: [FISHERY_LIMITS_WHEN, { owns: 'ach.m4.springSurvey' }], label: FISHERY_LIMITS_WHEN.label },
     effects: [{ type: 'foreignMul', sector: 'fishing', value: 0.55 }],
     sideEffects: {
       effects: [sat('fishing', 1.12)],

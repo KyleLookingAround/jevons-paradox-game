@@ -87,6 +87,7 @@
  */
 import { model, evalCond, leverLevelDef } from '../src/core';
 import { content as realContent } from '../src/content';
+import { SPRINGS, SPRING_STEPS } from '../src/content/achievements';
 import { fixture, fixtureM3, fixtureM3Bank, fixtureM4, fixtureM4Acts } from '../src/core/fixture';
 import { BUDGET_TOLERANCE, YEARS_PER_SECOND } from '../src/types';
 import type { Content, EffectDef, GameState, HindsightTerms, InstitutionDef, SectorId, UpgradeView } from '../src/types';
@@ -908,10 +909,14 @@ function spendHindsight(s: GameState, mode: Strategy): { s: GameState; bought: s
   if (instFirst || mode === 'levers') s = boardSeat(s);
   // M3 finish (--ending): once Settlement has arrived, the room to settle every Industry (the Settlement Commission) is
   // bought before anything else, saving for it run by run: the first ending waits on it
+  // M4 polish: while the room's sitting waits on evidence (InstitutionView.needs: the spring surveys) it keeps the price
+  // in hand and spends the rest, rather than saving everything for it
+  let keep = 0;
   if (ENDING && (mode === 'budget' || mode === 'levers') && (!C.features?.settlement || s.meta.features?.settlement !== undefined)) {
     for (let g = 0; g < 4; g++) {
       const room = model.institutionViews(s, C).find((v) => v.nextCost !== null && [v.def.effects, ...(v.def.nextLevels ?? []).map((l) => l.effects)].flat().some((e) => e.type === 'settleSlotAdd'));
       if (!room) break;
+      if (room.needs) { keep = room.nextCost ?? 0; break; }
       if (!room.canBuy) { if (instFirst) s = seatLoadout(s); return { s, bought }; }
       const next = model.buyInstitution(s, C, room.def.id);
       if (next === s) break;
@@ -919,10 +924,10 @@ function spendHindsight(s: GameState, mode: Strategy): { s: GameState; bought: s
     }
   }
   for (let guard = 0; guard < 400; guard++) {
-    const inst = model.institutionViews(s, C).filter((v) => v.canBuy && instRank(v.def) < 99)
+    const inst = model.institutionViews(s, C).filter((v) => v.canBuy && instRank(v.def) < 99 && (v.nextCost ?? 0) <= s.meta.hindsight - keep)
       .sort((a, b) => (mode === 'budget' ? instRank(a.def) - instRank(b.def) : 0) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
     // the budget player saves for its best-ranked unowned institution rather than spending on Know-how meanwhile
-    const kh = model.knowhowViews(s, C).filter((v) => v.canBuy).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
+    const kh = model.knowhowViews(s, C).filter((v) => v.canBuy && (v.cost ?? 0) <= s.meta.hindsight - keep).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
     let next = s;
     let what = '';
     if (instFirst && inst.length) { next = model.buyInstitution(s, C, inst[0].def.id); what = `${inst[0].def.id} L${inst[0].level + 1}`; }
@@ -1097,7 +1102,12 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
     }
     if (restraint && x.stock.surveyed) {
       if (!s.sectors[e].budget) s = model.drawBudget(s, C, e, PACE);
-      const want = STEWARD ? 0.9 : 1;
+      // M4 polish: while a spring survey is pending (achievements.ts SPRINGS), a lower quota until the stock is a little
+      // over the Board's standard for it, then the surplus again
+      const sp = SPRINGS.findIndex((id) => !s.meta.achievements[id]);
+      const stockNow = s.sectors[e].reserve / Math.max(1, s.sectors[e].reserveMax);
+      const low = C.levers.some((l) => l.sector === e && l.kind === 'quota' && leverLevelDef(l, s.levers[l.id]?.level ?? 0)?.value === 0.6);
+      const want = sp >= 0 && C.sectors[e].renewable ? (stockNow < SPRING_STEPS[sp].stock + (low ? 0.06 : 0.03) ? 0.6 : 0.9) : STEWARD ? 0.9 : 1;
       for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.def.kind === 'quota' && y.visible)) {
         let best = 0, bv = Infinity;
         for (let k = 1; k <= v.maxLevel; k++) { const lv = leverLevelDef(v.def, k); const val = lv?.value ?? NaN; if (Number.isFinite(val) && Math.abs(val - want) < bv) { bv = Math.abs(val - want); best = k; } }
@@ -1110,7 +1120,9 @@ function m4Actions(s: GameState, ctx: RunCtx, restraint: boolean): GameState {
         const share = x.stock.foreign?.share ?? 0;
         memoLimits[e] ??= -Infinity;
         for (const v of model.leverViews(s, C).filter((y) => y.def.sector === e && y.visible && y.canRaise && (y.def.effects ?? []).some((f) => f.type === 'foreignMul'))) {
-          if (!(STEWARD ? v.level < 1 : share > 0.15 && s.time - memoLimits[e] >= 60)) continue;
+          // M4 polish: under a tenth while a spring survey is still to pass (achievements.ts SPRINGS)
+          const lim = sp >= 0 ? SPRING_STEPS[sp].foreign - 0.015 : 0.15;
+          if (!(STEWARD ? v.level < 1 : share > lim && s.time - memoLimits[e] >= 60)) continue;
           const t = model.setLever(s, C, v.def.id, v.level + 1); if (t !== s) { s = t; memoLimits[e] = s.time; ctx.ev.push({ t: s.time, text: `LIMITS ${v.def.id} → L${v.level + 1} (foreign ${share.toFixed(2)})` }); }
         }
       }
@@ -1220,6 +1232,10 @@ function scanUnlocks(s: GameState): void {
     }
   }
   unlockSeq = Math.max(unlockSeq, s.meta.eventSeq);
+  // M4 polish: the spring surveys (achievements with a headline) and the room each sitting adds
+  for (const id of SPRINGS) if (s.meta.achievements[id]) note(`ev:${id}`, `evidence ${id}`);
+  const room = C.institutions.find((i) => i.effects.some((e) => e.type === 'settleSlotAdd'));
+  if (room && (s.meta.institutions[room.id] ?? 0) >= 1) note('room:1', `room ${room.id} L1`);
 }
 function printUnlocks(): void {
   if (!UNLOCKS) return;

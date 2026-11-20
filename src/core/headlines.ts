@@ -26,7 +26,7 @@ const FALLBACK: Record<HeadlineKey, string> = {
   returnWithdrawn: 'The Household Survey is discontinued', ending: 'A steady state in every industry, {year}',
   threshold: 'The {sector} stock falls below its threshold', scarHealed: 'The {sector} stock recovers',
   surveyed: 'A survey of the {sector} stock', arrears: '{sector} in arrears', foreignFleets: 'Foreign fleets on the {sector} grounds',
-  actEnding: '{name} settled, {year}',
+  actEnding: '{name} settled, {year}', achievement: 'A record entered',
 };
 
 /** Common-noun placeholders: lower-cased mid-sentence (see Content.headlines). */

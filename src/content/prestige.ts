@@ -175,6 +175,12 @@ function leverInstitution(
  *  (design/scratch/m4-balance/f3-*5500); 6,500 put mixed at 18.1. The visible price of the room for the fourth
  *  settlement is the wait, not a clock. */
 const SETTLE_COMMISSION = 5500;
+/* M4 polish: the first sitting now waits on evidence, not on the price alone: the spring survey passed in three runs
+ * (achievements.ts SPRINGS; InstitutionDef.needs), so hours 8–15 are spent keeping the banks, one spring a run, not
+ * saving towards one number. The price falls to what is to hand when the third spring is passed. The second sitting
+ * (room for a fifth, which only the Previews use) keeps its old price. */
+const SETTLE_SITTING_1 = 2500;
+const SETTLE_SITTING_2 = 2.5 * SETTLE_COMMISSION;
 
 export const institutions: InstitutionDef[] = [
   {
@@ -301,10 +307,11 @@ export const institutions: InstitutionDef[] = [
   {
     id: 'inst.settlementCommission', name: 'Settlement Commission',
     blurb: 'A standing commission to hear the case for one more Industry kept at its sink line. It sits for years and reports in volumes.',
-    cost: SETTLE_COMMISSION, effects: [{ type: 'settleSlotAdd', value: 1 }],
-    nextLevels: levels(SETTLE_COMMISSION, [
-      { effects: [{ type: 'settleSlotAdd', value: 1 }], label: 'A second sitting: room for the fifth' },
-    ], [2.5]),
+    cost: SETTLE_SITTING_1, effects: [{ type: 'settleSlotAdd', value: 1 }],
+    needs: { owns: 'ach.m4.thirdSpring', label: 'The banks have passed the spring survey in three runs' },
+    nextLevels: [
+      { cost: SETTLE_SITTING_2, effects: [{ type: 'settleSlotAdd', value: 1 }], label: 'A second sitting: room for the fifth' },
+    ],
   },
   {
     id: 'inst.civilService', name: 'The Civil Service',

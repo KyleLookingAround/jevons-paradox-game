@@ -487,7 +487,7 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
         : nx.need === 'clear' ? `${nm} needs clear skies within its line.` : nx.need === 'years' ? `${nm} needs clear skies for ${fmt(STEADY_STATE_YEARS)} years (${fmt(Math.floor(num(nx.years)))} so far).`
           : nx.need === 'feature' ? `${nm} is at Steady State; Settlement has not yet been proposed.`
             : nx.need === 'requires' ? `${nm} needs ${lowerFirst(sd(ctx, nx.sector)?.settleBlocked ?? 'one thing more')}.`
-            : nx.need === 'room' ? `${nm} is at Steady State, but ${fmt(num(en.room))} settled at once is as many as Parliament will hold; an Institution can make room for more.`
+            : nx.need === 'room' ? `${nm} is at Steady State, but ${fmt(num(en.room))} settled at once is as many as Parliament will hold; ${en.roomBy ? `the ${en.roomBy.name} can make room for more${en.roomBy.needs ? `, once ${lowerFirst(en.roomBy.needs)}` : ''}` : 'an Institution can make room for more'}.` // M4 polish: Derived.ending.roomBy
               : nx.need === 'ready' ? `${nm} can be settled now.` : '';
       const cost = num(en.nextHold) > num(en.hold) + 1e-9 ? ` Holding ${fmt(have + 1)} would cost ${fmt(num(en.nextHold))} Mandate a second; you raise ${fmt(Math.max(0, num(ctx.d?.mandatePerSec) + num(en.hold)))} after levers.` : '';
       // M4: with Acts, the ending is the Act's (Derived.ending.act): "every Industry of the Coal Age".

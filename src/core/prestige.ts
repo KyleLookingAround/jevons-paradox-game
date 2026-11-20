@@ -22,7 +22,7 @@ import { publish } from './returns';
 import { sprawlOf } from './travel';
 import { createState, isFreshRun, withMeta } from './state';
 import { milestone } from './milestones';
-import { evalCond } from './conditions';
+import { evalCond, condCheck } from './conditions';
 import { clamp, fin } from './util';
 
 export { isFreshRun } from './state';
@@ -171,6 +171,14 @@ export function buyKnowhow(state: GameState, content: Content, id: string): Game
 const institutionCost = (def: InstitutionDef, level: number): number | null =>
   level >= institutionMax(def) ? null : level === 0 ? def.cost : def.nextLevels![level - 1].cost;
 
+/** M4 (polish): the label of the next level's unmet `needs` (InstitutionDef.needs, InstitutionLevelDef.needs), else null. */
+export function institutionNeeds(state: GameState, content: Content, def: InstitutionDef, level: number): string | null {
+  if (level >= institutionMax(def)) return null;
+  const c = level === 0 ? def.needs : def.nextLevels![level - 1].needs;
+  if (!c || evalCond(state, content, c)) return null;
+  return condCheck(state, content, c).label;
+}
+
 export function buyInstitution(state: GameState, content: Content, id: string): GameState {
   const def = idx(content).institutions.get(id);
   if (!def || !isFreshRun(state)) return state;
@@ -179,6 +187,7 @@ export function buyInstitution(state: GameState, content: Content, id: string): 
   if (cost === null) return state;
   if (!(def.requires ?? []).every((r) => (state.meta.institutions[r] ?? 0) >= 1)) return state;
   if (lvl < 1 && def.when && !evalCond(state, content, def.when)) return state; // M4 (amend): not offered yet
+  if (institutionNeeds(state, content, def, lvl) !== null) return state; // M4 (polish): the level's evidence
   if (!(state.meta.hindsight >= cost)) return state;
   return withMeta(state, content,
     { ...state.meta, hindsight: state.meta.hindsight - cost, institutions: { ...state.meta.institutions, [id]: lvl + 1 } });
@@ -226,11 +235,12 @@ export function institutionViews(state: GameState, content: Content): Institutio
     const seated = isSeated(state.meta, def.id);
     const slots = def.slots ?? 1;
     const visible = level >= 1 || !def.when || evalCond(state, content, def.when); // M4 (amend)
+    const needs = institutionNeeds(state, content, def, level); // M4 (polish)
     return {
       def, level, maxLevel: institutionMax(def), nextCost, requirementsMet, affordable, seated, slots,
-      canBuy: visible && requirementsMet && nextCost !== null && affordable && fresh,
+      canBuy: visible && requirementsMet && nextCost !== null && affordable && fresh && needs === null,
       canSeat: level >= 1 && !seated && free >= slots && fresh,
-      visible,
+      visible, needs,
     };
   });
 }

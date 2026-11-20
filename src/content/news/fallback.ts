@@ -287,6 +287,8 @@ export const headlines: Record<HeadlineKey, string[]> = {
     'More foreign hands at work in {sector}; the home trade wants them out',
     'Foreign interest in {sector} grows with the home trade’s cheapness',
   ],
+  /* M4 (polish): the text is AchievementDef.headline (as 'dispatch'); no variants are drawn. */
+  achievement: [],
   actEnding: [
     '{name}, settled: the Gazette prints the date, {year}',
     '{name} closes its books in balance, in {year}',

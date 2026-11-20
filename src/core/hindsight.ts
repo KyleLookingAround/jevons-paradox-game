@@ -6,6 +6,7 @@ import { STEADY_STATE_YEARS } from '../types';
 import type { Content, GameState, HindsightTerms } from '../types';
 import { idx } from './contentIndex';
 import { fin, clamp } from './util';
+import { featureOn } from './features';
 
 /* ------------------------------------------------------------------ */
 /* Hindsight                                                           */
@@ -35,7 +36,7 @@ export function hindsightTerms(state: GameState, content: Content): HindsightTer
   const terms = {
     wellbeing: fin(h.perWellbeingYear * wy / Math.pow(Math.max(1, intensity), h.intensityExponent)),
     budget: fin(h.perBudgetDecade * Math.max(0, (run.budgetDecades ?? 0) - (run.leanDecades ?? 0)) + (h.perLeanDecade ?? 0) * (run.leanDecades ?? 0)),
-    unburnt: fin(h.perUnburnt * unburnt * Math.min(1, (run.yearsAtTarget ?? 0) / STEADY_STATE_YEARS)),
+    unburnt: fin(h.perUnburnt * unburnt * Math.min(1, (run.yearsAtTarget ?? 0) / STEADY_STATE_YEARS) * keptFactor(state, content)),
     backfire: fin(h.perFirstBackfire * count(run.firstBackfires)),
     sectorsReached: fin(h.perSectorReached * Math.max(0, open - 1)),
     steady: fin(h.perSteadySector * count(run.steadySectors)),
@@ -55,6 +56,14 @@ export function hindsightTerms(state: GameState, content: Content): HindsightTer
   const withheld = Math.max(0, fin(run.hindsightWithheld ?? 0));
   if (withheld > 0) return { wellbeingYears: wy, intensity, ...terms, withheld, total: Math.max(1, Math.round(fin(sum - withheld))) };
   return { wellbeingYears: wy, intensity, ...terms, total: Math.max(1, Math.round(fin(sum))) };
+}
+
+/** M4 (polish): GlobalParams.hindsight.unburntDecades: with the budget arrived, unburnt counts by full decades kept. */
+function keptFactor(state: GameState, content: Content): number {
+  const d = content.global.hindsight.unburntDecades;
+  if (typeof d !== 'number' || !(d > 0) || !featureOn(content, state.meta, 'budget')) return 1;
+  const full = Math.max(0, (state.run.budgetDecades ?? 0) - (state.run.leanDecades ?? 0));
+  return clamp(full / d, 0, 1);
 }
 
 /** M4: a capstoned sector counts in perSectorReached and perSettledSector when its act's capstone.hindsight is true. */

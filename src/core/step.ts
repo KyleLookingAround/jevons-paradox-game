@@ -436,7 +436,13 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
 
   // achievements with `when` (about once a real second)
   if (secondTick) {
-    for (const a of content.achievements ?? []) if (a.when && !ach[a.id] && evalCond(state, content, a.when)) grant(a.id);
+    // M4 (polish): with its run recorded (milestone 'ach:<id>'), for { owns, earlier } chains
+    for (const a of content.achievements ?? []) {
+      if (!a.when || ach[a.id] || !evalCond(state, content, a.when)) continue;
+      grant(a.id);
+      firsts.push(`ach:${a.id}`);
+      if (typeof a.headline === 'string' && a.headline) items.push({ time, year: Math.floor(year), key: 'achievement', text: a.headline }); // M4 (polish)
+    }
   }
   // the unfolding: at most one feature a check (every 5 s of run time), never while away (it arrives once the player is back)
   const feature = !lite && !away && Math.floor(time / FEATURE_CHECK_EVERY) > Math.floor(state.time / FEATURE_CHECK_EVERY) ? dueFeature(state, content) : null;

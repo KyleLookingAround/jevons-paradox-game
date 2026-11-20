@@ -197,7 +197,15 @@ export function evalCond(state: GameState, content: Content, cond: Cond): boolea
     const v = statValue(state, content, cond as { stat: StatKey; sector?: SectorId; app?: string });
     return v !== null && typeof c.value === 'number' && cmp(v, c.op as string, c.value);
   }
-  if ('owns' in c) return typeof c.owns === 'string' && ownsId(state, content, c.owns);
+  if ('owns' in c) {
+    if (typeof c.owns !== 'string' || !ownsId(state, content, c.owns)) return false;
+    // M4 (polish): an achievement earned in an earlier run (its 'ach:<id>' milestone)
+    if (c.earlier === true && idx(content).achievements.has(c.owns)) {
+      const m = state.meta.milestones?.[`ach:${c.owns}`];
+      return !!m && m.run < (state.meta.reckonings ?? 0) + 1;
+    }
+    return true;
+  }
   if ('flag' in c) return (state.flags as unknown as Record<string, unknown>)[c.flag as string] === true
     || (typeof c.flag === 'string' && state.meta.flags?.[c.flag] === true);
   if ('feature' in c) return typeof c.feature === 'string' && FEATURE_SET.has(c.feature) && featureOn(content, state.meta, c.feature as FeatureId);

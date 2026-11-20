@@ -57,8 +57,16 @@ export const global: GlobalParams = {
      * is the one thing only restraint earns. */
     perBudgetDecade: 5,
     perUnburnt: 20,
-    perFirstBackfire: 30,
-    perSectorReached: 10,
+    /* M4 polish: the burner's margin. Steam's doubled coal (760,000 t) made smoke, not coal, end a burning run (16–17
+     * minutes from run 3), so each short run banked the coal it never reached (unburnt, ≈ 24) and two Industries
+     * reached (20) as lumps: 6–7 Hindsight a minute against restraint's 9.7–11.6 (0.6–0.7; M3 about 0.4). Now coal left
+     * counts by full decades kept once the budget has arrived (unburntDecades), the Industries-reached lump is gone, and
+     * the first backfire in an Industry, a lesson burning teaches once, pays 40 (was 30) so runs 1–2 pay the burner as
+     * much as before (run 2: 5.07 → 5.32 a minute). Measured (design/scratch/m4-polish/p2-v3b): burner 3.1–3.4 a minute
+     * from run 3 (0.30–0.35 of restraint; Iron's run 4 5.3, 0.54), drawing at every peak 0.46 of the budget player. */
+    perFirstBackfire: 40,
+    perSectorReached: 0,
+    unburntDecades: 30,
     perSteadySector: 60,
     /* M2: a lean decade (judged against the drawn wellbeing) pays its dividend and no Hindsight (decision (a)). */
     perLeanDecade: 0,
