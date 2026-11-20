@@ -149,16 +149,44 @@ function applySets(c: Content): Content {
   const sets = flag('set', '').split(',').filter(Boolean);
   if (!sets.length) return c;
   const sectors = { ...c.sectors };
-  for (const kv of sets) {
-    const [path, val] = kv.split('=');
-    const [sec, ...keys] = path.split('.');
-    const root: any = structuredClone(sectors[sec]);
+  const out: any = { ...c, sectors, global: structuredClone(c.global), institutions: structuredClone(c.institutions), knowhow: structuredClone(c.knowhow), upgrades: structuredClone(c.upgrades), features: structuredClone(c.features) };
+  const setIn = (root: any, keys: string[], val: string) => {
     let o = root;
     for (const k of keys.slice(0, -1)) o = o[k] ??= {};
     o[keys[keys.length - 1]] = parseFloat(val);
+  };
+  for (const kv of sets) {
+    const [path, val] = kv.split('=');
+    const [sec, ...keys] = path.split('.');
+    // M4 balance: --set=global.wellbeingTarget=28, --set=inst:inst.fisheryBoard.cost=100, --set=kh:kh.deepMining.cost=20,
+    // --set=up:steam.boilers.cost=100, --set=app:iron.rails.saturation=300 (ids contain dots: the prefix names the table)
+    if (sec === 'global') { setIn(out.global, keys, val); continue; }
+    const m = /^(inst|kh|up|app):(.*)$/.exec(path);
+    if (m) {
+      const [, table, rest] = m;
+      const parts = rest.split('.');
+      if (table === 'app') {
+        const [s, a, ...ks] = parts;
+        const root: any = structuredClone(sectors[s]);
+        const app = root.applications.find((x: any) => x.id === `${s}.${a}`);
+        setIn(app, ks, val);
+        sectors[s] = root;
+        continue;
+      }
+      const list: any[] = table === 'inst' ? out.institutions : table === 'kh' ? out.knowhow : out.upgrades;
+      // the id is the longest prefix of parts that names an entry
+      let k = parts.length - 1;
+      while (k > 0 && !list.find((x) => x.id === parts.slice(0, k).join('.'))) k--;
+      const item = list.find((x) => x.id === parts.slice(0, k).join('.'));
+      if (!item) throw new Error(`--set: no ${table} entry for ${rest}`);
+      setIn(item, parts.slice(k), val);
+      continue;
+    }
+    const root: any = structuredClone(sectors[sec]);
+    setIn(root, keys, val);
     sectors[sec] = root;
   }
-  return { ...c, sectors };
+  return out as Content;
 }
 const C: Content = applySets(stripMechanics(C0));
 const HOURS = parseFloat(flag('hours', '3'));
@@ -630,10 +658,14 @@ function towardsSky(s: GameState, ctx: RunCtx, memo: BudgetMemo, every: number, 
 function pursuing(s: GameState): boolean {
   if (s.flags.won || (C.features?.settlement && s.meta.features?.settlement === undefined)) return false;
   // (M3 finish: and room for every Industry: GlobalParams.settleMax and the Settlement Commission)
-  if (model.derive(s, C).ending.room < ORDER.length) return false;
-  const settled = ORDER.filter((e) => s.sectors[e]?.settled).length;
-  const streak = ORDER.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
-  return settled >= 4 || (settled >= 2 && streak);
+  // M4 balance: the ending's own set (Derived.ending.total: the Act I Industries; M3 content: every Industry), not ORDER
+  // (which now holds the Previews): M3's "4 of 5, or 2 and a streak" becomes "all but one, or two and a streak"
+  const en = model.derive(s, C).ending;
+  if (en.room < en.total) return false;
+  const act = C.acts?.find((a) => a.ending);
+  const set = act?.ending ? act.ending.sectors.filter((e) => !!C.sectors[e]) : ORDER;
+  const streak = set.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
+  return en.settled >= en.total - 1 || (en.settled >= Math.max(2, en.total - 3) && streak);
 }
 
 /* ---------------- the plausible human restraint player (QA, 19 Nov 2026) ---------------- */
@@ -810,6 +842,9 @@ function instRank(d: InstitutionDef): number {
   const effs = [d.effects, ...(d.nextLevels ?? []).map((l) => l.effects)].flat();
   const lever = (k: string) => effs.some((e) => e.type === 'startLever' && C.levers.find((l) => l.id === e.lever)?.kind === k);
   if (effs.some((e) => e.type === 'settleSlotAdd')) return -1; // M3 finish: room to settle, seated first
+  // M4 balance: a surveying Institution (the Fishery Board) with --survey=board is seated beside the Commission (Fishing
+  // cannot be settled without a survey); otherwise it is never bought by the generic loop (boardSeat, below, only)
+  if (effs.some((e) => e.type === 'survey')) return SURVEY === 'board' ? -0.5 : 99;
   if (lever('cap')) return 0;
   if (effs.some((e) => e.type === 'wellbeingAdd')) return 1;
   if (effs.some((e) => e.type === 'reveal')) return 2;
@@ -845,6 +880,8 @@ function spendHindsight(s: GameState, mode: Strategy): { s: GameState; bought: s
     const next = model.buyInstitution(s, C, v.def.id);
     if (next !== s) { s = next; bought.push(`${v.def.id} L1`); }
   }
+  // M4 balance (--survey=board): the surveying Institution first (cheap; Fishing cannot be settled without it)
+  if (instFirst || mode === 'levers') s = boardSeat(s);
   // M3 finish (--ending): once Settlement has arrived, the room to settle every Industry (the Settlement Commission) is
   // bought before anything else, saving for it run by run: the first ending waits on it
   if (ENDING && (mode === 'budget' || mode === 'levers') && (!C.features?.settlement || s.meta.features?.settlement !== undefined)) {
@@ -858,7 +895,7 @@ function spendHindsight(s: GameState, mode: Strategy): { s: GameState; bought: s
     }
   }
   for (let guard = 0; guard < 400; guard++) {
-    const inst = model.institutionViews(s, C).filter((v) => v.canBuy)
+    const inst = model.institutionViews(s, C).filter((v) => v.canBuy && instRank(v.def) < 99)
       .sort((a, b) => (mode === 'budget' ? instRank(a.def) - instRank(b.def) : 0) || (a.nextCost ?? 0) - (b.nextCost ?? 0));
     // the budget player saves for its best-ranked unowned institution rather than spending on Know-how meanwhile
     const kh = model.knowhowViews(s, C).filter((v) => v.canBuy).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0));
@@ -1611,6 +1648,7 @@ function campaign(mode: Strategy, nRuns: number, skip?: Set<string>, arms?: stri
       : mode === 'market' ? (i === 1 ? 'efficiency' : 'market') : mode;
     const r = playRun(s, i, runMode, skip, arms);
     reports.push(r.report);
+    if (JSON_OUT && M4C) console.log(JSON.stringify({ m4run: i, ...M4R })); // M4 balance: the run's M4 records (an.py)
     for (const t of r.report.m2.decisionTimes) cumDecisions.push(cum + t);
     cum += r.report.seconds;
     if (SUMMARY && !opts.quietSummary) {

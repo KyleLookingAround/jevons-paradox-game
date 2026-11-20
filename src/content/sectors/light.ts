@@ -75,8 +75,11 @@ const sector: SectorDef = {
   pressureWellbeingCost: 12,
   pressureUpkeep: 0,
 
-  wellbeingWeight: 2.5,
-  wellbeingScale: 500,
+  /* M4 balance: 6 at scale 100 (M2/M3: 2.5 at 500, about one point at a restrained D/N of 250: Light was 1.5% of the
+   * wellbeing-years). Without Motion, Compute and Code (40–60 points in M3's runs 4–6) the Coal Age must reach the target
+   * by itself: now about 7 points at that use and 15 late in a run (design §16: "retune Iron's and Light's weights"). */
+  wellbeingWeight: 6,
+  wellbeingScale: 100,
 
   /*
    * M2: clear skies at 0.3 of the drawn pressure, floor 0.5% of collapse (M2 balance: a line drawn as Light opens has

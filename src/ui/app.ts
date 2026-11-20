@@ -366,12 +366,19 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   /** M4: the Board's first survey has a card. On its Industry's page it opens (after the vessel has put out in the
    *  picture); elsewhere a note offers it. Never over a sheet already open or a Reckoning. */
   let revealNoted = '';
+  let revealSeenAt = { k: '', at: 0 };
   function surveyCheck(): void {
     const r = pendingReveal(ctx);
     if (!r || ctx.d?.pendingReckoning || sheets.kind()) return;
     const k = `${r.sector}|${r.variant}|${r.reported}`;
     const open = () => surveyCardSheet(ctx, sheets, r, true, () => { mech.drain(); sound('ledgerContinues'); });
-    if (r.sector === ctx.sector) { revealNoted = k; open(); return; }
+    // On its own page the card waits a moment, while the Board's vessel puts out in the picture.
+    if (r.sector === ctx.sector) {
+      const now = performance.now();
+      if (revealSeenAt.k !== k) revealSeenAt = { k, at: now };
+      if (now - revealSeenAt.at < 1500) return;
+      revealNoted = k; open(); return;
+    }
     if (revealNoted === k) return;
     revealNoted = k;
     toasts.push(r.headline, { label: 'Read it', run: () => { ctx.selectSector(r.sector); setTimeout(() => { if (pendingReveal(ctx)) open(); }, 300); } }, 15000);

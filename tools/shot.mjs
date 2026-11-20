@@ -1478,7 +1478,7 @@ async function m3() {
       await go('#mock:m2');
       for (const s of M3SEL.filter((x) => x !== '.news-spot svg')) if (await visible(s)) throw new Error(`${s} visible before its feature`);
       const menu = await page.evaluate(() => { window.rebound.ctx.openMenu(); return document.querySelector('.sheet')?.textContent ?? ''; });
-      if (/The Archive|Fifty Years/.test(menu)) throw new Error('the menu names a locked system');
+      if (/The Archive|Fifty Years|The Coal Age, settled/.test(menu)) throw new Error('the menu names a locked system');
       await page.keyboard.press('Escape');
     });
 
@@ -1641,7 +1641,8 @@ async function m3() {
       await page.waitForTimeout(300);
       if (await page.locator('.layer:not([hidden])').count()) throw new Error('did not return to play');
       await page.evaluate(() => window.rebound.ctx.openMenu());
-      if (!(await page.locator('.sheet button', { hasText: 'Fifty Years' }).count())) throw new Error('no credits in the menu');
+      const crT = await page.evaluate(() => window.rebound.content.ending?.credits?.title ?? 'Fifty Years');
+      if (!(await page.locator('.sheet button', { hasText: crT }).count())) throw new Error('no credits in the menu');
       await page.keyboard.press('Escape');
     });
     await step('a History between runs: offered first, cleared folded, chosen', async () => {
@@ -1692,6 +1693,7 @@ const M4_MAKE = (variant) => {
   }
   if (variant === 'reveal' || variant === 'revealLarge' || variant === 'estimates') { s = JSON.parse(JSON.stringify(s)); s.sectors.fishing.openFor = 1790; s.time = Math.max(s.time, 1800); }
   // The large gap: the banks fished down to about a third before the Board's vessel puts out.
+  if (variant === 'revealLarge') s.seed = (s.seed ^ 0x5eed) >>> 0; // another save, as far as the card's once-a-save key goes
   if (variant === 'revealLarge') s.sectors.fishing.reserve = 0.34 * (s.sectors.fishing.reserveMax || C.sectors.fishing.reserve);
   for (let i = 0; i < 60; i++) s = m.tick(s, C, 0.5);
   if (variant === 'estimates') s = m.drawBudget(s, C, 'steam');
@@ -1807,7 +1809,7 @@ async function m4() {
     });
     await step('the Board’s Survey card: two columns, File the survey; then the true gauge', async () => {
       await make('reveal', 'fishing');
-      await page.waitForSelector('.board-sheet', { timeout: 6000 });
+      await page.waitForSelector('.board-sheet', { timeout: 8000 });
       const cols = await page.locator('.board-card .bc-col').count();
       if (cols !== 2) throw new Error(`${cols} columns`);
       await page.waitForTimeout(2600);
@@ -1825,7 +1827,7 @@ async function m4() {
       if (await page.locator('.board-sheet').count() && await page.locator('.board-sheet').isVisible()) throw new Error('the card came back');
       // The other variant: a large gap between the catch per trip and the stock.
       await make('revealLarge', 'fishing');
-      await page.waitForSelector('.board-sheet', { timeout: 6000 });
+      await page.waitForSelector('.board-sheet', { timeout: 8000 });
       const vr = await page.evaluate(() => document.querySelector('.board-card')?.getAttribute('data-variant'));
       if (vr === 'small') throw new Error('the large variant came out small');
       await page.waitForTimeout(2600);
@@ -1914,6 +1916,17 @@ async function m4() {
       if (caps !== 4) throw new Error(`${caps} capstoned tabs`);
       if (await page.locator('.settled-row .btn', { hasText: 'Unsettle' }).isVisible().catch(() => false)) throw new Error('Unsettle offered');
       await shot('capstone');
+      await shot('capstone-group', '.cap-group');
+      // The Act I credits, again from the menu (Act name on the masthead, the content's continue label).
+      await page.evaluate(() => window.rebound.ctx.openMenu());
+      await page.waitForTimeout(400);
+      await page.locator('.sheet button', { hasText: 'The Coal Age, settled' }).first().click();
+      await page.waitForTimeout(800);
+      const cr = await page.evaluate(() => document.querySelector('.credits-sheet')?.textContent ?? '');
+      if (!/Act I/.test(cr) || !/The Coal Age, settled/.test(cr)) throw new Error(`credits: ${cr.slice(0, 80)}`);
+      await page.screenshot({ path: `${out}/${T}-credits.png` });
+      await page.locator('.credits-sheet .sheet-foot button', { hasText: 'The ledger continues' }).click();
+      await page.waitForTimeout(400);
       if (sz.tag === 'phone') console.log(`       ${T} scroll heights, capstoned run: ${JSON.stringify(await heights())}`);
       await noOverflow('capstone');
     });

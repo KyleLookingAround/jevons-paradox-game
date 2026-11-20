@@ -80,7 +80,7 @@ const sector: SectorDef = {
    */
   resourceKind: 'stock',
   resourceStock: 'steam',
-  reserve: 380_000, // ignored (Steam's reserve is used)
+  reserve: 570_000, // ignored (Steam's reserve is used)
   alpha: 0.25,      // ignored (Steam's p_r is used)
 
   pressureSource: 'resource',
@@ -95,10 +95,12 @@ const sector: SectorDef = {
   pressureWellbeingCost: 14, // between Light's 12 and Steam's 22: the works are at the edge of town
   pressureUpkeep: 0,
 
-  /* Wellbeing from iron: modest (households buy little of it directly; its use is in other Industries' machines). With
-   * opening D/N about 200: 4 × ln(1 + 200/300) ≈ 2 points. Balance knob (the brief: Iron's wellbeing weight). */
-  wellbeingWeight: 4,
-  wellbeingScale: 300,
+  /* Wellbeing from iron: modest (households buy little of it directly; its use is in other Industries' machines).
+   * M4 balance: 6 at scale 50 (was 4 at 300, which with a restrained D/N of about 27 gave 0.35 points against its slag's
+   * 3–5: Iron cost wellbeing in every run). Now about 2.6 points at a restrained opening, 6–9 later; still below its
+   * smoke's cost unless its line is held. Without Motion, Compute and Code the Coal Age must carry the wellbeing target. */
+  wellbeingWeight: 6,
+  wellbeingScale: 50,
 
   /*
    * M2: clear skies at 0.4 of the drawn pressure (Steam 0.5, Light 0.3, Motion 0.4). The slag tips' slow absorption

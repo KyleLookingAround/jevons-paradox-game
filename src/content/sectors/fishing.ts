@@ -26,11 +26,14 @@ import type { SectorContent } from '../helpers';
 
 /**
  * K, the banks' natural size in tons (SectorDef.reserve). With REGEN it sets the most the banks can bear,
- * MSY = REGEN × K / 4 = 1,500 tons a second. The opening use lands about 130 a second at population 2; the
- * `efficiency` player's catch passes MSY about 20 minutes after Fishing opens and the stock crosses θ at about
- * 30 minutes (toy model: 27 min at 1.0 M, 30 at 1.2 M, 35 at 1.5 M, 44 at 2.2 M). Target: 20–40 minutes.
+ * MSY = REGEN × K / 4. M4 balance: 96,000 (MSY 120 tons a second); the Fishing lane's toy model gave 1,200,000 (MSY
+ * 1,500), but in the real game Fishing opens at about 80 tons a second and the burning player reaches only about 350
+ * thirty minutes later and 820 by the end of a three-hour run, so at 1.2 M nobody's stock ever fell below 70% and the
+ * lesson never landed. At 96,000 the burning player passes MSY within minutes of the capital cards and crosses θ in its
+ * first Fishing run; a restraint line drawn at today's landings (about 90) holds under MSY until the foreign share,
+ * which grows with the home fleet's cheapness, takes the total over it (the over-allocation the design wants taught).
  */
-const K = 1_200_000;
+const K = 96_000;
 /**
  * r, regrowth per second (RenewableDef.regen): 0.005/s = 0.1 per model year (about a third of a cod stock's real
  * intrinsic rate, slowed so that a season can be watched). 1/r ≈ 3 minutes: the stock follows the catch with a lag of
@@ -163,7 +166,7 @@ const sector: SectorDef = {
 
   /*
    * Opens in run 6 (≥ 5 Reckonings) with Settlement arrived, once Steam has the trawlers' engines and the fish train's
-   * lines (Steamships and Railways founded), at the run's mid-run window (minute 20; design §9: an Industry opening is
+   * lines (the compound engine owned, Railways founded), at the run's mid-run window (minute 20; design §9: an Industry opening is
    * the run's mid-run arrival). `after` defaults to the Industry before it in sectorOrder (Iron). Never a price gate.
    * The Act lane may tighten the window with its features rule (e.g. "no other arrival within five minutes").
    */
@@ -172,7 +175,10 @@ const sector: SectorDef = {
     when: {
       all: [
         { feature: 'settlement', label: 'Settlement has come to the House' },
-        { owns: 'steam.steamships', label: 'Found Steamships in Steam' },
+        /* M4 balance: the compound engine (the trawlers' engine: steam trawling paid once compounding came in, the
+         * 1880s), not Steamships founded: a restraint player under a held line seldom founds Steamships, so Fishing
+         * opened only in some runs (Act lane's measurement). */
+        { owns: 'steam.compound', label: 'Own the compound engine in Steam' },
         { owns: 'steam.railways', label: 'Found Railways in Steam' },
         { stat: 'time', op: '>=', value: 1_200, label: 'Twenty minutes into the run' },
       ],

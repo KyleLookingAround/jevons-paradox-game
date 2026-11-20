@@ -280,10 +280,13 @@ export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number
 export function pursuing(s: GameState): boolean {
   if (s.flags.won || (C.features?.settlement && s.meta.features?.settlement === undefined)) return false;
   // (M3 finish: and room for every Industry: GlobalParams.settleMax and the Settlement Commission)
-  if (model.derive(s, C).ending.room < ORDER.length) return false;
-  const settled = ORDER.filter((e) => s.sectors[e]?.settled).length;
-  const streak = ORDER.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
-  return settled >= 4 || (settled >= 2 && streak);
+  // M4 balance: the ending's own set (the Act I Industries), not ORDER (which holds the Previews); as tools/balance.ts
+  const en = model.derive(s, C).ending;
+  if (en.room < en.total) return false;
+  const act = C.acts?.find((a) => a.ending);
+  const set = act?.ending ? act.ending.sectors.filter((e) => !!C.sectors[e]) : ORDER;
+  const streak = set.some((e) => s.sectors[e]?.open && !s.sectors[e].settled && (s.sectors[e].clearYears ?? 0) > 0);
+  return en.settled >= en.total - 1 || (en.settled >= Math.max(2, en.total - 3) && streak);
 }
 
 /** Dividends (option 0, the modest one), Settlement and the Commons, as tools/balance.ts --settle --commons. */
