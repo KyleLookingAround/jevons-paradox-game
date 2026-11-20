@@ -8,12 +8,30 @@
 import type { Content, GameState, SectorDerived, SectorId } from '../types';
 import { PROJECTION_BUCKET } from './constants';
 import { idx } from './contentIndex';
-import { adoptionIn, feedFactor, feedMulFrom } from './feeds';
+import { adoptionIn, feedFactor, feedMulFrom, feedMulOf } from './feeds';
 import { computeFlows, flowsWithoutFeeds } from './flows';
 import { budgetROf } from './steady';
 import { fin } from './util';
 
 const cache = new WeakMap<object, WeakMap<object, Map<string, Record<SectorId, number>>>>();
+
+/** M4 (amend): SectorDerived.fed on a target: the combined factor, Σ rAdded over sources and its share of R; null when
+ *  nothing feeds it now. */
+export function fedInto(state: GameState, content: Content, t: SectorId): NonNullable<SectorDerived['fed']> | null {
+  const ix = idx(content);
+  const list = ix.feedsInto[t];
+  const et = state.sectors[t];
+  if (!list || !et?.open || et.settled) return null;
+  const srcs: SectorId[] = [];
+  for (const e of list) if (!srcs.includes(e.src) && feeding(state, content, e.src)) srcs.push(e.src);
+  if (!srcs.length) return null;
+  const fl = computeFlows(state, content);
+  const f = fl.sectors[t];
+  if (!f) return null;
+  let rAdded = 0;
+  for (const s of srcs) rAdded += rAddedOf(state, content, s)[t] ?? 0;
+  return { factor: feedMulOf(ix, fl.sectors, state, t), rAdded: fin(rAdded), share: f.R > 0 ? fin(rAdded / f.R) : null };
+}
 
 /** True when sector s has a founded application with feeds this run (or a settled one with a frozen adoption). */
 function feeding(state: GameState, content: Content, s: SectorId): boolean {

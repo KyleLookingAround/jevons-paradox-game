@@ -15,6 +15,7 @@ import { computeFlows } from './flows';
 import { sectorLevers, NO_LEVERS } from './levers';
 import { solveSector } from './solver';
 import { idx } from './contentIndex';
+import { evalCond } from './conditions';
 import { fin } from './util';
 
 /** The feature that shows a sector's mechanic, or null when it has none of the four. */
@@ -58,6 +59,14 @@ function wantedR(state: GameState, content: Content, s: SectorId, es: SectorStat
     undefined, inp?.feedMul ?? 1, inp?.pr ?? NaN, inp?.seam ?? 1).R;
 }
 
+/** M4 (amend): the fed part is left out while the sector's feeds are not known (SectorDef.mechanic.feedsKnownWhen). */
+export function feedsKnownHere(state: GameState, content: Content, s: SectorId): boolean {
+  const w = content.sectors[s]?.mechanic?.feedsKnownWhen;
+  return !w || evalCond(state, content, w);
+}
+
+export const feedsKnown = (state: GameState, content: Content, s: SectorId): boolean => feedsKnownHere(state, content, s);
+
 /** M4: the R the fed Industries burn now, and with application `a` of s founded (whole-state solves). */
 function fedR(state: GameState, content: Content, s: SectorId, withEs: SectorState): number {
   const draft: GameState = { ...state, sectors: { ...state.sectors, [s]: withEs } };
@@ -79,7 +88,7 @@ function change(state: GameState, content: Content, s: SectorId, key: string, wi
   if (hit !== undefined) return hit;
   const r0 = wantedR(state, content, s, es, state.upgrades);
   // M4: an application with feeds also counts what the fed Industries add (ApplicationDef.feeds)
-  const fed = key.startsWith('app:') && idx(content).feedTargets.has(s) ? fedR(state, content, s, withEs) : 0;
+  const fed = key.startsWith('app:') && idx(content).feedTargets.has(s) && feedsKnownHere(state, content, s) ? fedR(state, content, s, withEs) : 0;
   const out = r0 > 0 ? fin((wantedR(state, content, s, withEs, withUp) + fed) / r0 - 1, 0) : null;
   if (m.size > 400) m.clear();
   m.set(k, out);

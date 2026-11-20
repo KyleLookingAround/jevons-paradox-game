@@ -443,8 +443,6 @@ const m4api = {
     return { before: Math.round(before * 10) / 10, after: Math.round(after * 10) / 10, dipDb: Math.round(lo * 10) / 10, a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, `tab switch ${a} → ${b} at 6 s`, [[6, b]]) };
   },
 };
-  },
-};
 
 (window as unknown as { bench: typeof api; m3: typeof m3api }).bench = api;
 (window as unknown as { m4: typeof m4api }).m4 = m4api;

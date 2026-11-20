@@ -3,7 +3,8 @@
 // The real Consumption needle, of course, swings right as well. Plus the rebound meter, a twin
 // sparkline with the budget line, the reserve, the population gauge and the budget readout.
 import type { Ctx, Comp, FormulaKind } from './ctx';
-import { sectorDef, sd, ageOfSector } from './ctx';
+import { sectorDef, sd, ageOfSector, shownStock } from './ctx';
+import { estimatesText, fishingGaugeText } from '../content/boardSurvey';
 import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
 import { snapSmall } from './dom';
 import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, unitOne } from './fmt';
@@ -99,6 +100,19 @@ function capActive(ctx: Ctx): boolean {
   return (ctx.levs || []).some((v) => v?.def?.sector === ctx.sector && v.def.kind === 'cap' && num(v.level) > 0);
 }
 
+/** "140 years", "a year"; very long readings rounded to a figure that reads. */
+export function yrs(y: number): string {
+  const v = Math.max(0, num(y));
+  if (v < 1.5) return v < 0.5 ? 'under a year' : 'a year';
+  return `${fmt(v >= 1000 ? Math.round(v / 100) * 100 : Math.round(v))} years`;
+}
+
+/** M4: what the line is compared with: the full account for a line drawn on it (BudgetState.account 'full'), else R. */
+export function lineUse(ctx: Ctx, e: ReturnType<typeof sd>, id: string = ctx.sector): number {
+  const full = ctx.state.sectors?.[id]?.budget?.account === 'full';
+  return full && e?.fullR != null && Number.isFinite(e.fullR) ? e.fullR : num(e?.resourceUse);
+}
+
 /** The rebound dial's readable ceiling: past it the figure is honest but unreadable ("1.37k%"), so the dial says so. */
 const REBOUND_SHOWN_MAX = 10;
 
@@ -114,7 +128,7 @@ export interface GaugesComp extends Comp {
 export function buildGauges(ctx: Ctx): GaugesComp {
   const eff = dial(ctx, 'eff', 'Efficiency', 'eff');
   const cons = dial(ctx, 'cons', 'Consumption', 'cons',
-    `<g class="d-was"><line x1="${CX}" y1="${CY - R + 2}" x2="${CX}" y2="${CY - R + 12}"/></g><g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g>`);
+    `<g class="d-was"><line x1="${CX}" y1="${CY - R + 2}" x2="${CX}" y2="${CY - R + 12}"/></g><g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g><g class="d-full"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 6}"/></g>`);
   const reb = dial(ctx, 'reb', 'Rebound', 'rebound');
   // Static rebound scale: 0..250%, the 100% line marked; everything past it is the backfire zone.
   {
@@ -162,7 +176,9 @@ export function buildGauges(ctx: Ctx): GaugesComp {
   const resPct = h('span', { class: 'res-pct num' });
   const resLeft = h('span', { class: 'res-left num' });
   const resFill = h('span', { class: 'res-fill fillx' });
-  const reserve = h('div', { class: 'reserve' }, h('div', { class: 'res-row' }, resLbl, resPct, resLeft), h('div', { class: 'res-bar' }, resFill));
+  // M4 (The Survey): once 'estimates' is on, "years left" in two readings under the bar (SectorDerived.yearsLeft).
+  const resYrs = h('div', { class: 'res-yrs num', hidden: true });
+  const reserve = h('div', { class: 'reserve' }, h('div', { class: 'res-row' }, resLbl, resPct, resLeft), h('div', { class: 'res-bar' }, resFill), resYrs);
 
   // Population gauge: headcount and growth, over a wellbeing scale marking where growth starts (subsistence) and
   // stops (the demographic transition), with the current wellbeing as a needle.
@@ -254,6 +270,13 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     lastTv = { cons: tv(rF) };
     rot(qs(cons.svgEl, '.d-ghost'), tv(1 / etaF));
     show(qs(cons.svgEl, '.d-ghost') as SVGElement | null, etaF > 1.001);
+    // M4 (The Survey): the full account's fainter needle (counting the coal in its machines; SectorDerived.fullR).
+    const fullR = e?.fullR, ownR = num(e?.resourceUse);
+    const hasFull = fullR != null && Number.isFinite(fullR) && ownR > 0;
+    const fullEl = qs(cons.svgEl, '.d-full') as SVGElement | null;
+    show(fullEl, hasFull);
+    if (hasFull) rot(fullEl, tv(rF * (fullR as number) / ownR));
+    setAttr(cons.box, 'aria-label', hasFull ? `Consumption; ${lower(estimatesText.fullAccount.label)}: ${fold(rF * (fullR as number) / ownR)}` : 'Consumption');
     setText(cons.val, fold(rF));
     const tr = num(e?.trendR);
     const arrow = tr > 0.001 ? ' ↑' : tr < -0.001 ? ' ↓' : '';
@@ -345,16 +368,34 @@ export function buildGauges(ctx: Ctx): GaugesComp {
       }
     }
 
-    // Reserve
-    const rf = clamp(num(e?.reserveFraction, 1), 0, 1);
-    const flow = def?.resourceKind === 'flow';
-    setText(resLbl, resName);
-    setText(resPct, `${pct(rf, false)} ${flow ? 'spare' : 'left'}`);
-    setAttr(reserve, 'title', `${resName}: ${pct(rf, false)} ${flow ? 'spare' : 'left'}`);
-    const sl = num(e?.secondsLeft, Infinity);
-    setText(resLeft, !flow && Number.isFinite(sl) && sl < 7200 ? `≈ ${dur(sl)}` : '');
-    setFill(resFill, rf);
-    cls(reserve, 'low', rf < 0.15);
+    // Reserve. M4: a renewable stock shows the fleet's catch per trip until it is surveyed (never the true stock).
+    const stk = shownStock(e);
+    if (stk) {
+      const v = clamp(stk.value, 0, 1);
+      const lbl = stk.surveyed ? fishingGaugeText.surveyed : fishingGaugeText.reported;
+      setText(resLbl, lbl);
+      setText(resPct, pct(v, false));
+      setAttr(reserve, 'title', `${lbl}: ${pct(v, false)}${stk.surveyed ? '' : `. ${fishingGaugeText.reportedNote}`}`);
+      setText(resLeft, '');
+      setFill(resFill, v);
+      cls(reserve, 'low', stk.surveyed && v < 0.3);
+      cls(reserve, 'reported', !stk.surveyed);
+    } else {
+      const rf = clamp(num(e?.reserveFraction, 1), 0, 1);
+      const flow = def?.resourceKind === 'flow';
+      setText(resLbl, resName);
+      setText(resPct, `${pct(rf, false)} ${flow ? 'spare' : 'left'}`);
+      setAttr(reserve, 'title', `${resName}: ${pct(rf, false)} ${flow ? 'spare' : 'left'}`);
+      const sl = num(e?.secondsLeft, Infinity);
+      setText(resLeft, !flow && Number.isFinite(sl) && sl < 7200 ? `≈ ${dur(sl)}` : '');
+      setFill(resFill, rf);
+      cls(reserve, 'low', rf < 0.15);
+      cls(reserve, 'reported', false);
+    }
+    const yl = e?.yearsLeft;
+    const twoRates = !!yl && yl.flat != null && yl.growing != null;
+    show(resYrs, twoRates);
+    if (twoRates && yl) setText(resYrs, `${estimatesText.yearsLeft.flat}: ${yrs(yl.flat as number)} · ${estimatesText.yearsLeft.growing}: ${yrs(yl.growing as number)}`);
 
     // Population (the unfolding: shown once people matter: the first crisis, or a town grown by a third)
     const g = ctx.content.global;
@@ -394,7 +435,7 @@ export function buildGauges(ctx: Ctx): GaugesComp {
       setAttr(budTxt, 'title', e.decoupling ? `Within budget: ${into} of ${dec} years to the next decade, with wellbeing at least ${fmt(dw)}` : `Within budget, but wellbeing is under ${fmt(dw)}, the day the line was drawn: the years do not count`);
       cls(budTxt, 'ok', !!e.decoupling); cls(budTxt, 'over', false);
     } else {
-      const over = bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN;
+      const over = bR > 0 ? lineUse(ctx, e) / bR - 1 : NaN;
       setText(budTxt, `▲ ${overText(over, 'Over budget by')}`);
       setAttr(budTxt, 'title', null);
       cls(budTxt, 'ok', false); cls(budTxt, 'over', true);

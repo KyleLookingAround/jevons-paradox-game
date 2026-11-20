@@ -10,7 +10,10 @@ import { lightDispatches } from './light';
 import { motionDispatches } from './motion';
 import { computeDispatches } from './compute';
 import { codeDispatches } from './code';
-import { ageDispatches } from './ages';
+import { ageDispatches, ageDispatchesM4 } from './ages';
+/* M4 (the text lane): appended at the end, never inserted (the draw's tie-break is content order). */
+import { ironDispatches } from './iron';
+import { fishingDispatches } from './fishing';
 
 export const dispatches: DispatchDef[] = [
   ...generalDispatches,
@@ -20,4 +23,7 @@ export const dispatches: DispatchDef[] = [
   ...computeDispatches,
   ...codeDispatches,
   ...ageDispatches,
+  ...ironDispatches,
+  ...fishingDispatches,
+  ...ageDispatchesM4,
 ];

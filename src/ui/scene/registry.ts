@@ -14,11 +14,12 @@ import { fishing } from './layouts/fishing';
 import { birds } from './layouts/util';
 import { styleFor, allStyles, addProps } from './styles/index';
 import { M3_TERMINAL, M3_CHROME } from './props/m3';
+import { M4_SHARED } from './props/m4';
 
 addProps('terminal', M3_TERMINAL);
 addProps('chrome', M3_CHROME);
 
-const SHARED: Record<string, Prop> = { ...COMMON, ...CIVIC, birds };
+const SHARED: Record<string, Prop> = { ...COMMON, ...CIVIC, ...M4_SHARED, birds };
 
 const LAYOUTS: Record<string, Layout> = { steam, light, motion, compute, code, iron, fishing };
 

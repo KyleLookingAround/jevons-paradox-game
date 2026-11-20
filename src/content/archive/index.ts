@@ -20,7 +20,9 @@ import type { ArchiveDef } from '../../types';
 import { codeArchive } from './code';
 import { commonsArchive } from './commons';
 import { computeArchive } from './compute';
-import { generalArchive } from './general';
+import { generalArchive, generalArchiveM4 } from './general';
+import { fishingArchive } from './fishing';
+import { ironArchive } from './iron';
 import { lightArchive } from './light';
 import { motionArchive } from './motion';
 import { steamArchive } from './steam';
@@ -28,9 +30,12 @@ import { steamArchive } from './steam';
 export const archive: ArchiveDef[] = [
   ...steamArchive,
   ...lightArchive,
+  ...ironArchive,
+  ...fishingArchive,
   ...motionArchive,
   ...computeArchive,
   ...codeArchive,
   ...commonsArchive,
   ...generalArchive,
+  ...generalArchiveM4,
 ];

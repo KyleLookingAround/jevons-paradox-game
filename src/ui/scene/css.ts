@@ -347,3 +347,9 @@ export function injectSceneCss(doc: Document = document): void {
 /** The whole stylesheet as one string (base + every style registered so far), for hosts that prefer to ship it. */
 export function sceneCss(): string { return BASE + allStyles().map((s) => s.css).join('\n'); }
 export const SCENE_CSS: string = sceneCss();
+
+/** M4: the drawing classes alone (the shared .b/.k/.d … rules), for small self-contained pictures (postcards). */
+export function drawingCss(): string {
+  const a = BASE.indexOf('/* --- drawing classes'), b = BASE.indexOf('/* --- appearance');
+  return a >= 0 && b > a ? BASE.slice(a, b) : BASE;
+}

@@ -32,7 +32,8 @@ import { stageOf } from './purchases';
 import { canSettle, settleRoom, roomCount, settleBlockedOf } from './settlement';
 import { accountOn, fullAccount } from './account';
 import { drawnByOf, secondsLeftOf, stockView, surveyRevealView, yearsLeftOf } from './views4';
-import { appFeedsView, feedsView } from './orderBook';
+import { appFeedsView, feedsView, fedInto } from './orderBook';
+import { feedsKnown } from './temptation';
 import { renewableOf } from './renewable';
 import { evalCond } from './conditions';
 import { currentAct, endingAct, endingSectors } from './acts';
@@ -65,6 +66,7 @@ export function derive(state: GameState, content: Content): Derived {
     const ins = instruments(state, content, fl, s);
     const rn = renewableOf(def);
     const hidden = !!rn && def.pressureSource === 'depletion' && !mods.survey.has(s); // M4: no sink line while unsurveyed
+    const known = !m4 || !ix.feedTargets.has(s) || feedsKnown(state, content, s); // M4 (amend)
     const apps: Record<string, AppDerived> = {};
     const frozenSeen = es.settled?.appPriceSeen;
     let freeBill = 0, freeD = 0, anySeen = false;
@@ -84,7 +86,8 @@ export function derive(state: GameState, content: Content): Derived {
         canFound: !!st?.available && !st.founded && state.capital >= cost && !fl.pending && !es.settled && !forbidden,
         priceSeen: seen, foundCost: cost, forbidden,
         wantedChange: es.budget ? appWanted(state, content, s, a) : null,
-        feeds: m4 ? appFeedsView(state, content, s, i) : null,
+        feeds: m4 && known ? appFeedsView(state, content, s, i) : null,
+        feedsKnown: known,
       };
     });
     const secondsLeft = secondsLeftOf(state, content, fl, levs, s);
@@ -123,7 +126,8 @@ export function derive(state: GameState, content: Content): Derived {
       // M4 (always written)
       preview: ix.preview.has(s), capstoned: !!es.capstoned, arrears: !!es.arrears,
       drawnBy: m4 && ix.drawers.has(s) ? drawnByOf(state, content, fl, levs, s) : null,
-      feeds: m4 && ix.feedTargets.has(s) ? feedsView(state, content, s) : null,
+      feeds: m4 && known && ix.feedTargets.has(s) ? feedsView(state, content, s) : null,
+      fed: m4 && ix.feedsInto[s] ? fedInto(state, content, s) : null,
       settleBlocked: settleBlockedOf(state, content, s, sv.sinkHeld),
       stock: m4 && rn ? stockView(state, content, s, f, mods) : null,
       fullR: acct ? acct.fullR[s] ?? null : null,

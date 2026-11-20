@@ -105,6 +105,8 @@ export const light: Layout = {
       slots: [0, 1, 2].flatMap((k) => STREETS.map(([x0, y0, x1, y1]): Slot =>
         ({ p: 'streetGlow', x: x0, y: y0 + 0.2, w: x1 - x0, h: y1 - y0, v: k / 3, s: 1, band: 'mid' }))),
     },
+    // M4: Iron's girders (SceneView.fedBy): a great gasholder on a steel lattice frame among the old ones.
+    { key: 'fedGirders', driver: 'fed', match: ['iron.girders'], curve: 1, slots: [{ p: 'steelHolder', x: 456, y: 207, s: 0.95, band: 'far' }] },
     { key: 'mains', driver: 'always', anchor: { p: 'gasMain', x: 592, y: 384, s: 1, w: 600, band: 'near' }, slots: [] },
     { key: 'homes', match: ['house'], byHour: true, overlayOf: 'town', overlayProp: 'terrace', slots: [], hit: [380, 196, 210, 76], site: [440, 252, 70, 8] },
     {

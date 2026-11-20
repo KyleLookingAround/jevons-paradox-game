@@ -102,4 +102,38 @@ export const charters: CharterDef[] = [
     effects: [startLever('steam.duty', 1), { type: 'wellbeingAdd', value: 1 }, { type: 'popGrowthMul', value: 1.1 }],
     requires: { owns: 'history.feeAndDividend' },
   },
+  /* ---------------- M4 (design §12): the Coal Age's new Industries. Appended (the draw indexes content order). ------ */
+  {
+    /* Embodied rebound from the first minute: Rails founded before the run starts makes Steam's engines cheaper to build
+     * (Iron's order book), and Steam's coal rises. Margin up a point: the price of being the workshop. Rails is not free
+     * in Iron, so the gift is real; so is the bill on Steam's line. */
+    id: 'charter.blackCountry', name: 'The Black Country', sector: 'iron',
+    blurb: 'Furnaces from Wolverhampton to Dudley, and the first rails already rolled. Every engine in the land is cheaper to build, and burns.',
+    effects: [{ type: 'startFounded', app: 'iron.rails' }, margin('iron', 0.01)],
+    requires: { owns: 'iron', label: 'Iron & Steel has opened in some run' },
+  },
+  {
+    /* The frontier rebound in Fishing: the fish train's quay is laid before the run (the card at a quarter of its price),
+     * and fresh fish finds a city market at once; the appetite for it grows a tenth (the rebound named). */
+    id: 'charter.fishTrains', name: 'The Fish Trains', sector: 'fishing',
+    blurb: 'The railway companies have laid the fish sidings already. The catch is in Billingsgate by dawn, and the city wants more of it.',
+    effects: [{ type: 'costMulOf', id: 'fishing.fishTrain', value: 0.25 }, sat('fishing', 1.1, 'fishing.freshFish')],
+    requires: { owns: 'fishing', label: 'Fishing has opened in some run' },
+  },
+  {
+    /* A cartel's run: prices held, margins two points up, and the coke duty off the table for the run (forbid). The
+     * restraint lever the player would reach for first is gone; the others remain. */
+    id: 'charter.ironmastersRing', name: 'The Ironmasters’ Ring', sector: 'iron',
+    blurb: 'The masters meet quarterly at the Stork Hotel and agree a price. Takings are handsome, and no duty on coke will pass this session.',
+    effects: [margin('iron', 0.02), { type: 'forbid', id: 'iron.cokeDuty' }],
+    requires: { owns: 'iron', label: 'Iron & Steel has opened in some run' },
+  },
+  {
+    /* The Survey on loan: surveyed for one run (the Fishery Board at level 1), offered only once Fishing has opened and
+     * only to a player without the Board. The Board's levy is a point of Fishing's margin. */
+    id: 'charter.fisheryBoard', name: 'A Fishery Board on Trial', sector: 'fishing',
+    blurb: 'The Board’s vessel and its naturalists, voted for one season of grants. The banks are counted for a run, and the levy is on the catch.',
+    effects: [{ type: 'institutionLoan', id: 'inst.fisheryBoard', level: 1 }, margin('fishing', -0.01)],
+    requires: { all: [{ owns: 'fishing', label: 'Fishing has opened in some run' }, { not: { owns: 'inst.fisheryBoard' } }] },
+  },
 ];

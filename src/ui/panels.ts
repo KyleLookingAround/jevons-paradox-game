@@ -1,13 +1,16 @@
 // Upgrade cards (the promise in large type, the decade and the frontier in small red), fork pairs, the budget panel
 // and the counter-levers.
 import type { Ctx, Comp } from './ctx';
-import { sectorDef, sd } from './ctx';
+import { sectorDef, sd, shownPressure } from './ctx';
 import type { EffectDef, LeverRecycle, LeverView, PaceDef, SectorDef, UpgradeView } from '../types';
 import { STEADY_STATE_YEARS, FEATURE_IDS } from '../types';
 import { h, setText, setStyle, setFill, setAttr, show, cls, syncChildren, reducedMotion, replay, watchNear, isNear } from './dom';
 import { fmt, money, pct, num, clamp, lower, fmtEpoch, perUnit, dur, unitOne } from './fmt';
 import { tradeText } from './trade';
 import { sound } from './sound';
+import { lineUse } from './gauges';
+import { isOpen, setOpen } from './prefs';
+import { estimatesText, capstoneText } from '../content/boardSurvey';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
 export function effectText(ctx: Ctx, e: EffectDef): string {
@@ -322,7 +325,7 @@ export function buildUpgrades(ctx: Ctx): Comp {
     const ok = own.map((v) => v.def.id + ':' + v.level).join(',');
     if (ok !== ownedKey) {
       ownedKey = ok;
-      setText(ownedSum, `Owned (${own.length})`);
+      setText(ownedSum, `Owned · ${own.length}`);
       ownedList.replaceChildren(...own.map((v) => h('li', null, h('span', { text: v.def.name }),
         h('span', { class: 'num muted', text: v.def.repeatable ? `×${v.level}` : (v.def.kind === 'efficiency' && v.promisedChange != null ? pct(v.promisedChange) : '') }))));
     }
@@ -351,6 +354,13 @@ export function pacesFor(ctx: Ctx, id: string): PaceDef[] {
 export function overText(over: number, lead: string): string {
   return Number.isFinite(over) && over > 9 ? 'Far over budget' : `${lead} ${pct(over, false)}`;
 }
+/** "The stock surveyed" → "the stock surveyed" (a label read inside a sentence). */
+export function lowerFirst(t: string): string { return t ? t.charAt(0).toLowerCase() + t.slice(1).replace(/\.$/, '') : t; }
+/** M4: the year the capstoned Act's ending was reached (Derived.ending.record), else null. */
+export function capstoneYear(ctx: Ctx): number | null {
+  const rec = ctx.d?.ending?.record;
+  return rec && Number.isFinite(rec.year) ? Math.floor(rec.year) : null;
+}
 const mulTxt = (m: number) => `×${Number.isInteger(m) ? m : m.toFixed(1)}`;
 
 export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
@@ -359,9 +369,11 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
   const line = h('p', { class: 'bud-line num muted' });
   // Before the choice of pace has arrived, a line is drawn at once at the first (default) pace.
   const draw = h('button', { class: 'btn bud-draw', type: 'button', onclick: () => (ctx.d?.features?.budgetPace ? openPaces() : drawPlain()) });
-  const settleBtn = h('button', { class: 'btn primary bud-settle', type: 'button', hidden: true, onclick: () => hooks.confirmSettle(ctx.sector, () => {
+  const settleBtn = h('button', { class: 'btn primary bud-settle', type: 'button', hidden: true, onclick: () => settleBtn.getAttribute('aria-disabled') === 'true' ? nope(settleBtn) : hooks.confirmSettle(ctx.sector, () => {
     if (!ctx.act('settle', (m, s, c) => m.settle(s, c, ctx.sector))) nope(settleBtn);
   }) });
+  // M4: at Steady State but a settle requirement fails (SectorDerived.settleBlocked): the button stays, disabled, with why.
+  const blockedTxt = h('p', { class: 'bud-blocked', hidden: true });
 
   // The pace choice: one card per pace (name, decline a decade, the dividend multiplier, blurb), then a confirm row.
   const paceList = h('div', { class: 'paces', role: 'radiogroup', 'aria-label': 'The pace of the line' });
@@ -395,9 +407,12 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
       h('button', { class: 'btn danger', type: 'button', onclick: () => { show(unsetBox, false); show(unsetAsk, true); ctx.act('unsettle', (m, s, c) => m.unsettle(s, c, ctx.sector)); } }, 'Unsettle it'),
       h('button', { class: 'btn', type: 'button', onclick: () => { show(unsetBox, false); show(unsetAsk, true); unsetAsk.focus(); } }, 'Keep it settled')));
   const unsetAsk = h('button', { class: 'btn small', type: 'button', onclick: () => { show(unsetAsk, false); show(unsetBox, true); (unsetBox.querySelector('button') as HTMLButtonElement | null)?.focus(); } }, 'Unsettle');
-  const settledRow = h('div', { class: 'settled-row', hidden: true }, stTitle, stFig, stDef, h('div', { class: 'm-row' }, unsetAsk), unsetBox);
+  // M4: a capstoned Industry in arrears says so in one line (capstoneText.arrears).
+  const stArrears = h('p', { class: 'st-arrears', hidden: true });
+  const unsetRow = h('div', { class: 'm-row' }, unsetAsk);
+  const settledRow = h('div', { class: 'settled-row', hidden: true }, stTitle, stArrears, stFig, stDef, unsetRow, unsetBox);
 
-  const live = h('div', { class: 'bud-live' }, status, statusSub, line, h('div', { class: 'm-row' }, draw, settleBtn), paceBox, sky, ledger, ledgerNote);
+  const live = h('div', { class: 'bud-live' }, status, statusSub, line, h('div', { class: 'm-row' }, draw, settleBtn), blockedTxt, paceBox, sky, ledger, ledgerNote);
   const title = h('h2', { class: 'sec-t', text: 'The budget' });
   // The first ending, in one line, once Settlement has arrived (Derived.ending: the page counts nothing itself).
   const endTxt = h('p', { class: 'bud-end muted num', hidden: true });
@@ -470,12 +485,15 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
       const wait = !nx ? '' : nx.need === 'open' ? `${nm} is not yet open.` : nx.need === 'line' ? `${nm} needs a line drawn.`
         : nx.need === 'clear' ? `${nm} needs clear skies within its line.` : nx.need === 'years' ? `${nm} needs clear skies for ${fmt(STEADY_STATE_YEARS)} years (${fmt(Math.floor(num(nx.years)))} so far).`
           : nx.need === 'feature' ? `${nm} is at Steady State; Settlement has not yet been proposed.`
+            : nx.need === 'requires' ? `${nm} needs ${lowerFirst(sd(ctx, nx.sector)?.settleBlocked ?? 'one thing more')}.`
             : nx.need === 'room' ? `${nm} is at Steady State, but ${fmt(num(en.room))} settled at once is as many as Parliament will hold; an Institution can make room for more.`
-              : `${nm} can be settled now.`;
+              : nx.need === 'ready' ? `${nm} can be settled now.` : '';
       const cost = num(en.nextHold) > num(en.hold) + 1e-9 ? ` Holding ${fmt(have + 1)} would cost ${fmt(num(en.nextHold))} Mandate a second; you raise ${fmt(Math.max(0, num(ctx.d?.mandatePerSec) + num(en.hold)))} after levers.` : '';
+      // M4: with Acts, the ending is the Act's (Derived.ending.act): "every Industry of the Coal Age".
+      const of = en.act ? ` of ${en.act.title}` : '';
       setText(endTxt, have >= all
-        ? `Every Industry settled: ${fmt(Math.floor(num(en.years)))} of ${fmt(need)} years held. An unsettled Industry starts the count again.`
-        : `The ledger balances when every Industry is settled at once and held for ${fmt(need)} years. Settled ${fmt(have)} of ${fmt(all)}. ${wait}${cost}`);
+        ? `Every Industry${of} settled: ${fmt(Math.floor(num(en.years)))} of ${fmt(need)} years held. An unsettled Industry starts the count again.`
+        : `The ledger balances when every Industry${of} is settled at once and held for ${fmt(need)} years. Settled ${fmt(have)} of ${fmt(all)}. ${wait}${cost}`);
     }
 
     // Settled: the whole panel is one quiet row.
@@ -486,10 +504,21 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     setText(title, settled ? `${def?.name ?? 'This Industry'}, settled` : 'The budget');
     if (settled && st?.settled) {
       const since = Math.floor(num(st.settled.sinceYear, num(ctx.model.yearAt(ctx.state, ctx.content, st.settled.since))));
-      setText(stTitle, `Held since ${since}. Its levers are retired; Mandate defends it as the world grows into it.`);
-      setText(stFig, `${fmt(st.settled.R)} ${unit}/s · ${money(st.settled.income)}/s income · ${def?.pressure.name ?? 'Pressure'} ${pct(num(e?.pressureFraction), false)}, frozen`);
+      const cap = !!e?.capstoned;
+      // M4: a capstoned Industry was settled for good at the Act's ending: no Unsettle, the year of the ending.
+      const capYear = cap ? capstoneYear(ctx) : null;
+      setText(stTitle, cap
+        ? `Settled for good${capYear != null ? ` in ${capYear}` : ''}, with the rest of its Age. Mandate defends it as the world grows into it.`
+        : `Held since ${since}. Its levers are retired; Mandate defends it as the world grows into it.`);
+      show(stArrears, cap && !!e?.arrears);
+      setText(stArrears, capstoneText.arrears);
+      show(unsetRow, !cap);
+      if (cap) show(unsetBox, false);
+      setText(stFig, `${fmt(st.settled.R)} ${unit}/s · ${money(st.settled.income)}/s income · ${def?.pressure.name ?? 'Pressure'} ${pct(shownPressure(e), false)}, frozen`);
       const ex = num(e?.settleExcess), dfc = num(e?.settleDefence);
-      setText(stDef, dfc > 0 ? `The world has grown ${pct(ex, false)} into it: defence ${fmt(dfc)} Mandate/s` : `Excess ${pct(ex, false)}: within what it tolerates, no defence to pay`);
+      setText(stDef, e?.arrears
+        ? `The world has grown ${pct(ex, false)} into it: the defence, ${fmt(dfc)} Mandate/s, is not being paid`
+        : dfc > 0 ? `The world has grown ${pct(ex, false)} into it: defence ${fmt(dfc)} Mandate/s` : `Excess ${pct(ex, false)}: within what it tolerates, no defence to pay`);
       cls(stDef, 'over', dfc > 0);
       setText(unsetQ, `Unsettle ${def?.name ?? 'it'}? Its dividend stops, its levers stay at nothing, both streaks start again, and the demand the world grew into arrives at once.`);
       return;
@@ -505,7 +534,7 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     if (!has && sdi != null) setText(status, `A standing cap is in force with no line to hold it to yet. Its line is drawn in ${fmt(Math.ceil(num(sdi)))} years; drawing it, or tightening the cap, draws it now.`);
     else if (!has) setText(status, `No line drawn for ${def?.name ?? 'this Industry'}. Nothing counts towards a decade or Steady State until one is.`);
     else if (e?.withinBudget) setText(status, e.decoupling ? `Within budget · ${Math.floor(num(e.steadyYears) % dec)} of ${dec} years to the next decade` : `Within budget, but the years wait on wellbeing: ${fmt(dw)} needed, ${fmt(Math.floor(W))} now.`);
-    else setText(status, overText(bR > 0 ? num(e?.resourceUse) / bR - 1 : NaN, 'Over budget by'));
+    else setText(status, overText(bR > 0 ? lineUse(ctx, e) / bR - 1 : NaN, 'Over budget by'));
     cls(status, 'ok', !!e?.decoupling);
     cls(status, 'over', has && !e?.withinBudget);
     // What a decade still needs, in plain figures (QA B1/B28): the drawn level for a decade at all; the target for a full
@@ -518,17 +547,23 @@ export function buildBudget(ctx: Ctx, hooks: BudgetHooks): Comp {
     const b = st?.budget;
     const held = b?.heldAt != null;
     const pace = pacesFor(ctx, ctx.sector).find((p) => p.id === e?.pace);
-    setText(line, has ? `The line: ${fmt(bR)} ${unit}/s, drawn in ${b?.drawnYear ?? '—'}${pace ? `, ${pace.name}` : ''}: ${held ? 'held level since Steady State' : `falling ${pct(num(pace?.declinePerDecade, 0.05), false)} a decade`}.` : '');
+    // M4 (The Survey): once the full account exists, each line says which account it was drawn on (BudgetState.account).
+    const acct = has && (ctx.d?.features?.estimates || b?.account === 'full') ? ` (${b?.account === 'full' ? estimatesText.account.full : estimatesText.account.own})` : '';
+    setText(line, has ? `The line: ${fmt(bR)} ${unit}/s${acct}, drawn in ${b?.drawnYear ?? '—'}${pace ? `, ${pace.name}` : ''}: ${held ? 'held level since Steady State' : `falling ${pct(num(pace?.declinePerDecade, 0.05), false)} a decade`}.` : '');
     cls(line, 'held', held);
     show(line, has);
     setText(draw, has ? 'Redraw the line' : 'Draw the line');
     setAttr(draw, 'aria-disabled', num(e?.resourceUse) > 0 && !ctx.d?.pendingReckoning ? null : 'true');
-    show(settleBtn, !!e?.canSettle);
+    const blocked = !e?.canSettle && !e?.settled ? e?.settleBlocked ?? null : null;
+    show(settleBtn, !!e?.canSettle || !!blocked);
+    setAttr(settleBtn, 'aria-disabled', blocked ? 'true' : null);
     setText(settleBtn, `Settle ${def?.name ?? ''}`.trim());
+    show(blockedTxt, !!blocked);
+    if (blocked) setText(blockedTxt, `${def?.name ?? 'It'} needs ${lowerFirst(blocked)} before it can be settled.`);
     if (!paceBox.hidden) renderPaces();
 
     // The sky: pressure as a fraction of collapse, with the clear level marked (clearP is absolute; ÷ collapseAt to place it).
-    const pf = clamp(num(e?.pressureFraction), 0, 1);
+    const pf = clamp(shownPressure(e), 0, 1);
     const cp = e?.clearP;
     const cpf = cp != null && def ? clamp(cp / Math.max(1e-12, def.collapseAt), 0, 1) : null;
     setFill(skyFill, pf, 200);
@@ -663,8 +698,16 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     h('div', { class: 'bite-row' }, h('span', { class: 'bite-k', text: 'Bites back' }), h('span', { class: 'bite-bar', 'aria-hidden': 'true' }, biteFill), biteV),
     h('p', { class: 'bite-p' }, biteTxt, ' ', unless));
   const forbidEl = h('p', { class: 'lev-forbid', hidden: true, text: 'Forbidden for this run: it can be lowered, not raised.' });
+  // M4 folding: a lever at its limit is one line ("Coke duty · at its limit"); a tap opens it (remembered per device).
+  const foldKey = `lev:${def.id}`;
+  const limitTag = h('span', { class: 'lev-limit', text: ' · at its limit' });
+  const foldBtn = h('button', { class: 'lev-fold', type: 'button', 'aria-expanded': 'false', onclick: () => {
+    const open = el.classList.contains('folded');
+    setOpen(foldKey, open);
+    cls(el, 'folded', !open); setAttr(foldBtn, 'aria-expanded', String(open));
+  } }, h('span', { class: 'lev-name', text: def.name }), limitTag);
   const el = h('article', { class: 'lever' },
-    h('header', { class: 'lev-h' }, h('h3', { class: 'lev-name', text: def.name }), h('span', { class: 'pip-wrap' }, pips, pipMore)),
+    h('header', { class: 'lev-h' }, foldBtn, h('span', { class: 'pip-wrap' }, pips, pipMore)),
     h('p', { class: 'lev-blurb', text: def.blurb }),
     h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), catchT), biteEl, forbidEl,
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk, seeIt),
@@ -717,7 +760,13 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     cls(el, 'active', lv > 0);
     // At its last level the card has nothing more to offer but Lower: its blurb and catch fold away (the card's title
     // keeps them).
-    cls(el, 'maxed', lv > 0 && !v.next);
+    const maxed = lv > 0 && !v.next;
+    cls(el, 'maxed', maxed);
+    cls(el, 'foldable', maxed);
+    const folded = maxed && !isOpen(foldKey, false);
+    if (el.classList.contains('folded') !== folded) { cls(el, 'folded', folded); setAttr(foldBtn, 'aria-expanded', String(!folded)); }
+    show(limitTag, maxed);
+    foldBtn.disabled = !maxed;
     show(seeIt, lv > 0);
     // A cap in force with no budget line yet does nothing until the line is drawn (standingDrawYears, or a Tighten).
     const noLine = def.kind === 'cap' && lv > 0 && !ctx.state.sectors?.[def.sector]?.budget;

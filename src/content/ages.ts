@@ -15,7 +15,8 @@ export const ages: AgeDef[] = [
     tagline: 'Everything runs on coal, including the arguments about coal.',
     yearSpan: [1780, 1914],
     theme: 'ledger',
-    sectors: ['steam', 'light'],
+    /* M4: the Coal Age complete (Act I): Iron & Steel opens in run 4, Fishing in run 6 (design/m4-design.md §3). */
+    sectors: ['steam', 'light', 'iron', 'fishing'],
   },
   {
     id: 'acceleration',

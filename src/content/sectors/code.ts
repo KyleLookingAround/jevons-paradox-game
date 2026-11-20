@@ -80,10 +80,18 @@ const sector: SectorDef = {
    * v1 gated Code on compute price < 0.015, which no greedy play reached (critique). The milestones below come within
    * about ten minutes of Compute opening, so four Reckonings are the real gate: about hour 4 of competent play.
    */
+  /* M4: re-gated as a Preview, in a run after Compute first opened (the free price arrives at that Reckoning). */
   unlock: {
     minReckonings: 4,
     when: {
       all: [
+        {
+          /* M4: a Preview (Act II/III): after the Act I ending, from the next run (one built with the capstone), or in any
+           * save that has opened Code before (meta.sectorsOpened), which keeps it in every run (design/m4-design.md §7.4). */
+          any: [{ all: [{ ending: 'actOne' }, { stat: 'capstoned', op: '>=', value: 1 }] }, { owns: 'code' }],
+          label: 'The Coal Age settled',
+        },
+        { feature: 'freeAtUse', label: 'The free price noticed' },
         { owns: 'compute.virtualisation', label: 'Own Virtualisation' },
         { stat: 'serviceDelivered', sector: 'compute', op: '>=', value: 200_000, label: '200,000 PFLOP·years computed' },
       ],

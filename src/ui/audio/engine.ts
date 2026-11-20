@@ -957,7 +957,16 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function worldEvent(kind: SoundEventKind, d: SoundEventDetail): void {
     const sector = d.sector ?? current()?.sector ?? view?.sectorId ?? '';
     lifeFx = { sector, kind: kind === 'thresholdCrossed' ? 'cut' : 'lift', t0: now() };
-    if (view && current()?.sector === sector) apply(view);
+    const g = current();
+    if (!view || !g || g.sector !== sector) return;
+    apply(view);
+    // The lift is heard, not only set: the sea life that is there (and only that) calls once or twice now. A sea near
+    // its threshold has almost nothing to lift, and the moment is then nearly silent: the honest world.
+    if (lifeFx.kind === 'lift' && g.mix && !g.mix.frozen) for (const rt of g.layers) {
+      if (!rt.def.life || rt.def.kind !== 'hits' || (g.mix.layers[rt.def.id]?.level ?? 0) < 0.02) continue;
+      const n = rt.def.id === 'gulls' ? 2 : 1;
+      for (let i = 0; i < n; i++) playHit(g, rt, now() + 0.25 + i * 0.7 + rt.rng() * 0.3, 1.1);
+    }
   }
 
   function duckFor(kind: SoundEventKind, at: number): void {

@@ -3,6 +3,7 @@
 import { createScene, renderStill } from '../engine';
 import { viewFromSummary } from '../adapter';
 import { spot, SPOT_OF, SPOT_KINDS } from '../spots';
+import { postcard } from '../postcard';
 import { injectSceneCss } from '../css';
 import type { SceneView, SceneApp, SceneHandle } from '../types';
 
@@ -448,7 +449,30 @@ async function stillsMode(indId: string): Promise<void> {
   document.body.dataset.ready = '1';
 }
 
+/** M4: the tab postcards (#cards): every Industry at early, late, near a crisis, capstoned, in arrears and as a
+ *  Preview, at 64 × 40 (as the tab shows it) and enlarged three times; the first column as <img> (standalone). */
+function cardsMode(): void {
+  injectSceneCss(document);
+  const wrap = document.getElementById('app')!;
+  wrap.innerHTML = '';
+  wrap.style.maxWidth = 'none';
+  const states = ['earlyM4', 'lateM4', 'crisisM4', 'capstoneM4', 'arrearsM4', 'previewM4'];
+  let html = '<table style="border-collapse:collapse;font:11px system-ui"><tr><th></th>' + states.map((x) => `<th>${x}</th>`).join('') + '</tr>';
+  IND.forEach((ind, i) => {
+    html += `<tr><th style="text-align:left">${ind.id}</th>`;
+    for (const st of states) {
+      const v = viewOf(PRESETS[st](i));
+      const small = postcard(v, { standalone: true });
+      html += `<td style="padding:4px"><img alt="" width="64" height="40" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(small)}"><br>${postcard(v, { width: 192, height: 120 })}</td>`;
+    }
+    html += '</tr>';
+  });
+  wrap.innerHTML = html + '</table>';
+  document.body.dataset.ready = '1';
+}
+
 const m = /strip=([\w-]+)/.exec(location.hash);
 const ms = /stills=([\w-]+)/.exec(location.hash);
+if (/cards/.test(location.hash)) cardsMode(); else
 if (ms) void stillsMode(ms[1]); else
 if (m) stripMode(m[1]); else if (/spots/.test(location.hash)) spotsMode(); else interactive();

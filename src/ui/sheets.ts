@@ -467,7 +467,7 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
       ownKids.push(allU.el);
       syncChildren(khOwn.body, ownKids);
     }
-    setText(khOwn.sum, `Owned, ${nOwned}`);
+    setText(khOwn.sum, `Owned · ${nOwned}`);
     show(khOwn.el, nOwned > 0);
     // "Unlearn everything" sits in Owned while anything is learnt to the full; at the top of the trees otherwise.
     if (nOwned === 0 && allU.el.parentElement !== kh) kh.insertBefore(allU.el, treeList);
@@ -603,7 +603,7 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
   let instKey = '';
   items.push(() => {
     const vs = (ctx.content.institutions || []).map((d) => ({ d, v: inView(d.id) }))
-      .filter((x) => num(x.v?.level) > 0 || effMet([...(x.d.effects || []), ...(x.d.nextLevels?.[0]?.effects || [])]));
+      .filter((x) => num(x.v?.level) > 0 || (x.v?.visible !== false && effMet([...(x.d.effects || []), ...(x.d.nextLevels?.[0]?.effects || [])])));
     const owned = vs.filter((x) => x.v && x.v.level >= x.v.maxLevel);
     const live = vs.filter((x) => !(x.v && x.v.level >= x.v.maxLevel));
     const open = live.filter((x) => x.v?.requirementsMet);
@@ -616,7 +616,7 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
       syncChildren(instLocked.body, shut.map((x) => cards.get(x.d.id)!));
       syncChildren(instOwnList, owned.map((x) => instRow(x.d.id).row2));
       setText(instLocked.sum, `Needs another Institution first: ${shut.length}`);
-      setText(instOwn.sum, `Owned, ${owned.length}`);
+      setText(instOwn.sum, `Owned · ${owned.length}`);
     }
     show(instLocked.el, shut.length > 0);
     show(instOwn.el, owned.length > 0);
@@ -711,8 +711,9 @@ function causeHeadline(ctx: Ctx, cause: ReckoningCause, sector?: SectorId): stri
   if (cause === 'chosen') return 'The books are closed';
   const def = sector ? sectorDef(ctx, sector) : undefined;
   const c = sector ? CAUSE[sector] : undefined;
-  if (c) return c[cause];
-  return cause === 'exhausted' ? `No ${lower(def?.resource.name ?? 'fuel')} left` : `${def?.pressure.name ?? 'Pressure'} past bearing`;
+  if (c && (cause === 'exhausted' || cause === 'collapse')) return c[cause];
+  // M4: causes a later core adds (M7's 'generation', and others) get a plain label, never a throw.
+  return cause === 'exhausted' ? `No ${lower(def?.resource.name ?? 'fuel')} left` : cause === 'collapse' ? `${def?.pressure.name ?? 'Pressure'} past bearing` : 'The books are closed';
 }
 
 export function pendingSheet(ctx: Ctx, sheets: Sheets, onFaced: () => void): void {

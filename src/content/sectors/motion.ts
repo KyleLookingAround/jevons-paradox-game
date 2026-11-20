@@ -84,14 +84,22 @@ const sector: SectorDef = {
   },
 
   spill: { to: 'light', rate: 0.3 },
+  /* M4: re-gated as a Preview. Its opening conditions must hold in a capstoned run, where Light is settled and owns no
+   * cards this run: five minutes of run time, and (M1 balance) no new age opening into a choking one. `after` Light
+   * (not Fishing, sectorOrder's predecessor): an older save that opened Motion keeps it before Fishing exists. */
   unlock: {
     minReckonings: 2,
+    after: ['light'],
     when: {
       all: [
-        { owns: 'light.mantle', label: 'Own the Incandescent mantle' },
-        /* M1 balance: no new age opens into a choking one (Motion would otherwise die with Steam within minutes). */
-        { stat: 'pressureFraction', sector: 'steam', op: '<', value: 0.5, label: 'Steam’s smog under half of collapse' },
-        { stat: 'serviceDelivered', sector: 'light', op: '>=', value: 2_000, label: '2,000 klm·h·years of light delivered' },
+        {
+          /* M4: a Preview (Act II/III): after the Act I ending, from the next run (one built with the capstone), or in any
+           * save that has opened Motion before (meta.sectorsOpened), which keeps it in every run (design/m4-design.md §7.4). */
+          any: [{ all: [{ ending: 'actOne' }, { stat: 'capstoned', op: '>=', value: 1 }] }, { owns: 'motion' }],
+          label: 'The Coal Age settled',
+        },
+        { stat: 'time', op: '>=', value: 300, label: 'Five minutes into the run' },
+        { stat: 'pressureFraction', sector: 'steam', op: '<', value: 0.5, label: 'Steam’s smoke under half of collapse' },
       ],
     },
   },

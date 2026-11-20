@@ -23,7 +23,8 @@ import { fillText, headline, newsWith, textItem } from './headlines';
 import type { HeadlineCtx } from './headlines';
 import { sectorLevers, NO_LEVERS } from './levers';
 import type { SectorLevers } from './levers';
-import { milestone } from './milestones';
+import { milestone, milestones } from './milestones';
+import { evalCond } from './conditions';
 import { addModifier } from './modifiers';
 import { rAddedOf } from './orderBook';
 import { foreignCatch, growthOf, renewableOf, reportedOf, scarMulOf, sizeOf, startStockOf, stepStock } from './renewable';
@@ -42,6 +43,21 @@ export interface M4Step {
 export const newM4Step = (): M4Step => ({ items: [], evThreshold: [], evScar: [], evArrears: [], world: null });
 
 const worldOf = (state: GameState, w4: M4Step): NonNullable<MetaState['world']> => w4.world ?? state.meta.world ?? {};
+
+/* ---- M4 (amend): levers that wait on a condition ---- */
+
+/** LeverDef.when: the levers whose condition holds now are marked seen for the rest of the run (the map is written
+ *  copy-on-write: the same reference when nothing changes). */
+export function seenLevers(state: GameState, content: Content, levers: GameState['levers']): GameState['levers'] {
+  let out = levers;
+  for (const l of idx(content).whenLevers) {
+    const ls = out[l.id] ?? { level: 0, ref: 0 };
+    if (ls.seen || !evalCond(state, content, l.when!)) continue;
+    if (out === levers) out = { ...levers };
+    out[l.id] = { ...ls, seen: true };
+  }
+  return out;
+}
 
 /* ---- the shared reserve ---- */
 
@@ -271,6 +287,22 @@ export function stepM4(prev: GameState, next0: GameState, content: Content, fl: 
   if (sectors) next = { ...next, sectors };
   if (meta !== next.meta) next = { ...next, meta };
   const ev = [...w4.evThreshold, ...w4.evScar, ...evSurvey, ...w4.evArrears];
+  // M4 (amend): the Act I firsts as milestones (MetaState.milestones)
+  const firsts: string[] = [];
+  const ms = next.meta.milestones ?? {};
+  for (const [src] of ix.feedTargets) {
+    if (ms[`feed:${src}`] || !next.sectors[src]?.open) continue;
+    const es = next.sectors[src];
+    if (content.sectors[src].applications.some((a) => (a.feeds?.length ?? 0) > 0 && !!es.apps[a.id]?.founded)) firsts.push(`feed:${src}`);
+  }
+  for (const s of ix.renewable) if (!ms[`crisis:${s}`] && (next.sectors[s]?.crisesFired ?? 0) > (prev.sectors[s]?.crisesFired ?? 0)) firsts.push(`crisis:${s}`);
+  for (const e of ev) {
+    if (!e.sector) continue;
+    if (e.kind === 'thresholdCrossed') firsts.push(`threshold:${e.sector}`);
+    else if (e.kind === 'scarHealed') firsts.push(`scarHealed:${e.sector}`);
+    else if (e.kind === 'surveyed') firsts.push(`surveyed:${e.sector}`);
+  }
+  if (firsts.length) next = { ...next, meta: milestones(next.meta, firsts, year) };
   if (w4.items.length) next = { ...next, ...newsWith(next, content, w4.items) };
   if (ev.length) {
     const r = pushEvents(next.events ?? [], next.meta.eventSeq ?? 0, ev, time, year);

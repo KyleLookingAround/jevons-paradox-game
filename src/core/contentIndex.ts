@@ -69,6 +69,8 @@ export interface ContentIndex {
   renewable: SectorId[];
   /** Content uses any M4 kind (acts, resourceStock, feeds, renewable): a fast exit for the M4 rules. */
   anyM4: boolean;
+  /** M4 (amend): levers with LeverDef.when. */
+  whenLevers: LeverDef[];
 }
 const indexCache = new WeakMap<Content, ContentIndex>();
 export function idx(content: Content): ContentIndex {
@@ -84,7 +86,7 @@ export function idx(content: Content): ContentIndex {
     seams: new Map(), measureLevers: [], sideLevers: [], dispatches: new Map(), cast: new Map(), histories: new Map(),
     archive: new Map(), anyMechanic: false,
     acts: [], actOfAge: new Map(), preview: new Set(), ownerOf: new Map(), drawers: new Map(), feedsInto: {},
-    feedTargets: new Map(), refusedFeeds: [], renewable: [], anyM4: false,
+    feedTargets: new Map(), refusedFeeds: [], renewable: [], anyM4: false, whenLevers: [],
   };
   for (const a of content.ages ?? []) for (const s of a.sectors ?? []) if (!ix.ageOf.has(s)) ix.ageOf.set(s, a);
   const conflict = (a: string, b: string) => {
@@ -109,6 +111,7 @@ export function idx(content: Content): ContentIndex {
     (ix.leversBySector[l.sector] ??= []).push(l);
     if (l.kind === 'measure' && l.effects && l.effects.length) ix.measureLevers.push(l);
     if (l.sideEffects && l.sideEffects.effects && l.sideEffects.effects.length) ix.sideLevers.push(l);
+    if (l.when) ix.whenLevers.push(l);
   }
   for (const d of content.dispatches ?? []) if (!ix.dispatches.has(d.id)) { ix.dispatches.set(d.id, d); ix.names.set(d.id, d.headline); }
   for (const c of content.cast ?? []) if (!ix.cast.has(c.id)) { ix.cast.set(c.id, c); ix.names.set(c.id, c.name); }

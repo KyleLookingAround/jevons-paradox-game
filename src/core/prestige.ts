@@ -22,6 +22,7 @@ import { publish } from './returns';
 import { sprawlOf } from './travel';
 import { createState, isFreshRun, withMeta } from './state';
 import { milestone } from './milestones';
+import { evalCond } from './conditions';
 import { clamp, fin } from './util';
 
 export { isFreshRun } from './state';
@@ -177,6 +178,7 @@ export function buyInstitution(state: GameState, content: Content, id: string): 
   const cost = institutionCost(def, lvl);
   if (cost === null) return state;
   if (!(def.requires ?? []).every((r) => (state.meta.institutions[r] ?? 0) >= 1)) return state;
+  if (lvl < 1 && def.when && !evalCond(state, content, def.when)) return state; // M4 (amend): not offered yet
   if (!(state.meta.hindsight >= cost)) return state;
   return withMeta(state, content,
     { ...state.meta, hindsight: state.meta.hindsight - cost, institutions: { ...state.meta.institutions, [id]: lvl + 1 } });
@@ -223,10 +225,12 @@ export function institutionViews(state: GameState, content: Content): Institutio
     const affordable = nextCost !== null && state.meta.hindsight >= nextCost;
     const seated = isSeated(state.meta, def.id);
     const slots = def.slots ?? 1;
+    const visible = level >= 1 || !def.when || evalCond(state, content, def.when); // M4 (amend)
     return {
       def, level, maxLevel: institutionMax(def), nextCost, requirementsMet, affordable, seated, slots,
-      canBuy: requirementsMet && nextCost !== null && affordable && fresh,
+      canBuy: visible && requirementsMet && nextCost !== null && affordable && fresh,
       canSeat: level >= 1 && !seated && free >= slots && fresh,
+      visible,
     };
   });
 }

@@ -50,7 +50,7 @@ export const fishing: Layout = {
   depth: [118, 0.42, 358, 1.1],
   chart: [20, CY + 4, 560, 36],
   surveyRun: [504, 318, 660, 214],
-  card: [120, 150, 400, 250],
+  card: [100, 150, 400, 250],
 
   backdrop(c) {
     const sky = engravedSun(540, 112, 13) +

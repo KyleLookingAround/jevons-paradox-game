@@ -32,7 +32,7 @@ export const iron: Layout = {
   bands: [205, 282],
   depth: [110, 0.4, 372, 1.15],
   crisisNames: ['The Orange Night', 'The Slag Slide'],
-  card: [40, 170, 480, 300],
+  card: [30, 120, 448, 280],
 
   backdrop(c) {
     const valley = 'M0 214C80 206 160 214 240 210S400 220 452 226L600 228V400H0Z';

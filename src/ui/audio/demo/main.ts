@@ -6,12 +6,12 @@ import type { SceneHandle, SceneView, SceneApp } from '../../scene/types';
 import { createSoundscape } from '../engine';
 import { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES, type SoundEventKind, type SoundEventDetail } from '../types';
 import { MOTIFS } from '../recipes';
-import { DEMO_INDUSTRIES, preset, viewOf, runParams, PRESET_NAMES, type DemoParams, type PresetName } from '../views';
+import { DEMO_INDUSTRIES, preset, viewOf, runParams, stockOf, PRESET_NAMES, type DemoParams, type PresetName } from '../views';
 import { soundscapeFor } from '../defs';
 import { exportPanel } from '../export/panel';
 
 const LEVERS = ['duty', 'cap', 'sufficiency', 'substitution', 'circularity', 'greenSpending', 'deletion', 'reviewGate', 'sharedLibs'];
-const EARLIER = ['steam', 'light', 'motion', 'compute'];
+const EARLIER = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute'];
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: (Node | string)[]) => {
   const e = document.createElement(tag);
@@ -51,8 +51,13 @@ const m3s = {
   watch: 0,
   bite: {} as Record<string, number>,
 };
+/* M4 inputs: Fishing's stock by hand (else it follows the reserve slider), Steam or Light fed by Iron. */
+const m4s = { handStock: false, truth: 0.8, autoReported: true, reported: 0.9, scar: false, crossed: false, moratorium: false, foreign: 0.2, fedByIron: false };
 function withM3(v: SceneView): SceneView {
   const o: SceneView = { ...v };
+  const o4 = o as unknown as Record<string, unknown>;
+  if (sector === 'fishing' && m4s.handStock) o4.stock = stockOf({ truth: m4s.truth, reported: m4s.autoReported ? undefined : m4s.reported, scar: m4s.scar, crossed: m4s.crossed, moratorium: m4s.moratorium, foreign: m4s.foreign });
+  if (m4s.fedByIron && (sector === 'steam' || sector === 'light')) o4.fedBy = [{ from: 'iron', app: sector === 'steam' ? 'iron.rails' : 'iron.girders', share: 0.3 }];
   if (m3s.seamsOn && sector === 'steam') o.seams = { sunk: m3s.sunk, total: m3s.total, next: m3s.sunk < m3s.total };
   if (m3s.loadOn && sector === 'light') { const h = m3s.sold ? LIGHT_SOLD : LIGHT_QUIET; o.load = { hours: h, factor: Math.round((h.reduce((a, b) => a + b, 0) / 24) * 100) / 100 }; }
   if (m3s.travelOn && sector === 'motion') o.travel = { speed: m3s.speed, sprawl: m3s.sprawl, sprawlShare: m3s.sprawl * 0.6 };
@@ -141,7 +146,7 @@ function buildPanel(): void {
   ind.value = sector;
   ind.addEventListener('change', () => {
     playing = null; sector = ind.value; p = preset(sector, 'early');
-    if (sector !== 'steam') p.heritage = Object.fromEntries(EARLIER.slice(0, Math.max(0, EARLIER.indexOf(sector) === -1 ? 4 : EARLIER.indexOf(sector))).map((s) => [s, 0.8]));
+    if (sector !== 'steam') p.heritage = Object.fromEntries(EARLIER.slice(0, Math.max(0, EARLIER.indexOf(sector) === -1 ? EARLIER.length : EARLIER.indexOf(sector))).map((s) => [s, 0.8]));
     scene.setSector(sector); sound.setSector(sector); buildPanel(); render();
   });
   const presets = el('div', { className: 'btns' });
@@ -210,7 +215,20 @@ function buildPanel(): void {
     for (const [icon, name] of DEMO_INDUSTRIES.find((x) => x.id === 'compute')!.apps) mech.append(check(`free: ${name}`, () => m3s.free.includes(`compute.${icon}`), (v) => { m3s.free = v ? [...m3s.free, `compute.${icon}`] : m3s.free.filter((x) => x !== `compute.${icon}`); }));
     mech.append(el('p', {}, 'Paid uses ring a small till now and then. Free ones press the key and the drawer springs, and no bell rings. A dam and the grid hum, far off, as the free share grows.'));
   }
-  if (!['steam', 'light', 'motion', 'compute'].includes(sector)) mech.append(el('p', {}, 'No Industry mechanic here; the watch below works everywhere.'));
+  if (!['steam', 'light', 'motion', 'compute', 'fishing'].includes(sector)) mech.append(el('p', {}, 'No Industry mechanic here; the watch below works everywhere.'));
+  // M4
+  if (sector === 'steam' || sector === 'light') mech.append(check(`M4: fed by Iron (fedBy: ${sector === 'steam' ? 'rails' : 'girders'})`, () => m4s.fedByIron, (v) => (m4s.fedByIron = v)),
+    el('p', {}, "Iron's drop hammer, faint and far off, under this Industry. (Light also has Fishing's bell buoy at its harbour edge, always, very faint.)"));
+  if (sector === 'iron') mech.append(el('p', {}, 'Iron has no slider of its own: the drop hammer is the pulse, the furnaces breathe with the blast, a furnace is tapped now and then (a rising hiss, a shower of sparks). Found Rails or Ship plate for the rolling mill, Bridges & girders for the riveters, Tinplate for the cans, Machine tools for the lathes. Stage 2 is the converter\'s roar, stage 3 the open hearth. Steady State brings a nightjar.'));
+  if (sector === 'fishing') mech.append(check('M4: set the stock by hand (else the true stock = the reserve slider)', () => m4s.handStock, (v) => (m4s.handStock = v)),
+    slider('the TRUE stock (Q/K)', () => m4s.truth, (v) => (m4s.truth = v)),
+    check('catch per trip follows the truth as the fleet sees it, (Q/K)^0.3', () => m4s.autoReported, (v) => (m4s.autoReported = v)),
+    slider('catch per trip (the gauge; the sound never reads it)', () => m4s.reported, (v) => (m4s.reported = v)),
+    slider('foreign share', () => m4s.foreign, (v) => (m4s.foreign = v)),
+    check('crossed (the banks failed this run)', () => m4s.crossed, (v) => (m4s.crossed = v)),
+    check('scarred', () => m4s.scar, (v) => (m4s.scar = v)),
+    check('moratorium', () => m4s.moratorium, (v) => (m4s.moratorium = v)),
+    el('p', {}, 'The gulls, the porpoises and the shoals follow the TRUE stock; the trawlers, winches and market follow the port. Pull the true stock down with catch per trip high: the sea goes quiet while the fleet works on. Scarred: the sea life stays thin at any stock, and comes back slowly. Moratorium (or crossed with the pace near 0): the fleet ties up; halyards and gulls.'));
   mech.append(slider("proprietor's watch (watch)", () => m3s.watch, (v) => (m3s.watch = v)),
     el('p', {}, 'After the Proprietor\'s Day: a faint tick now and then, at most one every two seconds.'));
 
@@ -234,7 +252,16 @@ function buildPanel(): void {
       el('button', { type: 'button', textContent: 'bite', onclick: () => sound.event('bite', { lever: leverSel.value || undefined }) }), leverSel),
     el('div', { className: 'btns' }, ...(['survey', 'proprietor', 'arrived', 'history', 'ending', 'ledgerContinues'] as SoundEventKind[]).map((k) => el('button', { type: 'button', textContent: k, onclick: () => sound.event(k) }))),
     el('div', { className: 'btns' }, el('button', { type: 'button', textContent: 'ten letters in ten seconds (the nag test: the 2nd on are softer, no motif)', onclick: () => { for (let i = 0; i < 10; i++) setTimeout(() => sound.event('letter', { cast: 'pryce' }), i * 1000); } })));
-  panel.append(audition(), head, events, m3ev, mech, apps, world, lev, bites, her);
+  const m4ev = el('div', { className: 'grp' }, el('h3', {}, 'M4 moments (page calls event(kind, detail))'),
+    el('div', { className: 'btns' },
+      el('button', { type: 'button', textContent: 'wager (won)', onclick: () => sound.event('wager', { outcome: 'won' }) }),
+      el('button', { type: 'button', textContent: 'wager (lost)', onclick: () => sound.event('wager', { outcome: 'lost' }) }),
+      el('button', { type: 'button', textContent: 'actEnding', onclick: () => sound.event('actEnding') }),
+      el('button', { type: 'button', textContent: 'arrears', onclick: () => sound.event('arrears') })),
+    el('div', { className: 'btns' },
+      el('button', { type: 'button', textContent: 'thresholdCrossed (Fishing: the sea life cuts out)', onclick: () => sound.event('thresholdCrossed') }),
+      el('button', { type: 'button', textContent: "surveyed, label 'reveal' (the Board's Survey: the sea life lifted 2 s)", onclick: () => sound.event('surveyed', { label: 'reveal' }) })));
+  panel.append(audition(), head, events, m3ev, m4ev, mech, apps, world, lev, bites, her);
   syncers.forEach((f) => f());
 }
 
@@ -276,6 +303,37 @@ function steps(): Step[] {
     { cap: 'Done. Every button is in the panels below to replay any one.', secs: 0, go: () => { /* end */ } },
   ];
 }
+function stepsM4(): Step[] {
+  const ev = (k: SoundEventKind, d?: SoundEventDetail) => () => sound.event(k, d);
+  const st = (f: () => void) => () => { f(); syncers.forEach((g) => g()); render(); };
+  let declineT: ReturnType<typeof setInterval> | null = null;
+  const decline = () => { // the true stock 0.85 → 0.15 over 40 s; catch per trip (the gauge) stays above 0.6
+    const t0 = performance.now();
+    if (declineT) clearInterval(declineT);
+    declineT = setInterval(() => { const u = Math.min(1, (performance.now() - t0) / 40000); m4s.truth = 0.85 - 0.7 * u; render(); if (u >= 1 && declineT) { clearInterval(declineT); declineT = null; } }, 200);
+  };
+  return [
+    { cap: '1. Iron & Steel, mid: the foundry by night. The drop hammer on the beat; the furnace roar breathing every other beat; now and then a furnace tapped (a rising hiss and a shower of sparks); a bar through the rolling mill.', secs: 24, go: () => { Object.assign(m4s, { handStock: false, fedByIron: false }); setInd('iron', 'mid'); } },
+    { cap: '2. Iron, late, stage 2: the converter roars, riveters tick, tin cans down a chute.', secs: 20, go: st(() => { const h = p.heritage; p = { ...preset('iron', 'late'), heritage: h }; }) },
+    { cap: '3. The Orange Night (a crisis): the roar swells and the works bell rings fast, in key.', secs: 12, go: st(() => { p.crises++; }) },
+    { cap: '4. Iron at Steady State: the works still run; a nightjar churrs.', secs: 20, go: () => setInd('iron', 'steady') },
+    { cap: "5. Steam, mid, fed by Iron (rails): Iron's drop hammer far off under the valley.", secs: 14, go: () => { setInd('steam', 'mid'); m4s.fedByIron = true; syncers.forEach((g) => g()); render(); } },
+    { cap: "6. Light, mid: Fishing's bell buoy, faint, at the harbour edge (right), now and then.", secs: 20, go: () => { m4s.fedByIron = false; setInd('light', 'mid'); } },
+    { cap: '7. Fishing, a healthy sea at dawn: the swell, a bell buoy in key, gulls, porpoises breathing, shoals breaking the surface; trawlers across the water, a steam winch, the market bell.', secs: 24, go: () => { Object.assign(m4s, { handStock: true, truth: 0.9, autoReported: true, scar: false, crossed: false, moratorium: false, foreign: 0.2 }); setInd('fishing', 'late'); } },
+    { cap: '8. The lying gauge, heard: the TRUE stock falls from 85% to 15% over 40 seconds. Catch per trip (the gauge) still reads above 60%. Listen to the gulls go quiet while the fleet works on, unchanged.', secs: 44, go: decline },
+    { cap: "9. The Board's Survey: no sting — what sea life is left comes up a few dB for two seconds (here there is little left to lift).", secs: 6, go: ev('surveyed', { label: 'reveal' }) },
+    { cap: '10. The banks fail (thresholdCrossed): the sea life cuts out over two seconds. No sting.', secs: 8, go: () => { m4s.truth = 0.12; m4s.crossed = true; m4s.scar = true; render(); sound.event('thresholdCrossed'); } },
+    { cap: '11. The fleet ties up (the pace gone): halyards slapping the masts, the swell, the buoy. Gulls only as the true stock allows.', secs: 14, go: st(() => { p.pace = 0.02; }) },
+    { cap: '12. Years later, the stock regrown to 60% but the scar still holding: the fleet at work again, the sea life still thin.', secs: 16, go: st(() => { const h = p.heritage; p = { ...preset('fishing', 'late'), heritage: h }; m4s.truth = 0.6; m4s.crossed = false; }) },
+    { cap: '13. The scar heals: the sea life comes back, slowly (about fifteen seconds), not at once.', secs: 20, go: st(() => { m4s.scar = false; }) },
+    { cap: '14. A moratorium: halyards and gulls only.', secs: 14, go: st(() => { m4s.moratorium = true; }) },
+    { cap: '15. A wager won (a coin on the counter, then a note on the fifth), and one lost (the note a fifth lower).', secs: 5, go: () => { m4s.moratorium = false; render(); sound.event('wager', { outcome: 'won' }); setTimeout(() => sound.event('wager', { outcome: 'lost' }), 2500); } },
+    { cap: '16. A capstoned Industry falls into arrears: a muffled toll.', secs: 6, go: ev('arrears') },
+    { cap: "17. The Act I ending: the first ending's shape, slower and lower; then its credits hold, the bells less often, for nearly two minutes.", secs: 60, go: () => { m4s.handStock = false; setInd('iron', 'late'); setTimeout(() => sound.event('actEnding'), 800); } },
+    { cap: '18. "The ledger continues".', secs: 6, go: ev('ledgerContinues') },
+    { cap: 'Done.', secs: 0, go: () => { /* end */ } },
+  ];
+}
 function audition(): HTMLElement {
   const run = (i: number, list: Step[]) => {
     if (i >= list.length) { auditionT = null; return; }
@@ -287,6 +345,7 @@ function audition(): HTMLElement {
   return el('div', { className: 'grp', style: 'grid-column:1/-1' }, el('h3', {}, 'Audition'),
     el('div', { className: 'btns' },
       el('button', { type: 'button', className: 'play', textContent: '▶ Audition all M3 sounds, in order (about 7 minutes)', onclick: () => { if (!on) onBtn.click(); playing = null; if (auditionT) clearTimeout(auditionT); run(0, steps()); } }),
+      el('button', { type: 'button', className: 'play', textContent: '▶ Audition the M4 sounds: Iron, Fishing, the Survey (about 6 minutes)', onclick: () => { if (!on) onBtn.click(); playing = null; if (auditionT) clearTimeout(auditionT); run(0, stepsM4()); } }),
       el('button', { type: 'button', textContent: '■ Stop the audition', onclick: () => { if (auditionT) clearTimeout(auditionT); auditionT = null; capBox.textContent = 'Stopped.'; } })),
     capBox);
 }

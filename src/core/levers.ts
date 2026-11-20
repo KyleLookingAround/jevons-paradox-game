@@ -123,6 +123,7 @@ export function leverVisible(state: GameState, content: Content, def: LeverDef, 
   const inst = (mods.startLevers[def.id] ?? 0) > 0;
   if (!inst && (!state.flags.revealed || !featureOn(content, state.meta, 'levers'))) return false;
   if (def.kind === 'quota' && !mods.survey.has(def.sector)) return false; // M4: the quota needs the survey
+  if (def.when) { const ls = state.levers[def.id]; if (!ls?.seen && !(ls?.level > 0)) return false; } // M4 (amend): seen by the step
   const ix = idx(content);
   return (def.requires ?? []).every((r) =>
     r === 'revealed' ? state.flags.revealed

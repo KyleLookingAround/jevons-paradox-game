@@ -81,12 +81,26 @@ const sector: SectorDef = {
   },
 
   spill: { to: 'motion', rate: 0.4 },
+  /* M4: re-gated as a Preview: Motion's first Steady State or its 10,000 vehicle-mile-years this run, in a run after
+   * Motion first opened (the travel dial arrives at that Reckoning: one Preview a run). */
   unlock: {
     minReckonings: 3,
     when: {
       all: [
-        { owns: 'motion.injection', label: 'Own Fuel injection' },
-        { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 10_000, label: '10,000 veh·mi·years driven' },
+        {
+          /* M4: a Preview (Act II/III): after the Act I ending, from the next run (one built with the capstone), or in any
+           * save that has opened Compute before (meta.sectorsOpened), which keeps it in every run (design/m4-design.md §7.4). */
+          any: [{ all: [{ ending: 'actOne' }, { stat: 'capstoned', op: '>=', value: 1 }] }, { owns: 'compute' }],
+          label: 'The Coal Age settled',
+        },
+        { feature: 'travel', label: 'Travel time measured' },
+        {
+          any: [
+            { stat: 'clearYears', sector: 'motion', op: '>=', value: 50 },
+            { stat: 'serviceDelivered', sector: 'motion', op: '>=', value: 10_000 },
+          ],
+          label: 'Motion steady, or 10,000 veh·mi·years driven',
+        },
       ],
     },
   },

@@ -4,7 +4,7 @@
 // fix it also says what Hindsight the absence entered and at what rate (OfflineReport.hindsight, hindsightRate), and
 // how many decades offered no choice because the dividend list was full (dividendsForgone).
 import type { Ctx, Comp } from './ctx';
-import { sectorDef, sectorIds } from './ctx';
+import { sectorDef, sectorIds, shownPressure } from './ctx';
 import type { OfflineReport } from '../types';
 import { h, setText, show } from './dom';
 import { fmt, money, dur, num, pct, lower } from './fmt';
@@ -51,10 +51,18 @@ export function buildAway(ctx: Ctx, announce: (t: string) => void): AwayComp {
       const def = r.heldSector ? sectorDef(ctx, r.heldSector) : undefined;
       const e = r.heldSector ? ctx.d?.sectors?.[r.heldSector] : undefined;
       if (r.heldBy === 'exhausted') heldTxt = `The board waited for you: ${lower(def?.resource.name ?? 'the reserve')} at ${pct(num(e?.reserveFraction), false)} left.`;
-      else heldTxt = `The board waited for you: ${lower(def?.pressure.name ?? 'pressure')} at ${pct(num(e?.pressureFraction), false)}${def ? ` in ${def.name}` : ''}.`;
+      else heldTxt = `The board waited for you: ${lower(def?.pressure.name ?? 'pressure')} at ${pct(shownPressure(e), false)}${def ? ` in ${def.name}` : ''}.`;
       if (req - sim >= 60) heldTxt += ` The other ${dur(req - sim)} were not played.`;
     } else if (r.heldBy === 'cap' && req - sim >= 60) heldTxt = `Time past ${dur(num(ctx.d?.offlineCapSeconds, sim))} is not counted.`;
     else if (r.heldBy === 'pending') heldTxt = 'A Reckoning was already waiting; nothing moved.';
+    // M4: held one step before a capstoned Industry would go into arrears (and any hold a later core adds).
+    else if (r.heldBy && (r.heldBy as string) !== 'cap') {
+      const def = r.heldSector ? sectorDef(ctx, r.heldSector) : undefined;
+      heldTxt = (r.heldBy as string) === 'arrears'
+        ? `The board waited for you: ${def ? `${def.name}’s settlement` : 'a settlement'} could not be defended much longer.`
+        : 'The board waited for you.';
+      if (req - sim >= 60) heldTxt += ` The other ${dur(req - sim)} were not played.`;
+    }
     setText(held, heldTxt);
     show(held, !!heldTxt);
 

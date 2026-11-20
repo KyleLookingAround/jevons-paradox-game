@@ -15,6 +15,7 @@ import { renewableOf, reportedOf, sizeOf } from './renewable';
 import { modsOf } from './effects';
 import { lineR } from './account';
 import { feedMulOf } from './feeds';
+import { fedInto } from './orderBook';
 import { clamp, isObj } from './util';
 
 /* ------------------------------------------------------------------ */
@@ -124,6 +125,11 @@ export function statValue(state: GameState, content: Content, cond: { stat: Stat
       return 1 - lineR(state, content, fl, s) / b;
     }
     case 'feedFactor': return feedMulOf(idx(content), fl.sectors, state, s);
+    case 'feedShare': { // M4 (amend): Σ rAdded into s ÷ its R
+      if (!(f.R > 0)) return null;
+      const fed = fedInto(state, content, s);
+      return fed ? fed.share : 0;
+    }
     case 'arrears': return es.arrears ? 1 : 0;
     default: return null;
   }

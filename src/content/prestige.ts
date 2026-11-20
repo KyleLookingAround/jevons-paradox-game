@@ -142,7 +142,7 @@ export const knowhowTrees: Record<string, { name: string; blurb?: string }> = {
 };
 
 /* ------------------------------------------------------------------ */
-/* INSTITUTIONS (slow): 18, with levels and seats                      */
+/* INSTITUTIONS (slow): 20 (M4: +2), with levels and seats            */
 /* ------------------------------------------------------------------ */
 
 /** Levels 2 and 3 cost 2.5× and 6× level 1 by default. */
@@ -336,4 +336,29 @@ export const institutions: InstitutionDef[] = [
     blurb: 'Opens the letters, answers the ones you would have let lapse, and files the rest. You need never see them.',
     cost: 400, requires: ['inst.treasuryRules'], effects: [{ type: 'orderUnlock', order: 'dispatch' }],
   },
+  /*
+   * M4 (design §12): the Coal Age's two new Institutions, appended (the loadout order of M2/M3 is unchanged).
+   *
+   * The Fishery Board: the standing survey (design §2A.3: "the truth costs a seat or Mandate in every run once Fishing
+   * is open"; Fishing cannot be settled unsurveyed, so the Act I ending needs it or a survey cruise or a letter). Priced
+   * as a mid-shop Institution, about the Civil Service's: bought in run 7 or 8 with a run's Hindsight, so the seat is a
+   * real choice against the Commission and the Civil Service rather than a second wait. Level 2 also holds the catch
+   * to the surveyed surplus from the start (the survey quota at its first level, 90%). Shown once Fishing has opened.
+   *
+   * The Inspector of Furnaces: Iron's smoke inspector (clean smelting) at level 1 from minute one; levels as the other
+   * lever Institutions. A cheaper seat than the Board: Iron's smoke is a nuisance, not the ending's gate.
+   */
+  {
+    id: 'inst.fisheryBoard', name: 'The Fishery Board',
+    blurb: 'A Board with a survey vessel and two naturalists, counting the banks every spring from minute one.',
+    cost: 150, effects: [{ type: 'survey', sector: 'fishing' }],
+    nextLevels: levels(150, [
+      { effects: [startLever('fishing.surveyQuota', 1)], label: 'The survey quota at 90% of the surplus from the start' },
+    ], [2.5]),
+  },
+  leverInstitution({
+    id: 'inst.inspectorFurnaces', name: 'Inspector of Furnaces',
+    blurb: 'An inspector with the right to enter any works, and a preference for charcoal and scrap wherever they still pay.',
+    cost: 120, lever: 'iron.smokeInspector', leverName: 'Clean smelting', maxLevel: 3,
+  }),
 ];

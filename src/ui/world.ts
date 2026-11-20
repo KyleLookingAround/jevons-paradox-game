@@ -1,6 +1,6 @@
 // The world strip: broadsheet, the illustrated scene of the selected industry, and the big sell button.
 import type { Ctx, Comp } from './ctx';
-import { sectorDef, sd, lookFor, openSectors, ageOfSector } from './ctx';
+import { sectorDef, sd, lookFor, openSectors, ageOfSector, shownPressure } from './ctx';
 import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
 import { fmt, money, fmtPrice, pct, num, clamp, lower, unitOne } from './fmt';
@@ -372,7 +372,7 @@ export function buildWorld(ctx: Ctx): WorldComp {
     // The sell button names the service; this line is the price alone, so it fits one line in every look.
     setText(price, e ? `Sells at £${fmtPrice(e.servicePrice)} per ${unitOne(def.service)}` : '');
     setAttr(price, 'title', e ? `${def.service.name} sells at £${fmtPrice(e.servicePrice)} per ${unitOne(def.service)}` : null);
-    const pf = clamp(num(e?.pressureFraction), 0, 1.2);
+    const pf = clamp(shownPressure(e), 0, 1.2);
     // The caption under the picture says the weather in words; this line carries the figure.
     setText(sky, `${def.pressure.name} ${pf >= 0.005 ? pct(pf, false) : 'nil'}`);
     setAttr(sky, 'title', pressureWords(def, pf));

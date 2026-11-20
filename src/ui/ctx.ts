@@ -98,11 +98,31 @@ export function accentFor(c: Content, id: SectorId | undefined): string | null {
   return a && (ACCENTS as readonly string[]).includes(a) ? a : null;
 }
 
+/**
+ * M4: the pressure the page may show. A renewable stock's pressureFraction is the TRUE depletion; while it is not
+ * surveyed the page shows the fleet's figure (stock.reportedPressureFraction) instead. Every other sector: as reported.
+ */
+export function shownPressure(e: SectorDerived | undefined): number {
+  if (!e) return 0;
+  const st = e.stock;
+  const v = st && !st.surveyed ? st.reportedPressureFraction : e.pressureFraction;
+  return Number.isFinite(v) ? v : 0;
+}
+/** M4: the Industry's stock as the page may show it (catch per trip while unsurveyed, the survey's figure while
+ *  surveyed); null for anything that is not a renewable stock. */
+export function shownStock(e: SectorDerived | undefined): { value: number; surveyed: boolean } | null {
+  const st = e?.stock;
+  if (!st) return null;
+  return st.surveyed && st.true != null ? { value: st.true, surveyed: true } : { value: st.reported, surveyed: false };
+}
+
 /** Tab warning dot: pressure close to its next crisis line (or collapse), or a stock reserve under 15%. Display only. */
 export function sectorWarning(ctx: Ctx, id: SectorId): boolean {
   const e = sd(ctx, id), def = sectorDef(ctx, id);
   if (!e || !def) return false;
-  const pf = Number.isFinite(e.pressureFraction) ? e.pressureFraction : 0;
+  // A capstoned Industry in arrears is the one warning it can give.
+  if (e.capstoned) return !!e.arrears;
+  const pf = shownPressure(e);
   const next = e.nextCrisisFraction;
   if (pf >= 0.85 || (next != null && pf >= next - 0.06)) return true;
   return def.resourceKind === 'stock' && Number.isFinite(e.reserveFraction) && e.reserveFraction < 0.15;

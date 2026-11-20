@@ -8,7 +8,7 @@ import { calendarYear } from './calendar';
 import { commonsOpen } from './commons';
 import { idx } from './contentIndex';
 import { modsOf, isForbidden, refreshEta, leverMulOf } from './effects';
-import { evalCond } from './conditions';
+import { condCheck, evalCond } from './conditions';
 import { emit } from './events';
 import type { EvDraft } from './events';
 import { computeFlows } from './flows';
@@ -151,6 +151,8 @@ export function leverViews(state: GameState, content: Content): LeverView[] {
         available: option !== 'commons' || open,
       })),
       bite, forbidden,
+      // M4 (amend): the condition a lever waits on, while it hides it
+      waiting: def.when && !visible && !ls?.seen && !(level > 0) ? condCheck(state, content, def.when).label : null,
     };
   });
 }

@@ -52,7 +52,10 @@ function greedy(s: GameState, c: Content): GameState {
 function openAll(c: Content = C, maxSeconds = 40): GameState {
   // the Market off (M2 balance: with this much capital it buys a card at every order tick, noise for these tests)
   const m0 = model.createState(c).meta;
-  const meta: MetaState = { ...m0, reckonings: 9, orders: { ...m0.orders, market: { ...m0.orders.market, on: false } } };
+  // M4: every act's ending reached (the Previews wait on it), without a capstone
+  const endings = Object.fromEntries((c.acts ?? []).filter((x) => x.ending).map((x) => [x.ending!.id, { run: 1, runSeconds: 1, totalSeconds: 1, year: 1900 }]));
+  const features = Object.fromEntries(Object.keys(c.features ?? {}).map((k) => [k, 0])); // and every feature arrived
+  const meta: MetaState = { ...m0, reckonings: 9, endings: { ...m0.endings, ...endings }, features: { ...m0.features, ...features }, orders: { ...m0.orders, market: { ...m0.orders.market, on: false } } };
   let s = { ...model.createState(c, meta), capital: 1e15 };
   for (let i = 0; i < maxSeconds && !orderOf(c).every((e) => s.sectors[e].open); i++) s = greedy(model.tick(greedy(s, c), c, 1), c);
   return s;
@@ -68,7 +71,7 @@ function deepFreeze<T>(o: T): T {
 function badNumbers(x: unknown, path = '', out: string[] = []): string[] {
   if (typeof x === 'number') {
     const infOk = /secondsLeft$|visibleBelow$|priceNeeded$|priceNow$/.test(path);
-    if (Number.isNaN(x) || (!Number.isFinite(x) && !infOk) || (x < 0 && !/trendR$|rebound$|mandatePerSec$|populationGrowthPerSec$|wellbeingShare$|projectedDecade$|promisedChange$/.test(path))) out.push(`${path}=${x}`);
+    if (Number.isNaN(x) || (!Number.isFinite(x) && !infOk) || (x < 0 && !/trendR$|rebound$|mandatePerSec$|populationGrowthPerSec$|wellbeingShare$|projectedDecade$|promisedChange$|wantedChange$/.test(path))) out.push(`${path}=${x}`);
   } else if (x && typeof x === 'object') {
     if ('def' in (x as object)) x = { ...(x as object), def: undefined };
     for (const [k, v] of Object.entries(x as object)) badNumbers(v, `${path}.${k}`, out);

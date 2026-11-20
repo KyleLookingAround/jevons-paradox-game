@@ -25,13 +25,18 @@ import { compute } from './sectors/compute';
 import { light } from './sectors/light';
 import { motion } from './sectors/motion';
 import { steam } from './sectors/steam';
+/* M4: the Coal Age complete (the Iron and Fishing lanes' modules; design/scratch/m4-registry-*.md). */
+import { iron } from './sectors/iron';
+import { fishing } from './sectors/fishing';
+import { acts } from './acts';
+import { surveyReveal } from './boardSurvey';
 import { recycleText } from './words';
 /* M3: this lane's Histories; the other two content lanes' modules (design/scratch/m3-register-*.md), imported here and
  * linted by content.test.ts. The registry is the one place that wires them; their files are theirs. */
 import { histories } from './histories';
-import { cast } from './cast';
+import { cast, castM4 } from './cast';
 import { dispatches } from './dispatches';
-import { ambient } from './news/ambient';
+import { ambient, ambientM4 } from './news/ambient';
 import { archive } from './archive';
 import { proprietor } from './proprietor';
 import { ending } from './ending';
@@ -41,8 +46,9 @@ export { sig2, ladder } from './helpers';
 /**
  * The Industries in sectorOrder: the order they are listed, iterated and (by default) unlocked in. Their upgrades,
  * levers and headlines are concatenated in this order too, which fixes the order of cards and levers on screen.
+ * M4: the Coal Age's four (Act I), then the Previews (Acts II and III). Saves key sectors by id, so the order is free.
  */
-const SECTORS: SectorContent[] = [steam, light, motion, compute, code];
+const SECTORS: SectorContent[] = [steam, light, iron, fishing, motion, compute, code];
 
 export const content: Content = {
   sectors: Object.fromEntries(SECTORS.map((s) => [s.def.id, s.def])),
@@ -64,11 +70,15 @@ export const content: Content = {
   recycleText,
   features,
   /* M3 */
-  cast,
+  /* M3; M4 appends the text lane's new cast and ambient templates (append only: content order is the draw's tie-break) */
+  cast: [...cast, ...castM4],
   dispatches,
-  ambient,
+  ambient: [...ambient, ...ambientM4],
   histories,
   archive,
   proprietor,
   ending,
+  /* M4 */
+  acts,
+  surveyReveal,
 };

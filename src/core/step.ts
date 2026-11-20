@@ -46,6 +46,7 @@ import { decayedPeak } from './travel';
 import type { ActDef } from '../types';
 import { actStreak } from './acts';
 import { drawLine } from './account';
+import { seenLevers } from './world';
 import { actEndingMeta, arrearsStep, depletionP, drainOfDrawers, mirrorDrawers, newM4Step, stepCapstone, stepM4, stepRenewableSector } from './world';
 import type { M4Step } from './world';
 
@@ -376,6 +377,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   // M3: side effects bite (after Mandate and lapses)
   const bites = stepBites(state, content, levers, dt);
   levers = bites.levers;
+  if (secondTick && ix.whenLevers.length) levers = seenLevers(state, content, levers); // M4 (amend): LeverDef.when
 
   // sector openings (conditions read the state at the start of the step, as Derived.nextSectors does)
   const opened: SectorId[] = [];

@@ -42,6 +42,7 @@ export const steam: Layout = {
   caption: 'The coal valley, looking towards the sea',
   bands: [200, 264],
   depth: [110, 0.4, 372, 1.15],
+  card: [190, 150, 384, 240], // M4: the tab postcard: the mills, the line and the harbour
 
   backdrop(c) {
     // The country itself (geography.ts): every later Industry is drawn on this hill line, coast and town site.
@@ -201,6 +202,17 @@ export const steam: Layout = {
       ],
       hit: [440, 196, 160, 174],
       site: [470, 306, 100, 12],
+    },
+    {
+      // M4: Iron's rails (SceneView.fedBy): a second track beside the first, a new engine shed, more trains on it.
+      key: 'fedRails', driver: 'fed', match: ['iron.rails'], curve: 0.6,
+      slots: [{ p: 'rails', x: -10, y: 267, s: 1, w: 620, band: 'mid' }, { p: 'engineShed', x: 92, y: 266, s: 0.88, band: 'mid' }],
+      movers: [{ p: 'train', x0: -90, y0: 266.6, x1: 690, y1: 266.6, dur: 20, n: 1, s: 0.92, band: 'mid' }],
+    },
+    {
+      // M4: Iron's ship plate: iron-hulled steamers at the quay.
+      key: 'fedPlate', driver: 'fed', match: ['iron.shipPlate'], curve: 0.6,
+      slots: [{ p: 'ironShip', x: 520, y: 366, s: 0.9, band: 'near' }, { p: 'ironShip', x: 470, y: 360, s: 0.8, band: 'near' }],
     },
     {
       key: 'plough', match: ['plough'],
