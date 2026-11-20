@@ -47,7 +47,7 @@ export function createAfford(ctx: Ctx): { state: AffordState; update(): void; af
     if (!ctx.d?.pendingReckoning) {
       const open = new Set(openSectors(ctx));
       for (const v of ctx.ups || []) {
-        if (!v?.def || !v.visible || v.maxed || !v.affordable || !open.has(v.def.sector)) continue;
+        if (!v?.def || !v.visible || v.maxed || !v.affordable || !open.has(v.def.sector) || v.byRival || ctx.d?.sectors?.[v.def.sector]?.rival) continue; // M5: his order book is not an offer
         all.push({ key: `u:${v.def.id}@${v.level}`, kind: 'up', id: v.def.id, sector: v.def.sector, cost: v.cost });
       }
       for (const id of open) {

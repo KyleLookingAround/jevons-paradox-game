@@ -15,6 +15,15 @@
 import type { CastDef, Cond } from '../types';
 import { all, any, BUDGET, owns, rk, sec, year } from './dispatches/kit';
 
+/*
+ * M5 (the text lane): the proprietor's correspondents stop writing once office is taken. They wrote to the proprietor,
+ * who has retired to public life; the Ministry's letters come from the M5 cast (castM5), and every non-wager letter of
+ * a Ministry waits for a wager answered that Parliament (dispatches/chair.ts), which an older letter in the pool would
+ * dilute. Kept as a conjunct, so nothing changes before Take office.
+ */
+const NOT_IN_OFFICE: Cond = { not: { flag: 'office' } };
+/* Miss Whitlow is left as she was (the lint pins her gate): she writes only the pamphlet and its follow-ups. */
+
 export const cast: CastDef[] = [
   {
     id: 'correspondent',
@@ -27,7 +36,7 @@ export const cast: CastDef[] = [
       'on the record. Slightly amused, never unkind. Two choices, simple ones: this is the voice that teaches the ' +
       'player what a dispatch is. The post changes hands every generation; the by-line never does.',
     figure: 'correspondent',
-    when: rk(1),
+    when: all(rk(1), NOT_IN_OFFICE),
   },
   {
     id: 'whitlow',
@@ -39,7 +48,7 @@ export const cast: CastDef[] = [
       'restraint priced honestly. Usually right about the coal, often wrong about people: he forgets that a measure ' +
       'needs votes. Writes long, cuts himself short. His arc: a pamphlet ignored, then cited, then a chair.',
     figure: 'whitlow',
-    when: all(BUDGET, year('<', 1940)),
+    when: all(BUDGET, year('<', 1940), NOT_IN_OFFICE),
   },
   {
     id: 'whitlowChair',
@@ -50,7 +59,7 @@ export const cast: CastDef[] = [
       'because both sides quote them. Elasticities, time series, confidence intervals in plain words. Wants what ' +
       'the founder wanted: the rebound measured before the measure is praised. Dry, generous, occasionally tired.',
     figure: 'whitlow',
-    when: all(BUDGET, year('>=', 1940)),
+    when: all(BUDGET, year('>=', 1940), NOT_IN_OFFICE),
   },
   {
     id: 'fenwick',
@@ -62,7 +71,7 @@ export const cast: CastDef[] = [
       'Never moralises; she has a list. Sometimes wrong: her remedies can move the smoke rather than end it (the tall ' +
       'chimney). Ends with the date of the Society’s next meeting.',
     figure: 'fenwick',
-    when: all(rk(3), year('<', 1950)),
+    when: all(rk(3), year('<', 1950), NOT_IN_OFFICE),
   },
   {
     id: 'fenwickCouncil',
@@ -72,7 +81,7 @@ export const cast: CastDef[] = [
       'An epidemiologist with her grandmother’s list-making. Measured, specific, a date and a deadline in every ' +
       'letter. Pays for the slower thing and says what it costs. Never shrill; the numbers are the argument.',
     figure: 'fenwick',
-    when: all(rk(3), year('>=', 1950)),
+    when: all(rk(3), year('>=', 1950), NOT_IN_OFFICE),
   },
   {
     id: 'ashworth',
@@ -83,7 +92,7 @@ export const cast: CastDef[] = [
       'answer and is half right every time. Writes on the firm’s paper, mentions the works and his sons, offers a ' +
       'better machine at a fair price. Never sees the rebound coming and is honestly surprised by it each time.',
     figure: 'ashworth',
-    when: all(rk(3), year('<', 1950), any(sec('seamsSunk', 'steam', '>=', 1), sec('appsFounded', 'light', '>=', 3))),
+    when: all(rk(3), year('<', 1950), any(sec('seamsSunk', 'steam', '>=', 1), sec('appsFounded', 'light', '>=', 3)), NOT_IN_OFFICE),
   },
   {
     id: 'ashworthLater',
@@ -93,7 +102,7 @@ export const cast: CastDef[] = [
       'The family pride in the better machine, with a family memory of what the last one did. Technical and exact; ' +
       'a dry footnote about her great-great-grandfather’s engine. Still offers the better machine.',
     figure: 'ashworth',
-    when: all(rk(3), year('>=', 1950)),
+    when: all(rk(3), year('>=', 1950), NOT_IN_OFFICE),
   },
   {
     id: 'pryce',
@@ -106,7 +115,7 @@ export const cast: CastDef[] = [
       'generation with the same handshake. In a later Act he runs the Industries against the player; write him so ' +
       'that this will feel earned, and fair.',
     figure: 'pryce',
-    when: owns('motion'),
+    when: all(owns('motion'), NOT_IN_OFFICE),
   },
   {
     id: 'minister',
@@ -117,7 +126,7 @@ export const cast: CastDef[] = [
       'to last until the next election, and asks for something in exchange. Decisive only in a crisis, and then ' +
       'surprisingly so. Never named; ministers change, the office writes.',
     figure: 'minister',
-    when: rk(4),
+    when: all(rk(4), NOT_IN_OFFICE),
   },
   {
     id: 'missWhitlow',
@@ -186,5 +195,82 @@ export const castM4: CastDef[] = [
         BEFORE_ACT_ONE_END,
       ],
     },
+  },
+];
+
+/*
+ * M5 (the text lane): the Ministry's correspondents (design/m5-design.md §6.10). Each writes only in a Ministry
+ * ({ flag: 'office' }, set by takeOffice for good): Act II's letters are written to the Minister, not the proprietor. A
+ * separate export until the registry folds it in: Content.cast becomes [...cast, ...castM4, ...castM5] (Mrs Okonedo's
+ * `when` names Plenty; she joins when Plenty is registered, castM5Plenty).
+ *
+ * Sir Edmund is the third Pryce: Josiah's grandson, the younger Mr Pryce's son. He is the rival (RivalDef.cast); his
+ * letters weigh × (1 + pliant) in the draw, so a Ministry the family found agreeable hears from him more often.
+ */
+const OFFICE: Cond = { flag: 'office' };
+
+export const castM5: CastDef[] = [
+  {
+    id: 'pryceChair',
+    name: 'Sir Edmund Pryce',
+    role: 'Chairman, Pryce Consolidated',
+    voice:
+      'The family handshake with a board behind it. Genial, reasonable, well advised and never a villain: he answers a ' +
+      'rule as any sound company would, and says so. Praises the Ministry’s intention in his first sentence and prices ' +
+      'it in his second. Always for the cheaper thing, the customer and his people at the works; fond of the phrase ' +
+      '“in the national interest”. He never lies in a letter (he conceals in returns, which is a different ' +
+      'department), so his offers are exact and their conditions are printed. Signs off “With every good wish for the ' +
+      'Ministry”. Mentions his grandfather’s furnaces at Ravensdale once a Ministry, fondly.',
+    figure: 'pryceChair',
+    when: OFFICE,
+  },
+  {
+    id: 'permanentSecretary',
+    name: 'The Permanent Secretary',
+    role: 'Head of the Ministry’s civil service',
+    voice:
+      'Dry, procedural, unhurried and always right about the drafting time. Writes minutes, not letters: numbered ' +
+      'points, the precedent, the cost in Mandate and the years it will take. Never offers a view on policy and never ' +
+      'needs to. Outlasts every Minister and is gently aware of it. A single dry aside per minute, in the last line.',
+    figure: 'permanentSecretary',
+    when: OFFICE,
+  },
+  {
+    id: 'chiefInspector',
+    name: 'The Chief Inspector',
+    role: 'Of the Ministry’s Inspectorate; formerly of the Alkali Inspectorate',
+    voice:
+      'Laconic. Short sentences, one figure, one place. Thirty years of chimneys and returns; trusts a sample, not a ' +
+      'statement. Asks for small, exact things (a second motor car for the district, a laboratory bench). Never ' +
+      'accuses: reports that the figures differ, and by how much. Signs with initials only.',
+    figure: 'inspector',
+    when: { all: [OFFICE, { feature: 'inspection' }] },
+  },
+  {
+    id: 'opposition',
+    name: 'The Leader of the Opposition',
+    role: 'Across the floor, for the time being',
+    voice:
+      'Courteous, patient, waiting. Agrees with the Ministry’s aims in public and with the voters’ grievances in ' +
+      'private, and offers the occasional bargain across the floor. Never belongs to a party the reader could name; ' +
+      'never left or right. Knows that every Ministry ends, and writes as if he will be there when this one does.',
+    figure: 'opposition',
+    when: { all: [OFFICE, { feature: 'chair' }] },
+  },
+];
+
+/** M5: Mrs Okonedo, of Plenty (registered once Plenty is: Content.cast += castM5Plenty). */
+export const castM5Plenty: CastDef[] = [
+  {
+    id: 'okonedo',
+    name: 'Mrs Okonedo',
+    role: 'Secretary, the Fenland Growers’ Association',
+    voice:
+      'Practical, warm, unsentimental. Farms four hundred acres with her sons and keeps the Association’s books. ' +
+      'Knows the water table by the depth of her neighbours’ wells, and distrusts the drip subsidy because she has ' +
+      'seen what it did to them: every field watered better, and more fields. Writes in acres, feet and bushels; ' +
+      'wants a fair price for the grain and water for the grandchildren, and says both plainly. Never a figure of fun.',
+    figure: 'okonedo',
+    when: { all: [OFFICE, { owns: 'plenty' }] },
   },
 ];

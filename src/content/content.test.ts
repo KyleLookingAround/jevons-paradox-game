@@ -36,12 +36,19 @@ const historyIds = new Set(histories.map((h) => h.id));
 const castIds = new Set(castDefs.map((c) => c.id));
 const dispatchIds = new Set(dispatches.map((d) => d.id));
 const archiveIds = new Set(archive.map((a) => a.id));
+/* M5 */
+const pledges = C.pledges ?? [];
+const loopholes = C.loopholes ?? [];
+const articleDefs = C.articles ?? [];
+const playbookDefs = C.playbooks ?? [];
 /** Everything a Cond `owns` leaf may name (M2: Commons projects, Charters, dividends, and sector ids; M3: seams,
  *  Histories, Archive notes). */
 const ownable = new Set([
   ...upgradeIds, ...apps.map((a) => a.id), ...leverIds, ...instIds, ...khIds, ...achIds,
   ...divIds, ...commonsIds, ...charterIds, ...sectorIds,
   ...seamIds, ...historyIds, ...archiveIds,
+  /* M5: pledges (in force or kept), Articles (bought), playbooks (learnt), loophole rungs (used or closed this run) */
+  ...pledges.map((p) => p.id), ...articleDefs.map((a) => a.id), ...playbookDefs.map((p) => p.id), ...loopholes.map((l) => l.id),
 ]);
 
 const ALL_KEYS: HeadlineKey[] = [
@@ -62,6 +69,8 @@ const SECTOR_SCOPED: StatKey[] = [
   /* M4 (and the M4 amendment's feedShare) */
   'openFor', 'stockFraction', 'reportedStock', 'foreignShare', 'scarYears', 'surveyed', 'budgetHeadroom', 'feedFactor',
   'arrears', 'feedShare',
+  /* M5 */
+  'concealment', 'yearsSinceInspection', 'certifiedDecades', 'waterApplied', 'waterConsumed', 'returnShare', 'loopholesUsed',
 ];
 /** M4: sector stats that read FALSE unless the sector has the kind (renewable; foreign fleets). */
 const RENEWABLE_STATS: StatKey[] = ['stockFraction', 'reportedStock', 'scarYears'];
@@ -73,6 +82,9 @@ const ALL_STATS = new Set<string>([
   'steadySectors', 'dispatchesAnswered', 'historiesCleared', 'totalHours', 'bankedSeconds',
   /* M4 */
   'capstoned',
+  /* M5 */
+  'confidence', 'inOffice', 'inOpposition', 'electionsWon', 'ministries', 'treaties', 'precedent', 'settledFromChair',
+  'parliamentWagers', 'rivalCapital',
   ...SECTOR_SCOPED, ...APP_SCOPED,
 ]);
 
@@ -111,6 +123,11 @@ function allEffects(): { where: string; e: EffectDef }[] {
       }
     });
   }
+  /* M5: pledges in force, a used rung's effects, Articles, playbooks */
+  for (const p of pledges) for (const e of p.effects ?? []) out.push({ where: p.id, e });
+  for (const l of loopholes) for (const e of l.effects ?? []) out.push({ where: l.id, e });
+  for (const a of articleDefs) for (const e of a.effects) out.push({ where: a.id, e });
+  for (const p of playbookDefs) for (const e of p.effects) out.push({ where: p.id, e });
   return out;
 }
 
@@ -150,6 +167,18 @@ function allConds(): { where: string; c: Cond }[] {
   for (const d of dispatches) d.arms.forEach((a, i) => { if (a.wager) walk(`${d.id}[${i}].wager`, a.wager.when); });
   for (const l of C.levers) if (l.when) walk(`${l.id}.when`, l.when);
   for (const i of C.institutions) if (i.when) walk(`${i.id}.when`, i.when);
+  /* M5: the office, the Chair's Treaty and target, pledges, rungs, Articles, Statecraft, Institution levels' needs */
+  if (C.office) walk('office.when', C.office.when);
+  if (C.chair?.treaty) walk('chair.treaty.when', C.chair.treaty.when);
+  if (C.chair?.showTarget) walk('chair.showTarget', C.chair.showTarget);
+  for (const p of pledges) if (p.when) walk(`${p.id}.when`, p.when);
+  for (const l of loopholes) {
+    if (l.when) walk(`${l.id}.when`, l.when);
+    if (l.closedBy) walk(`${l.id}.closedBy`, l.closedBy);
+  }
+  for (const a of articleDefs) if (a.requires) walk(`${a.id}.requires`, a.requires);
+  for (const k of C.knowhow) if (k.when) walk(`${k.id}.when`, k.when);
+  for (const s of sectorIds) for (const a of C.sectors[s].applications) if (a.when) walk(`${a.id}.when`, a.when);
   return out;
 }
 
@@ -201,7 +230,9 @@ describe('ids', () => {
 
   test('the v1 sector ids are kept (saves depend on them)', () => {
     // M4: Iron and Fishing join the Coal Age; the five v1 ids are unchanged (saves key sectors by id, not position)
-    expect(C.sectorOrder).toEqual(['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code']);
+    // M5: Plenty joins the Great Acceleration after Motion (once its module is registered)
+    expect(C.sectorOrder.filter((x) => x !== 'plenty')).toEqual(['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code']);
+    if (C.sectorOrder.includes('plenty')) expect(C.sectorOrder.indexOf('plenty')).toBe(C.sectorOrder.indexOf('motion') + 1);
     for (const id of ['steam', 'light', 'motion', 'compute', 'code']) expect(C.sectorOrder).toContain(id);
   });
 
@@ -209,6 +240,9 @@ describe('ids', () => {
     for (const s of sectorIds) expect(C.sectors[s].id).toBe(s);
   });
 });
+
+/** M5: an unlock whose top-level `all` needs office (Plenty): it opens only in a Ministry. */
+const officeOnlyUnlock = (s: string): boolean => { const w = C.sectors[s].unlock?.when; return !!w && 'all' in w && w.all.some((x) => 'flag' in x && x.flag === 'office'); };
 
 describe('sectors and ages', () => {
   test('sectorOrder lists every sector exactly once', () => {
@@ -254,11 +288,15 @@ describe('sectors and ages', () => {
       if (i === 0) { expect(u).toBeUndefined(); return; }
       expect(u).toBeDefined();
       expect(u!.prevServicePriceBelow).toBeUndefined();
-      const w = u!.when!;
-      expect(w && 'all' in w).toBe(true);
-      if ('all' in w) {
-        expect(w.all.length).toBeGreaterThan(0);
-        for (const c of w.all) expect(typeof c.label === 'string' && c.label.length > 0).toBe(true);
+      // M5 CHANGE: an Industry of a chair act may have two paths, `any: [the Preview's, the office's]`; each is an `all`
+      // with labelled conditions, as a single unlock is
+      const w0 = u!.when!;
+      for (const w of w0 && 'any' in w0 ? w0.any : [w0]) {
+        expect(`${s} ${!!w && 'all' in w}`).toBe(`${s} true`);
+        if ('all' in w) {
+          expect(w.all.length).toBeGreaterThan(0);
+          for (const c of w.all) expect(typeof c.label === 'string' && c.label.length > 0).toBe(true);
+        }
       }
       for (const a of u!.after ?? []) expect(sectorIds).toContain(a);
     });
@@ -267,7 +305,12 @@ describe('sectors and ages', () => {
   test('Reckonings gate the sectors: Act I 1, 3, 5; the Previews 2, 3, 4 (their own gate is the Act I ending)', () => {
     // M4 CHANGE (design §3, §9): Light in run 2, Iron in run 4, Fishing in run 6. The Previews keep M3's floors so that a
     // save which opened them under M3 is never held back; a fresh player meets them after the Act I ending.
-    expect(C.sectorOrder.slice(1).map((s) => C.sectors[s].unlock!.minReckonings)).toEqual([1, 3, 5, 2, 3, 4]);
+    // M5: an Industry that opens only in office (Plenty) is gated by Ministries served, not Reckonings
+    expect(C.sectorOrder.slice(1).filter((s) => !officeOnlyUnlock(s)).map((s) => C.sectors[s].unlock!.minReckonings)).toEqual([1, 3, 5, 2, 3, 4]);
+    for (const s of C.sectorOrder.filter(officeOnlyUnlock)) {
+      const w = C.sectors[s].unlock!.when!;
+      expect(leaves(w).some((x) => 'stat' in x && x.stat === 'ministries' && x.op === '>=' && x.value >= 2) ? '' : `${s}: no Ministry floor`).toBe('');
+    }
   });
 
   test('spill and drawsOn point at real sectors', () => {
@@ -301,7 +344,8 @@ describe('sectors and ages', () => {
 /** Permanent flags content can set (the one-off metaFlag effect), which Cond { flag } may read. M4: the core sets
  *  'survey:<s>' at a renewable Industry's first survey (RenewableDef.firstSurvey). */
 const metaFlags = [
-  'proprietor', ...allEffects().flatMap(({ e }) => (e.type === 'metaFlag' ? [e.flag] : [])),
+  /* M5: 'office' is set by takeOffice (MetaState.flags.office) */
+  'proprietor', 'office', ...allEffects().flatMap(({ e }) => (e.type === 'metaFlag' ? [e.flag] : [])),
   ...sectorIds.filter((s) => C.sectors[s].renewable?.firstSurvey).map((s) => `survey:${s}`),
 ];
 
@@ -337,7 +381,7 @@ describe('references resolve', () => {
         const max = inst ? 1 + (inst.nextLevels ?? []).length : 0;
         expect(inst && e.level >= 1 && e.level <= max && Number.isInteger(e.level) ? '' : ctx).toBe('');
       }
-      if (e.type === 'orderUnlock') expect(['market', 'civilService', 'treasury', 'dispatch'].includes(e.order) ? '' : ctx).toBe('');
+      if (e.type === 'orderUnlock') expect(['market', 'civilService', 'treasury', 'dispatch', 'inspection'].includes(e.order) ? '' : ctx).toBe('');
       if (e.type === 'unlock') {
         const target = C.upgrades.find((u) => u.id === e.id) ?? C.levers.find((l) => l.id === e.id)
           ?? commons.find((c) => c.id === e.id) ?? charters.find((c) => c.id === e.id);
@@ -393,7 +437,8 @@ describe('references resolve', () => {
       for (const r of l.requires ?? []) {
         expect(r === 'revealed' || upgradeIds.has(r) || instIds.has(r) || (FEATURE_IDS as readonly string[]).includes(r)).toBe(true);
       }
-      if (l.kind === 'duty' || l.kind === 'cap') expect(l.recycle).toEqual(['treasury', 'dividend', 'commons']);
+      // M5: a charge's levy is recycled as a duty's (LeverKind 'charge')
+      if (l.kind === 'duty' || l.kind === 'cap' || l.kind === 'charge') expect(`${l.id} ${JSON.stringify(l.recycle)}`).toBe(`${l.id} ${JSON.stringify(['treasury', 'dividend', 'commons'])}`);
       else expect(l.recycle).toBeUndefined();
       // M2: never 'commons' first (not selectable before the Commons open); overrides only for offered options.
       if (l.recycle) expect(l.recycle[0]).not.toBe('commons');
@@ -435,6 +480,8 @@ describe('references resolve', () => {
       if ('feature' in c) expect((FEATURE_IDS as readonly string[]).includes(c.feature) ? '' : ctx).toBe('');
       /* M4 */
       if ('ending' in c) expect((C.acts ?? []).some((a) => a.ending?.id === c.ending) ? '' : ctx).toBe('');
+      /* M5 */
+      if ('loophole' in c) expect(loopholes.some((l) => l.id === c.loophole) ? '' : ctx).toBe('');
       if ('stat' in c && RENEWABLE_STATS.includes(c.stat)) expect(c.sector && C.sectors[c.sector]?.renewable ? '' : ctx).toBe('');
       if ('stat' in c && c.stat === 'foreignShare') expect(c.sector && C.sectors[c.sector]?.renewable?.foreign ? '' : ctx).toBe('');
     }
@@ -466,6 +513,8 @@ describe('levers', () => {
       measure: [0, Infinity],
       /* M4: a share of the surveyed surplus; 0 is the moratorium */
       quota: [0, 1],
+      /* M5: the Treasury's share of a card (SUBSIDY_MAX 0.9); a share of the price when enacted */
+      subsidy: [0, 0.9], charge: [0, 1],
     };
     for (const l of C.levers) {
       const vs = l.levels.map((x) => x.value);
@@ -1118,7 +1167,10 @@ describe('M2: words', () => {
   });
 
   test('{name} appears only where a name is given (commonsBuilt, charter; M3: seamSunk, biteBack, history), at the start or after a colon', () => {
-    const NAMED = ['commonsBuilt', 'charter', 'seamSunk', 'biteBack', 'history', /* M4: the act's title */ 'actEnding'];
+    const NAMED = ['commonsBuilt', 'charter', 'seamSunk', 'biteBack', 'history', /* M4: the act's title */ 'actEnding',
+      /* M5: the lever, rung, playbook or Article named (HeadlineKey, M5) */
+      'leverRepealed', 'rivalAnswered', 'loopholeOpened', 'loopholeUsed', 'loopholeClosed', 'litigated', 'carveOut',
+      'playbookLearnt', 'articleBought'];
     const SECTOR_NAMED = ['seamSunk', 'biteBack', 'history'];
     const bad: string[] = [];
     for (const [k, v] of Object.entries(C.headlines)) {
@@ -1683,7 +1735,15 @@ describe('M3: the unfolding in words (a thing that names a system waits for it)'
 const acts = C.acts ?? [];
 const actOfAge = (age: string) => acts.find((a) => a.ages.includes(age));
 const ageOfSector = (s: string) => C.ages.find((a) => a.sectors.includes(s))!.id;
-const previewSectors = sectorIds.filter((s) => actOfAge(ageOfSector(s))?.preview);
+/** M5 CHANGE: an act played from the Chair is a Preview until office is taken (ActDef.chair), so its Industries count. */
+const officeOnly = (s: string): boolean => { const w = C.sectors[s].unlock?.when; return !!w && 'all' in w && w.all.some((x) => 'flag' in x && x.flag === 'office'); };
+const previewSectors = sectorIds.filter((s) => { const a = actOfAge(ageOfSector(s)); return !!a && (!!a.preview || a.chair === 'government') && !officeOnly(s); });
+/** M5: an Industry of a chair act has two unlock paths, `any: [the Preview's, the office's]`; the Preview's is the branch
+ *  that does not read { flag: 'office' }. Elsewhere the unlock is the Preview path itself. */
+const previewPath = (w: Cond | undefined): Cond | undefined => {
+  if (!w || !('any' in w) || !w.any.some((b) => leaves(b).some((x) => 'flag' in x && x.flag === 'office'))) return w;
+  return w.any.find((b) => !leaves(b).some((x) => 'flag' in x && x.flag === 'office'));
+};
 /** Industries that open mid-run in some run (every one but sectorOrder[0]). */
 const midRunOpeners = C.sectorOrder.slice(1);
 
@@ -1708,21 +1768,25 @@ describe('M4: the Acts and the Previews', () => {
     }
   });
 
-  test('Act I is the Coal Age: Steam, Light, Iron and Fishing settled at once, then capstoned; Acts II and III are Previews', () => {
+  test('Act I is the Coal Age: Steam, Light, Iron and Fishing settled at once, then capstoned; Act II from the Chair, Act III a Preview closed in office', () => {
     const one = acts[0];
     expect(one.id).toBe('actOne');
     expect(one.ages).toEqual(['coal']);
     expect(one.ending).toEqual({ id: 'actOne', sectors: ['steam', 'light', 'iron', 'fishing'] });
     expect(one.ending!.sectors).toEqual(C.ages.find((a) => a.id === 'coal')!.sectors);
     expect(one.capstone?.incomeShare).toBe(0.25);
-    expect(acts.slice(1).every((a) => a.preview)).toBe(true);
+    // M5 CHANGE (design §7.4): Act II is played from the Chair (a Preview only until office is taken); Act III stays a
+    // Preview and is closed in a Ministry (owner Q1)
+    expect(`${acts[1].chair} ${!!acts[1].preview} ${!!acts[1].ending}`).toBe('government false false');
+    expect(`${!!acts[2].preview} ${!!acts[2].closedInOffice}`).toBe('true true');
+    // (an Industry that opens only in office, Plenty, is not a Preview)
     expect(previewSectors).toEqual(['motion', 'compute', 'code']);
   });
 
   test('a Preview opens only after an ending (from the next run) or once opened before (owns itself)', () => {
     const endings = new Set(acts.flatMap((a) => (a.ending ? [a.ending.id] : [])));
     for (const s of previewSectors) {
-      const w = C.sectors[s].unlock?.when;
+      const w = previewPath(C.sectors[s].unlock?.when);
       const top = w && 'all' in w ? w.all : [];
       const gate = top.find((c) => 'any' in c);
       expect(gate ? '' : `${s}: no Preview gate`).toBe('');
@@ -1873,6 +1937,9 @@ describe('M4: the Industry kit (Iron & Steel, Fishing)', () => {
   });
 });
 
+/** M5: the Ministry's features (design/m5-design.md §8), in arrival order. */
+const M5_FEATURES: readonly string[] = ['chair', 'loopholes', 'inspection', 'treasury', 'statecraft', 'charge', 'treaty'];
+
 describe('M4: the unfolding of the Coal Age complete (design §9)', () => {
   const F = C.features ?? {};
   const PREVIEW_FEATURES = ['travel', 'freeAtUse'];
@@ -1880,7 +1947,7 @@ describe('M4: the unfolding of the Coal Age complete (design §9)', () => {
 
   test('nothing of Act I arrives after the Act I ending: every Act I feature carries the guard at its top level', () => {
     for (const id of FEATURE_IDS) {
-      if (id === 'bank' || PREVIEW_FEATURES.includes(id)) continue;
+      if (id === 'bank' || PREVIEW_FEATURES.includes(id) || M5_FEATURES.includes(id)) continue;
       const w = F[id]!.when;
       const top = 'all' in w ? w.all : [w];
       expect(`${id} ${top.some(isGuard)}`).toBe(`${id} true`);
@@ -1915,5 +1982,218 @@ describe('M4: the unfolding of the Coal Age complete (design §9)', () => {
     expect(rkFloor(F.archive!.when)).toBeLessThanOrEqual(8);
     expect(rkFloor(F.sideEffects!.when)).toBeLessThanOrEqual(9);
     expect(rkFloor(F.survey!.when)).toBe(6);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M5: the Other Chair (office, the Chair, the rival, loopholes, pledges, Statecraft, the Treaty, the unfolding)    */
+/* ------------------------------------------------------------------ */
+
+describe('M5: office, the Chair and the rival', () => {
+  const chairActs = acts.filter((a) => a.chair === 'government');
+  const chairSectors = sectorIds.filter((s) => chairActs.some((a) => a.ages.includes(ageOfSector(s))));
+  const rungIds = new Set(loopholes.map((l) => l.id));
+
+  test('a Ministry can be built: office, chair and rival all present; the office waits on the Act I ending and Motion run', () => {
+    expect(`${!!C.office} ${!!C.chair} ${!!C.rival}`).toBe('true true true');
+    const ls = leaves(C.office!.when);
+    expect(ls.some((x) => 'ending' in x && x.ending === 'actOne')).toBe(true);
+    expect(ls.some((x) => 'stat' in x && x.stat === 'openFor' && x.sector === 'motion' && x.value >= 300)).toBe(true);
+    expect(chairSectors.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('the Chair\'s numbers are in range, and the findings\' limits hold (levyShare, campaign, the term for Parliaments)', () => {
+    const ch = C.chair!;
+    const c = ch.confidence;
+    expect(c.winAt > 0 && c.winAt < 100 && c.start >= c.winAt && c.relaxPerYear > 0 && c.relaxPerYear <= 1).toBe(true);
+    expect(c.perPriceShare <= 0 && c.perJobShare <= 0 && c.crisis <= 0 && c.lobbyPerYear >= 0 && c.fineFound >= 0).toBe(true);
+    // findings: at 0.05 one campaign took Confidence to 100; levyShare above about 0.02 made the steward the richer chair
+    expect(c.campaignPerMandate).toBeLessThanOrEqual(0.005);
+    expect(ch.treasury.levyShare).toBeLessThanOrEqual(0.02);
+    expect(ch.treasury.taxShare > 0 && ch.treasury.taxShare < 1).toBe(true);
+    // the design's terms (§6.4): first poll at ten model years, then fifteen; three pledges offered, two kept
+    expect([ch.elections.firstTermYears, ch.elections.termYears, ch.elections.noticeYears, ch.elections.offer, ch.elections.keep]).toEqual([10, 15, 3, 3, 2]);
+    expect([ch.opposition.repealPerParliament, ch.opposition.lostInARowEnds]).toEqual([1, 2]);
+    const i = ch.inspection;
+    expect(i.inspectors >= 1 && i.cooldownYears > 0 && i.revealYears > 0 && i.quietYears >= 0 && i.concealMax > 0 && i.concealMax < 1).toBe(true);
+    // the term for Parliaments won is small: the abstainer wins most of them (design §9.2)
+    expect(ch.hindsight?.perParliamentWon ?? 0).toBeLessThanOrEqual(5);
+    expect(ch.treaty ? leaves(ch.treaty.when).some((x) => 'stat' in x && x.stat === 'settledFromChair') : false).toBe(true);
+  });
+
+  test('the rival: comply first, every M5 kind once, evade with loopholes and conceal with inspection; costs in range; the profile in [0, 1]', () => {
+    const r = C.rival!;
+    expect(r.responses.map((x) => x.kind)).toEqual(['comply', 'evade', 'lobby', 'litigate', 'conceal']);
+    expect(r.responses.find((x) => x.kind === 'evade')!.feature).toBe('loopholes');
+    expect(r.responses.find((x) => x.kind === 'conceal')!.feature).toBe('inspection');
+    const lob = r.responses.find((x) => x.kind === 'lobby')!.lobby!;
+    const lit = r.responses.find((x) => x.kind === 'litigate')!.litigate!;
+    // findings (E2): lobby and litigation must be priced inside the comply range (0–90% of a model year of income), or
+    // they are never chosen: at ten points above the line lobbying costs at most about a year; the fee under a year
+    expect(lob.costPerPoint * 10 / 100).toBeLessThanOrEqual(1);
+    expect(lit.feeYears > 0 && lit.feeYears < 1 && lit.windowYears > 0 && lit.delayYears > 0).toBe(true);
+    for (const v of Object.values(r.defaultProfile)) expect(v >= 0 && v <= 1).toBe(true);
+    expect(r.policy.paybackFast < r.policy.paybackSlow && r.policy.foundFast < r.policy.foundSlow).toBe(true);
+    expect(r.knowhowTransfer.cap >= 1 && r.knowhowTransfer.k > 0).toBe(true);
+    for (const id of r.profileFrom.casts) expect(castIds.has(id) ? '' : `rival.profileFrom.casts: ${id}`).toBe('');
+  });
+
+  test('Compute and Code are sealed in a Ministry; the Know-how trees but Statecraft pass to the rival', () => {
+    for (const s of ['compute', 'code']) expect(actOfAge(ageOfSector(s))?.closedInOffice).toBe(true);
+    const trees = new Set(C.knowhow.map((k) => k.tree ?? 'general'));
+    for (const t of trees) expect(`${t} ${C.knowhowTrees?.[t]?.holder ?? 'player'}`).toBe(`${t} ${t === 'statecraft' ? 'player' : 'rival'}`);
+  });
+});
+
+describe('M5: levers from the Chair, loopholes and pledges', () => {
+  const chairActs = acts.filter((a) => a.chair === 'government');
+  const chairSectors = new Set(sectorIds.filter((s) => chairActs.some((a) => a.ages.includes(ageOfSector(s)))));
+
+  test('every levy of a chair Industry names its Act II clause (catchAfter.chair)', () => {
+    // design §6.1: "Pryce Consolidated will pay it on the barrels it reports"
+    const levies = C.levers.filter((l) => chairSectors.has(l.sector) && ['duty', 'cap', 'charge'].includes(l.kind));
+    expect(levies.length).toBeGreaterThan(0);
+    for (const l of levies) expect((l.catchAfter?.chair ?? '').length > 10 ? '' : l.id).toBe('');
+  });
+
+  test('every rung is reachable: its lever exists, lists it in its ladder, in a chair Industry; every ladder names real rungs', () => {
+    for (const r of loopholes) {
+      const l = C.levers.find((x) => x.id === r.lever);
+      expect(l ? '' : `${r.id}: no lever ${r.lever}`).toBe('');
+      if (!l) continue;
+      expect((l.ladder ?? []).includes(r.id) ? '' : `${r.id}: not in ${l.id}'s ladder`).toBe('');
+      expect(chairSectors.has(l.sector) ? '' : `${r.id}: ${l.sector} is not played from the Chair`).toBe('');
+      expect(r.escape >= 0 && r.escape <= 0.9 && r.premium >= 0 ? '' : r.id).toBe('');
+      expect(r.name.length > 0 && r.name.length <= 40 && r.blurb.length > 0 ? '' : `${r.id}: words`).toBe('');
+    }
+    for (const l of C.levers) for (const id of l.ladder ?? []) {
+      expect(loopholes.find((r) => r.id === id)?.lever === l.id ? '' : `${l.id}: rung ${id}`).toBe('');
+    }
+  });
+
+  test('ladders end in a robust rung (closedBy) and every other rung can be amended (no whack-a-mole: design §6.2)', () => {
+    for (const l of C.levers.filter((x) => (x.ladder ?? []).length)) {
+      const rungs = l.ladder!.map((id) => loopholes.find((r) => r.id === id)!);
+      expect(rungs[rungs.length - 1].closedBy ? '' : `${l.id}: last rung not robust`).toBe('');
+      for (const r of rungs.slice(0, -1)) expect(r.closedBy && !r.amend ? `${r.id}: an early rung only pairing closes` : '').toBe('');
+      expect(rungs.length >= 2 && rungs.length <= 3 ? '' : `${l.id}: ${rungs.length} rungs`).toBe('');
+    }
+  });
+
+  test('an exempt use waits on its rung being used (ApplicationDef.when { loophole, status: \'used\' })', () => {
+    for (const r of loopholes.filter((x) => x.app)) {
+      const a = apps.find((x) => x.id === r.app);
+      expect(a ? '' : `${r.id}: no use ${r.app}`).toBe('');
+      const w = a?.when;
+      expect(w && leaves(w).some((x) => 'loophole' in x && x.loophole === r.id && x.status === 'used') ? '' : `${r.id}: ${r.app}'s when`).toBe('');
+    }
+  });
+
+  test('every pledge has a `when`, short words, and binds a lever (or kind) that exists', () => {
+    expect(pledges.length).toBeGreaterThanOrEqual(2);
+    for (const p of pledges) {
+      expect(p.when ? '' : `${p.id}: no when`).toBe('');
+      expect(p.name.length > 0 && p.name.length <= 40 && p.blurb.length > 0 ? '' : `${p.id}: words`).toBe('');
+      if (p.binds?.lever) expect(leverIds.has(p.binds.lever) ? '' : `${p.id}: ${p.binds.lever}`).toBe('');
+      if (p.binds?.sector) expect(sectorIds.includes(p.binds.sector) ? '' : `${p.id}: ${p.binds.sector}`).toBe('');
+      expect((p.treasuryShare ?? 0) >= 0 && (p.treasuryShare ?? 0) < 1 ? '' : p.id).toBe('');
+    }
+    // enough to draw from: three offered (four with Whips) at every election once Motion is open
+    expect(pledges.filter((p) => !leaves(p.when!).some((x) => 'owns' in x && x.owns === 'plenty')).length).toBeGreaterThanOrEqual(4);
+  });
+
+  test('a charge\'s support turns (criterion 16): negative on enactment, positive after, and above its price term', () => {
+    // findings: the charge's `after` must exceed |perPriceShare| × its share of the price, or recycled to the Treasury it
+    // never turns positive (a charge on the service is `value` of the price when enacted; one on water is not, skipped)
+    const k = Math.abs(C.chair!.confidence.perPriceShare);
+    for (const l of C.levers.filter((x) => x.popularity)) {
+      const p = l.popularity!;
+      expect(p.start < 0 && p.after > 0 && p.years > 0 ? '' : `${l.id}: ${JSON.stringify(p)}`).toBe('');
+      if (l.kind === 'charge' && !l.basis) expect(p.after > k * l.levels[0].value ? '' : `${l.id}: after ${p.after} ≤ ${k} × ${l.levels[0].value}`).toBe('');
+    }
+  });
+
+  test('subsidies target cards or uses of their own Industry; charges wait for the charge', () => {
+    for (const l of C.levers.filter((x) => x.kind === 'subsidy')) {
+      expect((l.targets ?? []).length ? '' : `${l.id}: no targets`).toBe('');
+      for (const t of l.targets ?? []) expect(C.upgrades.some((u) => u.id === t && u.sector === l.sector) || appSector.get(t) === l.sector ? '' : `${l.id}: ${t}`).toBe('');
+    }
+    for (const l of C.levers.filter((x) => x.kind === 'charge')) expect(l.requires ?? []).toContain('charge');
+  });
+});
+
+describe('M5: Statecraft, Institutions and the Treaty', () => {
+  const sc = C.knowhow.filter((k) => k.tree === 'statecraft');
+
+  test('Statecraft: about ten nodes in three tiers, each waiting for the feature; priced to the Ministry (tier 3 ≤ 3.5× tier 1)', () => {
+    expect(sc.length >= 8 && sc.length <= 12).toBe(true);
+    expect(new Set(sc.map((k) => k.tier ?? 1))).toEqual(new Set([1, 2, 3]));
+    for (const k of sc) expect(k.when && 'feature' in k.when && k.when.feature === 'statecraft' ? '' : k.id).toBe('');
+    const cheapest = (t: number) => Math.min(...sc.filter((k) => (k.tier ?? 1) === t).map((k) => k.cost));
+    const dearest = (t: number) => Math.max(...sc.filter((k) => (k.tier ?? 1) === t).map((k) => k.cost));
+    expect(dearest(3) / cheapest(1)).toBeLessThanOrEqual(5);
+    expect(cheapest(1) < cheapest(2) && cheapest(2) < cheapest(3)).toBe(true);
+    // the design's nodes (§6.8): drafting or the Inspectorate; Standing inspection (closing automation); Whips; Polling
+    expect(sc.some((k) => k.effects.some((e) => e.type === 'orderUnlock' && e.order === 'inspection'))).toBe(true);
+    expect(sc.some((k) => k.effects.some((e) => e.type === 'pledgeOfferAdd'))).toBe(true);
+    expect(sc.filter((k) => k.branch === sc.find((x) => x.effects.some((e) => e.type === 'amendYearsMul'))?.branch)
+      .some((k) => k.effects.some((e) => e.type === 'inspectorAdd'))).toBe(true);
+    expect(C.chair?.showTarget && leaves(C.chair.showTarget).some((x) => 'owns' in x && sc.some((k) => k.id === x.owns))).toBe(true);
+  });
+
+  test('no Act II gate is a currency threshold (design §9.1): features, unlocks and Articles never read Hindsight or Precedent', () => {
+    const CURRENCY = ['precedent', 'capital', 'mandate', 'rivalCapital'];
+    for (const id of M5_FEATURES) for (const x of leaves(C.features![id as 'chair']!.when)) expect('stat' in x && CURRENCY.includes(x.stat) ? `${id}: ${x.stat}` : '').toBe('');
+    for (const s of sectorIds) for (const x of leaves(C.sectors[s].unlock?.when ?? { all: [] })) {
+      if (leaves(C.sectors[s].unlock?.when ?? { all: [] }).some((y) => 'flag' in y && y.flag === 'office')) expect('stat' in x && CURRENCY.includes(x.stat) ? `${s}: ${x.stat}` : '').toBe('');
+    }
+  });
+
+  test('the Ministry\'s Institutions: offered only in office or once their Industry has opened; Alkali puts an Inspector on the sill', () => {
+    for (const id of ['inst.waterBoard', 'inst.statisticsBoard']) {
+      const i = C.institutions.find((x) => x.id === id);
+      expect(i?.when ? '' : `${id}: missing or no when`).toBe('');
+    }
+    const alkali = C.institutions.find((x) => x.id === 'inst.alkaliInspectorate')!;
+    expect((alkali.nextLevels ?? []).some((l) => l.effects.some((e) => e.type === 'inspectorAdd'))).toBe(true);
+  });
+
+  test('four Articles priced in Precedent; two playbooks, one per Treaty from the first', () => {
+    expect(articleDefs.length).toBe(4);
+    for (const a of articleDefs) expect(a.cost > 0 && a.effects.length > 0 && a.name.length <= 40 && a.blurb.length > 0 ? '' : a.id).toBe('');
+    expect(playbookDefs.map((p) => p.treaty).sort()).toEqual(playbookDefs.map((_, i) => i + 1));
+    for (const p of playbookDefs) expect(p.effects.length > 0 ? '' : p.id).toBe('');
+  });
+});
+
+describe('M5: the unfolding in a Ministry (design §8; the owner\'s rule)', () => {
+  const F = C.features ?? {};
+  const isAtReckoning = (c: Cond) => leaves(c).some((x) => 'stat' in x && x.stat === 'time' && x.op === '<' && x.value <= 2);
+  const isMid = (c: Cond) => leaves(c).some((x) => 'stat' in x && x.stat === 'time' && x.op === '>=' && x.value >= 1500);
+  const minFloor = (c: Cond) => Math.max(0, ...leaves(c).flatMap((x) => ('stat' in x && x.stat === 'ministries' && x.op === '>=' ? [x.value] : [])));
+
+  test('every M5 feature waits on office; each arrives either at a Reckoning or mid-run, never both', () => {
+    for (const id of M5_FEATURES) {
+      const w = F[id as 'chair']!.when;
+      expect(leaves(w).some((x) => 'flag' in x && x.flag === 'office') ? '' : `${id}: not gated on office`).toBe('');
+      if (id === 'chair') continue;
+      expect(`${id} ${isAtReckoning(w) !== isMid(w)}`).toBe(`${id} true`);
+    }
+  });
+
+  test('the design\'s order: loopholes and the Treasury mid-run in Ministries 1 and 2; inspection, Statecraft and the charge at Reckonings 2, 3, 4', () => {
+    expect(['loopholes', 'treasury'].map((id) => isMid(F[id as 'chair']!.when))).toEqual([true, true]);
+    expect(['inspection', 'statecraft', 'charge', 'treaty'].map((id) => isAtReckoning(F[id as 'chair']!.when))).toEqual([true, true, true, true]);
+    expect(['loopholes', 'inspection', 'treasury', 'statecraft', 'charge'].map((id) => minFloor(F[id as 'chair']!.when))).toEqual([0, 2, 2, 3, 4]);
+    // no two at one Reckoning floor, no two mid-run at one floor
+    const at = ['inspection', 'statecraft', 'charge'].map((id) => minFloor(F[id as 'chair']!.when));
+    expect(new Set(at).size).toBe(at.length);
+  });
+
+  test('mid-run M5 arrivals keep five minutes clear of any Industry opening', () => {
+    for (const id of ['loopholes', 'treasury'] as const) {
+      const guarded = new Set(leaves(F[id]!.when).flatMap((x) => ('stat' in x && x.stat === 'openFor' && x.op === '<' && x.value >= 300 && x.sector ? [x.sector] : [])));
+      expect(`${id} ${midRunOpeners.filter((s) => !guarded.has(s)).join(',')}`).toBe(`${id} `);
+    }
   });
 });

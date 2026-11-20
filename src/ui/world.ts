@@ -1,5 +1,6 @@
 // The world strip: broadsheet, the illustrated scene of the selected industry, and the big sell button.
 import type { Ctx, Comp } from './ctx';
+import { inspectorArmed, sendInspector } from './ministry';
 import { sectorDef, sd, lookFor, openSectors, ageOfSector, shownPressure } from './ctx';
 import type { GameEvent, SectorDef, SectorId } from '../types';
 import { h, setText, setAttr, show, cls, reducedMotion, motionOverride, replay } from './dom';
@@ -234,7 +235,8 @@ export function buildWorld(ctx: Ctx): WorldComp {
   let renderer: WorldRenderer | null = null;
   const makeRenderer = (): WorldRenderer => createWorldRenderer(mount, {
     onFound: (appId) => ctx.act('foundApp', (m, s, c) => m.foundApp(s, c, appId)),
-    onSelect: (appId) => { selected = appId; markHand(); },
+    // M5: with an Inspector armed on the sill, a tap on the picture sends him to this Industry (ministry.ts).
+    onSelect: (appId) => { if (inspectorArmed() && sendInspector(ctx)) return; selected = appId; markHand(); },
     // The picture draws the new machines itself; the page only offers a way back to it if it is scrolled away.
     // Only a rise is news: a new run puts the first engine back, which is not a rebuild.
     onStage: (id, stage) => {
@@ -525,6 +527,8 @@ export function buildDock(ctx: Ctx): Comp {
     // (5 × clickValue < 0.5 × incomePerSec). With content's click ≈ 1.2 + 0.01 × income this falls around minutes 4–6.
     const ip = num(ctx.d?.incomePerSec);
     cls(el, 'small', ip > 0 && FAST_TAPS * v < SHRINK_SHARE * ip);
+    // M5: in a Ministry nothing is sold by hand (click is refused): the button goes.
+    show(btn, !ctx.d?.chair);
   }
   return { el, update };
 }

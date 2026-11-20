@@ -26,7 +26,7 @@ export const motionDispatches: DispatchDef[] = [
       'families love it. I write only to be sure there is no objection. My grandfather sold mill engines the same way.',
     arms: [
       {
-        label: 'Let vans be vans',
+        label: 'Let vans be vans', stance: 'accept', // M5: the rival's `pliant` reading and the file card
         outcome: 'The seven-seat van fills the suburban drives, and does fourteen miles to the gallon.',
         price: 'Heavier vehicles on every drive',
         effects: [cash(30)],
@@ -34,7 +34,7 @@ export const motionDispatches: DispatchDef[] = [
         reply: 'Pryce family van exempt from the standard, being a van',
       },
       {
-        label: 'Close the van loophole',
+        label: 'Close the van loophole', stance: 'refuse',
         outcome: 'The van is a car under the standard, and Mr Pryce is disappointed in the proprietor.',
         price: 'Mandate, and Mr Pryce’s goodwill',
         cost: { mandate: 40 },
@@ -53,13 +53,13 @@ export const motionDispatches: DispatchDef[] = [
       'generations of Pryces have built at home. A grace period of a few years would spare everyone the trouble.',
     arms: [
       {
-        label: 'Hold firm',
+        label: 'Hold firm', stance: 'refuse',
         outcome: 'The ruling stands, Mr Pryce builds at home, and lobbies the House all season.',
         price: 'Mandate comes slower while he lobbies',
         modifier: timed(10, mrate(0.88)),
       },
       {
-        label: 'Grant a grace period',
+        label: 'Grant a grace period', stance: 'accept',
         outcome: 'The van is a van for a few years more, and Mr Pryce is all smiles.',
         price: 'The heavy vans sell on in the meantime',
         effects: [mandate(50)],
@@ -78,13 +78,13 @@ export const motionDispatches: DispatchDef[] = [
       'walk to it, which is not the point, merely the arrangement. I ask the proprietor’s blessing.',
     arms: [
       {
-        label: 'Refer it to the council',
+        label: 'Refer it to the council', stance: 'refuse',
         outcome: 'The council sits on it, and Mr Pryce builds in the next county.',
         price: 'The trade goes to the next county',
         modifier: timed(8, income(0.95, M)),
       },
       {
-        label: 'Bless the store',
+        label: 'Bless the store', stance: 'accept',
         outcome: 'The store opens, prices fall, and every household makes a weekly drive of it.',
         price: 'A weekly drive for every household',
         effects: [cash(35)],

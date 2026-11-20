@@ -53,12 +53,14 @@ export const computeDispatches: DispatchDef[] = [
       'sold a great many cheap things. The user will be delighted, and will use it all day.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Charge a fair price',
         outcome: 'The service keeps its price, and its users use it when they need it.',
         price: 'Mr Pryce’s advertisers',
         modifier: timed(10, income(0.95, P)),
       },
       {
+        stance: 'accept',
         label: 'Make it free',
         outcome: 'The service is free, and the user is the point of use, all day.',
         price: 'A price that cannot fall, use without a ceiling, carbon',

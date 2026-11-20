@@ -44,12 +44,14 @@ export const ironDispatches: DispatchDef[] = [
       'railway that runs more trains. Come and see the mill lit at night; it is a sight.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Let him lay his own',
         outcome: 'Mr Pryce lays a single track of his own and says no more about it.',
         price: 'Ravensdale’s goodwill, for a while',
         modifier: timed(8, income(0.96, I)),
       },
       {
+        stance: 'accept',
         label: 'Go halves on the railway',
         outcome: 'The proprietor puts up half, and the joint railway is laid within the year.',
         price: '£ for half the railway, and the coal it carries',
@@ -90,12 +92,14 @@ export const ironDispatches: DispatchDef[] = [
       'for the want of a burden.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Keep the duty open',
         outcome: 'The duty stays a possibility, and Mr Pryce blows out a furnace to make the point.',
         price: 'Ravensdale’s output, for a season',
         modifier: timed(8, income(0.95, I)),
       },
       {
+        stance: 'accept',
         label: 'Promise ten clear years',
         outcome: 'Mr Pryce meets the Belgian price, and his furnaces never go out of blast.',
         price: 'No coke duty for a decade, and the coke he burns',
@@ -116,12 +120,14 @@ export const ironDispatches: DispatchDef[] = [
       'them why.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Keep the six furnaces',
         outcome: 'Ravensdale keeps to six furnaces, and the institute waits for a better year.',
         price: 'The institute, and Mr Pryce’s good humour',
         modifier: timed(8, income(0.96, I)),
       },
       {
+        stance: 'accept',
         label: 'Ease the licences',
         outcome: 'Two more furnaces are blown in, and the institute’s foundation stone is laid.',
         price: 'Mandate to ease the licences, and two more chimneys',
@@ -162,12 +168,14 @@ export const ironDispatches: DispatchDef[] = [
       'busy country buys iron.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Decline the fifty',
         outcome: 'Mr Pryce sells his lathes elsewhere, more slowly, and remarks on it.',
         price: 'Mr Pryce’s custom, for a while',
         modifier: timed(8, income(0.96, I)),
       },
       {
+        stance: 'accept',
         label: 'Take the first fifty',
         outcome: 'Fifty lathes go into the proprietor’s works, and the trade follows the example.',
         price: '£ for fifty lathes, and every line they reach',
@@ -207,12 +215,14 @@ export const ironDispatches: DispatchDef[] = [
       'would have cost. The ton will be cheaper, of course. I have never known a cheaper ton that did not find a buyer.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Leave scrap to the dealers',
         outcome: 'The dealers buy the scrap, and most of it is shipped abroad for melting.',
         price: 'The coke that scrap might have saved',
         modifier: timed(8, intensity(I, 1.04)),
       },
       {
+        stance: 'accept',
         label: 'Pay the scrap bounty',
         outcome: 'A bounty is paid on every ton of scrap, and Ravensdale melts it.',
         price: '£ for the bounty, and cheaper iron',
@@ -252,12 +262,14 @@ export const ironDispatches: DispatchDef[] = [
       'build. If the coal ran short the proprietor would wish he had not signed; but the viewers say it will not.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Sell year by year',
         outcome: 'Mr Pryce buys his coke at the season’s price and grumbles every quarter-day.',
         price: 'Mr Pryce’s long custom',
         modifier: timed(8, income(0.96, I)),
       },
       {
+        stance: 'accept',
         label: 'Sign the ten-year contract',
         outcome: 'The coke is sold to Ravensdale for ten years at this year’s price.',
         price: 'Mandate to back the contract, and the coal it binds',
@@ -297,12 +309,14 @@ export const ironDispatches: DispatchDef[] = [
       'about the rest. He has my nose for a bargain, his mother says, and she means it kindly.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Regret there is no place',
         outcome: 'Samuel goes to a bank in Birmingham instead, and does well there.',
         price: 'Mr Pryce’s good opinion',
         modifier: timed(8, mrate(0.97)),
       },
       {
+        stance: 'accept',
         label: 'Take the boy on',
         outcome: 'Samuel copies the ledgers for a year and learns where every figure comes from.',
         price: 'A Pryce who knows where the inspectors look',

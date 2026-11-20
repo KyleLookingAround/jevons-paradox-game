@@ -393,12 +393,14 @@ export const generalDispatches: DispatchDef[] = [
       'the inspectors need not trouble themselves. My father had the same arrangement with the proprietor’s.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Decline the understanding',
         outcome: 'Mr Pryce takes it well, and takes his custom to the Exchange.',
         price: 'Mr Pryce’s goodwill, and his custom',
         modifier: timed(10, income(0.94)),
       },
       {
+        stance: 'accept',
         label: 'Shake hands on it',
         outcome: 'The figures arrive on time, beautifully bound, and a little low.',
         price: 'Unchecked figures, no duty raised, and more smoke',

@@ -24,7 +24,8 @@ export const ages: AgeDef[] = [
     tagline: 'Every line on every chart turns upward at once. Nobody planned it.',
     yearSpan: [1909, 2010],
     theme: 'chrome',
-    sectors: ['motion'],
+    /* M5: Plenty, under the Chair from Ministry 3 (design/m5-design.md §7.3) */
+    sectors: ['motion' /* , 'plenty' (PENDING: with its module) */],
   },
   {
     id: 'attention',

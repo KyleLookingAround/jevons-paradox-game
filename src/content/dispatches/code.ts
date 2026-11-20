@@ -53,12 +53,14 @@ export const codeDispatches: DispatchDef[] = [
       'and the customer saves on every one. I recommend forty. Ten would be timid.',
     arms: [
       {
+        stance: 'bargain',
         label: 'Take ten',
         outcome: 'Ten agents arrive, and the backlog is ten agents’ worth shorter.',
         price: 'A timid order, as Mr Pryce says',
         modifier: timed(10, income(0.96, K)),
       },
       {
+        stance: 'accept',
         label: 'Take the forty',
         outcome: 'Forty agents arrive, and find forty agents’ worth of work.',
         price: 'Forty agents’ worth of new code to keep',

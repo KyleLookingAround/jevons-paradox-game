@@ -9,6 +9,8 @@ import type { SectorId } from '../types';
 import { h, svg, setText, setStyle, setFill, show, cls, setAttr, syncChildren } from './dom';
 import { fmt, money, num, clamp } from './fmt';
 import { UI_ICONS } from './icons';
+import { confidenceLine } from './ministry';
+import { MINISTRY_TEXT as MT } from '../content/officeText';
 
 export function buildTopbar(ctx: Ctx): Comp {
   const year = h('span', { class: 'tb-v num' });
@@ -31,7 +33,10 @@ export function buildTopbar(ctx: Ctx): Comp {
   const cYear = cell('tb-year', ageLbl, null, year);
   const cCap = cell('tb-cap', 'Capital', inc, cap);
   const cMan = cell('tb-man', 'Mandate', manRate, man);
-  const cWb = cell('tb-wb', 'Wellbeing', null, wb, wbBar);
+  // M5: in a Ministry, Confidence is the masthead's third small line, under wellbeing (ministry.ts), and Capital is the
+  // Treasury (Derived.incomePerSec is the Treasury's income there).
+  const cf = h('span', { class: 'tb-s num tb-cf' });
+  const cWb = cell('tb-wb', 'Wellbeing', cf, wb, wbBar);
   const menu = h('button', { class: 'tb-menu', type: 'button', 'aria-label': 'Menu', onclick: () => ctx.openMenu() });
   menu.append(svg(UI_ICONS.menu));
   const el = h('div', { class: 'topbar' }, cYear, cCap, cMan, cWb, menu);
@@ -48,6 +53,11 @@ export function buildTopbar(ctx: Ctx): Comp {
     setAttr(cYear, 'title', age ? `${y} · ${age.name}` : null);
     setAttr(cYear, 'aria-label', age ? `${y}, ${age.name}` : `Year ${y}`);
     setText(cap, money(s.capital));
+    const cfT = confidenceLine(ctx);
+    setText(cf, cfT);
+    cls(cf, 'low', !!d?.chair && num(d.chair.confidence) < num(d.chair.winAt));
+    setText(cCap.querySelector('.tb-l'), d?.chair ? 'Treasury' : 'Capital');
+    setAttr(cCap, 'title', d?.chair?.treasury ? `Tax ${money(d.chair.treasury.taxPerSec)}/s, levies ${money(d.chair.treasury.levyPerSec)}/s` : null);
     const ip = num(d?.incomePerSec);
     setText(inc, `+${money(ip)}/s`);
     // Mandate is spent only on levers: it appears with the first visible lever, not with the first point earned.
@@ -157,13 +167,26 @@ export function buildTabs(ctx: Ctx): Comp {
     return l;
   }
 
+  // M5: the sealed postcards: Industries of an Age closed in a Ministry that this save has opened (Derived.office.sealed).
+  const seals = new Map<SectorId, HTMLElement>();
+  function sealFor(id: SectorId): HTMLElement {
+    let el = seals.get(id);
+    if (!el) {
+      const def = sectorDef(ctx, id), age = ageDef(ctx.content, ctx.content.ages?.find((a) => a.sectors.includes(id))?.id);
+      el = h('span', { class: 'tab sealed', role: 'img', 'aria-label': `${def?.name ?? id}: ${age?.name ?? MT.sealedTitle}, ${MT.sealedLine}`, title: `${MT.sealedTitle} · ${MT.sealedLine}` },
+        h('span', { class: 'tab-txt' }, h('span', { class: 'tab-name', text: def?.name ?? id }), h('span', { class: 'tab-sub', text: MT.sealedLine })));
+      seals.set(id, el);
+    }
+    return el;
+  }
   function update(): void {
     const ids = openSectors(ctx);
     const next = Array.isArray(ctx.d?.nextSectors) ? ctx.d.nextSectors : [];
-    const k = ids.join(',') + '|' + next.map((n) => n.id).join(',');
+    const sealed = (ctx.d?.office?.sealed ?? []).filter((id) => !ids.includes(id));
+    const k = ids.join(',') + '|' + next.map((n) => n.id).join(',') + '|' + sealed.join(',');
     if (k !== key) {
       key = k;
-      syncChildren(row, [...ids.map(tabFor), ...next.map((n) => lockFor(n.id).b)]);
+      syncChildren(row, [...ids.map(tabFor), ...next.map((n) => lockFor(n.id).b), ...sealed.map(sealFor)]);
       queueEdges();
     }
     // Postcards: their keys are read about once a second (or at once when the set of tabs changed), drawn on change.

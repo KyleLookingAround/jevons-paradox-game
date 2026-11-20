@@ -5,6 +5,10 @@
  *
  * Act I is the Coal Age's four Industries. Acts II and III are Previews in M4: their Industries (Motion, Compute, Code)
  * open after the Act I ending under Act I's rules, labelled "Preview", and have no ending yet (M5 builds Act II's).
+ *
+ * M5 (design/m5-design.md §7.4): Act II is played from the Chair. Before office is taken its Industries still open as
+ * Previews under Act I's rules (ActDef.chair does that by itself); from Take office they are Pryce's. Act III stays a
+ * Preview and is closed in a Ministry (Compute and Code return in M8, under the Objectives).
  */
 import type { ActDef } from '../types';
 
@@ -25,7 +29,8 @@ export const acts: ActDef[] = [
     name: 'Act II',
     title: 'The Great Acceleration',
     ages: ['acceleration'],
-    preview: true,
+    /* M5: no `preview` (the Chair rule makes them Previews until office is taken); no `ending` yet (M6–M7's). */
+    chair: 'government',
   },
   {
     id: 'actThree',
@@ -33,5 +38,7 @@ export const acts: ActDef[] = [
     title: 'The Attention Age',
     ages: ['attention'],
     preview: true,
+    /* M5: sealed in a Ministry ("in preparation"), their record kept (owner question Q1). */
+    closedInOffice: true,
   },
 ];

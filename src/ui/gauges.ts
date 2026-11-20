@@ -9,6 +9,7 @@ import { h, svg, setText, setAttr, setStyle, setFill, show, cls } from './dom';
 import { snapSmall } from './dom';
 import { fmt, fold, pct, dur, clamp, num, lower, fmtEpoch, unitOne } from './fmt';
 import { UI_ICONS } from './icons';
+import { MINISTRY_TEXT as MT } from '../content/officeText';
 import { YEARS_PER_SECOND } from '../types';
 import type { GameEvent } from '../types';
 import { reducedMotion, replay } from './dom';
@@ -128,7 +129,7 @@ export interface GaugesComp extends Comp {
 export function buildGauges(ctx: Ctx): GaugesComp {
   const eff = dial(ctx, 'eff', 'Efficiency', 'eff');
   const cons = dial(ctx, 'cons', 'Consumption', 'cons',
-    `<g class="d-was"><line x1="${CX}" y1="${CY - R + 2}" x2="${CX}" y2="${CY - R + 12}"/></g><g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g><g class="d-full"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 6}"/></g>`);
+    `<g class="d-was"><line x1="${CX}" y1="${CY - R + 2}" x2="${CX}" y2="${CY - R + 12}"/></g><g class="d-ghost"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 9}"/></g><g class="d-full"><line x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - R + 6}"/></g><g class="d-true"><line x1="${CX}" y1="${CY - R - 3}" x2="${CX}" y2="${CY - R + 14}"/></g>`);
   const reb = dial(ctx, 'reb', 'Rebound', 'rebound');
   // Static rebound scale: 0..250%, the 100% line marked; everything past it is the backfire zone.
   {
@@ -264,10 +265,19 @@ export function buildGauges(ctx: Ctx): GaugesComp {
 
     // Consumption (with the cosmetic trend as an arrow)
     const sweep = qs(cons.svgEl, '.d-sweep');
-    setAttr(sweep, 'd', arc(0.5, qa(tv(rF))));
-    cls(sweep, 'down', rF < 1);
-    rot(qs(cons.svgEl, '.d-needle'), tv(rF));
-    lastTv = { cons: tv(rF) };
+    // M5: a rival's Industry reports its own figure (SectorDerived.reportedR): the needle reads the return, and the true
+    // burn shows as a tick only while an inspection is in force (inspectedUntil).
+    const rep = e?.rival && e.reportedR != null && ctx.d?.features?.inspection ? e.reportedR : null;
+    const trueOn = rep != null && e?.inspectedUntil != null && e.inspectedUntil > num(ctx.state.time);
+    const rTrue = rF;
+    const rShown = rep != null && num(e?.resourceUse) > 0 ? rF * rep / num(e?.resourceUse) : rF;
+    const trueEl = qs(cons.svgEl, '.d-true') as SVGElement | null;
+    show(trueEl, trueOn);
+    if (trueOn) rot(trueEl, tv(rTrue));
+    setAttr(sweep, 'd', arc(0.5, qa(tv(rShown))));
+    cls(sweep, 'down', rShown < 1);
+    rot(qs(cons.svgEl, '.d-needle'), tv(rShown));
+    lastTv = { cons: tv(rShown) };
     rot(qs(cons.svgEl, '.d-ghost'), tv(1 / etaF));
     show(qs(cons.svgEl, '.d-ghost') as SVGElement | null, etaF > 1.001);
     // M4 (The Survey): the full account's fainter needle (counting the coal in its machines; SectorDerived.fullR).
@@ -277,10 +287,13 @@ export function buildGauges(ctx: Ctx): GaugesComp {
     show(fullEl, hasFull);
     if (hasFull) rot(fullEl, tv(rF * (fullR as number) / ownR));
     setAttr(cons.box, 'aria-label', hasFull ? `Consumption; ${lower(estimatesText.fullAccount.label)}: ${fold(rF * (fullR as number) / ownR)}` : 'Consumption');
-    setText(cons.val, fold(rF));
+    setText(cons.val, fold(rShown));
     const tr = num(e?.trendR);
     const arrow = tr > 0.001 ? ' ↑' : tr < -0.001 ? ' ↓' : '';
-    setText(cons.sub, `${fmt(num(e?.resourceUse))} ${unit}/s${arrow}`.trim());
+    if (rep != null) setText(cons.sub, trueOn ? `${fmt(rep)} · ${MT.trueTick} ${fmt(num(e?.resourceUse))}` : `${fmt(rep)} ${unit}/s ${MT.asReported.split(' ').slice(0, 2).join(' ').toLowerCase()}`);
+    else setText(cons.sub, `${fmt(num(e?.resourceUse))} ${unit}/s${arrow}`.trim());
+    cls(cons.box, 'reported', rep != null);
+    setAttr(cons.box, 'title', rep != null ? MT.asReported : null);
     cls(cons.box, 'rising', rF > 1.02);
     cls(el, 'paradox', etaF > 1.05 && rF > 1.02);
 

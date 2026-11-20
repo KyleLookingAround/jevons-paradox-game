@@ -1,5 +1,5 @@
 // Screenshots and a scripted play-through of the game, for visual checks.
-//   node tools/shot.mjs [scenes|flow|checks|audit|m2|m3|m4|m4real|real|realplay|looks|first|all] [filter]
+//   node tools/shot.mjs [scenes|flow|checks|audit|m2|m3|m4|m4real|m5|real|realplay|looks|first|all] [filter]
 // Builds a mock-only page (src/ui/mock-main.ts bundled with `bun build`, inlined into index.html) at shots/mock.html,
 // so the UI can be checked while the real model or content does not build. `real` runs `bun run build.ts` and plays
 // dist/index.html. Sizes: 390×844 (phone), 1280×800 (desk), 360×740 (narrow: overflow check only).
@@ -2024,6 +2024,180 @@ async function m4real() {
   }
 }
 
+// M5 ("The Other Chair"): on the real build, from the prestige lane's fixtures (fixtures/m5/office-offer.json and
+// ministry-1.json). Take office in four beats; the first Ministry screen (the sill, Confidence, the answer line on every
+// lever, the order book); the manifesto (two of three); an inspection (arm, then an Industry); a loophole used and
+// amended; Opposition; Plenty's two gauges if Plenty is registered; scroll heights against M4's late Act I (~4100 px).
+// Phone, landscape and desktop. States beyond the fixtures are made in the page through the real model (window.rebound).
+async function m5() {
+  try { execFileSync('bun', ['run', 'build.ts'], { cwd: root, stdio: 'pipe' }); }
+  catch (e) { console.log('M5: bun run build.ts failed'); problems++; return; }
+  const url = 'file://' + resolve(root, 'dist/index.html');
+  const offerPath = resolve(root, 'fixtures/m5/office-offer.json'), minPath = resolve(root, 'fixtures/m5/ministry-1.json');
+  if (!existsSync(offerPath) || !existsSync(minPath)) { console.log('M5: fixtures/m5 not made yet (the prestige lane)'); problems++; return; }
+  for (const sz of [{ w: 390, h: 844, tag: 'phone' }, { w: 844, h: 390, tag: 'land' }, { w: 1280, h: 800, tag: 'desk' }]) {
+    if (filter && !sz.tag.includes(filter)) continue;
+    const T = `m5-${sz.tag}`;
+    const step = async (page, name, f) => {
+      try { await f(); console.log(`  ok   ${T} ${name}`); }
+      catch (e) { fail(`FAIL ${T} ${name}: ${String(e.message).split('\n')[0]}`); }
+    };
+    const load = async (save) => {
+      const r = await newPage({ ...sz, dpr: sz.tag === 'phone' ? 2 : 1 });
+      await r.page.addInitScript((sv) => { if (!sessionStorage.getItem('m5')) { localStorage.clear(); localStorage.setItem('rebound.save.v1', sv); localStorage.setItem('rebound.save.v1.at', String(Date.now())); sessionStorage.setItem('m5', '1'); } }, save);
+      await r.page.goto(url); await r.page.waitForTimeout(2200);
+      return r;
+    };
+    const text = (page, sel) => page.evaluate((x) => [...document.querySelectorAll(x)].filter((e) => e.getClientRects().length && !e.closest('[hidden]')).map((e) => e.textContent).join(' | '), sel);
+    const noOverflow = async (page, what) => { const o = await overflow(page); if (o.sw > o.cw) throw new Error(`sideways scroll at ${what} (${o.sw} > ${o.cw})`); };
+    const closeAll = (page) => page.evaluate(() => { for (let i = 0; i < 8; i++) document.querySelector('.note-slot:not([hidden]) .note-x')?.click(); document.querySelector('.sheet-x:not([hidden])')?.click(); });
+    const shot = async (page, n, sel) => {
+      if (sel) await page.locator(sel).first().evaluate((el) => { el.scrollIntoView({ block: 'start' }); const c = document.querySelector('.cockpit').getBoundingClientRect(); if (c.right > el.getBoundingClientRect().left + 1) window.scrollBy(0, -(c.height + 8)); }).catch(() => {});
+      else await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(350);
+      await page.screenshot({ path: `${out}/${T}-${n}.png` });
+    };
+    {
+      const { ctx, page, errs } = await load(readFileSync(offerPath, 'utf8'));
+      await step(page, 'nothing of the Ministry before office; the offer between runs', async () => {
+        if (await page.locator('.sill:not([hidden]), .lev-chair:not([hidden]), .rival-panel:not([hidden])').count()) throw new Error('Ministry chrome before office');
+        await page.waitForSelector('.office-offer', { timeout: 6000 });
+        await shot(page, 'offer');
+      });
+      await step(page, 'Take office: the Gazette, the letter, the window, the prospectus; each waits for a tap', async () => {
+        await page.locator('.office-offer .btn.primary').click(); await page.waitForTimeout(500);
+        if (!/PRYCE/i.test(await text(page, '.sheet .paper-head'))) throw new Error('no Gazette');
+        await page.screenshot({ path: `${out}/${T}-of1-gazette.png` });
+        await page.locator('.sheet-foot .btn.primary').click(); await page.waitForTimeout(500);
+        if (!(await page.locator('.of-letter-card').count())) throw new Error('no letter');
+        await page.screenshot({ path: `${out}/${T}-of2-letter.png` });
+        await page.locator('.sheet-foot .btn.primary').click(); await page.waitForTimeout(1600);
+        if (!(await page.evaluate(() => !!window.rebound.state.meta.office))) throw new Error('office not taken');
+        if (!(await page.locator('.of-pull').count())) throw new Error('no pull back');
+        await page.screenshot({ path: `${out}/${T}-of3-window.png` });
+        await page.locator('.of-pull .btn').click(); await page.waitForTimeout(500);
+        const pr = await text(page, '.prospectus');
+        if (!/second|minute/.test(pr) && !/usual method/.test(pr)) throw new Error(`prospectus: ${pr.slice(0, 120)}`);
+        await page.screenshot({ path: `${out}/${T}-of4-prospectus.png` });
+        await noOverflow(page, 'prospectus');
+        await page.locator('.sheet-foot .btn.primary').click(); await page.waitForTimeout(800);
+        if (await page.evaluate(() => !document.querySelector('.layer').hidden)) throw new Error('a sheet stayed open');
+        // The file card in the first minute (once), then readable from the company's panel.
+        await page.evaluate(() => { const R = window.rebound; let s = R.state; for (let i = 0; i < 100; i++) s = R.model.tick(s, R.content, 0.2); R.ctx.replace(s); });
+        await page.waitForSelector('.file-card', { timeout: 6000 });
+        await page.screenshot({ path: `${out}/${T}-of5-file.png` });
+      });
+      if (errs.length) fail(`${T} console (offer): ${errs.filter((e) => !/ERR_FAILED/.test(e)).slice(0, 4).join(' | ')}`);
+      await ctx.close();
+    }
+    const { ctx, page, errs } = await load(readFileSync(minPath, 'utf8'));
+    await closeAll(page);
+    await step(page, 'the first Ministry screen: sill, Confidence, Treasury, order book, answer line on every lever', async () => {
+      await page.waitForTimeout(800); await closeAll(page);
+      const sill = await text(page, '.sill');
+      if (!/Confidence/.test(sill) || !/\d{4}/.test(sill)) throw new Error(`sill: ${sill}`);
+      if (!/Confidence/.test(await text(page, '.topbar'))) throw new Error('no Confidence in the masthead');
+      if (!/Treasury/.test(await text(page, '.tb-cap'))) throw new Error('no Treasury');
+      await shot(page, 'ministry');
+      const book = await text(page, '.rival-book');
+      if (!/bought/.test(book)) throw new Error(`order book: ${book}`);
+      if (await page.locator('.upgrades .up .buy').filter({ visible: true }).count()) throw new Error('buy buttons in his Industry');
+      await page.locator('section.levers').scrollIntoViewIfNeeded(); await page.waitForTimeout(600);
+      const n = await page.evaluate(() => window.rebound.ctx.levs.filter((v) => v.visible && v.def.sector === window.rebound.ctx.sector).length);
+      const lines = await page.locator('.lever .ans-line').filter({ visible: true }).count();
+      if (!n || lines < n) throw new Error(`${lines} answer lines for ${n} levers`);
+      await shot(page, 'levers', 'section.levers');
+      await page.locator('.lever .ans-line').first().click(); await page.waitForTimeout(200);
+      if (!(await page.locator('.ans-list:not([hidden]) li').count())) throw new Error('no ranked list');
+      await shot(page, 'answer-list', '.ans-list:not([hidden])');
+      await noOverflow(page, 'ministry');
+    });
+    await step(page, 'scroll height of the first Ministry against late Act I (M4: 4075–4121 px)', async () => {
+      const ids = await page.evaluate(() => window.rebound.content.sectorOrder.filter((id) => window.rebound.state.sectors[id]?.open));
+      const hs = {};
+      for (const id of ids) { await page.evaluate((x) => window.rebound.ctx.selectSector(x), id); await page.waitForTimeout(700); hs[id] = await page.evaluate(() => document.documentElement.scrollHeight); }
+      console.log(`       ${T} scroll heights, Ministry 1: ${JSON.stringify(hs)}`);
+      await page.evaluate(() => window.rebound.ctx.selectSector(window.rebound.content.sectorOrder.find((id) => window.rebound.d.sectors[id]?.rival && !window.rebound.d.sectors[id]?.capstoned) ?? 'motion'));
+      await page.waitForTimeout(600);
+    });
+    const make = (f, arg) => page.evaluate(f, arg).then(async (r) => { await page.waitForTimeout(900); await closeAll(page); return r; });
+    await step(page, 'the manifesto: three pledges, keep two, one tap each; never modal', async () => {
+      const r = await make(() => {
+        const R = window.rebound; let s = R.state;
+        for (let i = 0; i < 4000 && !(s.chair?.parliament?.offer); i++) s = R.model.tick(s, R.content, 0.25);
+        R.ctx.replace(s); return s.chair?.parliament?.offer;
+      });
+      if (!r) throw new Error('no offer drawn');
+      const cards = await page.locator('.election .pledge').count();
+      if (cards < 2) throw new Error(`${cards} pledge cards`);
+      if (await page.evaluate(() => !document.querySelector('.layer').hidden)) throw new Error('modal');
+      await page.locator('.election .pledge').nth(cards - 1).click();
+      await page.locator('.election .pledge').nth(cards - 2).click();
+      await page.waitForTimeout(400);
+      const ch = await page.evaluate(() => window.rebound.state.chair.parliament.chosen);
+      if (!ch || ch.length !== 2) throw new Error(`chosen ${JSON.stringify(ch)}`);
+      await shot(page, 'manifesto', 'section.election');
+    });
+    await step(page, 'an inspection: arm an Inspector, then an Industry; reported against found', async () => {
+      await make(() => { const R = window.rebound; const s = JSON.parse(JSON.stringify(R.state)); s.meta.features = s.meta.features || {}; for (const f of ['inspection', 'loopholes', 'treasury']) s.meta.features[f] = s.meta.features[f] ?? 0; s.chair.inspectors = []; R.ctx.replace(R.model.tick(s, R.content, 0.1)); });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const b = page.locator('.sill .insp').first();
+      if (!(await b.count())) throw new Error('no Inspectors on the sill');
+      await b.click(); await page.waitForTimeout(300);
+      await shot(page, 'armed', '.sill');
+      await page.locator('.sill-chips .chip').first().click(); await page.waitForTimeout(700);
+      const n = await page.evaluate(() => window.rebound.state.chair.inspections ?? Object.keys(window.rebound.state.chair.inspected).length);
+      if (!n) throw new Error('no inspection made');
+      const sub = await text(page, '.dial-cons .dial-sub, .dial-cons');
+      if (!/true|reported/.test(sub)) throw new Error(`consumption: ${sub}`);
+      await shot(page, 'inspected');
+    });
+    await step(page, 'a loophole: the standard raised, the rung used beside his answer, Amend drafts it', async () => {
+      const r = await make(() => {
+        const R = window.rebound, C = R.content; let s = R.state;
+        const lev = (C.levers || []).find((l) => l.ladder?.length && s.sectors[l.sector]?.open);
+        if (!lev) return 'no laddered lever open';
+        s = JSON.parse(JSON.stringify(s)); s.mandate = 1e6; s.chair.inOpposition = false; s.chair.pledges = [];
+        for (let i = 0; i < 3; i++) { const t = R.model.setLever(s, C, lev.id, (s.levers[lev.id]?.level ?? 0) + 1); if (t !== s) s = t; }
+        for (let i = 0; i < 600 && !Object.values(s.chair.loopholes).some((x) => x.status === 'used'); i++) s = R.model.tick(s, C, 0.25);
+        R.ctx.replace(s); R.ctx.selectSector(lev.sector);
+        return { lever: lev.id, rungs: s.chair.loopholes };
+      });
+      if (typeof r === 'string') throw new Error(r);
+      // The lever cards patch only near the screen: bring the panel up first, then the card with the rung.
+      await page.locator('section.levers').scrollIntoViewIfNeeded(); await page.waitForTimeout(700);
+      await page.evaluate((id) => document.querySelector(`.rung[data-lever="${id}"]`)?.scrollIntoView({ block: 'center' }), r.lever); await page.waitForTimeout(600);
+      if (!(await page.locator('.rung').filter({ visible: true }).count())) throw new Error(`no rung card (${JSON.stringify(r.rungs)})`);
+      await shot(page, 'loophole', `.rung[data-lever="${r.lever}"]`);
+      const used = Object.values(r.rungs).some((x) => x.status === 'used');
+      if (used && !/use/.test(await text(page, '.ans-rec.leak'))) throw new Error('the used rung is not beside his answer');
+      const am = page.locator('.rung-amend').filter({ visible: true }).first();
+      if (await am.count()) {
+        await am.click(); await page.waitForTimeout(600);
+        if (!(await page.evaluate(() => Object.values(window.rebound.state.chair.loopholes).some((x) => x.status === 'drafting')))) throw new Error('Amend did not draft');
+        await shot(page, 'amending', '.rung[data-s=drafting]');
+      }
+    });
+    await step(page, 'Opposition: lever signs grey, the Campaign button', async () => {
+      await make(() => { const R = window.rebound; const s = JSON.parse(JSON.stringify(R.state)); s.chair.inOpposition = true; s.chair.lostInARow = 1; R.ctx.replace(R.model.tick(s, R.content, 0.1)); });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      if (!/Campaign/.test(await text(page, '.sill-opp'))) throw new Error('no Campaign');
+      if (!(await page.evaluate(() => document.documentElement.hasAttribute('data-opposition')))) throw new Error('no Opposition mark');
+      await shot(page, 'opposition', '.sill');
+    });
+    await step(page, 'Plenty: two water gauges (if Plenty is registered)', async () => {
+      const has = await page.evaluate(() => !!window.rebound.content.sectors.plenty);
+      if (!has) { console.log(`       ${T} Plenty not registered yet: skipped`); return; }
+      await make(() => { const R = window.rebound, C = R.content; const s = JSON.parse(JSON.stringify(R.state)); const d = C.sectors.plenty; s.sectors.plenty.open = true; s.sectors.plenty.reserve = s.sectors.plenty.reserve || d.reserve; s.sectors.plenty.reserveMax = s.sectors.plenty.reserveMax || d.reserve; s.sectors.plenty.eta = d.baseEta; for (const a of d.applications) if (a.visibleBelow === Infinity) s.sectors.plenty.apps[a.id] = { ...s.sectors.plenty.apps[a.id], available: true, founded: a.foundCost <= 0 }; R.ctx.replace(R.model.tick(s, C, 0.1)); R.ctx.selectSector('plenty'); });
+      const w = await text(page, 'section.water');
+      if (!/applied/i.test(w) || !/consumed/i.test(w)) throw new Error(`water: ${w}`);
+      await shot(page, 'plenty', 'section.water');
+    });
+    if (errs.length) fail(`${T} console: ${errs.filter((e) => !/ERR_FAILED/.test(e)).slice(0, 4).join(' | ')}`);
+    await ctx.close();
+  }
+}
+
 if (mode === 'scenes' || mode === 'all') await scenes();
 if (mode === 'flow' || mode === 'all') await flow(mock);
 if (mode === 'checks' || mode === 'all') await checks();
@@ -2036,6 +2210,7 @@ if (mode === 'm2') await m2();
 if (mode === 'm3') await m3();
 if (mode === 'm4') await m4();
 if (mode === 'm4real') await m4real();
+if (mode === 'm5') await m5();
 await browser.close();
 console.log(problems ? `${problems} problem(s)` : 'all clear: no console errors, no overflow, every step passed');
 process.exit(problems ? 1 : 0);

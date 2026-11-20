@@ -33,6 +33,12 @@ import { dur } from './fmt';
 import { buildFold } from './fold';
 import { pendingReveal, surveyCardSheet } from './boardcard';
 import { capstoneText } from '../content/boardSurvey';
+import { buildSill, buildElection } from './ministry';
+import { isOpen as isOpenPref, setOpen as setOpenPref } from './prefs';
+import { MINISTRY_TEXT as MT } from '../content/officeText';
+import { buildRivalPanel } from './rival';
+import { buildWater } from './water';
+import { officeCheck, prospectusSheet, fileSheet } from './office';
 
 export interface UI {
   /** Patch the page. `quick` (straight after a tap): only what the tap changes and the cockpit; the rest follows in
@@ -107,6 +113,12 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   const survey = buildSurvey(ctx);
   // M4: folding of what is finished (a settled Industry as one card; the capstone group), fold.ts.
   const fold = buildFold(ctx, () => update());
+  // M5: the Ministry (shown only in office): the sill under the picture, the manifesto, the company's panel, Plenty's
+  // two water gauges.
+  const sill = buildSill(ctx);
+  const election = buildElection(ctx);
+  const rivalPanel = buildRivalPanel(ctx, { prospectus: () => prospectusSheet(ctx, sheets), file: () => fileSheet(ctx, sheets) });
+  const water = buildWater(ctx);
 
   const afford = createAfford(ctx);
   // The unfolding: a "New" mark on whatever a feature has just opened (unfold.ts).
@@ -158,8 +170,17 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
   // The scene leads the feed: on a phone it shares the first screen with the gauges, the headline and the start of the
   // improvements (the affordable chip by the sell button covers the rest).
   // M3: the mechanic's instrument sits under its picture; a waiting letter under the paper; the survey after the orders.
-  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, bankRow, onboard, world.el, fold.el, mech.el, news.el, letters.el, divs.el, ups.el, budget.el, levs.el, commons.el, orders.el, survey.el, foot);
+  const feed = h('main', { class: 'feed', id: 'main', tabindex: '-1' }, away.el, runline, bankRow, onboard, world.el, sill.el, election.el, water.el, fold.el, mech.el, news.el, letters.el, divs.el, ups.el, budget.el, levs.el, rivalPanel.el, commons.el, orders.el, survey.el, foot);
   root.replaceChildren(cockpit, feed, sheets.el, live);
+  // M5: in a Ministry the panels of the proprietor's day (the standing orders, the household survey) fold to their
+  // heading; a tap opens one (remembered per device). The player scrolls less to reach the Ministry's own work.
+  const mfolds = ([[orders.el, 'mf:orders'], [survey.el, 'mf:survey']] as const).map(([sec, key]) => {
+    const head = sec.querySelector('.sec-h');
+    const btn = h('button', { class: 'mf-tog linkish', type: 'button', 'aria-expanded': 'false', onclick: () => { const on = !isOpenPref(key, false); setOpenPref(key, on); apply(); } }, 'Show');
+    head?.append(btn);
+    const apply = () => { const f = !!ctx.d?.chair && !isOpenPref(key, false); cls(sec, 'mfold', f); show(btn, !!ctx.d?.chair); setText(btn, f ? 'Show' : 'Fold'); setAttr(btn, 'aria-expanded', String(!f)); };
+    return apply;
+  });
   fitLayout(cockpit, feed, gauges.el, gauges.more);
 
   // A crisis is one event: the picture's fog (the scene), the headline (the broadsheet) and the gauges arrive together.
@@ -169,12 +190,12 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     replay(cockpit, 'm-crisis', 2400);
   });
 
-  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey], ['fold', fold]];
+  const comps: [string, Comp][] = [['away', away], ['topbar', topbar], ['tabs', tabs], ['gauges', gauges], ['dock', dock], ['news', news], ['world', world], ['ups', ups], ['budget', budget], ['levs', levs], ['divs', divs], ['commons', commons], ['orders', orders], ['mech', mech], ['letters', letters], ['survey', survey], ['fold', fold], ['sill', sill], ['election', election], ['rival', rivalPanel], ['water', water]];
   // Panels of the feed that only draw (no notes, sounds or moments from their update): while far from the screen they
   // are not patched; one comes up to date as it nears the screen, and all of them before a jump to a card (perf pass 2).
   // (Not the improvements, whose cards other parts of the page find and point at, nor the survey, whose reveal is a
   // moment of its own.)
-  const nearOnly = new Set<Comp>([budget, divs, commons, orders]);
+  const nearOnly = new Set<Comp>([budget, divs, commons, orders, rivalPanel]);
   const stale = new Set<Comp>();
   for (const c of nearOnly) watchNear(c.el, () => { if (stale.delete(c)) c.update(); });
   function flush(): void { for (const c of stale) c.update(); stale.clear(); }
@@ -299,14 +320,30 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
             toasts.push(`Eight dividends waiting: ${nameOf(e.sector)}’s oldest taken as ${dv?.name ?? 'the first'}.`);
           }
           break;
+        /* --- M5 (placeholder words until the text lane's officeText lands; the headlines carry the news) --- */
+        case 'electionCalled': toasts.push('Polling day is called: stand on two pledges of three.', { label: 'Show', run: () => document.querySelector<HTMLElement>('section.election')?.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }) }, 9000); break;
+        case 'electionWon': toasts.push(`${MT.electionWon.replace('{n}', e.label ?? '')}.`, undefined, 7000); break;
+        case 'electionLost': toasts.push(`${MT.electionLost.replace('{n}', e.label ?? '')}. ${MT.oppositionNote}`, undefined, 10000); break;
+        case 'concealmentFound': toasts.push(`Inspectors find ${fmt(num(e.n))}% unreported in ${nameOf(e.sector)}.`, goThere(e.sector), 9000); break;
+        case 'loopholeUsed': {
+          const lp = ctx.content.loopholes?.find((x) => x.id === e.id);
+          toasts.push(`${ctx.d?.chair?.rival.name.split(' ')[0] ?? 'The company'} finds a way round: ${lp?.name ?? 'a loophole'}.`, goThere(e.sector), 9000);
+          break;
+        }
+        case 'leverRepealed': {
+          const l = ctx.content.levers?.find((x) => x.id === e.id);
+          toasts.push(`The incoming government lowers ${l?.name ?? 'a lever'}.`, goThere(e.sector), 9000);
+          break;
+        }
         case 'upgradeBought':
+          if (e.by === 'rival') break;
           if (e.by === 'player') {
             const arm = ctx.content.upgrades?.find((u) => u.id === e.id);
             const fork = !!(arm?.excludes?.length || ctx.content.upgrades?.some((u) => u.excludes?.includes(e.id ?? '')));
             sound(fork ? 'fork' : 'buy', { sector: e.sector });
           } else automated++;
           break;
-        case 'appFounded': if (e.by === 'player') sound('found', { sector: e.sector }); else if (e.by === 'market') automated++; break;
+        case 'appFounded': if (e.by === 'player') sound('found', { sector: e.sector }); else if (e.by === 'market') automated++; break; // M5: the rival's are his
         case 'leverEnacted': if (e.by === 'player') sound('lever', { sector: e.sector }); else automated++; break;
         case 'commonsBuilt': if (e.by === 'treasury') automated++; break;
         case 'crisis': sound('crisis', { sector: e.sector }); break;
@@ -424,7 +461,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
 
   // After a tap, only these patch before the frame (the purchase, the figures, the sell button); the picture, the paper
   // and the far panels follow in the full update a frame later (perf pass 2: tap to paint).
-  const quickSet = new Set<Comp>([topbar, tabs, gauges, dock, ups, budget, levs, mech, divs, commons, orders]);
+  const quickSet = new Set<Comp>([topbar, tabs, gauges, dock, ups, budget, levs, mech, divs, commons, orders, sill, election]);
   function update(quick = false): void {
     const open = openSectors(ctx);
     // Keep the selected tab on an open industry.
@@ -450,6 +487,7 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
       timed('ui.' + n, () => c.update());
     }
     marks.update();
+    for (const f of mfolds) f();
     // M4: a settled Industry folds its own panels away until "Show the Industry" (fold.ts); a capstoned one shows its
     // group instead of the budget panel.
     const folded = fold.folded();
@@ -457,6 +495,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     cls(feed, 'capped-ind', folded && !!ctx.d?.sectors?.[ctx.sector]?.capstoned);
     // M4: the Board's Survey card, once a save, over the Fishing panel (boardcard.ts); elsewhere, a note with the way.
     if (!quick) surveyCheck();
+    // M5: the file on the late proprietor, once, in the first minute of the first Ministry (office.ts).
+    if (!quick) officeCheck(ctx, sheets);
 
     // The chip: how many offers are news (afford.ts holds the no-nag rule), and where the first one is.
     const items = afford.state.items;

@@ -96,6 +96,12 @@ const REPEAT: Record<LeverKind, { valueStep: number; costGrowth: number; upkeepG
   measure: { valueStep: 1, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 3 },
   /* M4: a quota on the surveyed surplus tightens downwards like a cap (range 0–1; a level at 0 is a moratorium). */
   quota: { valueStep: -0.05, costGrowth: 1.45, upkeepGrowth: 1.3, maxSteps: 6 },
+  /* M5: a subsidy's level value is the Treasury's share of a card's cost (0–SUBSIDY_MAX 0.9): each Tighten pays a tenth
+   * more. Few steps: past about two thirds the Treasury is buying Pryce's machines for him. */
+  subsidy: { valueStep: 0.1, costGrowth: 1.5, upkeepGrowth: 1.3, maxSteps: 2 },
+  /* M5: a charge's level value is a share of the service price when enacted (range 0–1): each Tighten adds five points.
+   * It is fixed when enacted, so later steps are the only way it keeps pace with a cheaper mile. */
+  charge: { valueStep: 0.05, costGrowth: 1.6, upkeepGrowth: 1.35, maxSteps: 4 },
 };
 
 /** Authored levels cost 1 : 3 : 9 in Mandate and 1 : 2.5 : 6.25 in upkeep, as in v1. */

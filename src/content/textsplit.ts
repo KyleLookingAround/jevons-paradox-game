@@ -26,7 +26,9 @@ const LATE_KEYS = new Set([
 ]);
 /** Top-level areas left whole: small, read early or read as names (the unfolding's intros, Acts, Ages, the global
  *  paces, the recycle wording, the tree names), and the Archive (split on its own, see build.ts). */
-const KEEP_AREAS = new Set(['features', 'acts', 'ages', 'sectorOrder', 'global', 'recycleText', 'knowhowTrees', 'archive', 'surveyReveal']);
+/* M5: 'office': the Take office sequence can be the first thing a reloaded page shows (a save at the Reckoning; the text
+ * lane's note, about 1 KB gz). */
+const KEEP_AREAS = new Set(['features', 'acts', 'ages', 'sectorOrder', 'global', 'recycleText', 'knowhowTrees', 'archive', 'surveyReveal', 'office']);
 /** Areas whose objects belong to an Industry: the first Industry's card words and own headlines (on screen from the
  *  first second) stay whole; its levers (minute 13 of run 1) do not. */
 const BY_SECTOR = new Set(['sectors', 'upgrades', 'sectorHeadlines']);

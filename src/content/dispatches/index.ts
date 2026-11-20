@@ -14,6 +14,8 @@ import { ageDispatches, ageDispatchesM4 } from './ages';
 /* M4 (the text lane): appended at the end, never inserted (the draw's tie-break is content order). */
 import { ironDispatches } from './iron';
 import { fishingDispatches } from './fishing';
+/* M5 (the text lane's letters from the Chair; wired by the registry lane, design/scratch/m5-registry-text.md): appended. */
+import { chairDispatches } from './chair';
 
 export const dispatches: DispatchDef[] = [
   ...generalDispatches,
@@ -26,4 +28,5 @@ export const dispatches: DispatchDef[] = [
   ...ironDispatches,
   ...fishingDispatches,
   ...ageDispatchesM4,
+  ...chairDispatches,
 ];

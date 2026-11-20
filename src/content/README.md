@@ -14,7 +14,8 @@ a value or an order (M2).
 | `ages.ts` | The Ages: calendar spans, themes, which Industries belong to each. |
 | `acts.ts` | M4: the Acts (Act I the Coal Age with its ending and capstone; Acts II and III Previews). |
 | `boardSurvey.ts` | M4: the Board's Survey card (`Content.surveyReveal`) and the page strings the contract has no slot for. |
-| `prestige.ts` | Know-how trees (and their display names, `knowhowTrees`) and Institutions. |
+| `prestige.ts` | Know-how trees (and their display names, `knowhowTrees`; M5: the industrial trees `holder: 'rival'`, Statecraft) and Institutions. |
+| `chair.ts` | M5: the Ministry's numbers: `Content.office` (with `office.ts`'s words), `Content.chair`, `Content.rival`, the general pledges, the Treaty's Articles and Pryce's playbooks. |
 | `charters.ts` | M2: the Charters, in content order (the order the deterministic draw indexes: append, never reorder). |
 | `commons.ts` | M2: the Commons projects, in display order. |
 | `dividends.ts` | M2: every decade dividend, flat. The global pair sequence is `DECADE_PAIRS` in `helpers.ts`; each Industry's own sequence is its `steady.decadeChoices`, built with `decadeSequence`. |

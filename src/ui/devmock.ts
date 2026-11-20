@@ -26,6 +26,8 @@ import { features as realFeatures } from '../content/features';
 import { model as realModel } from '../core';
 import { content as realContent } from '../content';
 import { fixtureM4, fixtureM4Acts } from '../core/fixture';
+// M5: the core's M5 fixtures for `#mock:core=m5|m5offer` until real content with office exists.
+import { fixtureM5B, officeMeta } from '../core/fixture.m5b';
 import {
   START_YEAR, YEARS_PER_SECOND, STEADY_STATE_YEARS, BUDGET_TOLERANCE, MAX_TICK_SECONDS, CALENDAR_LATE_RATE, EVENTS_MAX, PENDING_DIVIDENDS_MAX,
   OPENING_MAX, RUN_HISTORY_MAX, FEATURE_IDS,
@@ -1164,12 +1166,44 @@ export interface MockOpts {
   /** M4: run the REAL core (src/core) on the real content ('real') or on the core's M4 test fixtures ('m4', 'm4acts'),
    *  so the page meets every M4 view as the core writes it. States are then made through the console handle
    *  (window.rebound) or loaded as saves. */
-  core?: 'real' | 'm4' | 'm4acts';
+  core?: 'real' | 'm4' | 'm4acts' | 'm5' | 'm5offer';
 }
+
+/** M5 (mock only): words for the fixture's placeholder OfficeText, so the Take office sequence reads as it will. */
+const M5_TEXT: NonNullable<Content['office']>['text'] = {
+  acquisition: { headline: 'PRYCE CONSOLIDATED ACQUIRES THE WORKS', sub: 'Proprietor “retires to public life”' },
+  letter: { cast: 'minister', body: 'Sir, the Prime Minister asks whether you will form a government. I am instructed to say that the Ministry’s window has the better view of the valley, and to leave you the key to the drinks cabinet. I have taken the good pen. Yours, for the last time in this capacity, The Minister.', button: 'Take office' },
+  offer: { take: 'Take office', notYet: 'Not yet' },
+  prospectus: {
+    title: 'PRYCE CONSOLIDATED. Prospectus for the motor trade.',
+    first: 'The method is not new. It was the late proprietor’s, and is set out here as he practised it on his first morning in the trade: {item:1} at {t:1}; {item:2} at {t:2}; {item:3} at {t:3}. Pryce Consolidated will do the same with motor cars, only sooner.',
+    firstDefault: 'The method is not new. It is the trade’s usual method: buy whatever pays back soonest. Pryce Consolidated will do the same with motor cars, only sooner.',
+    chair: 'In the motor trade itself the late proprietor founded {item:1} at {t:1}. We shall found them sooner.',
+    close: 'The directors are confident of the Ministry’s goodwill. They have read its notebooks.', button: 'File it',
+  },
+  file: {
+    title: 'The file on the late proprietor', accepted: 'Accepted: {label}.', declined: 'Declined: {label}.',
+    automated: 'Of the purchases made in the Works’ name in its last {seasons} seasons, {share}% were made by standing order.',
+    conclusion: [{ pliantBelow: 0.5, text: 'He will refuse an agreement unless it costs him nothing.' }, { pliantBelow: 2, text: 'He will take an agreement if it is offered with a mechanics’ institute attached.' }],
+    button: 'Noted',
+  },
+};
+const m5Content: Content = { ...fixtureM5B, office: { when: { stat: 'time', op: '>=', value: 0 }, text: M5_TEXT } };
 
 /** M4: the real core and content (or fixture) for `#mock:core[=m4|m4acts]`; null otherwise. */
 export function coreSetup(o: MockOpts | null): { model: ModelApi; content: Content } | null {
   if (!o?.core) return null;
+  if (o.core === 'm5' || o.core === 'm5offer') {
+    // m5: every run a Ministry (as takeOffice leaves the meta); m5offer: an industrialist run whose Reckoning offers office.
+    const content = m5Content;
+    const office = o.core === 'm5';
+    const model: ModelApi = { ...realModel, createState: (c, meta, seed) => {
+      const st = realModel.createState(c, meta ?? (office ? officeMeta(c, { ...realModel.createState(c).meta, reckonings: 10 }) : undefined), seed);
+      // The levers show after the run's reveal, as in any Ministry of a real save (many Reckonings in).
+      return office ? { ...st, flags: { ...st.flags, revealed: true }, mandate: Math.max(st.mandate, 400) } : st;
+    } };
+    return { model, content };
+  }
   const content = o.core === 'm4' ? fixtureM4 : o.core === 'm4acts' ? fixtureM4Acts : realContent;
   return { model: realModel, content };
 }
@@ -1190,7 +1224,7 @@ export function parseMockHash(hash: string): MockOpts | null {
     else if (k === 'ending') { o.ending = true; o.m3 = true; }
     else if (k === 'letter') o.letter = Number(v) || 0;
     else if (k === 'survey' && ['none', 'filed', 'up', 'down', 'flat'].includes(v)) o.survey = v as MockOpts['survey'];
-    else if (k === 'core') o.core = v === 'm4' || v === 'm4acts' ? v : 'real';
+    else if (k === 'core') o.core = v === 'm4' || v === 'm4acts' || v === 'm5' || v === 'm5offer' ? v : 'real';
     else if ((k === 'sector' || k === 'era') && mockContent.sectors[v]) o.sector = v;
   }
   if (o.core) return o;
@@ -1533,7 +1567,7 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
           nextTickIn: (INTERVAL_YEARS / YEARS_PER_SECOND) - (s.time % (INTERVAL_YEARS / YEARS_PER_SECOND)),
           marketWhy: Object.fromEntries(openIds.map((id, i) => [id, marketAvailable(s, c) ? (o.market.on ? marketWhyOf(s, c, id, i) : { reason: 'off' }) : { reason: 'unavailable' }])) as Record<SectorId, MarketWhy>,
           dispatch: { available: featOn('dispatches') && s.meta.reckonings >= 4, on: o.dispatch?.on ?? false, cast: o.dispatch?.cast ?? {} },
-          kind: { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing' },
+          kind: { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing', inspection: 'closing' },
         },
         respec: { allowed: fresh && refund > 0, refund, refundByTree },
         features: Object.fromEntries(FEATURE_IDS.map((f) => [f, M3_IDS.includes(f) ? featOn(f) : !opts.locked || (opts.feat ?? []).includes(f)])) as Record<FeatureId, boolean>,
@@ -1943,6 +1977,9 @@ export function makeMockModel(opts: MockOpts = {}): ModelApi {
       }
       return out;
     },
+    // M5: the stand-in has no Ministry (#mock:core=m5 runs the real core for that); every M5 action is refused.
+    takeOffice: (s) => s, inspect: (s) => s, amend: (s) => s, choosePledges: (s) => s, campaign: (s) => s,
+    compensate: (s) => s, treaty: (s) => s, buyArticle: (s) => s,
     serialize(s) { return JSON.stringify(s, (_k, v) => (v === Infinity ? 1e308 : v)); },
     deserialize(text, c) {
       try {

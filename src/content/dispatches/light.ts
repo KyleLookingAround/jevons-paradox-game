@@ -246,6 +246,7 @@ export const lightDispatches: DispatchDef[] = [
       'simple, fair, and the station will sell more current than it ever has. I mean that as a compliment.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Meter every lamp',
         outcome: 'Every lamp is metered, and Mr Pryce wires half the works.',
         price: 'Half Mr Pryce’s custom',
@@ -253,6 +254,7 @@ export const lightDispatches: DispatchDef[] = [
         modifier: timed(10, income(0.95, L)),
       },
       {
+        stance: 'accept',
         label: 'Grant the flat rate',
         outcome: 'The works are lit on every floor at every hour, since nothing is saved by switching off.',
         price: 'Lamps left burning, and the fog that comes of it',

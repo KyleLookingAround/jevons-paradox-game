@@ -20,6 +20,8 @@ import { surveyFiler } from './survey';
 import { surveyDisclosure } from '../content/proprietor';
 import { estimatesText, fishingGaugeText } from '../content/boardSurvey';
 import { yrs } from './gauges';
+import { officeOffer, takeOfficeSequence } from './office';
+import { treatyBox } from './treaty';
 
 type Updater = (() => void) | void;
 interface OpenOpts { label: string; full?: boolean; blocking?: boolean; dismissable?: boolean; cls?: string }
@@ -304,6 +306,10 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
   host.append(h('p', { class: 'shop-bal' }, h('span', { class: 'muted', text: 'Hindsight to spend ' }), bal), ro);
   if (lead) host.append(lead);
   const items: (() => void)[] = [];
+  // M5: the Treaty and its Articles lead the shop once office is taken (treaty.ts; hidden otherwise).
+  const tb = treatyBox(ctx);
+  host.append(tb.el);
+  items.push(tb.update);
   const kh = h('section', { class: 'shop-col kh' }, h('h3', { text: 'Know-how' }), h('p', { class: 'shop-k', text: 'The obvious buy. Runs start faster, and reach the wall sooner.' }));
   // Respec (Derived.respec): "Unlearn" per tree and for all, between runs only, each behind a confirm with the refund.
   const unlearn = (tree: string | undefined, label: string): { el: HTMLElement; update(): void } => {
@@ -368,7 +374,14 @@ export function buildShop(ctx: Ctx, host: HTMLElement, lead?: HTMLElement): () =
     const tu = unlearn(t, 'Unlearn');
     const tu2 = unlearn(t, `Unlearn ${treeTitle(ctx, t)}`);
     items.push(() => { tu.update(); tu2.update(); });
-    const treeEl = h('div', { class: 'tree' }, h('div', { class: 'tree-h' }, h('h4', { class: 'tree-t', text: treeTitle(ctx, t) }), tu.el));
+    // M5: an industrial tree is held by the company while office is taken (KnowhowView.held).
+    const heldP = h('p', { class: 'shop-k held-p', hidden: true });
+    const treeEl = h('div', { class: 'tree' }, h('div', { class: 'tree-h' }, h('h4', { class: 'tree-t', text: treeTitle(ctx, t) }), tu.el), heldP);
+    items.push(() => {
+      const held = (ctx.khs || []).some((v) => (v.def.tree ?? 'general') === t && v.held);
+      show(heldP, held); cls(treeEl, 'held', held);
+      if (held) setText(heldP, `${treeTitle(ctx, t)}: held by ${ctx.content.rival?.name ?? 'the company'}`);
+    });
     const ownHead = h('div', { class: 'own-h' }, h('span', { class: 'own-ht', text: treeTitle(ctx, t) }), tu2.el);
     const tiers: Tier[] = [];
     for (const tier of tierNums) {
@@ -653,6 +666,9 @@ export function shopSheet(ctx: Ctx, sheets: Sheets, after?: () => void, summary?
     const ch = after ? charterChoice(ctx) : null;
     const hs = after ? historyPicker(ctx) : null;
     const lead = ch && hs ? h('div', { class: 'between-lead' }, ch.el, hs.el) : ch?.el;
+    // M5: the invitation stands between runs here too (a page reopened on the shop; office.ts).
+    const offer = after ? officeOffer(ctx, () => takeOfficeSequence(ctx, sheets, after), () => { close(); after(); }) : null;
+    if (offer) b.append(offer);
     const u = buildShop(ctx, b, lead);
     if (after) b.append(h('div', { class: 'sheet-foot sticky-foot' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); after(); } }, 'Begin the next run')));
     return () => { u(); ch?.update(); hs?.update(); };
@@ -723,6 +739,8 @@ const CAUSE: Record<string, { exhausted: string; collapse: string }> = {
 
 function causeHeadline(ctx: Ctx, cause: ReckoningCause, sector?: SectorId): string {
   if (cause === 'chosen') return 'The books are closed';
+  // M5: two lost elections in a row (placeholder words until the text lane's officeText lands).
+  if (cause === 'defeated') return 'The Ministry falls';
   const def = sector ? sectorDef(ctx, sector) : undefined;
   const c = sector ? CAUSE[sector] : undefined;
   if (c && (cause === 'exhausted' || cause === 'collapse')) return c[cause];
@@ -792,6 +810,9 @@ export function summarySheet(ctx: Ctx, sheets: Sheets, onDone: () => void, expor
   const ch = charterChoice(ctx);
   const hs = historyPicker(ctx);
   sheets.open('summary', (b, close) => {
+    // M5: the invitation to take office, on the Reckoning card (office.ts); Not yet simply begins the next run.
+    const offer = officeOffer(ctx, () => takeOfficeSequence(ctx, sheets, onDone), () => { close(); onDone(); });
+    if (offer) b.append(offer);
     if (!lr) { b.append(h('p', { text: 'The books are closed.' })); }
     else {
       const ids = sectorIds(ctx.content).filter((id) => lr.sectors?.[id]);

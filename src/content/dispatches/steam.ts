@@ -439,12 +439,14 @@ export const steamDispatches: DispatchDef[] = [
       'calico. Everybody is the better for it, and I cannot see who is the worse.',
     arms: [
       {
+        stance: 'refuse',
         label: 'Hold the night price',
         outcome: 'The mills close at dusk, and Mr Pryce says so in the Exchange.',
         price: 'Mr Pryce’s night custom',
         modifier: timed(10, income(0.95, S)),
       },
       {
+        stance: 'accept',
         label: 'Sell night power cheap',
         outcome: 'The mills never stop, and neither do their chimneys.',
         price: 'Mills that never stop, and their smoke',

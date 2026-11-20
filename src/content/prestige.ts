@@ -15,6 +15,9 @@ import { eta, capCost, reserve, absorb, sat, half, startLever, sig2 } from './he
  * says so in numbers. General tree: the later industries' schools plus the meta choices (purse or patents, Mandate
  * or smaller families, a seat at the table or a heavier purse).
  */
+/** M5: the median Ministry's Hindsight that Statecraft is priced against (see statecraft() below). */
+export const SC_MINISTRY = 180;
+
 export const knowhow: KnowhowDef[] = [
   /* ---- Steam tree ---- */
   {
@@ -127,17 +130,80 @@ export const knowhow: KnowhowDef[] = [
     cost: 400, costGrowth: 1, maxLevel: 1,
     effects: [{ type: 'startCapitalMul', value: 3 }, { type: 'costMul', value: 0.85 }],
   },
+
+  /* ---- M5: Statecraft (the government's tree; design/m5-design.md §6.8) ---- */
+  ...statecraft(),
 ];
 
-/** M2: display names of the Know-how trees (Content.knowhowTrees); every tree in use is named (the lint checks). */
-export const knowhowTrees: Record<string, { name: string; blurb?: string }> = {
+/*
+ * M5: Statecraft, bought with Hindsight between Ministries once the feature arrives (Ministry 3, at the Reckoning).
+ * About ten nodes, three tiers. The design's fork is tier 1's (Parliamentary drafting or the Inspectorate); the content
+ * lint asks every tier of every tree for one, so tier 2 forks the costs of office (compensation or the courts) and tier
+ * 3 two ways of making a clerical error dear (fines or a register of lobbyists). Priced to the Ministry
+ * (criterion 19, design §9.1): tier 1 about a third of a median Ministry's Hindsight, tier 3 about one, so every Ministry
+ * buys two to four things. SC_MINISTRY is that median: the steward bot's 40-minute Ministries paid 179–278
+ * Hindsight on real content under chair.ts's overlay (design/scratch/m5-prestige/q-steward.txt); the balance lane moves
+ * it with the overlay, and every price with it. One level each but the fines and the drafting: no node is worth saving for.
+ */
+function statecraft(): KnowhowDef[] {
+  const when = { feature: 'statecraft' as const, label: 'Statecraft' };
+  const t1 = sig2(SC_MINISTRY / 3), t2 = sig2(SC_MINISTRY * 0.6), t3 = sig2(SC_MINISTRY);
+  const node = (d: Omit<KnowhowDef, 'tree' | 'when' | 'costGrowth' | 'maxLevel'> & { costGrowth?: number; maxLevel?: number }): KnowhowDef =>
+    ({ costGrowth: 1.6, maxLevel: 1, ...d, tree: 'statecraft', when });
+  return [
+    /* Tier 1: the fork, and two cheap habits. */
+    node({ id: 'kh.sc.drafting', name: 'Parliamentary drafting', tier: 1, branch: 'statecraft-1', cost: t1, maxLevel: 2,
+      blurb: 'Counsel who write amendments in weeks, not years. The loophole stays open for less time.',
+      effects: [{ type: 'amendYearsMul', value: 0.7 }] }),
+    node({ id: 'kh.sc.inspectorate', name: 'The Inspectorate', tier: 1, branch: 'statecraft-1', cost: t1,
+      blurb: 'A third Inspector on the sill, with a bicycle and a notebook.',
+      effects: [{ type: 'inspectorAdd', value: 1 }] }),
+    node({ id: 'kh.sc.whips', name: 'Whips', tier: 1, cost: t1,
+      blurb: 'Four pledges on the manifesto sheet instead of three. Two are still all that can be kept.',
+      effects: [{ type: 'pledgeOfferAdd', value: 1 }] }),
+    node({ id: 'kh.sc.polling', name: 'Polling', tier: 1, cost: sig2(t1 * 0.75),
+      blurb: 'A man from the polling firm. The Confidence line shows where it is heading, and by polling day.',
+      effects: [] }),
+    /* Tier 2: closing automation, and the costs of being in office. */
+    node({ id: 'kh.sc.standing', name: 'Standing inspection', tier: 2, cost: t2,
+      blurb: 'One Industry inspected every decade, unasked. Somebody still has to choose which.',
+      effects: [{ type: 'orderUnlock', order: 'inspection' }] }),
+    node({ id: 'kh.sc.compensation', name: 'A compensation fund', tier: 2, branch: 'statecraft-2', cost: t2,
+      blurb: 'Money set aside for the men a rule puts out of work. Compensation costs two fifths less.',
+      effects: [{ type: 'compensationMul', value: 0.6 }] }),
+    node({ id: 'kh.sc.solicitors', name: 'Treasury solicitors', tier: 2, branch: 'statecraft-2', cost: t2,
+      blurb: 'The Crown’s own lawyers, briefed early. Pryce’s court delays are halved.',
+      effects: [{ type: 'litigateYearsMul', value: 0.5 }] }),
+    /* Tier 3: about a Ministry each. */
+    node({ id: 'kh.sc.fines', name: 'Heavier fines', tier: 3, branch: 'statecraft-3', cost: t3, maxLevel: 2, costGrowth: 1.5,
+      blurb: 'Fines set by turnover rather than by the magistrate’s mood. A clerical error stops paying.',
+      effects: [{ type: 'fineMul', value: 2 }] }),
+    node({ id: 'kh.sc.plainWords', name: 'Plain words', tier: 3, cost: t3,
+      blurb: 'A charge explained on one side of paper. Its support arrives in half the time.',
+      effects: [{ type: 'popularityYearsMul', value: 0.5 }] }),
+    node({ id: 'kh.sc.register', name: 'A register of lobbyists', tier: 3, branch: 'statecraft-3', cost: t3,
+      blurb: 'Every lunch with a Member written down. Lobbying costs Pryce half as much again.',
+      effects: [{ type: 'rivalCostMul', response: 'lobby', value: 1.5 }] }),
+  ];
+}
+
+/** M2: display names of the Know-how trees (Content.knowhowTrees); every tree in use is named (the lint checks).
+ *  M5: the two industrial trees pass to Pryce at Take office (holder 'rival': his head start, RivalDef.knowhowTransfer);
+ *  Statecraft is the player's. */
+export const knowhowTrees: Record<string, { name: string; blurb?: string; holder?: 'rival' }> = {
   steam: {
     name: 'Engine wrights',
     blurb: 'Schools of engineering and the coal trade. Every node starts Steam faster, and the pits empty sooner.',
+    holder: 'rival',
   },
   general: {
     name: 'The professions',
     blurb: 'Lecture halls, purses and the habits of government, for every Industry and for the runs themselves.',
+    holder: 'rival',
+  },
+  statecraft: {
+    name: 'Statecraft',
+    blurb: 'The habits of a government that means to be obeyed: drafting, inspection, the manifesto and the courts.',
   },
 };
 
@@ -210,7 +276,9 @@ export const institutions: InstitutionDef[] = [
     blurb: 'Alkali Act, 1863: the first inspectors of what chimneys put in the air. Steam’s smoke clears a little faster.',
     cost: 40, effects: [absorb('steam', 0.002)],
     nextLevels: levels(40, [
-      { effects: [absorb('steam', 0.002)], label: 'More inspectors: the smoke clears faster again' },
+      /* M5: in a Ministry the second level also puts an Inspector on the sill (inert outside office; design §4,
+       * Ministry 3: "the Alkali Inspectorate's levels re-bought give inspectors"). */
+      { effects: [absorb('steam', 0.002), { type: 'inspectorAdd', value: 1 }], label: 'More inspectors: the smoke clears faster, and in office an Inspector more' },
       { effects: [absorb('steam', 0.002), { type: 'mandateRateMul', value: 1.05 }], label: 'Published reports: Mandate accrues 5% faster' },
     ]),
   },
@@ -379,4 +447,37 @@ export const institutions: InstitutionDef[] = [
     blurb: 'An inspector with the right to enter any works, and a preference for charcoal and scrap wherever they still pay.',
     cost: 120, when: { owns: 'iron', label: 'Iron & Steel has opened' }, lever: 'iron.smokeInspector', leverName: 'Clean smelting', maxLevel: 3,
   }),
+  /*
+   * M5 (design §§6.7, 7.3): the Ministry's two new Institutions, appended (the loadout order of M2–M4 is unchanged).
+   * Both are offered only once office is taken (InstitutionDef.when, evaluated between runs), priced inside a first
+   * Ministry's Hindsight so that the shop at Take office is full and affordable (D2's wipe; design §9.1).
+   *
+   * The Water Resources Board: the accounts of water consumed (applied less what returns to the aquifer). Plenty's
+   * consumption cap and a charge written on water consumed require it SEATED (LeverDef.requires; the Plenty lane's
+   * levers). No effect of its own beyond the seat: the right gauge is the institution. Level 2 slows the aquifer's
+   * decline honestly (recharge works: absorption on Plenty's nitrogen is not water, so it is the start of a licence).
+   * Shown once Plenty has opened.
+   *
+   * The Independent Statistics Board: Pryce's returns from the capstoned Coal Age are compiled by the Board, not by
+   * him: concealment held at 0 there (EffectDef 'certify'), so the Inspectors' rounds are Motion's and Plenty's. Level 1
+   * the two oldest Industries, level 2 the other two. A seat, and fewer findings to make (findings pay Mandate and
+   * Confidence): a real choice against the Inspectorate.
+   */
+  {
+    id: 'inst.waterBoard', name: 'Water Resources Board',
+    blurb: 'Accounts of water consumed as well as water pumped. A rule can be written on the gauge that matters.',
+    cost: 200, when: { owns: 'plenty', label: 'Plenty has opened' }, effects: [],
+    nextLevels: levels(200, [
+      { effects: [{ type: 'absorptionAdd', sector: 'plenty', value: 0.002 }], label: 'Catchment officers: the runoff clears a little faster' },
+    ], [2.5]),
+  },
+  {
+    id: 'inst.statisticsBoard', name: 'Independent Statistics Board',
+    blurb: 'The settled Industries’ returns compiled by the Board, not by the firm. Nothing there drifts.',
+    cost: 250, when: { flag: 'office', label: 'In office' },
+    effects: [{ type: 'certify', sector: 'steam' }, { type: 'certify', sector: 'light' }],
+    nextLevels: levels(250, [
+      { effects: [{ type: 'certify', sector: 'iron' }, { type: 'certify', sector: 'fishing' }], label: 'Iron & Steel and Fishing compiled by the Board too' },
+    ], [2.5]),
+  },
 ];

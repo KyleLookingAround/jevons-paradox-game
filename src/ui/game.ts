@@ -150,7 +150,9 @@ function boot(o: GameOpts): void {
   let cms: CommonsView[] = [];
 
   const storedTab = lsGet(TAB_KEY);
-  const firstOpen = sectorIds(content).find((id) => state!.sectors?.[id]?.open) ?? sectorIds(content)[0] ?? '';
+  // M5: in a Ministry (and any run after an Act's ending) the page opens on an Industry still in play, not a capstone.
+  const capped = (state.meta?.world as { capstone?: Record<string, unknown> } | undefined)?.capstone ?? {};
+  const firstOpen = sectorIds(content).find((id) => state!.sectors?.[id]?.open && !capped[id]) ?? sectorIds(content).find((id) => state!.sectors?.[id]?.open) ?? sectorIds(content)[0] ?? '';
   const initial: SectorId = mockOpts?.sector && state.sectors?.[mockOpts.sector]?.open ? mockOpts.sector
     : storedTab && state.sectors?.[storedTab]?.open ? storedTab : firstOpen;
 
@@ -501,7 +503,7 @@ function emptyDerived(): Derived {
     orders: {
       market: { available: false, on: false, paybackMax: 120, paybackChoices: [], sectors: {} },
       civilService: { available: false, on: false, levers: {} }, treasury: { available: false, on: false, keepSeconds: 0, projects: [] }, nextTickIn: 0,
-      marketWhy: {}, dispatch: { available: false, on: false, cast: {} }, kind: { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing' },
+      marketWhy: {}, dispatch: { available: false, on: false, cast: {} }, kind: { market: 'opening', civilService: 'closing', treasury: 'closing', dispatch: 'closing', inspection: 'closing' },
     },
     respec: { allowed: false, refund: 0, refundByTree: {} },
     features: Object.fromEntries(FEATURE_IDS.map((f) => [f, false])) as Record<FeatureId, boolean>,

@@ -27,13 +27,20 @@ const ownable = new Set([
   ...upgradeIds, ...appIds, ...leverIds, ...C.institutions.map((i) => i.id), ...C.knowhow.map((k) => k.id),
   ...C.achievements.map((a) => a.id), ...(C.dividends ?? []).map((d) => d.id), ...commonsIds,
   ...(C.charters ?? []).map((c) => c.id), ...sectorIds,
+  /* M5: pledges, Articles, playbooks and loophole rungs are ownable */
+  ...(C.pledges ?? []).map((p) => p.id), ...(C.articles ?? []).map((a) => a.id), ...(C.playbooks ?? []).map((p) => p.id),
+  ...(C.loopholes ?? []).map((l) => l.id),
 ]);
+const loopholeIds = new Set((C.loopholes ?? []).map((l) => l.id));
 const GLOBAL_STATS: StatKey[] = [
   'time', 'year', 'wellbeing', 'population', 'capital', 'mandate', 'reckonings', 'steadyYearsAll', 'clicks',
   'decisions', 'automated', 'commonsLevels', 'sectorsSettled', 'leanDecades', 'fullDecades',
   'steadySectors', 'dispatchesAnswered', 'historiesCleared', 'totalHours', 'bankedSeconds',
   /* M4 */
   'capstoned',
+  /* M5 */
+  'confidence', 'inOffice', 'inOpposition', 'electionsWon', 'ministries', 'treaties', 'precedent', 'settledFromChair',
+  'parliamentWagers', 'rivalCapital',
 ];
 const SECTOR_STATS: StatKey[] = [
   'etaFold', 'rFold', 'frontierFold', 'peakRFold', 'rebound', 'resourceUse', 'demand', 'servicePrice',
@@ -43,6 +50,8 @@ const SECTOR_STATS: StatKey[] = [
   /* M4 (and the amendment's feedShare) */
   'openFor', 'stockFraction', 'reportedStock', 'foreignShare', 'scarYears', 'surveyed', 'budgetHeadroom', 'feedFactor',
   'arrears', 'feedShare',
+  /* M5 */
+  'concealment', 'yearsSinceInspection', 'certifiedDecades', 'waterApplied', 'waterConsumed', 'returnShare', 'loopholesUsed',
 ];
 const APP_STATS: StatKey[] = ['adoption', 'appDemand'];
 const FRACTION_STATS: StatKey[] = ['reserveFraction', 'pressureFraction', 'rebound', 'adoption', 'loadFactor', 'withinBudget',
@@ -63,6 +72,8 @@ function condProblems(where: string, c: Cond | undefined, out: string[]) {
   if ('returned' in c) return;
   /* M4 */
   if ('ending' in c) { if (!endingIds.has(c.ending)) out.push(`${where}: ending ${c.ending}`); return; }
+  /* M5 */
+  if ('loophole' in c) { if (!loopholeIds.has(c.loophole)) out.push(`${where}: loophole ${c.loophole}`); return; }
   if ('stat' in c) {
     if (GLOBAL_STATS.includes(c.stat)) return;
     if (SECTOR_STATS.includes(c.stat)) { if (!c.sector || !sectorIds.includes(c.sector)) out.push(`${where}: ${c.stat} needs a real sector`); return; }
@@ -92,6 +103,8 @@ const FEATURE_RK: Record<string, number> = {
   freeAtUse: 3, survey: 3, histories: 3, settlement: 4,
   /* M4: the full account arrives with the Board's Survey in run 6 */
   estimates: 5,
+  /* M5: after the Act I ending (run 9 at the earliest) */
+  chair: 9, loopholes: 9, inspection: 10, treasury: 10, statecraft: 11, charge: 12, treaty: 13,
 };
 const hasFeature = (c: Cond, ...ids: string[]) => implies(c, (l) => 'feature' in l && ids.includes(l.feature));
 /** Does the condition contain this leaf (as a conjunct along `all` paths, or in every branch of an `any`)? */
@@ -107,7 +120,7 @@ const gateOf = (d: DispatchDef): Cond => {
   return { all: [...(cw ? [cw] : []), ...(d.when ? [d.when] : []), ...(d.sector ? [{ owns: d.sector }] : [])] };
 };
 
-const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'populationMul', 'pressureAdd', 'metaFlag', 'slotAdd']);
+const ONE_OFF = new Set(['mandateAdd', 'capitalAdd', 'populationMul', 'pressureAdd', 'metaFlag', 'slotAdd', /* M5 */ 'confidenceAdd']);
 function effectProblems(where: string, e: EffectDef, out: string[], wager = false) {
   const s = (e as { sector?: string }).sector;
   if (s !== undefined && !sectorIds.includes(s)) out.push(`${where}: sector ${s}`);
@@ -133,6 +146,12 @@ function effectProblems(where: string, e: EffectDef, out: string[], wager = fals
   if ((e.type === 'leakMul' || e.type === 'spillMul') && (v! < 0.5 || v! > 2)) out.push(`${where}: ${e.type} ${v} outside [0.5, 2]`);
   if (e.type === 'leverCostMul' && [e.cost ?? 1, e.upkeep ?? 1].some((x) => x < 0.5 || x > 2)) out.push(`${where}: leverCostMul outside [0.5, 2]`);
   if (e.type === 'leverCostMul' && e.lever !== undefined && !leverIds.has(e.lever)) out.push(`${where}: leverCostMul ${e.lever}`);
+  /* M5 */
+  if (e.type === 'confidenceAdd' && Math.abs(v!) > 8) out.push(`${where}: confidenceAdd ${v}`);
+  if ((e.type === 'inspectorAdd' || e.type === 'pledgeOfferAdd') && Math.abs(v!) > 1) out.push(`${where}: ${e.type} ${v}`);
+  if (e.type === 'quietYearsAdd' && Math.abs(v!) > 3) out.push(`${where}: quietYearsAdd ${v}`);
+  if (['fineMul', 'amendYearsMul', 'litigateYearsMul', 'compensationMul', 'rivalCostMul', 'popularityYearsMul'].includes(e.type) && (v! < 0.5 || v! > 2)) out.push(`${where}: ${e.type} ${v} outside [0.5, 2]`);
+  if (['certify', 'ratchet', 'termYearsAdd', 'returnShareMul'].includes(e.type)) out.push(`${where}: ${e.type} is not for dispatches`);
   if (['slotAdd', 'reveal', 'unlock', 'startLever', 'startFounded', 'institutionLoan', 'orderUnlock', 'offlineCapAdd', 'startCapitalMul', 'metaFlag', 'settleSlotAdd'].includes(e.type)) out.push(`${where}: ${e.type} is not for dispatches`);
 }
 /** An effect that costs the player something (or trades one good for another). */
@@ -148,12 +167,18 @@ function adverse(e: EffectDef): boolean {
     case 'forbid': case 'suspendOrder': return true;
     case 'leakMul': case 'spillMul': case 'foreignMul': return v > 1;
     case 'leverCostMul': return (e.cost ?? 1) > 1 || (e.upkeep ?? 1) > 1;
+    /* M5 */
+    case 'confidenceAdd': case 'inspectorAdd': case 'quietYearsAdd': case 'pledgeOfferAdd': return v < 0;
+    case 'fineMul': return v < 1;
+    case 'amendYearsMul': case 'litigateYearsMul': case 'compensationMul': return v > 1;
+    case 'rivalCostMul': return v < 1;
     default: return false;
   }
 }
 
 const words = (t: string) => t.replace(/\{[a-z]+\}/g, '');
-const SYSTEM_WORDS: { re: RegExp; gate: (c: Cond) => boolean; name: string }[] = [
+const M5_CAST = new Set(['pryceChair', 'permanentSecretary', 'chiefInspector', 'opposition', 'okonedo']);
+const SYSTEM_WORDS: { re: RegExp; gate: (c: Cond) => boolean; name: string; m5?: boolean }[] = [
   { name: 'budget', re: /\b(budget|the line|its line|their lines|decade within|decades within|lean decade|full decade)\b/i, gate: (c) => hasFeature(c, 'budget', 'leverRepeat', 'dividendChoice', 'budgetPace', 'clearSkies', 'steadyState', 'settlement') },
   { name: 'Commons', re: /\bCommons\b/, gate: (c) => hasFeature(c, 'commons') },
   { name: 'Charter', re: /\bcharters?\b(?! (flights?|fares?|more flights))/i, gate: (c) => hasFeature(c, 'charters') },
@@ -161,6 +186,11 @@ const SYSTEM_WORDS: { re: RegExp; gate: (c: Cond) => boolean; name: string }[] =
   { name: 'Settlement', re: /\bsettle(d|ment)?\b/i, gate: (c) => hasFeature(c, 'settlement') },
   { name: 'seams', re: /\bseams?\b/i, gate: (c) => hasFeature(c, 'seams') },
   { name: 'Hindsight', re: /\b(Hindsight|Know-how)\b/, gate: () => false },
+  /* M5 */
+  { m5: true, name: 'Inspector', re: /\b(Inspectors?|Inspectorate|inspection)\b/i, gate: (c) => hasFeature(c, 'inspection') },
+  { m5: true, name: 'loophole', re: /\bloopholes?\b/i, gate: (c) => hasFeature(c, 'loopholes') || implies(c, (l) => 'loophole' in l) },
+  { m5: true, name: 'Opposition', re: /\b(Opposition|election|manifesto|polls)\b/, gate: (c) => hasFeature(c, 'chair') || implies(c, (l) => 'flag' in l && l.flag === 'office') },
+  { m5: true, name: 'Treaty', re: /\b(Treaty|Precedent)\b/, gate: (c) => hasFeature(c, 'treaty') },
 ];
 
 describe('the cast', () => {
@@ -285,7 +315,7 @@ describe('dispatches: the unfolding', () => {
     for (const d of dispatches) {
       const g = gateOf(d);
       const text = words([d.headline, d.body, ...d.arms.flatMap((a) => [a.label, a.outcome, a.price, a.reply ?? ''])].join(' '));
-      for (const w of SYSTEM_WORDS) if (w.re.test(text) && !w.gate(g)) out.push(`${d.id}: names ${w.name}`);
+      for (const w of SYSTEM_WORDS) if ((!w.m5 || M5_CAST.has(d.cast)) && w.re.test(text) && !w.gate(g)) out.push(`${d.id}: names ${w.name}`);
     }
     expect(out).toEqual([]);
   });
@@ -430,7 +460,7 @@ describe('M4: wager arms', () => {
       }
       const g = gateOf(d);
       const all = words(texts.join(' '));
-      for (const s of SYSTEM_WORDS) if (s.re.test(all) && !s.gate(g)) out.push(`${d.id}[${i}]: names ${s.name}`);
+      for (const s of SYSTEM_WORDS) if ((!s.m5 || M5_CAST.has(d.cast)) && s.re.test(all) && !s.gate(g)) out.push(`${d.id}[${i}]: names ${s.name}`);
     }
     expect(out).toEqual([]);
   });

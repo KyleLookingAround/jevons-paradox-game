@@ -11,6 +11,7 @@ import { sound } from './sound';
 import { lineUse } from './gauges';
 import { isOpen, setOpen } from './prefs';
 import { estimatesText, capstoneText } from '../content/boardSurvey';
+import { leverChair, buildOrderBook } from './rival';
 
 /** Plain-words description of an effect, for cards and shop nodes. Unknown effect types give ''. */
 export function effectText(ctx: Ctx, e: EffectDef): string {
@@ -274,7 +275,9 @@ export function buildUpgrades(ctx: Ctx): Comp {
   const ownedSum = h('summary', null);
   const ownedList = h('ul', { class: 'owned-list' });
   const owned = h('details', { class: 'owned' }, ownedSum, ownedList);
-  const el = h('section', { class: 'upgrades', 'aria-label': 'Improvements' }, h('header', { class: 'sec-h' }, title, badge), list, empty, owned);
+  // M5: in an Industry the rival runs, his read-only order book stands in the cards' place (rival.ts).
+  const book = buildOrderBook(ctx);
+  const el = h('section', { class: 'upgrades', 'aria-label': 'Improvements' }, h('header', { class: 'sec-h' }, title, badge), book.el, list, empty, owned);
   const cards = new Map<string, UpCard>();
   const forks = new Map<string, HTMLElement>();
   let key = '', ownedKey = '';
@@ -287,6 +290,12 @@ export function buildUpgrades(ctx: Ctx): Comp {
 
   function update(): void {
     const def: SectorDef | undefined = sectorDef(ctx);
+    book.update();
+    const his = book.active();
+    cls(el, 'his', his);
+    setText(title, his ? 'The company’s order book' : 'Improvements');
+    if (his) { show(list, false); show(empty, false); show(owned, false); show(badge, false); return; }
+    show(list, true);
     const views = (ctx.ups || []).filter((v) => v && v.def && v.def.sector === ctx.sector);
     const avail = views.filter((v) => v.visible && !v.maxed);
     // Order: open choices by cost (a fork by its cheapest arm), then choices already ruled out.
@@ -699,10 +708,20 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     h('div', { class: 'bite-row' }, h('span', { class: 'bite-k', text: 'Bites back' }), h('span', { class: 'bite-bar', 'aria-hidden': 'true' }, biteFill), biteV),
     h('p', { class: 'bite-p' }, biteTxt, ' ', unless));
   const forbidEl = h('p', { class: 'lev-forbid', hidden: true, text: 'Forbidden for this run: it can be lowered, not raised.' });
+  // M5: Pryce's answer, the court, pledge and lobby marks, and the ladder of loopholes (rival.ts; hidden outside office).
+  const chair = leverChair(ctx, def.id);
   // M4 folding: a lever at its limit is one line ("Coke duty · at its limit"); a tap opens it (remembered per device).
   const foldKey = `lev:${def.id}`;
   const limitTag = h('span', { class: 'lev-limit', text: ' · at its limit' });
+  // M5: in a Ministry a lever not yet enacted is brief (name, Pryce's answer, Enact); a tap on its name opens the rest.
+  const briefKey = `levb:${def.id}`;
   const foldBtn = h('button', { class: 'lev-fold', type: 'button', 'aria-expanded': 'false', onclick: () => {
+    if (el.classList.contains('briefable')) {
+      const open = el.classList.contains('brief');
+      setOpen(briefKey, open);
+      cls(el, 'brief', !open); setAttr(foldBtn, 'aria-expanded', String(open));
+      return;
+    }
     const open = el.classList.contains('folded');
     setOpen(foldKey, open);
     cls(el, 'folded', !open); setAttr(foldBtn, 'aria-expanded', String(open));
@@ -712,14 +731,15 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     h('p', { class: 'lev-blurb', text: def.blurb }),
     h('p', { class: 'lev-catch' }, h('span', { class: 'lev-catch-k', text: 'The catch. ' }), catchT), biteEl, forbidEl,
     h('div', { class: 'lev-now' }, h('span', { class: 'muted', text: 'In force: ' }), now, upk, seeIt),
-    levy, noLineEl, next, rec,
-    h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn));
+    levy, noLineEl, next, chair.el, rec,
+    h('div', { class: 'lev-btns' }, lowerBtn, raise, maxBtn), chair.ladder);
   let cur: LeverView | null = null;
   let pipKey = '';
 
   function update(v: LeverView): void {
     cur = v;
     catchNow();
+    chair.update(v);
     const b = v.bite;
     show(biteEl, !!b);
     if (b) {
@@ -767,7 +787,11 @@ function makeLevCard(ctx: Ctx, v0: LeverView): LevCard {
     const folded = maxed && !isOpen(foldKey, false);
     if (el.classList.contains('folded') !== folded) { cls(el, 'folded', folded); setAttr(foldBtn, 'aria-expanded', String(!folded)); }
     show(limitTag, maxed);
-    foldBtn.disabled = !maxed;
+    const briefable = !!ctx.d?.chair && lv === 0;
+    cls(el, 'briefable', briefable);
+    const brief = briefable && !isOpen(briefKey, false);
+    if (el.classList.contains('brief') !== brief) { cls(el, 'brief', brief); setAttr(foldBtn, 'aria-expanded', String(!brief)); }
+    foldBtn.disabled = !maxed && !briefable;
     show(seeIt, lv > 0);
     // A cap in force with no budget line yet does nothing until the line is drawn (standingDrawYears, or a Tighten).
     const noLine = def.kind === 'cap' && lv > 0 && !ctx.state.sectors?.[def.sector]?.budget;

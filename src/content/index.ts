@@ -23,7 +23,9 @@ import { institutions, knowhow, knowhowTrees } from './prestige';
 import { code } from './sectors/code';
 import { compute } from './sectors/compute';
 import { light } from './sectors/light';
-import { motion } from './sectors/motion';
+import { motion, motionLoopholes, motionPledges } from './sectors/motion';
+/* M5: Plenty (the Plenty lane's module; design/scratch/m5-registry-plenty.md) */
+// import { plenty, PLENTY_LOOPHOLES, PLENTY_PLEDGES } from './sectors/plenty';  // PENDING: wired once the Plenty lane's note says it is complete
 import { steam } from './sectors/steam';
 /* M4: the Coal Age complete (the Iron and Fishing lanes' modules; design/scratch/m4-registry-*.md). */
 import { iron } from './sectors/iron';
@@ -34,12 +36,16 @@ import { recycleText } from './words';
 /* M3: this lane's Histories; the other two content lanes' modules (design/scratch/m3-register-*.md), imported here and
  * linted by content.test.ts. The registry is the one place that wires them; their files are theirs. */
 import { histories } from './histories';
-import { cast, castM4 } from './cast';
+import { cast, castM4, castM5 } from './cast';
 import { dispatches } from './dispatches';
 import { ambient, ambientM4 } from './news/ambient';
 import { archive } from './archive';
 import { proprietor } from './proprietor';
 import { ending } from './ending';
+/* M5: the Chair (this lane's numbers), and each lane's M5 exports as their notes land
+ * (design/scratch/m5-registry-{motion,plenty,text}.md). */
+import { articles, chair, generalPledges, officeDef, playbooks, rival } from './chair';
+import { officeText } from './office';
 
 export { sig2, ladder } from './helpers';
 
@@ -47,8 +53,9 @@ export { sig2, ladder } from './helpers';
  * The Industries in sectorOrder: the order they are listed, iterated and (by default) unlocked in. Their upgrades,
  * levers and headlines are concatenated in this order too, which fixes the order of cards and levers on screen.
  * M4: the Coal Age's four (Act I), then the Previews (Acts II and III). Saves key sectors by id, so the order is free.
+ * M5: Plenty joins the Great Acceleration after Motion (it opens only in office, Ministry 3).
  */
-const SECTORS: SectorContent[] = [steam, light, iron, fishing, motion, compute, code];
+const SECTORS: SectorContent[] = [steam, light, iron, fishing, motion, /* plenty, */ compute, code];
 
 export const content: Content = {
   sectors: Object.fromEntries(SECTORS.map((s) => [s.def.id, s.def])),
@@ -71,7 +78,7 @@ export const content: Content = {
   features,
   /* M3 */
   /* M3; M4 appends the text lane's new cast and ambient templates (append only: content order is the draw's tie-break) */
-  cast: [...cast, ...castM4],
+  cast: [...cast, ...castM4, ...castM5 /* , ...castM5Plenty (with Plenty) */],
   dispatches,
   ambient: [...ambient, ...ambientM4],
   histories,
@@ -81,4 +88,13 @@ export const content: Content = {
   /* M4 */
   acts,
   surveyReveal,
+  /* M5: the Ministry. Pledges and loopholes: the general ones (chair.ts), then each Industry's in sectorOrder (content
+   * order is the pledge draw's order). */
+  office: officeDef(officeText),
+  chair,
+  rival,
+  pledges: [...generalPledges, ...motionPledges /* , ...PLENTY_PLEDGES */],
+  loopholes: [...motionLoopholes /* , ...PLENTY_LOOPHOLES */],
+  articles,
+  playbooks,
 };

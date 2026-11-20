@@ -6,6 +6,7 @@
  * Intros are headlines (house style: sentence case, no full stop, 70 characters at most, never "you").
  */
 import type { Cond, FeatureDef, FeatureId } from '../types';
+import { FEATURE_TEXT_M5 } from './officeText';
 
 const rk = (n: number, label?: string): Cond => ({ stat: 'reckonings', op: '>=', value: n, ...(label ? { label } : {}) });
 const steamDecades = (n: number): Cond => ({ stat: 'budgetDecades', sector: 'steam', op: '>=', value: n });
@@ -30,7 +31,7 @@ const actOne = (...cs: Cond[]): Cond => ({ all: [...cs.flatMap((c) => ('all' in 
  * openFor = run time, past the window's start). Run floors (below) keep an Industry's first run free of mid-run
  * features; this keeps a late opening and a feature apart in any run.
  */
-const MID_OPENERS = ['light', 'iron', 'fishing', 'motion', 'compute', 'code'];
+const MID_OPENERS = ['light', 'iron', 'fishing', 'motion', 'compute', 'code' /* , 'plenty' (with its module) */];
 export const OPENING_GAP_SECONDS = 300;
 const CLEAR_OF_OPENINGS: Cond = {
   not: { any: MID_OPENERS.map((sector): Cond => ({ stat: 'openFor', sector, op: '<', value: OPENING_GAP_SECONDS })) },
@@ -42,6 +43,11 @@ export const MID_WINDOW: [number, number] = [1500, 1740];
 const MID: Cond[] = [{ stat: 'time', op: '>=', value: MID_WINDOW[0] }, { stat: 'time', op: '<', value: MID_WINDOW[1] }, CLEAR_OF_OPENINGS];
 /** M3: only the unlock check in reckon() sees a run this young (the step's checks read the state at 5 s and later). */
 const AT_RECKONING: Cond[] = [{ stat: 'time', op: '<', value: 2 }];
+/* M5: the Ministry's conditions. The mid-run window is M4's (MID, clear of any Industry's opening by five minutes; Plenty
+ * joins MID_OPENERS when its module is registered). */
+const OFFICE: Cond = { flag: 'office', label: 'Office taken' };
+const ministries = (n: number): Cond => ({ stat: 'ministries', op: '>=', value: n, label: n === 2 ? 'The second Ministry' : `Ministry ${n}` });
+const MID_M5: Cond[] = MID;
 const skiesDue: Cond = { all: [steamDecades(1), { any: [{ stat: 'wellbeing', op: '>=', value: 34 }, steamDecades(5)] }] };
 
 export const features: Partial<Record<FeatureId, FeatureDef>> = {
@@ -182,6 +188,41 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
     intro: 'Historians invited to run the century again, under other rules',
     name: 'Histories',
   },
+  /* ---------------- M5: the Other Chair (design/m5-design.md §8; contract: M5FeatureId) ----------------------------
+   * The owner's rule continues: at most two new things a Ministry (one at the Reckoning that begins it, one mid-run in
+   * the window, minutes 25 to 29), never two within five minutes (featureGapSeconds), confusing systems late, in the
+   * design's order: the Chair, loopholes, inspection, the Treasury, Statecraft, Plenty, the charge, the Treaty. An
+   * Industry opening is its Ministry's mid-run arrival (Plenty, Ministry 3). No arrival waits on a currency (design §9.1):
+   * each waits on Ministries served, the window, or a settlement from the Chair. `ministries` counts the Ministry being
+   * played (meta.office.ministries), so "Ministry 2" is ministries ≥ 2. */
+
+  /* Take office: Confidence, elections, pledges, the answer line, Pryce's panel. takeOffice unlocks it at once. */
+  chair: { when: { flag: 'office', label: 'Office taken' }, ...FEATURE_TEXT_M5.chair },
+  /* Ministry 1, mid-run: the first loophole. It waits for a laddered lever in force (the mileage rule) until minute 28,
+   * then arrives anyway (so it stays in Ministry 1 and does not push the Treasury into Plenty's Ministry). A rung opens
+   * only when a laddered lever is enacted, so a player who never writes a standard simply has the feature idle. */
+  loopholes: {
+    when: { all: [OFFICE, ...MID_M5, { any: [{ owns: 'motion.mileageRule' }, { stat: 'time', op: '>=', value: 1680 }] }] },
+    ...FEATURE_TEXT_M5.loopholes,
+  },
+  /* Ministry 2, at the Reckoning: the Inspectors, and Pryce's concealment with them. */
+  inspection: { when: { all: [OFFICE, ministries(2), ...AT_RECKONING] }, ...FEATURE_TEXT_M5.inspection },
+  /* Ministry 2, mid-run: the Treasury's balance, compensation. Never in a window Plenty may open in (Ministry 3) unless
+   * Plenty has opened in an earlier Ministry (a late Treasury then waits five minutes clear of the opening). */
+  treasury: {
+    when: { all: [OFFICE, ministries(2), { feature: 'inspection' }, ...MID_M5, { any: [{ stat: 'ministries', op: '<', value: 3 }, { owns: 'plenty' }] }] },
+    ...FEATURE_TEXT_M5.treasury,
+  },
+  /* Ministry 3, at the Reckoning: the government's Know-how tree in the shop (KnowhowDef.when). */
+  statecraft: { when: { all: [OFFICE, ministries(3), { feature: 'inspection' }, ...AT_RECKONING] }, ...FEATURE_TEXT_M5.statecraft },
+  /* Ministry 4, at the Reckoning: a price on the service itself (LeverDef.requires ['charge']). */
+  charge: { when: { all: [OFFICE, ministries(4), { feature: 'statecraft' }, ...AT_RECKONING] }, ...FEATURE_TEXT_M5.charge },
+  /* The Reckoning after the first settlement from the Chair (ChairDef.treaty.when): the second reset. */
+  treaty: {
+    when: { all: [OFFICE, { stat: 'settledFromChair', op: '>=', value: 1 }, ...AT_RECKONING] },
+    ...FEATURE_TEXT_M5.treaty,
+  },
+
   /* Off (GlobalParams.offline.bankRate 0; owner's decision for M4): an empty `any` never holds. */
   bank: { when: { any: [] }, intro: 'Hours lost to the hold are now kept on deposit', name: 'Banked time' },
 };
