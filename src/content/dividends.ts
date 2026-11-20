@@ -12,6 +12,8 @@
  */
 import type { DividendDef } from '../types';
 import { absorb, capCost, half, margin, reserve, sat } from './helpers';
+/* M4: Iron's pairs are written in its own module (the Iron lane); registered here with the others. */
+import { ironDividends } from './sectors/iron';
 
 /* ------------------------------------------------------------------ */
 /* GLOBAL PAIRS (no sector): the sequence every Industry shares        */
@@ -247,7 +249,30 @@ const sectorDividends: DividendDef[] = [
     blurb: 'Pizza, a weekend and a trophy for the best new bot. Chatbots cheaper to make, and everywhere by Monday.',
     effects: [half('code', 1.06, 'code.chatbots')],
   },
+  /* ---- Fishing (M4; the Fishing lane's pairs, design/scratch/m4-registry-fishing.md §3) ---- */
+  {
+    id: 'div.fishing.closedMonth', name: 'A closed month',
+    blurb: 'The decade’s thrift buys the crews a month ashore in the spawning season. A little less landed; nobody starves.',
+    effects: [sat('fishing', 0.96)], // a small standing cut in appetite (the closed season's gentle cousin)
+  },
+  {
+    id: 'div.fishing.newSlip', name: 'A new slipway',
+    blurb: 'A second slip at the yard, paid for out of the decade. Trawlers come off it cheaper, and more of them.',
+    effects: [capCost('fishing', 0.95)], // the rebound arm: cheaper catching
+  },
+  {
+    id: 'div.fishing.boardGrant', name: 'A grant to the Board',
+    blurb: 'The decade’s savings voted to the Fishery Board for a vessel. The banks are counted for the rest of the run.',
+    // surveyed while held (the run): one honest way to pay for the truth (a decade forgone). Balance may prefer a
+    // wellbeingAdd (the Fishing lane's fallback: "A seamen’s mission", same id).
+    effects: [{ type: 'survey', sector: 'fishing' }],
+  },
+  {
+    id: 'div.fishing.pennySupper', name: 'The penny supper',
+    blurb: 'Fish duty remitted for the decade. Suppers a penny cheaper, and the shops fry twice as many.',
+    effects: [half('fishing', 1.05, 'fishing.friedFish')], // the rebound arm
+  },
 ];
 
-export const dividends: DividendDef[] = [...globalDividends, ...sectorDividends];
+export const dividends: DividendDef[] = [...globalDividends, ...sectorDividends, ...ironDividends];
 

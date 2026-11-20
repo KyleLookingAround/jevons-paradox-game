@@ -1896,7 +1896,11 @@ function stageWords(look: string, n: number): string {
 
 const WEATHER = ['clear', 'hazy', 'thickening', 'heavy', 'choking'];
 function weatherOf(v: SceneView): string {
-  return v.clear || v.settled || v.steady ? 'clear' : weatherWord(v.pressureFraction);
+  return v.clear || v.settled || v.steady ? 'clear' : weatherWord(v.stock && !v.stock.surveyed ? 1 - v.stock.reported : v.pressureFraction);
+}
+/** The reserve as words may speak of it: an unsurveyed stock only as the fleet reports it. */
+function shownReserve(v: SceneView): number {
+  return v.stock && !v.stock.surveyed ? v.stock.reported : v.reserveFraction;
 }
 function weatherWord(pf: number): string {
   return WEATHER[pf < 0.08 ? 0 : pf < 0.3 ? 1 : pf < 0.55 ? 2 : pf < 0.8 ? 3 : 4];
@@ -1909,7 +1913,8 @@ function reserveWord(r: number, flow: boolean): string {
 function caption(v: SceneView): string {
   const founded = v.apps.filter((a) => a.status === 'founded').length;
   const avail = v.apps.some((a) => a.status === 'available');
-  const parts = [`${v.pressureName}: ${weatherOf(v)}`, `${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`];
+  // M4: an unsurveyed stock is spoken of as the fleet reports it (catch per trip), never as the truth.
+  const parts = [`${v.pressureName}: ${weatherOf(v)}`, `${v.resourceName.toLowerCase()} ${reserveWord(shownReserve(v), v.resourceKind === 'flow')}`];
   if (v.settled) parts.push(v.settledYear ? `settled since ${v.settledYear}` : 'settled');
   else if (v.steady) parts.push('steady state');
   else if (v.clear) parts.push('clear skies');
@@ -1930,7 +1935,7 @@ export function describeView(v: SceneView): string {
   let s = `${v.sectorName}: ${place}. `;
   s += f.length ? f.map((a) => `${a.name} ${busyWord(a.adoption)}`).join('; ') + '. ' : 'Nothing built yet. ';
   if (av.length) s += `Ready to found: ${av.map((a) => a.name).join(', ')}. `;
-  s += `${v.pressureName} ${weatherOf(v)}; ${v.resourceName.toLowerCase()} ${reserveWord(v.reserveFraction, v.resourceKind === 'flow')}`;
+  s += `${v.pressureName} ${weatherOf(v)}; ${v.resourceName.toLowerCase()} ${reserveWord(shownReserve(v), v.resourceKind === 'flow')}${v.stock && !v.stock.surveyed ? ' by the skippers’ report' : ''}`;
   const rw = lay.reserveWords?.(v.reserveFraction);
   s += rw ? `: ${rw}. ` : '. ';
   if (v.levers.length) s += `In force: ${v.levers.map((x) => x.name).join(', ')}. `;

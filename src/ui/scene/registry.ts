@@ -10,6 +10,7 @@ import { compute } from './layouts/compute';
 import { code } from './layouts/code';
 import { genericLayout } from './layouts/generic';
 import { iron } from './layouts/iron';
+import { fishing } from './layouts/fishing';
 import { birds } from './layouts/util';
 import { styleFor, allStyles, addProps } from './styles/index';
 import { M3_TERMINAL, M3_CHROME } from './props/m3';
@@ -19,7 +20,7 @@ addProps('chrome', M3_CHROME);
 
 const SHARED: Record<string, Prop> = { ...COMMON, ...CIVIC, birds };
 
-const LAYOUTS: Record<string, Layout> = { steam, light, motion, compute, code, iron };
+const LAYOUTS: Record<string, Layout> = { steam, light, motion, compute, code, iron, fishing };
 
 /** Icon aliases: an application icon a style's library lacks is drawn with the nearest prop it has. */
 const ALIAS: Record<string, string> = {

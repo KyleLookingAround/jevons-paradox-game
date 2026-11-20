@@ -426,16 +426,23 @@ const m4api = {
     for (let i = 0; i < l.length; i++) { l[i] = b.l[i] - a.l[i]; r[i] = b.r[i] - a.r[i]; }
     return { added: analyse(l, r, 3), base: analyse(a.l, a.r, 3) };
   },
-  /** A tab switch with RMS per 100 ms around it (the crossfade dip). */
+  /** A tab switch at 6 s: the crossfade dip. Each 1 s window through the fade is compared with the quieter of (the
+   *  outgoing Industry held, same moment) and (the incoming Industry's ordinary quiet: the 20th-percentile 1 s window of
+   *  its settled stretch, 11–16 s), so a slow swell or a beat between hammer blows is not counted as a dip. */
   async switchDip(a: string, b: string, p: PresetName = 'mid') {
     const va = demoView(a, p), vb = demoView(b, p);
     const out = await renderCase({ name: 'sw', dur: 16, view: (t) => (t < 6 ? va : vb) });
-    const w = (from: number, to: number) => { let e = 0, n = 0; for (let i = Math.round(from * SR); i < Math.round(to * SR); i++) { e += out.l[i] ** 2 + out.r[i] ** 2; n += 2; } return 10 * Math.log10(e / n + 1e-20); };
-    const before = w(3, 6), after = w(12, 16);
+    const held = await renderCase({ name: 'held', dur: 16, view: hold(va) });
+    const w = (x: Rendered, from: number, to: number) => { let e = 0, n = 0; for (let i = Math.round(from * SR); i < Math.round(to * SR); i++) { e += x.l[i] ** 2 + x.r[i] ** 2; n += 2; } return 10 * Math.log10(e / n + 1e-20); };
+    const before = w(out, 3, 6), after = w(out, 11, 16);
+    const bw: number[] = []; for (let t = 11; t + 1 <= 16; t += 0.25) bw.push(w(out, t, t + 1));
+    bw.sort((x, y) => x - y);
+    const bq = bw[Math.floor(0.2 * (bw.length - 1))];
     let lo = 0;
-    // 1 s windows through the fade, against the quieter of the two settled states (a dip is going below both).
-    for (let t = 5.5; t < 10.5; t += 0.25) lo = Math.min(lo, w(t, t + 1) - Math.min(before, after));
+    for (let t = 5.5; t < 10.5; t += 0.25) lo = Math.min(lo, w(out, t, t + 1) - Math.min(w(held, t, t + 1), bq));
     return { before: Math.round(before * 10) / 10, after: Math.round(after * 10) / 10, dipDb: Math.round(lo * 10) / 10, a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, `tab switch ${a} → ${b} at 6 s`, [[6, b]]) };
+  },
+};
   },
 };
 

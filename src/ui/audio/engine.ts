@@ -60,6 +60,9 @@ interface LayerRt {
   variant?: number;
   /** Export: the source id this layer reports to tap.gate / tap.onVoice. */
   src: string;
+  /** M4: built while its graph is still fading in: its level starts at the mix's value instead of ramping up from 0
+   *  (the graph's own crossfade is the fade; ramping both made a tab switch dip ~2 dB more than the crossfade's own). */
+  fresh?: boolean;
 }
 
 interface Graph {
@@ -591,6 +594,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
         // Live: at most BUILD_MS of graph-building per update; the rest of the place arrives on the next ones.
         if (!sync && perf() - t0 > BUILD_MS) continue;
         rt = buildLayer(g, l, g.def.key, g.air, g.send, g.sector);
+        if (now() - g.bornAt < 1.5 && graphs.length > 1) rt.fresh = true;
         g.layers.push(rt); g.byId.set(l.id, rt);
       }
       if (l.life && lm) applyLife(g, rt, lm);
@@ -626,6 +630,12 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (!lm) return;
     const l = rt.def;
     rt.variant = lm.variant;
+    if (rt.fresh) {
+      rt.fresh = false;
+      const v0 = lm.level * l.gain * scale;
+      try { rt.level.gain.setValueAtTime(v0, now()); } catch { /* ignore */ }
+      last.set(rt.level.gain, v0);
+    }
     ramp(rt.level.gain, lm.level * l.gain * scale, tc);
     rt.density = lm.density;
     rt.pitch = lm.pitch;

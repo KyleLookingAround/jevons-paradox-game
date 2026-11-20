@@ -220,7 +220,7 @@ const STAT_WORDS: Record<StatKey, string> = {
   travelHours: 'hours a day travelling', sprawl: 'sprawl', bite: 'side effect',
   openFor: 'time open (s)', stockFraction: 'stock left', reportedStock: 'catch per trip', foreignShare: 'foreign share',
   scarYears: 'years of scar', surveyed: 'surveyed', budgetHeadroom: 'headroom under the line', feedFactor: 'input cost factor',
-  arrears: 'in arrears', capstoned: 'industries settled for good',
+  arrears: 'in arrears', capstoned: 'industries settled for good', feedShare: 'share of the burn the inputs add',
 };
 const OP_SYM: Record<string, string> = { '<': '<', '<=': '≤', '>': '>', '>=': '≥' };
 export function fmtNum(x: number): string {
