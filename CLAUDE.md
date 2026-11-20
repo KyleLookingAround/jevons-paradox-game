@@ -31,9 +31,9 @@ Bun is the whole toolchain; there are no runtime dependencies. Keep it that way 
 - Words: the unit of play is a `Sector` in code and an "Industry" on screen; the period is an "Age". Player-facing text
   never says "sector" or "era" for the unit.
 
-## Status (19 Nov 2026)
+## Status (20 Nov 2026)
 
-M1 and M2 are built, balanced and live on `main`. Five Industries in three Ages; honest rebound instruments; budget lines
+M1, M2 and M3 are built and live on `main` (M3 paragraph below). Five Industries in three Ages; honest rebound instruments; budget lines
 with paces, decades judged from the day drawn (lean or full), clear skies and Steady State; decade dividends; Settlement;
 the Commons; standing orders (the Market from run 2); Charters; an offline hold with Hindsight entered at a reduced rate;
 Know-how respec; a living illustrated scene per Industry in its Age's art style, one country throughout; generated sound
@@ -61,7 +61,7 @@ Screen install is unverified; in boom play most of a long absence is lost to the
 planned); the restraint player has a stretch of about three minutes with nothing to decide late in runs 1–2 (M3's
 dispatches address it); pacing figures come from scripted players, not people.
 
-**M3 (built on the working branch, 20 Nov 2026; not yet merged or live — the coordinator updates this section on
+**M3 (merged to `main` 20 Nov 2026; was: built on the working branch, the coordinator updates this section on
 merging).** Every Industry its own mechanic (seams, load, travel, the free price, the code stock), each a temptation
 whose trade is shown under a drawn line; levers that bite back; the cast and 62 letters; Histories; the Archive; the
 household return and the Proprietor's Day; the first ending: every Industry settled at once for fifty years, with
@@ -74,7 +74,7 @@ the defaults (see `design/roadmap.md`, M3).
 
 ## Next steps, in order
 
-1. **M3: stop and look.** Play the branch build, merge it, and decide the open letter target; then M4.
+1. **M3: stop and look.** It is live. Have the owner play it; decide the open letter target; M4 design is in `design/m4-*.md` (in progress).
 2. **M4–M9** per `design/roadmap.md`.
 
 Working rules for parallel agents (contract first and alone, lanes own folders, balance last by one agent) are at the
