@@ -25,6 +25,7 @@ a value or an order (M2).
 | `words.ts` | M2: words that belong to no other module (the recycle options' wording, `recycleText`). |
 | `achievements.ts` | Achievements, in display order (the five built in first). |
 | `news/fallback.ts` | The fallback headlines (`Content.headlines`), fit for any Industry. |
+| `textsplit.ts` | Not content: the rule that splits the assembled content's late prose from its rules for the page build (`build.ts`, `src/ui/text.ts`; docs/adr/ADR-2026-11-20-late-content-text.md). New words under the usual keys land in the late part by themselves. |
 | `global.ts` | `GlobalParams`: start, click, population, Mandate, crises, Hindsight weights, offline, Steady State (paces, clear skies, decade choices), levy, seats, orders, Commons, respec. |
 
 Dependencies point one way: `index.ts` → every other module → `helpers.ts` → `src/types.ts`. (Ids crossing modules,

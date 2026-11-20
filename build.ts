@@ -1,7 +1,8 @@
 // Builds the game into dist/ (see docs/adr/ADR-2026-11-19-split-build-lazy-parts-service-worker.md).
 //   bun run build.ts            → what GitHub Pages serves:
 //       index.html                 the shell: inline boot styles are not used; links the hashed stylesheet and main script
-//       app.<hash>.js              the main script: the core, the content's rules and words, the page (classic script, deferred)
+//       app.<hash>.js              the main script: the core, the content's rules and first-screen words, the page (classic, deferred)
+//       text.<hash>.js             lazy: the content's late prose (after first paint; a save waits for it; precached)
 //       styles.<hash>.css          the page's stylesheet (minified)
 //       scene.<hash>.js            lazy: the scene engine, art styles, layouts and props (loaded right after first paint)
 //       audio.<hash>.js            lazy: the sound engine (only when sound is on, or the settings sheet opens)
@@ -40,6 +41,22 @@ const archivePlugin = {
   },
 };
 
+/* ---------------------------------------------------------------- the content's late text (M4 perf pass) */
+// The main script's content is the assembled `content` value as a literal, without the prose a fresh game does not
+// show on its first screen; those strings are the lazy part 'text', put back by src/ui/text.ts (the rule, the walk and
+// why no number can change: src/content/textsplit.ts; docs/adr/ADR-2026-11-20-late-content-text.md). The Archive's
+// notes ride in the literal as their stubs (above).
+const { content: fullContent } = await import('./src/content/index.ts');
+const { splitLateText, dataLiteral } = await import('./src/content/textsplit.ts');
+const split = splitLateText({ ...fullContent, archive: JSON.parse(archiveStub.slice('export const archive = '.length, -1)) });
+const contentStub = `export const content = ${dataLiteral(split.stub)};\nexport { sig2, ladder } from './helpers';`;
+const contentPlugin = {
+  name: 'content-text-split',
+  setup(b: { onLoad: (o: { filter: RegExp }, f: () => { contents: string; loader: 'ts' }) => void }) {
+    b.onLoad({ filter: /src[\\/]content[\\/]index\.ts$/ }, () => ({ contents: contentStub, loader: 'ts' }));
+  },
+};
+
 /* ---------------------------------------------------------------- scripts */
 /** JSON safe inside a <script>: no '<' (so no '</script'), and the two line separators old parsers refuse escaped. */
 const safeJson = (o: unknown): string => JSON.stringify(o).replace(/</g, '\\u003c').split(String.fromCharCode(0x2028)).join('\\u2028').split(String.fromCharCode(0x2029)).join('\\u2029');
@@ -52,14 +69,15 @@ async function bundle(entry: string, plugins: unknown[] = []): Promise<string> {
   }
   return r.outputs[0].text();
 }
-const js = await bundle('src/main.ts', [archivePlugin]);
+const js = await bundle('src/main.ts', [archivePlugin, contentPlugin]);
 const lazy: Record<string, string> = {
   scene: await bundle('src/ui/lazy/scene.ts'),
   audio: await bundle('src/ui/lazy/audio.ts'),
   // JSON in a script: escape what could end the script or break it in old parsers.
   archiveText: `(function(){var G=self;(G.__rb=G.__rb||{}).archiveText=${safeJson(archiveText)};G.__rbOn&&G.__rbOn("archiveText")})();`,
+  text: `(function(){var G=self;(G.__rb=G.__rb||{}).text=${safeJson(split.strings)};G.__rbOn&&G.__rbOn("text")})();`,
 };
-const FILE: Record<string, string> = { scene: 'scene', audio: 'audio', archiveText: 'archive' };
+const FILE: Record<string, string> = { scene: 'scene', audio: 'audio', archiveText: 'archive', text: 'text' };
 
 /* ---------------------------------------------------------------- styles */
 /** Comments and runs of white space out; space around { } ; and , dropped. Nothing else is touched (a space before ':'
@@ -110,7 +128,7 @@ if (single) {
 /* ---------------------------------------------------------------- files */
 const hash = (s: string | Buffer) => Bun.hash(s).toString(36).slice(0, 8);
 // Our own hashed files from earlier builds go (other tools' pages in dist/ stay).
-for (const f of readdirSync('dist')) if (/^(app|scene|audio|archive|styles)\.[a-z0-9]+\.(js|css)$/.test(f) || f === 'app.js' || f === 'styles.css') rmSync('dist/' + f);
+for (const f of readdirSync('dist')) if (/^(app|scene|audio|archive|text|styles)\.[a-z0-9]+\.(js|css)$/.test(f) || f === 'app.js' || f === 'styles.css') rmSync('dist/' + f);
 // public/ first (the workflow copies it again after the build; here so a local build serves the same site).
 if (existsSync('public')) cpSync('public', 'dist', { recursive: true });
 
@@ -124,7 +142,8 @@ function emit(name: string, base: string, ext: string, body: string, when: strin
 const appFile = emit('app', 'app', 'js', js, 'first paint');
 const cssFile = emit('styles', 'styles', 'css', css, 'first paint');
 const chunkMap: Record<string, string> = {};
-for (const [n, s] of Object.entries(lazy)) chunkMap[n] = emit(n, FILE[n], 'js', s, n === 'scene' ? 'after first paint' : n === 'audio' ? 'sound on / settings opened' : 'Archive opened');
+const WHEN: Record<string, string> = { scene: 'after first paint', text: 'after first paint (a save: before start)', audio: 'sound on / settings opened', archiveText: 'Archive opened' };
+for (const [n, s] of Object.entries(lazy)) chunkMap[n] = emit(n, FILE[n], 'js', s, WHEN[n]);
 
 // The edition: changes whenever any shipped file changes (the service worker's cache name and the page's update check).
 // Kill switch: REBOUND_SW=off emits a worker that removes itself and every cache, and a page that registers none.
@@ -132,7 +151,9 @@ const swOff = process.env.REBOUND_SW === 'off';
 const edition = hash(Object.values(files).map((f) => f.file).join('|'));
 const page = html
   .replace(styleTag, () => `<link rel="stylesheet" href="${cssFile}">`)
-  .replace(scriptTag, () => `<script>self.__rbChunks=${JSON.stringify(chunkMap)};self.__rbEdition=${JSON.stringify(swOff ? '' : edition)}</script>\n<script src="${appFile}" defer></script>`);
+  // A save on file starts only once the content's late text is in (src/ui/text.ts): ask for it now, beside the main
+  // script, rather than after it (the key is game.ts's SAVE_KEY). A fresh visitor asks for nothing extra here.
+  .replace(scriptTag, () => `<script>self.__rbChunks=${JSON.stringify(chunkMap)};self.__rbEdition=${JSON.stringify(swOff ? '' : edition)};try{if(localStorage.getItem("rebound.save.v1")){var l=document.createElement("link");l.rel="preload";l.as="script";l.href=${JSON.stringify(chunkMap.text)};document.head.appendChild(l)}}catch(e){}</script>\n<script src="${appFile}" defer></script>`);
 writeFileSync('dist/index.html', page);
 files.index = { file: 'index.html', raw: page.length, gz: gz(page), br: br(page), when: 'first paint' };
 
@@ -156,21 +177,25 @@ const icons = existsSync('public/icons') ? readdirSync('public/icons').map((f) =
 const sw = readFileSync('src/sw.js', 'utf8')
   .replace('__KILL__', String(swOff))
   .replace('__EDITION__', edition)
-  .replace('__SHELL__', JSON.stringify(['./', appFile, cssFile, chunkMap.scene, 'manifest.webmanifest', ...icons]))
-  .replace('__LAZY__', JSON.stringify(Object.values(chunkMap).filter((f) => f !== chunkMap.scene)));
+  .replace('__SHELL__', JSON.stringify(['./', appFile, cssFile, chunkMap.scene, chunkMap.text, 'manifest.webmanifest', ...icons]))
+  .replace('__LAZY__', JSON.stringify(Object.values(chunkMap).filter((f) => f !== chunkMap.scene && f !== chunkMap.text)));
 writeFileSync('dist/sw.js', sw);
 
 const initial = ['index', 'app', 'styles'];
 const sum = (k: 'raw' | 'gz' | 'br', names: string[]) => names.reduce((a, n) => a + (files[n]?.[k] ?? 0), 0);
-writeFileSync('dist/build.json', JSON.stringify({ edition, files, initial, initialGz: sum('gz', initial), initialBr: sum('br', initial), initialJsGz: files.app.gz }, null, 1));
 /* ---------------------------------------------------------------- budgets (KB; perf pass 2, docs/adr/ADR-2026-11-19-*) */
 // Gzipped sizes, a little above the build that set them, so a real regression fails and noise does not. Raise one only
-// with a reason in the commit (and a look at what grew: `bun run build.ts` prints every file).
-const BUDGET: Record<string, number> = { firstPaint: 240, app: 218, styles: 22, scene: 100, audio: 38, archiveText: 62 };
+// with a reason in the commit (and a look at what grew: `bun run build.ts` prints every file). tools/perf.mjs --check
+// reads them from build.json.
+const BUDGET: Record<string, number> = { firstPaint: 240, app: 218, styles: 22, scene: 100, audio: 38, archiveText: 72, text: 66 };
+// archiveText 62 → 72 (M4 perf pass): 46 sourced notes for Iron and Fishing. It loads on demand (prefetched in idle time
+// once the Archive has arrived) and the service worker keeps it; splitting it by Industry would save ~20 KB once per
+// device (docs/adr/ADR-2026-11-20-late-content-text.md, "The Archive").
+writeFileSync('dist/build.json', JSON.stringify({ edition, files, initial, initialGz: sum('gz', initial), initialBr: sum('br', initial), initialJsGz: files.app.gz, budget: BUDGET }, null, 1));
 const over: string[] = [];
 const gzKB = (n: number) => n / 1024;
 if (gzKB(sum('gz', initial)) > BUDGET.firstPaint) over.push(`first paint ${gzKB(sum('gz', initial)).toFixed(1)} KB gz > ${BUDGET.firstPaint}`);
-for (const n of ['app', 'styles', 'scene', 'audio', 'archiveText']) if (files[n] && gzKB(files[n].gz) > BUDGET[n]) over.push(`${n} ${gzKB(files[n].gz).toFixed(1)} KB gz > ${BUDGET[n]}`);
+for (const n of ['app', 'styles', 'scene', 'audio', 'archiveText', 'text']) if (files[n] && gzKB(files[n].gz) > BUDGET[n]) over.push(`${n} ${gzKB(files[n].gz).toFixed(1)} KB gz > ${BUDGET[n]}`);
 if (check) {
   if (over.length) { console.error('Over budget:\n  ' + over.join('\n  ')); process.exit(1); }
   console.log('Sizes within budget.');

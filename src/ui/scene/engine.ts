@@ -692,14 +692,16 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     root.classList.remove('live');
     root.dataset.look = nb.look;
     root.dataset.layout = nb.layout.id;
-    // Kept worlds stay in the document, undisplayed (display: none also stops their CSS animations; content-visibility
-    // was tried and left them ticking); only the active one is drawn.
+    // Only the active world is in the document. Kept worlds wait detached (M4 perf pass: seven kept worlds in the
+    // document were ~10,000 undisplayed nodes the page's DOM and style bookkeeping carried for nothing); putting one back
+    // costs what showing an undisplayed one did (its styles are computed either way), so a revisit stays a re-attach.
     if (nb.el.world.parentNode !== stage) stage.insertBefore(nb.el.world, banner);
     if (nb.el.places.parentNode !== stage) stage.insertBefore(nb.el.places, banner);
     for (const w of Array.from(stage.children)) {
       if (!w.classList.contains('scn-world') && !w.classList.contains('scn-places')) continue;
       const act = w === nb.el.world || w === nb.el.places;
       if (w.classList.contains('act') !== act) w.classList.toggle('act', act);
+      if (!act) w.remove();
     }
     legend.textContent = nb.legend; legend.hidden = !nb.legend;
     // Root-level state is re-applied by the next patch.
@@ -1911,12 +1913,20 @@ function reserveWord(r: number, flow: boolean): string {
   return r > 0.85 ? 'barely touched' : r > 0.6 ? 'three-quarters left' : r > 0.4 ? 'half gone' : r > 0.2 ? 'running low' : r > 0.05 ? 'nearly spent' : 'spent';
 }
 
+/** How the scene words a settlement. A capstoned Industry was settled for good at its Act's ending: its one year is
+ *  the ending's (CapstoneRecord.year), the cartouche's and the group heading's; SettledState.sinceYear is only the
+ *  run's start for it (the core rewrites it each run), so it is never shown. Otherwise, the year it was settled. */
+export function settledWords(v: SceneView): string {
+  if (v.capstoned) return v.capstoned.year ? `settled ${v.capstoned.year}` : 'settled';
+  return v.settledYear ? `settled since ${v.settledYear}` : 'settled';
+}
+
 function caption(v: SceneView): string {
   const founded = v.apps.filter((a) => a.status === 'founded').length;
   const avail = v.apps.some((a) => a.status === 'available');
   // M4: an unsurveyed stock is spoken of as the fleet reports it (catch per trip), never as the truth.
   const parts = [`${v.pressureName}: ${weatherOf(v)}`, `${v.resourceName.toLowerCase()} ${reserveWord(shownReserve(v), v.resourceKind === 'flow')}`];
-  if (v.settled) parts.push(v.settledYear ? `settled since ${v.settledYear}` : 'settled');
+  if (v.settled) parts.push(settledWords(v));
   else if (v.steady) parts.push('steady state');
   else if (v.clear) parts.push('clear skies');
   else if (v.decoupling) parts.push('holding the line');
@@ -1942,7 +1952,7 @@ export function describeView(v: SceneView): string {
   if (v.levers.length) s += `In force: ${v.levers.map((x) => x.name).join(', ')}. `;
   if (v.commons?.length) s += `Built for everyone: ${v.commons.map((c) => c.name).join(', ')}. `;
   if (v.reckoning) s += 'Everything has stopped: a Reckoning is due.';
-  else if (v.settled) s += `Settled${v.settledYear ? ' since ' + v.settledYear : ''}: the place runs quietly within what the sky can take.`;
+  else if (v.settled) { const w = settledWords(v); s += `${w.charAt(0).toUpperCase()}${w.slice(1)}: the place runs quietly within what the sky can take.`; }
   else if (v.steady) s += 'The sky has cleared: steady state.';
   else if (v.clear) s += `Clear skies, ${Math.round((v.clearProgress ?? 0) * 100)}% of the way to steady state.`;
   else if (v.decoupling) s += `Holding within budget, ${Math.round(v.steadyProgress * 100)}% of the way to steady state.`;

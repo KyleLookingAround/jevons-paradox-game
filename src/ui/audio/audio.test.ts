@@ -6,8 +6,8 @@ import { mixFrom, sourcesFrom, momentsBetween, readSrc, nightness, loadAt, peakH
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type HitsDef } from './defs';
 import { render, hasRecipe, WORLD_RECIPES, PALETTES, UI_KINDS, MOTIFS, CAST_FAMILY } from './recipes';
 import { KEYS as K2 } from './music';
-import { runJob, jobId } from './jobs';
-import { WORKER_SRC } from './worker-src';
+import { runJob, jobId, type Job } from './jobs';
+import { WORKER_SRC, WORLD_NAMES } from './worker-src';
 import { rngFrom, BUF_SR, peak, svf } from './synth';
 import { KEYS, semis, MODES } from './music';
 import { demoView, viewOf, preset, runView, PRESET_NAMES } from './views';
@@ -392,6 +392,15 @@ describe('M3: synthesis jobs and the worker', () => {
     // @ts-ignore tools are outside the project tsconfig
     const { workerSource } = await import('../../../tools/audio-worker.ts');
     expect(WORKER_SRC).toBe(await workerSource());
+    expect([...WORLD_NAMES]).toEqual([...WORLD_RECIPES]);
+  });
+  test('M4 perf pass: the main thread runs the worker\'s own code (the recipes ship once), sample for sample', async () => {
+    const { runHere } = await import('./synthq');
+    for (const j of [{ t: 'recipe', name: WORLD_RECIPES[0], key: { root: 220, mode: 'dorian' }, v: 0, seed: 3 }, { t: 'noise', col: 'brown', seed: 2 }, { t: 'impulse', sr: 48000, dur: 0.5, seed: 1 }] as unknown as Job[]) {
+      const a = runHere(j), b = runJob(j);
+      expect(a.sr).toBe(b.sr);
+      expect(a.chans.map((c) => Array.from(c))).toEqual(b.chans.map((c) => Array.from(c)));
+    }
   });
 });
 

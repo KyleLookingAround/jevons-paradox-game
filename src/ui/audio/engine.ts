@@ -9,7 +9,10 @@ import type { SceneView } from '../scene/types';
 import { SOUND_EVENT_ALIASES, WORLD_EVENT_KINDS, type Soundscape, type SoundscapeOptions, type SoundEventKind, type SoundEventDetail, type Volumes, type SoundscapeStats, type Mix } from './types';
 import { SOUNDSCAPES, soundscapeFor, paletteFor, type SoundscapeDef, type LayerDef, type BedDef, type HitsDef } from './defs';
 import { mixFrom, momentsBetween } from './mix';
-import { hasRecipe, CAST_FAMILY, MOTIFS, MOTIF_AT } from './recipes';
+import { CAST_FAMILY, MOTIFS, MOTIF_AT } from './recipes';
+import { WORLD_NAMES } from './worker-src';
+/** A world recipe of this name exists (recipes.ts hasRecipe for world names; the names ship without the recipes). */
+const hasRecipe = (name: string): boolean => WORLD_NAMES.includes(name);
 import { rngFrom, hash, type Rng } from './synth';
 import { obtain, peek, attach, detach, bankSamples } from './synthq';
 import type { Job } from './jobs';

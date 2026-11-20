@@ -1,6 +1,8 @@
 // Page performance of the real built game, at phone size with the CPU throttled.
 //   bun run build.ts && node tools/perf.mjs [states] [throttles] [flags]
-//     states:    comma list of fresh,mid,late          (default all three)
+//     states:    comma list of fresh,mid,late,act1,act1fish,hour6   (default fresh,mid,late)
+//                act1 / act1fish: the Act I fixture (design/scratch/m4-balance/act1-late.json) on Iron's / Fishing's tab;
+//                hour6: hour 6 with Fishing unsurveyed (…/hour6.json) on Fishing's tab (the fixtures are local files)
 //     throttles: comma list of CPU slow-down factors    (default 4,6)
 //     --no-trace     skip the 10 s trace (style/layout/paint split)
 //     --tabs         also time each Industry tab in the late state (4×)
@@ -49,7 +51,7 @@ function sizes() {
   const bj = resolve(DIST, 'build.json');
   if (existsSync(bj)) {
     const b = JSON.parse(readFileSync(bj, 'utf8'));
-    const r = { initialGz: b.initialGz, initialJsGz: b.initialJsGz };
+    const r = { initialGz: b.initialGz, initialJsGz: b.initialJsGz, budget: b.budget };
     for (const [k, f] of Object.entries(b.files)) r[k] = { raw: f.raw, gz: f.gz, br: f.br, file: f.file, when: f.when };
     return r;
   }
@@ -101,11 +103,18 @@ async function newPage(save, fonts = 'block') {
 }
 
 /* ------------------------------------------------------------ making the states */
+const FIXTURES = { act1: ['design/scratch/m4-balance/act1-late.json', 'iron'], act1fish: ['design/scratch/m4-balance/act1-late.json', 'fishing'], hour6: ['design/scratch/m4-balance/hour6.json', 'fishing'] };
 async function makeStates() {
   const { ctx, page } = await newPage(null);
   await page.goto(url); await page.waitForTimeout(800);
+  // The content's late text (M4 perf pass) arrives after the first paint: the states are made with it in.
+  await page.waitForFunction(() => !window.rebound.content.upgrades.some((u) => u.sector !== window.rebound.content.sectorOrder[0] && u.blurb === ''), null, { timeout: 15000 }).catch(() => console.log('(late text not in after 15 s)'));
   const out = {};
   out.fresh = null;
+  for (const [k, [f, tab]] of Object.entries(FIXTURES)) {
+    const p = resolve(root, f);
+    if (existsSync(p)) out[k] = { text: readFileSync(p, 'utf8'), tab, info: `fixture ${f}` }; else out[k] = { error: `no fixture ${f}` };
+  }
   // Mid-run Steam: improvements bought round by round, several uses founded, the reveal, a budget drawn, some time on.
   out.mid = await page.evaluate(() => {
     const r = window.rebound, m = r.model, c = r.content;
@@ -411,8 +420,8 @@ async function measureState(name, save, rate) {
     }
   }
   // Switch Industry tabs (late only): the cost of a switch.
-  if (name === 'late') {
-    const ids = await page.evaluate(() => window.rebound.content.sectorOrder);
+  if (name === 'late' || name in FIXTURES) {
+    const ids = await page.evaluate(() => window.rebound.content.sectorOrder.filter((i) => window.rebound.state.sectors[i]?.open));
     await page.evaluate(() => window.scrollTo(0, 0));
     const tt = await now(page);
     const sw = [];
@@ -475,10 +484,10 @@ async function soak(save, minutes) {
 const f1 = (x) => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(1));
 const f0 = (x) => (x == null || !Number.isFinite(x) ? '—' : Math.round(x).toString());
 { const S = results.sizes; const K = (n) => (n / 1024).toFixed(0);
-  console.log(`bundle: first paint ${K(S.initialGz)} KB gz (main script ${K(S.app.raw)} KB, ${K(S.app.gz)} KB gz; styles ${K(S.styles.raw)} KB, ${K(S.styles.gz)} KB gz)` + ['scene', 'audio', 'archiveText'].filter((k) => S[k]).map((k) => `; ${k} ${K(S[k].gz)} KB gz (${S[k].when})`).join('')); }
+  console.log(`bundle: first paint ${K(S.initialGz)} KB gz (main script ${K(S.app.raw)} KB, ${K(S.app.gz)} KB gz; styles ${K(S.styles.raw)} KB, ${K(S.styles.gz)} KB gz)` + ['text', 'scene', 'audio', 'archiveText'].filter((k) => S[k]).map((k) => `; ${k} ${K(S[k].gz)} KB gz (${S[k].when})`).join('')); }
 const saves = await makeStates();
 try { mkdirSync(resolve(root, 'design/scratch'), { recursive: true }); writeFileSync(resolve(root, 'design/scratch/perf-states.json'), JSON.stringify(saves)); } catch { /* optional */ }
-for (const k of ['mid', 'late']) console.log(`state ${k}: ${saves[k]?.info ?? saves[k]?.error}`);
+for (const k of ['mid', 'late', ...STATES.filter((x) => x in FIXTURES)]) console.log(`state ${k}: ${saves[k]?.info ?? saves[k]?.error}`);
 
 for (const st of STATES) {
   results.states[st] = {};
@@ -593,22 +602,27 @@ if (CHECK) {
   const want = (ok, what) => { if (!ok) fails.push(what); console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${what}`); };
   console.log('\n== budgets');
   const S = results.sizes;
-  want(S.initialGz / 1024 <= 240, `first paint ${(S.initialGz / 1024).toFixed(0)} KB gz ≤ 240`);
-  for (const [k, b] of [['scene', 92], ['audio', 38], ['archiveText', 62]]) if (S[k]) want(S[k].gz / 1024 <= b, `${k} ${(S[k].gz / 1024).toFixed(0)} KB gz ≤ ${b}`);
-  const F = results.states.fresh?.[4], La = results.states.late?.[4];
+  // The size budgets are build.ts's own (written into build.json), so the two never disagree.
+  const B = S.budget ?? { firstPaint: 240, scene: 100, audio: 38, archiveText: 62 };
+  want(S.initialGz / 1024 <= B.firstPaint, `first paint ${(S.initialGz / 1024).toFixed(1)} KB gz ≤ ${B.firstPaint}`);
+  for (const k of Object.keys(B)) if (k !== 'firstPaint' && S[k]) want(S[k].gz / 1024 <= B[k], `${k} ${(S[k].gz / 1024).toFixed(1)} KB gz ≤ ${B[k]}`);
+  const F = results.states.fresh?.[4];
   if (F) {
     want(F.frames.p95 <= 30, `fresh frame p95 ${f1(F.frames.p95)} ms ≤ 30`);
     want(Math.max(0, ...F.lt) <= 100, `fresh idle long tasks ≤ 100 ms (max ${f0(Math.max(0, ...F.lt))})`);
     want((F.sellTap?.p50 ?? 0) <= 150, `fresh Sell tap→paint p50 ${f0(F.sellTap?.p50)} ms ≤ 150`);
     if (F.buyTap) want(F.buyTap.p50 <= 200, `fresh Buy tap→paint ${f0(F.buyTap.p50)} ms ≤ 200`);
   }
-  if (La) {
-    want(La.frames.p95 <= 50, `late frame p95 ${f1(La.frames.p95)} ms ≤ 50`);
-    want(Math.max(0, ...La.lt) <= 150, `late idle long tasks ≤ 150 ms (max ${f0(Math.max(0, ...La.lt))})`);
-    want((La.sellTap?.p50 ?? 0) <= 150, `late Sell tap→paint p50 ${f0(La.sellTap?.p50)} ms ≤ 150`);
-    if (La.tabSwitch) want(La.tabSwitch.max <= 200, `late tab switch to paint max ${f0(La.tabSwitch.max)} ms ≤ 200`);
-    want(La.mem1.domNodes <= 12000, `late DOM elements after a tab tour ${La.mem1.domNodes} ≤ 12000`);
-    want(La.mem1.heapMB <= 20, `late JS heap ${f1(La.mem1.heapMB)} MB ≤ 20`);
+  // The late budgets hold for every late state measured (mid, and the Act I fixtures when asked for).
+  for (const nm of ['mid', 'late', ...Object.keys(FIXTURES)]) {
+    const La = results.states[nm]?.[4];
+    if (!La) continue;
+    want(La.frames.p95 <= 50, `${nm} frame p95 ${f1(La.frames.p95)} ms ≤ 50`);
+    want(Math.max(0, ...La.lt) <= 150, `${nm} idle long tasks ≤ 150 ms (max ${f0(Math.max(0, ...La.lt))})`);
+    want((La.sellTap?.p50 ?? 0) <= 150, `${nm} Sell tap→paint p50 ${f0(La.sellTap?.p50)} ms ≤ 150`);
+    if (La.tabSwitch) want(La.tabSwitch.max <= 200, `${nm} tab switch to paint max ${f0(La.tabSwitch.max)} ms ≤ 200`);
+    want(La.mem1.domNodes <= 12000, `${nm} DOM elements after a tab tour ${La.mem1.domNodes} ≤ 12000`);
+    want(La.mem1.heapMB <= 20, `${nm} JS heap ${f1(La.mem1.heapMB)} MB ≤ 20`);
   }
   const W = results.loadNet?.['fresh@4'];
   if (W) { want(W.warm.ready <= 3000, `warm load ready ${f0(W.warm.ready)} ms ≤ 3000 (4×, slow 4G)`); want(W.cold.ready <= 6000, `cold load ready ${f0(W.cold.ready)} ms ≤ 6000 (4×, slow 4G)`); }

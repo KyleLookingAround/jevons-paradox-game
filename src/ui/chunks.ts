@@ -7,7 +7,7 @@
 // the mock entry imports them) resolves at once. A failed load is retried with a back-off; after the last try the
 // promise rejects and the caller shows its plain fallback (the game never depends on a chunk to keep running), and the
 // next call tries again.
-export type ChunkName = 'scene' | 'audio' | 'archiveText';
+export type ChunkName = 'scene' | 'audio' | 'archiveText' | 'text';
 
 interface RbGlobal { __rb?: Record<string, unknown>; __rbChunks?: Record<string, string>; __rbOn?: (name: string) => void }
 const G = (typeof self !== 'undefined' ? self : globalThis) as unknown as RbGlobal;

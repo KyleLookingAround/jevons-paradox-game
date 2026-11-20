@@ -11,6 +11,7 @@ import { h, svg, setText, setStyle, show, cls, reducedMotion, snapSmall } from '
 import { fmt, num, clamp, pct } from './fmt';
 import { getPrefs } from './prefs';
 import { surveyDisclosure } from '../content/proprietor';
+import { onText, TEXT_WAIT } from './text';
 
 /** The figures the return will carry, as a small two-column table (before the Market / since). */
 function figureTable(): { el: HTMLElement; set(f: HouseholdFigures | null): void } {
@@ -107,12 +108,16 @@ export function buildSurvey(ctx: Ctx): Comp {
     const card = document.querySelector<HTMLElement>('.upgrades .up[data-up$="proprietorsDay"]');
     if (card) { card.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }); card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash'); }
   } }, 'The Statistics Office’s card is among the improvements ↓');
+  const ppBody = h('p', { text: pp?.body || TEXT_WAIT });
+  const ppRole = h('span', { class: 'lt-role', text: writer?.role ?? '', hidden: !writer?.role });
   const pamphlet = h('article', { class: 'letter pamphlet open', hidden: true },
     h('div', { class: 'lt-top' }, h('span', { class: 'lt-k', text: 'A pamphlet' })),
     h('p', { class: 'lt-from' }, h('span', { class: 'lt-seal', 'aria-hidden': 'true', text: (writer?.name ?? 'W').replace(/^(Mr|Mrs|Miss|Ms|Dr)\s+/, '').charAt(0) }),
-      h('span', { class: 'lt-who' }, h('b', { text: writer?.name ?? 'A correspondent' }), writer?.role ? h('span', { class: 'lt-role', text: writer.role }) : null)),
+      h('span', { class: 'lt-who' }, h('b', { text: writer?.name ?? 'A correspondent' }), ppRole)),
     h('h3', { class: 'lt-head', text: pp?.headline ?? '' }),
-    h('div', { class: 'lt-body' }, h('p', { text: pp?.body ?? '' })), toCard);
+    h('div', { class: 'lt-body' }, ppBody), toCard);
+  // The pamphlet's body and the writer's role are late text (text.ts): built at mount, filled when they arrive.
+  onText(() => { setText(ppBody, pp?.body || TEXT_WAIT); setText(ppRole, writer?.role ?? ''); show(ppRole, !!writer?.role); });
   // After the reveal: the second pair of twin gauges, the working day, and the printed return.
   const auto = miniDial('Decisions automated');
   const mine = miniDial('The proprietor’s decisions');

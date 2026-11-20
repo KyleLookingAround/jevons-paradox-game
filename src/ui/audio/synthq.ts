@@ -9,8 +9,28 @@
 // constructor are not tied to a context, so turning sound off and on again (the page destroys and re-creates the
 // soundscape) reuses them instead of synthesising again. The bank is capped by least-recently-used and released two
 // minutes after the last soundscape is destroyed. The worker is shared the same way.
-import { runJob, jobId, type Job, type JobResult } from './jobs';
+import { jobId, type Job, type JobResult } from './jobs';
 import { WORKER_SRC } from './worker-src';
+
+/* The main thread's synthesis (no worker, `sync`) runs the worker's own code (WORKER_SRC) in a stand-in scope, so the
+ * recipes ship once, not twice (M4 perf pass), and the main thread makes exactly the worker's samples. */
+let here: ((job: Job) => JobResult) | null = null;
+export function runHere(job: Job): JobResult {
+  if (!here) {
+    let out: { chans?: Float32Array[]; sr?: number; error?: string } | null = null;
+    const scope: { onmessage: ((e: { data: unknown }) => void) | null; postMessage(m: typeof out): void } = { onmessage: null, postMessage(m) { out = m; } };
+    new Function('self', WORKER_SRC)(scope);
+    here = (j) => {
+      out = null;
+      scope.onmessage?.({ data: { id: '', job: j } });
+      const r = out as { chans?: Float32Array[]; sr?: number; error?: string } | null;
+      if (!r || r.error || !r.chans || !r.sr) throw new Error(r?.error ?? 'no samples');
+      return { chans: r.chans, sr: r.sr };
+    };
+  }
+  return here(job);
+}
+const runJob = runHere;
 
 const BANK_CAP = 2_400_000;      // cached samples (≈ 9.6 MB of float) before least-recently-used buffers are dropped
 const RELEASE_MS = 120_000;      // bank and worker released this long after the last soundscape goes

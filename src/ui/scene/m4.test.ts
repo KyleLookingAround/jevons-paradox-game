@@ -169,3 +169,15 @@ describe('M4 postcards and spots', () => {
     }
   });
 });
+
+describe('M4 (perf pass): one year for a capstoned settlement', () => {
+  test('the caption and the words name the capstone year, never the run start the core writes into sinceYear', async () => {
+    const { settledWords, describeView } = await import('./engine');
+    const v = view({ settled: true, settledYear: 2081, capstoned: { year: 1911, arrears: false } } as Partial<SceneView>);
+    expect(settledWords(v)).toBe('settled 1911');
+    expect(describeView(v)).toContain('Settled 1911');
+    expect(describeView(v)).not.toContain('2081');
+    // An Industry settled in this run keeps its own year.
+    expect(settledWords(view({ settled: true, settledYear: 1850 } as Partial<SceneView>))).toBe('settled since 1850');
+  });
+});

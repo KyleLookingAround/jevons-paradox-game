@@ -340,11 +340,16 @@ async function checks() {
     await first.evaluate(() => window.rebound.save());
     const t0 = await first.evaluate(() => window.rebound.state.time);
     await first.close(); // pagehide saves and stamps the time, as a real close would
+    // Its lease is released in pagehide; give that write a moment to land, or the next tab finds the save held (tabs.ts).
+    await new Promise((ok) => setTimeout(ok, 500));
     // Come back 25 minutes later: backdate the stamp before the page's own scripts run.
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
-    await page.addInitScript(() => { if (!sessionStorage.getItem('gap')) { sessionStorage.setItem('gap', '1'); localStorage.setItem('rebound.mock.save.at', String(Date.now() - 25 * 60 * 1000)); } });
-    await page.goto(mock + '#mock:persist'); await page.waitForTimeout(800);
+    // The gap is asked for in the URL, not by a flag in sessionStorage: a reload straight after a write to it can come
+    // back without it (Chromium commits sessionStorage asynchronously), and the script then made a second 25-minute
+    // absence, which the page rightly reported (the "shown twice" flake of M3 and M4: a new report, not the same one).
+    await page.addInitScript(() => { if (location.search.includes('gap=1')) localStorage.setItem('rebound.mock.save.at', String(Date.now() - 25 * 60 * 1000)); });
+    await page.goto(mock + '?gap=1#mock:persist'); await page.waitForTimeout(800);
     // M2: the ledger (lastOffline) at the head of the feed, under the gauges; dismissed once, not shown again.
     const ledger = await page.locator('.away:not([hidden]) .aw-t:has-text("While you were away")').count();
     const t1 = await page.evaluate(() => window.rebound.state.time);
@@ -355,7 +360,7 @@ async function checks() {
     if (!g || !a || a.y < g.y + g.height - 1) throw new Error('the ledger covers the gauges');
     await page.click('.away button:has-text("Carry on")'); await page.waitForTimeout(150);
     if (await page.locator('.away:not([hidden])').count()) throw new Error('the ledger did not go');
-    await page.reload(); await page.waitForTimeout(800);
+    await page.goto(mock + '#mock:persist'); await page.waitForTimeout(800);
     if (await page.locator('.away:not([hidden])').count()) throw new Error('the same report was shown twice: ' + await page.evaluate(() => JSON.stringify([window.rebound.state.lastOffline?.requested, window.rebound.state.lastOffline?.to, localStorage.getItem('rebound.ui.prefs')])));
     if (errs.length) throw new Error(errs.join(' | '));
     await ctx.close();
@@ -1975,6 +1980,8 @@ async function m4real() {
         for (let i = 0; i < 40 && !(await page.locator('.credits-sheet').count()); i++) await page.waitForTimeout(250);
         if (!(await page.locator('.credits-sheet').count())) await page.evaluate(() => window.rebound.ctx.openMenu && document.dispatchEvent(new Event('x')));
         await page.evaluate(() => { if (!document.querySelector('.credits-sheet')) window.__openCredits?.(); });
+        // The sheet rises in over 0.25 s (opacity 0 → 1): a shot taken at once shows the page through it.
+        await page.evaluate(() => Promise.all((document.querySelector('.credits-sheet')?.getAnimations() ?? []).map((a) => a.finished.catch(() => {}))));
         await page.screenshot({ path: `${out}/${T}-credits.png` });
         const t = await page.evaluate(() => document.querySelector('.credits-sheet')?.textContent ?? '');
         if (!/Coal Age/.test(t)) throw new Error('no Act I credits');

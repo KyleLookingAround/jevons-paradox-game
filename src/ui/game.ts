@@ -20,6 +20,8 @@ import { createEventFeed } from './events';
 import { startPlayLedger, type PlayLedger } from './playledger';
 import { initSound, soundQuiet } from './sound';
 import { createTabGuard, BEAT_MS, type TabGuard } from './tabs';
+import { ensureText, textReady } from './text';
+import { prefetchChunk } from './chunks';
 
 const SAVE_KEY = 'rebound.save.v1';          // kept from v1: deserialize migrates
 const AT_KEY = 'rebound.save.v1.at';
@@ -32,6 +34,7 @@ const VIEWS_EVERY = 1000;     // ms between view refreshes at least (upgrade vie
 const VIEWS_MAX_EVERY = 4000; // ... and at most
 const VIEWS_SHARE = 0.05;     // the share of the main thread the periodic view refresh may take (cost / interval)
 const SAVE_EVERY = 10000;     // ms between autosaves
+const TEXT_WAIT_MS = 6000;    // a save's start waits this long at most for the content's late text (text.ts)
 
 export interface GameOpts {
   realModel?: ModelApi;
@@ -241,9 +244,13 @@ function boot(o: GameOpts): void {
       timed('ui.update', () => ui.update());
     }, 0));
   }
+  let archiveAsked = false;
   function refreshViews(): void {
     const t0 = performance.now();
     lastViews = t0;
+    // Once the Archive has arrived, its notes' text is fetched in idle time (and kept by the service worker), so the
+    // first opening of the sheet does not wait on the network (~0.7 s on slow 4G at 4× CPU, M4 perf pass).
+    if (!archiveAsked && d.features?.archive) { archiveAsked = true; prefetchChunk('archiveText', 5000); }
     // Only the Industry on screen is projected (the others' cards still come back, with no projection lines).
     const u = guard('upgradeViews', () => model.upgradeViews(state!, content, ctx.sector));
     if (u) ups = u;
@@ -394,6 +401,21 @@ function boot(o: GameOpts): void {
   ui.update();
   mark('rebound-ready');
   viewsAfterPaint();
+  // The content's late text (text.ts): a fresh game asks for it once the first paint is done (its first screen is whole
+  // without it); a save waited for it in startGame, unless it was slow or missing. When it arrives the page forgets what
+  // it built from the stub and draws again; if it cannot be had, the page keeps its fallbacks and asks again later.
+  if (!textReady()) {
+    const tryText = (): void => {
+      ensureText(content).then((ok) => {
+        if (!ok) { window.setTimeout(tryText, 60000); return; }
+        if (halted || !state) return;
+        ui.reset();
+        refresh(true);
+      });
+    };
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+    if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(tryText, { timeout: 1500 }); else window.setTimeout(tryText, 300);
+  }
   // Storage blocked: say so once, at the start, in the note line (QA B21); the menu's save panel says it at length.
   if (persist && !storageWorks()) ui.toast('This browser is keeping nothing: storage is blocked.', { label: 'Save', run: () => ui.openMenu() });
   // (Between runs the shop covers the note line: the notice waits for the next run to begin.)
@@ -498,6 +520,17 @@ export function startGame(o: GameOpts): void {
       }]);
     }
   };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
+  // A save on file waits for the content's late text before the game starts (text.ts): its catch-up, letters and
+  // panels may need any of it. The shell's line has painted; the service worker has the part precached (a few ms), and
+  // a slow or missing part holds the start TEXT_WAIT_MS at most (the page then carries on with its fallbacks).
+  const go = (): void => {
+    const c = o.realContent;
+    if (!c || textReady() || !lsGet(SAVE_KEY)) { start(); return; }
+    let begun = false;
+    const once = (): void => { if (!begun) { begun = true; start(); } };
+    ensureText(c).then(once, once);
+    window.setTimeout(once, TEXT_WAIT_MS);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+  else go();
 }

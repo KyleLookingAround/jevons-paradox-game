@@ -12,6 +12,7 @@ import { fmt, money, num } from './fmt';
 import { effectText } from './panels';
 import { foldSection } from './sheets';
 import { sound } from './sound';
+import { textGen, TEXT_WAIT } from './text';
 
 /** "3 min", "40 s": a quiet countdown in play time. */
 export function left(sec: number): string {
@@ -34,7 +35,8 @@ function makeLetter(ctx: Ctx, v0: PendingDispatchView): Letter {
   // The seal: the writer's initial, in the look's idiom (CSS). The figure itself stands in the picture.
   const initial = (cast?.name ?? '?').replace(/^(Mr|Mrs|Miss|Ms|Dr|The|Our)\s+/, '').charAt(0).toUpperCase();
   const lapse = h('span', { class: 'lt-lapse num' });
-  const body = h('div', { class: 'lt-body' }, ...v0.body.split(/\n+/).map((p) => h('p', { text: p })));
+  // The body is late text (text.ts): until it arrives, a plain line in its place (the letter is built again then).
+  const body = h('div', { class: 'lt-body' }, ...(v0.body || TEXT_WAIT).split(/\n+/).map((p) => h('p', { text: p })));
   const more = h('button', { class: 'linkish lt-more', type: 'button', 'aria-expanded': 'false', onclick: () => {
     const open = !el.classList.contains('open');
     if (open) sound('letterOpened', { sector: def.sector });
@@ -127,8 +129,10 @@ export function buildLetters(ctx: Ctx): LettersComp {
     const answered = on ? ctx.state.dispatch?.answered ?? [] : [];
     show(el, on && (pend.length > 0 || mv.length > 0 || answered.length > 0));
     if (!on) return;
-    const k = pend.map((p) => p.id).join(',');
+    const k = pend.map((p) => p.id).join(',') + '|' + textGen();
     if (k !== key) {
+      // A letter built before the late text arrived is built again with its words.
+      if (key && key.slice(key.lastIndexOf('|')) !== k.slice(k.lastIndexOf('|'))) letters.clear();
       key = k;
       for (const id of [...letters.keys()]) if (!pend.some((p) => p.id === id)) letters.delete(id);
       syncChildren(list, pend.map((p) => { let l = letters.get(p.id); if (!l) { l = makeLetter(ctx, p); letters.set(p.id, l); } return l.el; }));
