@@ -181,8 +181,12 @@ export const rival: RivalDef = {
     { kind: 'conceal', feature: 'inspection' },
   ],
   policy: {
-    /* Payback limit: patient 240 s to hasty 60 s (design §5.2). Founding limit: 300 s to 90 s. */
-    paybackSlow: 240, paybackFast: 60, foundSlow: 300, foundFast: 90,
+    /* Payback limit: patient 240 s to hasty 60 s (design §5.2). Founding limit (lerp(foundSlow, foundFast, founder)):
+     * M5 balance: 200 s for a player who rarely founded to 300 s for one who founded most (design §5.2: "a founder's
+     * Pryce founds sooner", i.e. takes a longer payback on a new use). It was 300 to 90, the wrong way round, and the
+     * 90 s end founded none of Motion's dated uses: under abstain the seven grid profiles with founder ≥ 0.54 had no
+     * crisis in 60 minutes (design/scratch/m5-balance/g0-abstain.txt); founder 0.48 (a 199 s limit) had one at 21. */
+    paybackSlow: 240, paybackFast: 60, foundSlow: 200, foundFast: 300,
     /* A player who drew lines early taught him to expect rules: his carve-out line up to 10 points higher. */
     drawnLobby: 10,
     /* Quiet period ± 2 model years by `drawn` (design §6.3: 4–8). */
