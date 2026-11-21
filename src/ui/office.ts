@@ -70,7 +70,7 @@ export function officeOffer(ctx: Ctx, take: () => void, notYet: () => void): HTM
 export function takeOfficeSequence(ctx: Ctx, sheets: Sheets, done: () => void): void {
   const t = text(ctx);
   if (!t) { done(); return; }
-  sound('reckoning');
+  sound('officeTaken');
   const beat = (kind: string, label: string, build: (b: HTMLElement, next: () => void) => void, next: () => void) =>
     sheets.open(kind, (b) => { build(b, next); }, { label, full: true, blocking: true, dismissable: false, cls: `office-sheet ${kind}` });
   const foot = (label: string, f: () => void) => h('div', { class: 'sheet-foot' }, h('button', { class: 'btn primary big', type: 'button', onclick: f }, label));
@@ -97,13 +97,8 @@ export function takeOfficeSequence(ctx: Ctx, sheets: Sheets, done: () => void): 
   function pullBack(): void {
     sheets.close();
     window.scrollTo({ top: 0, behavior: 'auto' });
-    const frame = document.querySelector<HTMLElement>('.world-frame');
     document.dispatchEvent(new CustomEvent('rebound:office', { detail: 'thaw' }));
-    // The page's part of the thaw: the frozen grey lifts in four steps (on the wrapper, never inside the SVG band);
-    // the scene lane may draw its own thaw and window on the same event.
-    if (frame && !reducedMotion()) {
-      [1, 0.66, 0.33, 0].forEach((g, i) => setTimeout(() => frame.style.setProperty('filter', g ? `grayscale(${g})` : ''), i * 350));
-    }
+    // The scene plays the thaw and draws the window on that event (src/ui/scene/frame/ministry.ts).
     const go = h('button', { class: 'btn primary', type: 'button', onclick: () => { card.remove(); prospectus(); } }, 'Continue');
     const card = h('div', { class: 'of-pull', role: 'dialog', 'aria-label': 'The Ministry window' },
       h('p', { text: 'The Ministry’s window has the better view of the valley.' }), go);

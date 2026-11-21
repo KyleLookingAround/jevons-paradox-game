@@ -40,6 +40,9 @@ import { buildRivalPanel } from './rival';
 import { buildWater } from './water';
 import { officeCheck, prospectusSheet, fileSheet } from './office';
 
+/** M5 event kinds passed straight to the sound (src/ui/audio/NOTES-m5.md). */
+const M5_SOUND = new Set<string>(['officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'inspected', 'concealmentFound', 'rivalAnswered', 'litigated', 'loopholeUsed', 'loopholeClosed', 'treaty']);
+
 export interface UI {
   /** Patch the page. `quick` (straight after a tap): only what the tap changes and the cockpit; the rest follows in
    *  the next full update, after the frame (game.ts). */
@@ -290,6 +293,8 @@ export function mountUI(root: HTMLElement, ctx: Ctx, hooks: AppHooks): UI {
     let automated = 0;
     for (const e of ev) {
       const def = e.sector ? sectorDef(ctx, e.sector) : undefined;
+      // M5: the Ministry's events have sounds of their own (the engine takes the contract's event names).
+      if (M5_SOUND.has(e.kind)) sound(e.kind as Parameters<typeof sound>[0], { sector: e.sector, label: e.label, n: e.n, by: e.by } as Parameters<typeof sound>[1]);
       switch (e.kind) {
         case 'sectorOpened':
           // The tagline is the title card over its picture; the note only says where it is.
