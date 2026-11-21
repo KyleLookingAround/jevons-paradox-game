@@ -198,11 +198,18 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
 
   /* Take office: Confidence, elections, pledges, the answer line, Pryce's panel. takeOffice unlocks it at once. */
   chair: { when: { flag: 'office', label: 'Office taken' }, ...FEATURE_TEXT_M5.chair },
-  /* Ministry 1, mid-run: the first loophole. It waits for a laddered lever in force (the mileage rule) until minute 28,
-   * then arrives anyway (so it stays in Ministry 1 and does not push the Treasury into Plenty's Ministry). A rung opens
-   * only when a laddered lever is enacted, so a player who never writes a standard simply has the feature idle. */
+  /* Ministry 1, mid-run: the first loophole. M5 balance (the owner's item 3: the lesson is the order, a rule, his way
+   * round it, an amendment, his next way round, then the price that closes the lot): it arrives once the mileage rule
+   * has been in force a while, eight minutes in at the earliest (the Chair arrived at the Reckoning, five minutes clear
+   * of Motion's opening), so the vans come while the rule binds and before a steward reaches for the duty. Without the
+   * rule it arrives in the mid-run window, at minute 28, as before (it stays in Ministry 1 and does not push the
+   * Treasury into Plenty's Ministry). It was the window alone (minute 25): by then a steward had the duty in (minute 9),
+   * which closes every rung, and Pryce never got round a rule at all (design/scratch/m5-balance-progress.md). A rung
+   * opens only when a laddered lever is enacted, so a player who never writes a standard has the feature idle. */
   loopholes: {
-    when: { all: [OFFICE, ...MID_M5, { any: [{ owns: 'motion.mileageRule' }, { stat: 'time', op: '>=', value: 1680 }] }] },
+    when: { all: [OFFICE, CLEAR_OF_OPENINGS, { stat: 'time', op: '<', value: MID_WINDOW[1] }, {
+      any: [{ all: [{ owns: 'motion.mileageRule' }, { stat: 'time', op: '>=', value: 480 }] }, { stat: 'time', op: '>=', value: 1680 }],
+    }] },
     ...FEATURE_TEXT_M5.loopholes,
   },
   /* Ministry 2, at the Reckoning: the Inspectors, and Pryce's concealment with them. */
@@ -215,8 +222,12 @@ export const features: Partial<Record<FeatureId, FeatureDef>> = {
   },
   /* Ministry 3, at the Reckoning: the government's Know-how tree in the shop (KnowhowDef.when). */
   statecraft: { when: { all: [OFFICE, ministries(3), { feature: 'inspection' }, ...AT_RECKONING] }, ...FEATURE_TEXT_M5.statecraft },
-  /* Ministry 4, at the Reckoning: a price on the service itself (LeverDef.requires ['charge']). */
-  charge: { when: { all: [OFFICE, ministries(4), { feature: 'statecraft' }, ...AT_RECKONING] }, ...FEATURE_TEXT_M5.charge },
+  /* Ministry 5, at the Reckoning: a price on the service itself (LeverDef.requires ['charge']). M5 balance (the Treaty's
+   * place, the owner's item 1): was Ministry 4. Motion and Plenty are settled from the Chair with a charge in force
+   * (their settle.requires), so the charge's Ministry is the settlements' and the Treaty comes at the Reckoning after;
+   * at Ministry 4 the competent bots signed it at hour 23–24 against 28–30. Ministry 4 is now Plenty's first whole
+   * Ministry, a Ministry to play what has arrived (design §8 gave that role to Ministry 5). */
+  charge: { when: { all: [OFFICE, ministries(5), { feature: 'statecraft' }, ...AT_RECKONING] }, ...FEATURE_TEXT_M5.charge },
   /* The Reckoning after the first settlement from the Chair (ChairDef.treaty.when): the second reset. */
   treaty: {
     when: { all: [OFFICE, { stat: 'settledFromChair', op: '>=', value: 1 }, ...AT_RECKONING] },

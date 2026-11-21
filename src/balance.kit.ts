@@ -283,6 +283,18 @@ export function towardsSky(s: GameState, m: Memo, every: number, heldFor: number
 }
 
 /** M4 balance (as tools/balance.ts): the i-th unlock checklist item of e that the next Reckoning meets by itself. */
+/** M5 balance: sector e's unlock names an Act's ending (a leaf { ending }) not yet reached (tools/balance.ts). */
+export function waitsOnEnding(s: GameState, e: SectorId): boolean {
+  const walk = (c: unknown): boolean => {
+    if (!c || typeof c !== 'object') return false;
+    const o = c as Record<string, unknown>;
+    if (typeof o.ending === 'string') return !s.meta.endings?.[o.ending];
+    for (const k of ['all', 'any']) if (Array.isArray(o[k]) && (o[k] as unknown[]).some(walk)) return true;
+    return false;
+  };
+  return walk(C.sectors[e]?.unlock?.when);
+}
+
 export function reckonBrings(s: GameState, e: SectorId, i: number): boolean {
   const w = C.sectors[e]?.unlock?.when;
   const kids = w && 'all' in w ? (w as { all: unknown[] }).all : w ? [w] : [];
@@ -528,7 +540,9 @@ export function play(start: GameState, mode: Mode, opts: Opts = {}): { s: GameSt
       if (coming) hold.since ??= s.time;
       const sure = ORDER.some((e) => !s.run.steadySectors[e] && !s.sectors[e]?.settled && (s.sectors[e]?.clearYears ?? 0) > 0);
       const streaking = sure || (coming && s.time - (hold.since ?? s.time) <= 2700);
-      const opening = s.time < 7200 && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded);
+      // M5 balance (tools/balance.ts --opening-fix, now the default): an Industry whose unlock waits on an Act's ending
+      // (Motion before the Act I ending) does not hold a run open
+      const opening = s.time < 7200 && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded && !waitsOnEnding(s, x.id));
       // M4 balance (tools/balance.ts reckonBrings): an unmet Settlement feature counts once a Steady State is held
       const gated = d.nextSectors.some((x) => x.reckoningsHave < x.reckoningsNeeded && x.checklist.every((c, i) => c.met || reckonBrings(s, x.id, i)));
       const budgeted = ORDER.filter((e) => s.sectors[e]?.budget || s.sectors[e]?.settled);

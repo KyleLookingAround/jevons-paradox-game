@@ -322,7 +322,10 @@ function purchases(state: GameState, content: Content, pol: RivalPolicy): GameSt
     const full = best.cost / Math.max(1e-12, share(best.id));
     const split = subsidySplit(out, content, best.id, full);
     if (!(split.rivalPays <= purse + 1e-9)) continue;
-    const draft: GameState = { ...out, capital: full };
+    // M5 (balance lane fix): a hair over the full price. full = cost ÷ share loses a few ulps (at an 85% subsidy
+    // 16,499.99… ÷ 0.1499… fell under 110,000), the purchase was refused and he bought nothing for the rest of the run.
+    // The capital after is taken from `out` below, so the margin never reaches the state.
+    const draft: GameState = { ...out, capital: full * (1 + 1e-9) + 1e-6 };
     const bought = best.kind === 'found' ? foundAppAs(draft, content, best.id, 'rival') : buyUpgradeAs(draft, content, best.id, 'rival');
     if (bought === draft) continue;
     out = {

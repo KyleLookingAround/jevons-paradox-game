@@ -38,6 +38,12 @@ const popularityCost = (v: LeverView): number => {
   const term = v.level === 0 ? p.start : (v.popularity ?? 0) / Math.max(1, v.level);
   return Math.max(0, -term) * POP_MANDATE;
 };
+/** M5 balance: what a raise costs the steward, all three things the card prints: Mandate (raiseCheapest adds it), the
+ *  Confidence the lever takes on enactment (POP_MANDATE a point), and Pryce's answer: a carve-out (lobby) or a court
+ *  case (litigate) blunts the rule for a while, worth ANSWER_MANDATE. It was a hard preference for levers he complies
+ *  with, which put the fuel duty (he complies) before every other rule in Ministry 1, whatever it cost at the polls. */
+const ANSWER_MANDATE = 200;
+const leverPrice = (v: LeverView): number => popularityCost(v) + (v.rivalAnswer && (v.rivalAnswer.chosen === 'lobby' || v.rivalAnswer.chosen === 'litigate') ? ANSWER_MANDATE : 0);
 /** Raise one level of the cheapest raisable lever among `list` (Mandate, plus `extra` if given); the same state if none. */
 function raiseCheapest(s: GameState, c: Content, list: LeverView[], extra: (v: LeverView) => number = () => 0): GameState {
   const ok = list.filter((v) => v.visible && v.canRaise && v.nextCost !== null).sort((a, b) => (a.nextCost! + extra(a)) - (b.nextCost! + extra(b)));
@@ -46,6 +52,17 @@ function raiseCheapest(s: GameState, c: Content, list: LeverView[], extra: (v: L
     if (n !== s) return n;
   }
   return s;
+}
+
+/** M5 balance (the steward): the lever with the lowest price (Mandate + `extra`) among those only Mandate holds back;
+ *  raised if affordable now, else the steward waits for it (a person does not buy the one dear rule they can afford
+ *  because the sensible one costs a little more Mandate than they have this minute). */
+function raiseBest(s: GameState, c: Content, list: LeverView[], extra: (v: LeverView) => number): GameState {
+  const ok = list.filter((v) => v.visible && v.nextCost !== null && (v.canRaise || s.mandate < v.nextCost!))
+    .sort((a, b) => (a.nextCost! + extra(a)) - (b.nextCost! + extra(b)));
+  const v = ok[0];
+  if (!v || !v.canRaise) return s;
+  return model.setLever(s, c, v.def.id, v.level + 1);
 }
 
 /** Pledges: keep the `keep` that bind nothing the steward needs (no binds first, then by confidence). */
@@ -93,6 +110,19 @@ const stewardPace = (c: Content, id: SectorId): string | undefined => {
   return paces.length >= 2 ? paces[1].id : undefined;
 };
 
+/** Lever and card ids named by `owns` leaves of a condition. */
+function ownsLeaves(cond: unknown): string[] {
+  const out: string[] = [];
+  const walk = (x: unknown) => {
+    if (!x || typeof x !== 'object') return;
+    const o = x as Record<string, unknown>;
+    if (typeof o.owns === 'string') out.push(o.owns);
+    for (const k of ['all', 'any']) if (Array.isArray(o[k])) (o[k] as unknown[]).forEach(walk);
+  };
+  walk(cond);
+  return out;
+}
+
 function stewardOnce(s0: GameState, c: Content, readSheet: boolean, every: number): GameState {
   let s = s0;
   if (!s.chair) return s;
@@ -120,9 +150,7 @@ function stewardOnce(s0: GameState, c: Content, readSheet: boolean, every: numbe
       // on enactment. Prefer levers he would comply with (or evade: a rung is a lesson, and the bot amends it).
       const cands = model.leverViews(s, c).filter((v) => v.def.sector === id
         && (LEVY.has(v.def.kind) || (v.def.kind === 'measure' && (v.def.ladder?.length ?? 0) > 0)));
-      const ok = cands.filter((v) => v.visible && v.canRaise && v.nextCost !== null);
-      const fine = ok.filter((v) => !v.rivalAnswer || ['comply', 'evade'].includes(v.rivalAnswer.chosen));
-      const n = raiseCheapest(s, c, fine.length ? fine : ok, popularityCost);
+      const n = raiseBest(s, c, cands, leverPrice);
       // M5 balance: a line a long way under the burn for a minute and a half, with nothing left to raise that would
       // bring it back, is redrawn at today's burn (a person does not keep a line nobody can meet: its clear level was
       // set by the smoke on the day it was drawn)
@@ -132,9 +160,9 @@ function stewardOnce(s0: GameState, c: Content, readSheet: boolean, every: numbe
       }
       s = n;
     } else if (sd.clearP !== null && s.sectors[id].pressure > sd.clearP && sd.sinkR !== null && shown > sd.sinkR * 0.97
-      && s.time - (mm.lastSky[id] ?? -Infinity) >= 30) {
+      && (s.sectors[id].steadyYears ?? 0) >= 10 && s.time - (mm.lastSky[id] ?? -Infinity) >= 30) {
       // M5 balance: towards a clear sky (the Act I `--ending` player's rule, towardsSky in tools/balance.ts): under a held
-      // line whose sky has not cleared, the steward pushes the burn down to the sink line the page draws, one level every
+      // line whose sky has not cleared (held a decade: the Act I player's `heldFor`), the steward pushes the burn down to the sink line the page draws, one level every
       // 30 s while the smoke is not already falling (3% in 30 s), weighing each lever's Mandate, its popularity and
       // Pryce's answer as above. Settlement (and so the Treaty) needs fifty clear years.
       const p0 = mm.skyP[id];
@@ -144,10 +172,15 @@ function stewardOnce(s0: GameState, c: Content, readSheet: boolean, every: numbe
         const duty = views.some((v) => v.def.kind === 'duty' && v.level > 0);
         const cands = model.leverViews(s, c).filter((v) => v.def.sector === id
           && (SKY_KINDS.has(v.def.kind) || (duty && v.def.kind === 'measure' && (v.def.ladder?.length ?? 0) > 0)));
-        const ok = cands.filter((v) => v.visible && v.canRaise && v.nextCost !== null);
-        const fine = ok.filter((v) => !v.rivalAnswer || ['comply', 'evade'].includes(v.rivalAnswer.chosen));
-        s = raiseCheapest(s, c, fine.length ? fine : ok, popularityCost);
+        s = raiseBest(s, c, cands, leverPrice);
       }
+    }
+    // M5 balance: a settlement the card says is blocked by a lever not in force ("The congestion charge in force", "A
+    // cap on water consumed in force"): the steward enacts the lever its condition names, once it can
+    const blocked = model.derive(s, c).sectors[id]?.settleBlocked;
+    if (blocked) for (const lid of ownsLeaves(c.sectors[id]?.settle?.requires)) {
+      const v = model.leverViews(s, c).find((x) => x.def.id === lid);
+      if (v && v.level === 0 && v.canRaise) { const n = model.setLever(s, c, lid, 1); if (n !== s) { s = n; break; } }
     }
     // M5 (registry lane): settle a chair Industry as soon as it can be (Steady State on its line: the Treaty's gate)
     if (model.derive(s, c).sectors[id]?.canSettle) { const n = model.settle(s, c, id); if (n !== s) { s = n; continue; } }
@@ -155,8 +188,18 @@ function stewardOnce(s0: GameState, c: Content, readSheet: boolean, every: numbe
     const comp = model.derive(s, c).chair?.compensation?.[id];
     if (comp?.canCompensate && comp.cost < s.capital * 0.5) s = model.compensate(s, c, id);
   }
-  // amend every rung that can be
-  for (const l of model.derive(s, c).chair?.loopholes ?? []) if (l.canAmend) s = model.amend(s, c, l.id);
+  // M5 balance: amend a rung once Pryce is using it (the vans are on the motorway: the card shows the used rung beside his
+  // answer); was every rung the moment it opened, so he never got round a rule at all. A used rung that no amendment can
+  // close (the cheaper mile) is closed by the lever its card names ("Robust only with the fuel duty escalator in force")
+  for (const l of model.derive(s, c).chair?.loopholes ?? []) {
+    if (l.status !== 'used') continue;
+    if (l.canAmend) { s = model.amend(s, c, l.id); continue; }
+    const def = (c.loopholes ?? []).find((x) => x.id === l.id);
+    if (def && !def.amend) for (const lid of ownsLeaves(def.closedBy)) {
+      const v = model.leverViews(s, c).find((x) => x.def.id === lid);
+      if (v && v.level === 0 && v.canRaise) { const n = model.setLever(s, c, lid, 1); if (n !== s) { s = n; break; } }
+    }
+  }
   // inspect on cooldown. M5 balance: first a chair Industry under a line whose quiet period is nearly up (the one the
   // steward is trying to settle: concealment there breaks the clear streak and the decades), then the longest-unvisited
   const ch = s.chair!;

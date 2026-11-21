@@ -2033,7 +2033,9 @@ describe('M5: office, the Chair and the rival', () => {
     expect(lob.costPerPoint * 10 / 100).toBeLessThanOrEqual(1);
     expect(lit.feeYears > 0 && lit.feeYears < 1 && lit.windowYears > 0 && lit.delayYears > 0).toBe(true);
     for (const v of Object.values(r.defaultProfile)) expect(v >= 0 && v <= 1).toBe(true);
-    expect(r.policy.paybackFast < r.policy.paybackSlow && r.policy.foundFast < r.policy.foundSlow).toBe(true);
+    // M5 balance: a hasty player's Pryce wants a quicker payback; a founder's Pryce founds sooner (design §5.2), i.e.
+    // takes a LONGER payback on a new use (foundFast is founder 1's limit)
+    expect(r.policy.paybackFast < r.policy.paybackSlow && r.policy.foundFast >= r.policy.foundSlow).toBe(true);
     expect(r.knowhowTransfer.cap >= 1 && r.knowhowTransfer.k > 0).toBe(true);
     for (const id of r.profileFrom.casts) expect(castIds.has(id) ? '' : `rival.profileFrom.casts: ${id}`).toBe('');
   });
@@ -2207,10 +2209,11 @@ describe('M5: the unfolding in a Ministry (design §8; the owner\'s rule)', () =
     }
   });
 
-  test('the design\'s order: loopholes and the Treasury mid-run in Ministries 1 and 2; inspection, Statecraft and the charge at Reckonings 2, 3, 4', () => {
+  // M5 balance: the charge at Reckoning 5 (was 4): the Treaty's place (features.ts)
+  test('the design\'s order: loopholes and the Treasury mid-run in Ministries 1 and 2; inspection, Statecraft and the charge at Reckonings 2, 3, 5', () => {
     expect(['loopholes', 'treasury'].map((id) => isMid(F[id as 'chair']!.when))).toEqual([true, true]);
     expect(['inspection', 'statecraft', 'charge', 'treaty'].map((id) => isAtReckoning(F[id as 'chair']!.when))).toEqual([true, true, true, true]);
-    expect(['loopholes', 'inspection', 'treasury', 'statecraft', 'charge'].map((id) => minFloor(F[id as 'chair']!.when))).toEqual([0, 2, 2, 3, 4]);
+    expect(['loopholes', 'inspection', 'treasury', 'statecraft', 'charge'].map((id) => minFloor(F[id as 'chair']!.when))).toEqual([0, 2, 2, 3, 5]);
     // no two at one Reckoning floor, no two mid-run at one floor
     const at = ['inspection', 'statecraft', 'charge'].map((id) => minFloor(F[id as 'chair']!.when));
     expect(new Set(at).size).toBe(at.length);

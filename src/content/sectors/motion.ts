@@ -45,7 +45,10 @@ const sector: SectorDef = {
   autoEtaRate: 0,
 
   resourceKind: 'stock',
-  reserve: 25_000_000,
+  /* M5 balance: 30 million barrels (was 25): under abstain six of twenty grid Pryces emptied 25 million before minute 120
+   * of Ministry 1 (criterion 5: not exhausted before 120; design/scratch/m5-balance/g1-abstain.txt). The Preview's
+   * North Sea card still adds a quarter. */
+  reserve: 30_000_000,
   alpha: 0.6,
 
   pressureSource: 'resource',
@@ -81,6 +84,12 @@ const sector: SectorDef = {
     upkeepPerSpill: 0.3,
     freeExcess: 0.05,
     blurb: 'The ring road is finished and stays finished. The Motorist runs a feature on the scenic route.',
+    /* M5 balance (the Treaty's place, the owner's item 1): from the Chair, Motion is settled with a price on the mile
+     * that reaches every vehicle, the congestion charge (Ministry 5's arrival, features.ts; design §4: its settlement in
+     * Ministry 5, "The Motor Settlement"). Without it the human-like bot settled Motion in Ministry 2
+     * (hour 19.7) and the Treaty came at hour 23 (design/scratch/m5-balance/c1-*.txt). Outside office nothing changes: the
+     * Preview is never settled. */
+    requires: { any: [{ not: { flag: 'office' } }, { owns: 'motion.charge' }], label: 'The congestion charge in force' },
   },
 
   spill: { to: 'light', rate: 0.3 },
@@ -434,7 +443,11 @@ const motionLevers: LeverDef[] = [
      * level, −6 in Confidence's target when enacted, +0.5 after thirty model years (ten minutes, two Parliaments) (a fuel duty is resented, then
      * forgotten), on top of the price share every levy costs. A steward who reaches for it first pays at the polls;
      * one who meets the light trucks under a standard first finds the duty closes the ladder. */
-    popularity: { start: -6, after: 0.5, years: 30 },
+    /* M5 balance (the owner's item 3, the order): −10 on the day, was −6. At −6 the steward reached for the duty the
+     * minute the line broke again after the first amendment (minute 10 of Ministry 1), closing the footprint rung
+     * before Pryce could use it; dearer at the polls, the stricter standard, walking distance and rail come first and
+     * the duty arrives when the robust rung (the cheaper mile) is open, as the design's lesson has it. */
+    popularity: { start: -10, after: 0.5, years: 30 },
   },
   afterChair(lever({
     id: 'motion.cap', sector: 'motion', kind: 'cap',
@@ -513,7 +526,7 @@ const motionLevers: LeverDef[] = [
   }),
   /*
    * M5: the congestion charge (LeverKind 'charge': a price on the service, fixed when enacted; arrives with the 'charge'
-   * feature, Ministry 4). It reaches every category, vans and four-by-fours included, so it holds whatever rung is open.
+   * feature, Ministry 5: M5 balance, was 4). It reaches every category, vans and four-by-fours included, so it holds whatever rung is open.
    * Popularity (Stockholm, design/research/restraint.md §7.2: about 36% for before the trial, a majority after, over 70%
    * by 2013): CHARGE_POP start −3 a level on the day, +1 after CHARGE_POP_YEARS of being held.
    * Side effect (London, §7.1: road space handed to buses and works, congestion back near its old level within a few
@@ -702,7 +715,7 @@ export const motionLoopholes: LoopholeDef[] = [
     blurb: 'Each vehicle’s target is set by its size; the larger the car, the easier the target.',
     app: 'motion.fourByFours',
     escape: 0.5, // FP_ESCAPE
-    premium: 0.02, // FP_PREMIUM
+    premium: 0.012, // FP_PREMIUM. M5 balance: was 0.02, above his comply cost just after the first amendment: he complied and never took the footprint rule
     effects: [sat('motion', 1.25, 'motion.fourByFours'), sat('motion', 1.05, 'motion.suburbs')], // FP_GROWTH
     amend: { mandateCost: 220, years: 6, label: 'A single target, whatever the size' }, // FP_AMEND
     closedBy: { owns: 'motion.duty', label: 'Closed while the fuel duty escalator is in force' },
@@ -714,7 +727,7 @@ export const motionLoopholes: LoopholeDef[] = [
     name: 'The cheaper mile',
     blurb: 'Every class meets its target, and each mile costs less to drive.',
     escape: 0.35, // CM_ESCAPE
-    premium: 0.015, // CM_PREMIUM
+    premium: 0.008, // CM_PREMIUM. M5 balance: was 0.015 (as the footprint rung's: each rung must undercut the comply cost the amendment before it leaves)
     effects: [sat('motion', 1.08, 'motion.suburbs'), half('motion', 1.05, 'motion.commuting')], // CM_GROWTH
     closedBy: { owns: 'motion.duty', label: 'Robust only with the fuel duty escalator in force' },
   },

@@ -484,6 +484,14 @@ const m5api = {
     const ticks = voicesOf('room:clock', vs).filter((t) => t > 3 && t < 10);
     return { before: Math.round(w(out, 3, 6) * 10) / 10, after: Math.round(w(out, 11, 16) * 10) / 10, dipDb: Math.round(lo * 10) / 10, clockGapsAcross: gaps(ticks), a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, `in ${office}: tab switch ${a} → ${b} at 6 s`, [[6, b]]) };
   },
+  /** As the page switches tab: setSector(b) at 6 s while views of `a` keep arriving for `lag` s, then views of b. */
+  async pageSwitch(a: string, b: string, lag = 0.5, office: Office = 'office') {
+    const va = officeView(a, 'mid', office), vb = officeView(b, 'mid', office);
+    const vs: { source: string; at: number }[] = [];
+    await renderCase({ name: 'psw', dur: 14, view: (t) => (t < 6 + lag ? va : vb), acts: [[6, (ss) => ss.setSector(b)]], tap: { onVoice: (v) => vs.push(v) } });
+    const ticks = voicesOf('room:clock', vs);
+    return { gaps: gaps(ticks).map((g, i) => [g, Math.round(ticks[i] * 10) / 10]).filter(([g]) => g > 1.05), ticks: ticks.length };
+  },
   /** Plenty's pump: its stroke times at a held reserve (pump solo). */
   async pump(reserve: number, dur = 30) {
     const vs: { source: string; at: number; grid: boolean }[] = [];

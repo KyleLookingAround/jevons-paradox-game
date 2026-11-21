@@ -60,7 +60,8 @@
  *   --work-done          (M4 polish) budget and mixed also Reckon once a run's work is done (no spring survey left to
  *                        pass this run, every Industry they may settle settled); always on for `human`
  *   --opening-fix        (M4 polish) a Preview that waits on an Act's ending does not hold a run open (`opening`): without
- *                        it every restraint run from run 3 lasts at least --max-open minutes (the M4 pacing was tuned so)
+ *                        it every restraint run from run 3 lasts at least --max-open minutes (the M4 pacing was tuned so).
+ *                        M5 balance: ON by default; --opening-fix=false gives M4's measuring players
  *
  * Clicking (all strategies but idle): --cps taps per second (default 5) while a tap is worth it, i.e. while
  * cps × clickValue ≥ --click-until × income (default 0.5, the UI's shrink rule). --cps=0 turns it off.
@@ -199,7 +200,8 @@ const HOURS = parseFloat(flag('hours', '3'));
 /** M4 polish: --work-done: budget and mixed also Reckon once the run's work is done (workDone; always on for human). */
 const WORK_DONE = flag('work-done', 'false') !== 'false';
 /** M4 polish: --opening-fix: a Preview waiting on an Act's ending does not hold a run open (see `opening`). */
-const OPENING_FIX = flag('opening-fix', 'false') !== 'false';
+// M5 balance: on by default (the owner's item 7): the rule was a bot bug, not a person's; --opening-fix=false for M4's
+const OPENING_FIX = flag('opening-fix', 'true') !== 'false';
 const EVERY = parseFloat(flag('every', '120'));
 const CPS = parseFloat(flag('cps', '5'));
 const CLICK_UNTIL = parseFloat(flag('click-until', '0.5'));
@@ -1640,6 +1642,8 @@ function playRun(start: GameState, idx: number, mode: Strategy, skip: Set<string
       // restraint run from run 3 lasts at least MAX_OPEN; with --opening-fix it does not, and the whole arc moves about
       // two hours earlier (Iron 2.3 h, Fishing 5.2 h, the ending 14.3 h for budget: design/scratch/m4-polish/s8-*). The
       // M4 pacing was tuned with it; changing it is a rebalancing of hours 1–8, left for a later pass.
+      // M5 balance: the fix is now the default (a person does not wait in a run for an Industry the checklist says waits on
+      // the Act I ending); the springs' twenty decades (achievements.ts SPRING_DECADES) put the ending back at 15–17 h.
       const opening = s.time < MAX_OPEN && d.nextSectors.some((x) => x.reckoningsHave >= x.reckoningsNeeded && !(OPENING_FIX && waitsOnEnding(s, x.id)));
       if (s.time >= MIN_RUN && marginal < 0.9 * avg && !streaking && !opening) { stopReason = `marginal rate ${n(marginal)} below average ${n(avg)}`; break; }
       // progression: the next industry waits only on another Reckoning, so bank the run (once no streak is running)

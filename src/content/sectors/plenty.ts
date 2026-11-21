@@ -37,10 +37,11 @@ const PIVOT_RETURN = 0.85;
 const NOZZLE_RETURN = 0.8;
 const DRIP_RETURN = 0.4;
 const PRECISION_RETURN = 0.9;
-/** Drip's cost: the default Pryce (payback limit 150 s) declines it unsubsidised (payback about 240 s three minutes after
- *  Plenty opens, about 360 s at the plateau) and takes it at once with the subsidy at level 2 (he pays 35%: about 85 s).
- *  A patient Pryce (haste 0, limit 240 s) buys it anyway; a hasty one (limit 60 s) never. */
-const DRIP_COST = 400_000;
+/** Drip's cost: no Pryce buys it unsubsidised (payback about 280 s ten minutes after Plenty opens, against limits of
+ *  100 to 200 s: chair.ts RivalDef.policy) and every one takes it within a model year or two of the subsidy at level 2
+ *  (he pays 35%: about 98 s). M5 balance (the owner's item 4): 350,000, was 400,000, at which the hastiest Pryce took
+ *  only the nozzles at level 2 (drip 111 s against his 100 s; design/scratch/m5-balance/plenty-*.txt). */
+const DRIP_COST = 350_000;
 /** The subsidy's levels: the Treasury's share of the targets' cost. Level 1 (45%) brings dropped nozzles inside the
  *  default Pryce's limit (payback 207 s → 114 s); level 2 (65%) brings drip too. Measured 600 s after enactment, against
  *  no subsidy: level 1 applied −5%, consumed +10%; level 2 applied −13%, consumed +30%. */
@@ -135,8 +136,11 @@ const sector: SectorDef = {
     upkeepPerSpill: 0.3,
     freeExcess: 0.05,
     blurb: 'The Board counts what the fields use up, not what the pumps lift. Mrs Okonedo reads the figures, and nods.',
-    /* settled on the right gauge: the cap on water consumed in force when the settlement is made (design §6.2) */
-    requires: { owns: 'plenty.consumptionCap', label: 'A cap on water consumed in force' },
+    /* settled on the right gauge: the cap on water consumed in force when the settlement is made (design §6.2). M5
+     * balance: and the charge on water consumed (design §4: "holding Plenty's consumption with the charge on the right
+     * gauge"; the charge's Ministry, 5): with the cap alone the human-like bot settled Plenty fifty minutes after it
+     * opened in Ministry 3 and the Treaty came at hour 22.8 (design/scratch/m5-balance/c3-humanGov.txt). */
+    requires: { all: [{ owns: 'plenty.consumptionCap' }, { owns: 'plenty.chargeConsumed' }], label: 'A cap and a charge on water consumed in force' },
   },
 
   /*

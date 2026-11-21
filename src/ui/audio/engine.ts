@@ -129,6 +129,7 @@ const DUCKS: Partial<Record<SoundEventKind, [number, number]>> = { reveal: [0.45
 const MIN_GAP: Partial<Record<SoundEventKind, number>> = { officeTaken: 20, litigated: 2, lobbied: 1, inspected: 1, concealmentFound: 1 };
 const ROOM_GLASS = 950;          // M5: the traffic through the Ministry's glass (low-pass, Hz) …
 const ROOM_CURTAINS = 380;       // … and through the curtains in Opposition
+const ROOM_AHEAD = 2.5;          // M5: the room's clock is scheduled this far ahead (s)
 const STAMP2_AT = 2.7;           // M5: the second stamp lands this long after an 'inspected' that came just before it
 const CREDITS_S = 75;            // the first ending's credits bed holds this long by itself before it fades
 const ACT_CREDITS_S = 110;       // M4: an Act's credits hold longer, and their bells come less often
@@ -414,16 +415,16 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   /** A synthesised recipe, cached; null when it is not ready yet (live: queued in the worker; offline: this tick's
    *  synthesis budget is spent), and the hit is skipped. */
-  function recipe(name: string, key: Key, v: number, force = false, cb?: (b: AudioBuffer | null) => void): AudioBuffer | null {
+  function recipe(name: string, key: Key, v: number, force = false, cb?: (b: AudioBuffer | null) => void, pin = false): AudioBuffer | null {
     const job: Job = { t: 'recipe', name, key, v, seed };
     if (sync) {
       if (!force && !tap && synthSpent > SYNTH_BUDGET_MS) return peek(job);
       const t0 = perf();
-      const b = obtain(job, { sync: true, ctx });
+      const b = obtain(job, { sync: true, ctx, pin });
       synthSpent += perf() - t0;
       return b;
     }
-    return obtain(job, { ctx, cb });
+    return obtain(job, { ctx, cb, pin });
   }
 
   /* ---------------- graphs ---------------- */
@@ -785,7 +786,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       g.beatAt = t;
       tap?.onTick?.({ t, beat: g.beat, tempo: g.tempo, sector: g.sector });
       if (!g.mix) continue;
-      for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, horizon);
+      // M5: the Ministry clock is wholly predictable, so it is scheduled further ahead: a page busy for a second or two
+      // (a tab switch on a slow phone) does not drop a tick.
+      for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, g === room?.g && rt.def.id === 'clock' ? t + ROOM_AHEAD : horizon);
       if (g.mix.stress > 0.01 && !g.dieAt && g !== room?.g) blackouts(g, t);
     }
     if (credits) creditsTick(t, horizon);
@@ -839,7 +842,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   function playHit(g: Graph, rt: LayerRt, at: number, boost = 1): void {
     const l = rt.def as HitsDef;
     const v = l.variantBy && rt.variant != null ? rt.variant : l.variants ? (rt.vary = (rt.vary + 1 + Math.floor(rt.rng() * (l.variants - 1))) % l.variants) : 0;
-    const b = recipe(l.recipe, rt.key, v);
+    // M5: the Ministry clock's two buffers are pinned in the bank, so a new Industry's warm-up (dozens of buffers at a tab
+    // switch) never evicts them and costs the clock its ticks while they are made again.
+    const b = recipe(l.recipe, rt.key, v, false, undefined, rt.src === 'room:clock');
     if (!b) return;
     let rate = rt.pitch;
     if (l.notes?.length) rate *= ratio(rt.key, l.notes[Math.floor(rt.rng() * l.notes.length)]);

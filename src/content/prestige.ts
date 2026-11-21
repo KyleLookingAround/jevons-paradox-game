@@ -16,7 +16,10 @@ import { eta, capCost, reserve, absorb, sat, half, startLever, sig2 } from './he
  * or smaller families, a seat at the table or a heavier purse).
  */
 /** M5: the median Ministry's Hindsight that Statecraft is priced against (see statecraft() below). */
-export const SC_MINISTRY = 150;
+/* M5 balance: 1,200 (was 150). With decades certified and held under a line the competent bots earn 900–1,900 Hindsight
+ * a Ministry of about two hours (median about 1,200: design/scratch/m5-balance/c3-*.txt); at 150 every Statecraft node
+ * was bought at the Reckoning it arrived and nothing was left to buy at the next (criterion 19). */
+export const SC_MINISTRY = 1200;
 
 export const knowhow: KnowhowDef[] = [
   /* ---- Steam tree ---- */

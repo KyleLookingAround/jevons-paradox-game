@@ -71,7 +71,7 @@ const MIN_MINISTRY = 35 * 60;
 
 /** --rule=player: a person's Reckoning in office (the Act I `budget`/`human` players' rule, tools/balance.ts, carried
  *  over). `hist` holds [time, Hindsight if Reckoned now] every 10 s. Returns the reason, or null to play on. */
-function reckonNow(s: GameState, c: Content, hist: [number, number][], maxSec: number, settledAt: number | null): string | null {
+export function reckonNow(s: GameState, c: Content, hist: [number, number][], maxSec: number, settledAt: number | null): string | null {
   if (Math.floor(s.time) % 10 !== 0) return null;
   const d = model.derive(s, c);
   hist.push([s.time, d.hindsightIfReckonNow]);

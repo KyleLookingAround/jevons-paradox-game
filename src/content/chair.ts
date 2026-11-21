@@ -181,12 +181,16 @@ export const rival: RivalDef = {
     { kind: 'conceal', feature: 'inspection' },
   ],
   policy: {
-    /* Payback limit: patient 240 s to hasty 60 s (design §5.2). Founding limit (lerp(foundSlow, foundFast, founder)):
+    /* Payback limit: patient 200 s to hasty 100 s (design §5.2 had 240 to 60). M5 balance (the owner's item 5: every
+     * Pryce a recognisable version of the same opponent): at 240 the most patient Pryce reached Motion's first crisis
+     * at 16.5 minutes and emptied the oil at 113 under abstain (g2-abstain); at 60 the hastiest bought nothing in Plenty
+     * even with the drip subsidy at its top level (subsidised drip pays back in about 85 s). Founding limit (lerp(foundSlow, foundFast, founder)):
      * M5 balance: 200 s for a player who rarely founded to 300 s for one who founded most (design §5.2: "a founder's
      * Pryce founds sooner", i.e. takes a longer payback on a new use). It was 300 to 90, the wrong way round, and the
      * 90 s end founded none of Motion's dated uses: under abstain the seven grid profiles with founder ≥ 0.54 had no
-     * crisis in 60 minutes (design/scratch/m5-balance/g0-abstain.txt); founder 0.48 (a 199 s limit) had one at 21. */
-    paybackSlow: 240, paybackFast: 60, foundSlow: 200, foundFast: 300,
+     * crisis in 60 minutes (design/scratch/m5-balance/g0-abstain.txt); founder 0.48 (a 199 s limit) had one at 21. At
+     * 200 to 300 the founders emptied the oil before minute 120 (g1): 200 to 250. */
+    paybackSlow: 200, paybackFast: 100, foundSlow: 200, foundFast: 250,
     /* A player who drew lines early taught him to expect rules: his carve-out line up to 10 points higher. */
     drawnLobby: 10,
     /* Quiet period ± 2 model years by `drawn` (design §6.3: 4–8). */

@@ -407,15 +407,19 @@ list.push(...m4);
  * prestige.ts) waits on the third: a record of the banks kept, surveyed and clear of foreign boats, one run at a time
  * ({ owns, earlier }: each spring after the first must follow one passed in an earlier run). What the player works in
  * hours 8–15, in place of saving Hindsight towards one price. The numbers are Fishing's own: three quarters of K is its
- * clear level (sectors/fishing.ts steady), fifteen decades its settle gate (FISHING_DECADES), a tenth the foreign share
- * the fishery limits push under (they arrive at 15%).
+ * clear level (sectors/fishing.ts steady), a tenth the foreign share the fishery limits push under (they arrive at 15%).
+ * M5 balance (Act I re-measured with the corrected scripted players, design/scratch/m5-balance-progress.md): twenty
+ * decades within the line in the run, was fifteen (Fishing's settle gate, FISHING_DECADES, which stays). With the
+ * players' Reckoning fixed (a Preview waiting on the Act I ending no longer holds a run open) the ending came at 14.3–14.4
+ * h against 15–17; each spring run now holds about seventeen minutes longer for its survey.
  */
+export const SPRING_DECADES = 20;
 /** The Board raises its standard each spring: the stock it wants to find, and the foreign share it will accept. */
 export const SPRING_STEPS = [{ stock: 0.75, foreign: 0.1 }, { stock: 0.8, foreign: 0.07 }, { stock: 0.85, foreign: 0.05 }];
 const spring = (i: number): Cond => ({
   all: [
     { stat: 'surveyed', sector: 'fishing', op: '>=', value: 1 },
-    { stat: 'budgetDecades', sector: 'fishing', op: '>=', value: 15 },
+    { stat: 'budgetDecades', sector: 'fishing', op: '>=', value: SPRING_DECADES },
     { stat: 'stockFraction', sector: 'fishing', op: '>=', value: SPRING_STEPS[i].stock },
     { stat: 'foreignShare', sector: 'fishing', op: '<', value: SPRING_STEPS[i].foreign },
   ],
@@ -424,7 +428,7 @@ export const SPRINGS = ['ach.m4.springSurvey', 'ach.m4.secondSpring', 'ach.m4.th
 const springs: AchievementDef[] = [
   {
     id: SPRINGS[0], name: 'The Spring Survey', feature: 'estimates',
-    blurb: 'Fishing surveyed after fifteen decades within its line, the banks at three quarters of their natural size or more, the foreign boats under a tenth of the catch.',
+    blurb: 'Fishing surveyed after twenty decades within its line, the banks at three quarters of their natural size or more, the foreign boats under a tenth of the catch.',
     when: spring(0),
     headline: 'Spring survey: banks at three quarters, foreign boats under a tenth',
   },

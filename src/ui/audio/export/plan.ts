@@ -348,7 +348,8 @@ export function readme(kind: Kind, s: Settings, ledger: Ledger, started: string)
   p('FOLDERS AND NAMES');
   p('-----------------');
   wrap('rebound-audio/<industry>/loops (held states as heard), stems/<state>_<length>/ (stems, their full mix, and dry/ if asked), oneshots/ (interface and event sounds), runs/ (whole runs as the demo plays them).', '  ');
-  wrap('Names read: industry_state_what_bars_length_key_tempo_format. Key: Ddor = D dorian, Gmix = G mixolydian, Amin = A aeolian (Iron), Cmaj = C ionian (Fishing), Clyd = C lydian, Emin/Bmin = E/B aeolian (natural minor). 48k24 = 48 kHz 24-bit, 48k32f = 48 kHz 32-bit float. "loop-seamless" loops cleanly; "loop-xfade" is whole bars and crossfaded but something crosses the seam (see LOOPS); "excerpt" is a straight cut. "-beds" holds only continuous layers; "-pulse" continuous layers and the rhythm on the beat, no events.', '  ');
+  wrap('States "office" and "opposition" are the late state heard from the Ministry window (M5): the room\'s clock ticks at its own 60 bpm, not the Industry\'s tempo, so a seamless loop at another tempo may double or drop one quiet tick at its seam; take the ministry stem from stems/ if you want it separately.', '  ');
+  wrap('Names read: industry_state_what_bars_length_key_tempo_format. Key: Ddor = D dorian, Gmix = G mixolydian, Amin = A aeolian (Iron), Cmaj = C ionian (Fishing), Clyd = C lydian, Gmaj = G ionian (Plenty), Emin/Bmin = E/B aeolian (natural minor). 48k24 = 48 kHz 24-bit, 48k32f = 48 kHz 32-bit float. "loop-seamless" loops cleanly; "loop-xfade" is whole bars and crossfaded but something crosses the seam (see LOOPS); "excerpt" is a straight cut. "-beds" holds only continuous layers; "-pulse" continuous layers and the rhythm on the beat, no events.', '  ');
   p();
   p('LEVELS');
   p('------');

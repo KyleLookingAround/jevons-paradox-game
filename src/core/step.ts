@@ -94,6 +94,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
   let firstBackfires = state.run.firstBackfires;
   let budgetDecades = state.run.budgetDecades;
   let leanDecades = state.run.leanDecades ?? 0;
+  let certifiedDecades = state.run.certifiedDecades ?? 0; // M5 (balance lane fix): nothing recorded certified decades
   const one: OneOffs = { capital: 0, mandate: 0, slots: 0 };
   const reserveAdds: { sector: SectorId; value: number }[] = [];
   const offers: PendingDividend[] = [];
@@ -270,6 +271,16 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
           es.decadesLean = [...(es.decadesLean ?? []), lean];
           budgetDecades++;
           if (lean) leanDecades++;
+          if (state.chair) {
+            // M5 (balance lane fix; types.ts INSPECTION AND CONCEALMENT): a decade recorded in office is certified when the
+            // sector's last inspection falls inside its ten model years. Only in a Ministry (absent = all false elsewhere).
+            const at = state.chair.inspected[s];
+            const cert = typeof at === 'number' && (time - at) * YEARS_PER_SECOND <= DY + 1e-9;
+            const prev = (es.decadesCertified ?? []).slice(0, es.decadesWithin.length - 1);
+            while (prev.length < es.decadesWithin.length - 1) prev.push(false);
+            es.decadesCertified = [...prev, cert];
+            if (cert) certifiedDecades++;
+          }
           const o1: OneOffs = { capital: 0, mandate: 0, slots: 0 };
           fireOneOffs(effs, 1, fl.income, o1);
           one.capital += o1.capital * mul; one.mandate += o1.mandate * mul; one.slots += o1.slots;
@@ -483,6 +494,7 @@ export function step(state: GameState, content: Content, dt: number, lite = fals
     budgetDecades,
     leanDecades,
     firstBackfires,
+    ...(certifiedDecades > 0 ? { certifiedDecades } : {}),
   };
   const evs = pushEvents(state.events ?? [], state.meta.eventSeq ?? 0, ev, time, year);
   let meta: MetaState = {
