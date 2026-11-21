@@ -145,7 +145,9 @@ function chord(rng: Rng, key: Key, degs: number[], dur: number, oct = 1, att = 0
 
 export const UI_KINDS = ['sell', 'buy', 'cannotAfford', 'found', 'lever', 'fork', 'headline', 'reveal', 'backfire', 'crisis', 'decade', 'steady', 'reckoning', 'industryOpened', 'ageBegun',
   'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues', 'arrived', 'history',
-  'wager', 'actEnding', 'arrears'] as const;
+  'wager', 'actEnding', 'arrears',
+  'officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'inspected', 'concealmentFound', 'lobbied', 'litigated',
+  'loopholeUsed', 'loopholeClosed', 'treaty'] as const;
 
 /* ------------------------------------------------------------------ */
 /* M3: the post, the pen, the watch                                    */
@@ -260,6 +262,54 @@ function coin(rng: Rng): Float32Array {
   for (let k = 0; k < 7; k++) { add(x, ring(2350 + 60 * rng(), 0.05), sec(t), g); t += 0.045 * Math.pow(0.82, k); g *= 0.8; }
   return svf(x, 'lp', 4200, 0.7);
 }
+
+/* ------------------------------------------------------------------ */
+/* M5: the Ministry (physical sounds, the same in every palette)       */
+/* ------------------------------------------------------------------ */
+
+/** A crowd: `nv` voices of bandpassed noise, each shaped by its own syllable envelope (random targets every 0.1–0.3 s),
+ *  formants between f0 and f1. Low and close: a murmur; high and loud: a cheer. */
+function crowd(rng: Rng, dur: number, nv: number, f0: number, f1: number): Float32Array {
+  const n = sec(dur), x = new Float32Array(n);
+  for (let k = 0; k < nv; k++) {
+    const v = svf(pink(n, rng), 'bp', f0 + (f1 - f0) * rng(), 2.2);
+    let a = 0, b = rng(), j = 0, len = 1;
+    for (let i = 0; i < n; i++) {
+      if (--len <= 0) { a = b; b = rng() < 0.3 ? 0 : rng(); len = sec(0.1 + 0.2 * rng()); j = len; }
+      x[i] += v[i] * (b + (a - b) * (len / j));
+    }
+  }
+  return x;
+}
+
+/** A footstep on boards: the heel's knock and the toe's after it. */
+function step(rng: Rng): Float32Array {
+  const x = buf(0.16);
+  add(x, thump(rng, 95, 0.09, 0.9), 0, 0.7);
+  add(x, noiseBurst(rng, 'lp', 900, 0.8, 0.001, 0.04), sec(0.055), 0.3);
+  return x;
+}
+
+/** A rubber stamp brought down on paper over a desk; `heavy` lower and fuller. */
+function stamp(rng: Rng, heavy = 1): Float32Array {
+  const x = buf(0.45);
+  add(x, thump(rng, 130 / heavy, 0.22 * heavy, 0.9), 0, 0.8);
+  add(x, knock(rng, 520 / heavy, 0.07), 0, 0.4);
+  add(x, noiseBurst(rng, 'lp', 1700, 0.7, 0.001, 0.05), 0, 0.35);
+  return x;
+}
+
+/** A child's two-note street cry ("Ex-tra!"), a minor third down, through a formant pair; `f` the first note. */
+function cry(rng: Rng, f: number): Float32Array {
+  const n = sec(1.05);
+  const x = osc(n, (i) => { const t = i / SR; return (t < 0.3 ? f : f * 0.84 * (1 - 0.06 * Math.max(0, t - 0.5))) * (1 + 0.012 * Math.sin(t * 34)); }, 'saw', rng());
+  const a = svf(Float32Array.from(x), 'bp', (i) => (i < sec(0.3) ? 520 : 820), 4), b = svf(x, 'bp', (i) => (i < sec(0.3) ? 1900 : 1250), 5);
+  add(a, b, 0, 0.6);
+  return svf(envPts(a, [[0, 0], [0.03, 1], [0.24, 0.8], [0.3, 0.2], [0.34, 1], [0.8, 0.7], [1.05, 0]]), 'lp', 2600, 0.7);
+}
+
+/** One wooden strike with a short room (the gavel, a door). */
+const strike = (rng: Rng, f: number, d: number) => add(add(knock(rng, f, d), thump(rng, f * 0.4, d * 1.6, 0.5), 0, 0.6), noiseBurst(rng, 'lp', 2400, 0.8, 0.0005, 0.015), 0, 0.3);
 
 function ui(p: Palette, kind: string, c: RecipeCtx): Float32Array {
   const { rng, key, v } = c;
@@ -460,6 +510,67 @@ function ui(p: Palette, kind: string, c: RecipeCtx): Float32Array {
       add(x, bell(rng, freq(key, 0, 1), 3.0, 0.5), sec(1.9), 0.48);
       add(x, thump(rng, 70, 0.6, 0.2), 0, 0.3);
       return svf(x, 'lp', 900, 0.7);
+    }
+    /* --- M5: the Ministry --- */
+    case 'officeTaken': { // the paper boy's cry in the street below, twice (the second further off), then the room's clock
+      const x = buf(3.6);
+      add(x, cry(rng, 440 + 30 * rng()), 0, 0.7);
+      add(x, svf(cry(rng, 430), 'lp', 1400, 0.7), sec(1.45), 0.4);
+      add(x, svf(crowd(rng, 2.6, 4, 300, 700), 'lp', 900, 0.7), 0, 0.06);
+      add(x, watchTick(rng, 0), sec(2.9), 0.25);
+      add(x, watchTick(rng, 1), sec(3.35), 0.2);
+      return svf(x, 'lp', 3000, 0.7);
+    }
+    case 'electionCalled': // a murmur rises and settles
+      return envPts(crowd(rng, 3.4, 7, 260, 820), [[0, 0], [1.2, 1], [2.4, 0.7], [3.4, 0]]);
+    case 'electionWon': case 'electionLost': { // the count bell, then a cheer (won) or a door closing on the room (lost)
+      const won = kind === 'electionWon', x = buf(won ? 4.4 : 3.6);
+      add(x, bell(rng, freq(key, won ? 4 : 0, 2), 2.2, 0.8), 0, 0.5);
+      if (won) {
+        add(x, envPts(crowd(rng, 3.2, 9, 700, 2300), [[0, 0], [0.5, 1], [1.6, 0.8], [3.2, 0]]), sec(1.0), 0.8);
+        for (let t = 1.2; t < 3.9; t += 0.025 + 0.08 * rng()) add(x, noiseBurst(rng, 'bp', 1100 + 900 * rng(), 1.2, 0.001, 0.025), sec(t), 0.25 * (1 - (t - 1.2) / 3));
+      } else {
+        add(x, envPts(crowd(rng, 1.6, 5, 280, 700), [[0, 0], [0.3, 1], [1.6, 0]]), sec(0.9), 0.5);
+        add(x, strike(rng, 210, 0.2), sec(2.4), 0.8);
+        add(x, knock(rng, 1500, 0.05, true), sec(2.45), 0.25);
+      }
+      return svf(x, 'lp', 3600, 0.7);
+    }
+    case 'inspected': { // the Inspector's footsteps, coming closer, then a stamp
+      const x = buf(2.7);
+      for (let i = 0; i < 4; i++) add(x, step(rng), sec(0.47 * i + 0.02 * rng()), 0.35 + 0.15 * i);
+      add(x, stamp(rng), sec(2.15), 0.9);
+      return x;
+    }
+    case 'concealmentFound': return stamp(rng, 1.35);   // the second stamp, heavier
+    case 'lobbied': { // a hoarding pasted up: three wet strokes of the brush, the sheet slapped flat
+      const x = buf(2.2);
+      for (let i = 0; i < 3; i++) add(x, paper(rng, 0.42, 500, 1300), sec(0.5 * i), 0.7);
+      add(x, noiseBurst(rng, 'lp', 1100, 0.7, 0.002, 0.08, 0.15, 'p'), sec(1.65), 0.6);
+      return svf(x, 'lp', 3200, 0.7);
+    }
+    case 'litigated': return strike(rng, 380, 0.18);   // one gavel
+    case 'loopholeUsed': { // a side door: the latch, a creak, the latch
+      const x = buf(1.5);
+      add(x, knock(rng, 1350, 0.04, true), 0, 0.4);
+      for (let t = 0.12; t < 0.9; t += 0.006 + 0.012 * rng()) add(x, knock(rng, 600 + 260 * Math.sin(t * 5), 0.02), sec(t), 0.18);
+      add(x, knock(rng, 1250, 0.05, true), sec(1.15), 0.5);
+      return svf(x, 'lp', 3000, 0.7);
+    }
+    case 'loopholeClosed': { // a quill, then the blotter rocked over it
+      const x = buf(1.9);
+      add(x, penStroke(rng, 0.7), 0, 0.6);
+      add(x, noiseBurst(rng, 'lp', 520, 0.7, 0.12, 0.3, 0.45, 'b'), sec(0.85), 0.8);
+      add(x, noiseBurst(rng, 'lp', 520, 0.7, 0.12, 0.3, 0.45, 'b'), sec(1.3), 0.6);
+      return x;
+    }
+    case 'treaty': { // a signature, the seal pressed, then a slow cadence in the palette over a held chord
+      const x = buf(6.4);
+      add(x, penStroke(rng, 1.0), 0, 0.55);
+      add(x, stamp(rng, 1.2), sec(1.15), 0.7);
+      add(x, chord(rng, key, [0, 4, 7], 4.8, 1, 1.2, 0.25), sec(1.4), 0.3);
+      add(x, arp(p, rng, key, [4, 2, 0, 7], 0.42, 1.0, 2, 2.2), sec(1.5), 0.42);
+      return svf(x, 'lp', 4000, 0.7);
     }
     case 'ageBegun': {
       const x = buf(4.2);
@@ -904,6 +1015,28 @@ const W: Record<string, Recipe> = {
     return svf(x, 'lp', 3600, 0.7);
   },
 
+  // M5 Plenty: a team at the plough (hooves in a walk on soft earth, the harness jingling) and the pump's stroke.
+  plough: ({ rng, v }) => {
+    const x = buf(2.6);
+    for (let i = 0; i < 6; i++) {
+      const t = 0.05 + i * 0.36 + 0.03 * rng();
+      add(x, svf(thump(rng, 110 + 25 * rng(), 0.09, 1), 'lp', 900, 0.7), sec(t), 0.5 + 0.2 * ((i + v) % 2));
+    }
+    for (let t = 0.1; t < 2.2; t += 0.12 + 0.25 * rng()) add(x, modal(sec(0.12), 2300 + 900 * rng(), [[1, 1, 0.08], [1.48, 0.5, 0.05]], SR, rng), sec(t), 0.08);
+    return x;
+  },
+  pumpThud: ({ rng, v }) => { // v 0: the down-stroke (a deep thud and the valve's clank); v 1: the lift (the water's gulp)
+    const x = buf(1.2);
+    if (v % 2 === 0) {
+      add(x, thump(rng, 62, 0.5, 0.7), 0, 0.9);
+      add(x, knock(rng, 310, 0.12, true), sec(0.02), 0.25);
+    } else {
+      add(x, thump(rng, 78, 0.25, 0.3), 0, 0.5);
+      add(x, noiseBurst(rng, 'bp', (i) => 420 + 260 * Math.sin(i / 260), 2.5, 0.05, 0.4, 0.6, 'p'), sec(0.06), 0.7);
+    }
+    return svf(x, 'lp', 2200, 0.7);
+  },
+
   // Lever signatures (small, occasional)
   'lv.duty': ({ rng, key }) => { const x = buf(1.4); add(x, bell(rng, freq(key, 4, 3), 0.6, 1.2), 0, 0.5); add(x, bell(rng, freq(key, 4, 3), 0.6, 1.2), sec(0.3), 0.4); return x; },
   'lv.cap': ({ rng }) => { const x = buf(0.8); for (let i = 0; i < 5; i++) add(x, knock(rng, 1300, 0.02, true), sec(0.07 * i), 0.5); return x; },
@@ -951,4 +1084,4 @@ export function hasRecipe(name: string): boolean {
   return name in W;
 }
 
-export const WORLD_RECIPES: readonly string[] = Object.keys(W);
+export const WORLD_RECIPES: readonly string[] = /* @__PURE__ */ Object.keys(W);

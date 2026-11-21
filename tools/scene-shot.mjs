@@ -15,12 +15,13 @@ const sw = args.includes('--switch');
 const m2 = args.includes('--m2'); // the M2 strip: clearing, steady, settled, Commons + landmark
 const m3 = args.includes('--m3'); // the M3 strip (#strip=<id>&m3); with --perf/--switch: the busiest state with every M3 feature on
 const m4 = args.includes('--m4'); // M4: the strip with Iron and Fishing open (#strip=<id>&m4); with --perf/--switch/--trace: crisisM4
-const sfx = m2 ? '-m2' : m3 ? '-m3' : m4 ? '-m4' : '';
-const busy = m4 ? 'crisisM4' : m3 ? 'crisisM3' : 'crisis';
-const hash = m2 ? '&m2' : m3 ? '&m3' : m4 ? '&m4' : '';
+const m5 = args.includes('--m5'); // M5: a Ministry (#strip=<id>&m5): the frame, Pryce's props, Plenty; with --perf/--switch/--trace: crisisM5
+const sfx = m2 ? '-m2' : m3 ? '-m3' : m4 ? '-m4' : m5 ? '-m5' : '';
+const busy = m5 ? 'crisisM5' : m4 ? 'crisisM4' : m3 ? 'crisisM3' : 'crisis';
+const hash = m2 ? '&m2' : m3 ? '&m3' : m4 ? '&m4' : m5 ? '&m5' : '';
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7);
 const inds = args.filter((a) => !a.startsWith('--'));
-const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron', 'fishing'];
+const ALL = ['steam', 'light', 'motion', 'compute', 'code', 'iron', 'fishing', 'plenty'];
 const list = inds.length ? inds : ALL;
 const file = resolve('dist/scene-demo.html');
 if (!existsSync(file)) { console.error('Build first: bun run tools/scene-demo.ts'); process.exit(1); }
@@ -117,7 +118,7 @@ if (args.includes('--trace')) {
     console.log('strip', ind);
   }
   // Live single frames (animated, mid-motion) of the late stage, phone and desktop, scene only.
-  for (const ind of m2 || m3 || m4 ? [] : list) {
+  for (const ind of m2 || m3 || m4 || m5 ? [] : list) {
     for (const [w, tag] of [[390, 'phone'], [1280, 'desk']]) {
       if (only && only !== tag) continue;
       const p = await page(w, 900);

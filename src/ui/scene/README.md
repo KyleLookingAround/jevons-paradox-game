@@ -117,6 +117,24 @@ when it must be redrawn. Standalone inlines only the drawing classes and that lo
 Measure: `node tools/scene-shot.mjs [industries] --m4` (the strip `#strip=<id>&m4`), `--perf --m4`, `--switch --m4`,
 `--trace --m4` (busiest: `crisisM4`); `#cards` shows every Industry's postcards.
 
+### M5 additions (all optional; every M1–M4 call above still works)
+
+`sceneViewFrom` fills these from the M5 contract (`m5Fields`), each **absent outside a Ministry or while the core reports
+nothing**: a view without them draws the M4 picture (checked pixel for pixel against the M4 strips).
+
+| Field | Type | Meaning (the audio lane reads the same) |
+|---|---|---|
+| `chair` | `{ opposition: boolean }` | Present only while office is taken (`Derived.chair` non-null): the Ministry window frames the picture. `opposition` = `ChairView.inOpposition`: the curtains are half drawn. |
+| `rival` | `true` or absent | `SectorDerived.rival`: Pryce runs the Industry (a chair Industry, or a capstoned one, in a Ministry). No survey stakes and no founding offer on the card; a capstoned one carries Pryce's bunting. |
+| `exempt` | `string[]` | `LoopholeDef.prop` of this Industry's rungs in state `'used'` (or `'drafting'` with `before: 'used'`), feature `loopholes` on: `'vans'`, `'fourByFours'`, `'borehole'`. Unknown keys draw nothing. |
+| `water` | `{ applied; consumed; returnShare }` | Plenty (`SectorDerived.water`): water applied and consumed per second (acre-feet, three figures) and the return share r, 0–1 (consumed = applied × (1 − r)). |
+| `sealed` | `true` or absent | In `Derived.office.sealed` (Compute, Code while office is taken): the sealed postcard. |
+| `levers[i].lobbied` | `true` or absent | `chair.rival.lobbying[id]`: a hoarding by the lever's sign. |
+| `levers[i].litigated` | `true` or absent | `chair.litigation[id].until > time`: a court notice on the sign. |
+| `levers[i].carvedOut` | `true` or absent | `chair.carveOuts[id] === chair.parliament.index`: a carve-out acts this Parliament. |
+
+The scene never reads `SectorDerived.reportedR`: under concealment the gauge reads clean and the sky stays honest.
+
 `sceneViewFrom` (in `adapter.ts`) is the only code that reads the contract. It is pure and total (never throws) and
 holds no game rules: it reads `Content`, `GameState` and `Derived` and maps them to cosmetic fractions (`SceneView`
 in `types.ts`). The scene ships its own CSS (`css.ts`, injected once as `<style id="scn-css">`), reading the page's

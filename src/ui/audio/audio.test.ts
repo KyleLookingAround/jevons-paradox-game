@@ -12,11 +12,12 @@ import { rngFrom, BUF_SR, peak, svf } from './synth';
 import { KEYS, semis, MODES } from './music';
 import { demoView, viewOf, preset, runView, PRESET_NAMES } from './views';
 import { SOUND_EVENT_KINDS, SOUND_EVENT_ALIASES, WORLD_EVENT_KINDS } from './types';
-import { lifeFrom } from './mix';
+import { lifeFrom, officeOf, sprayFrom, WINDOW_AIR, CURTAIN_AIR } from './mix';
+import { MINISTRY_ROOM } from './defs';
 import { stockOf } from './views';
 import type { SceneView } from '../scene/types';
 
-const SECTORS = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
+const SECTORS = ['steam', 'light', 'iron', 'fishing', 'motion', 'plenty', 'compute', 'code'];
 const mix = (v: SceneView, calm = false) => mixFrom(v, soundscapeFor(v.sectorId), { calm });
 
 function deepFreeze<T>(o: T): T {
@@ -45,7 +46,7 @@ describe('definitions', () => {
   test('neighbouring Ages differ by at most one note (tab switches modulate, not jolt)', () => {
     const set = (k: (typeof KEYS)[string]) => new Set(Array.from({ length: 7 }, (_, d) => Math.round(12 * Math.log2(k.root / 8.1758) + semis(k, d)) % 12));
     // M4: the Coal Age is Steam, Light, Iron and Fishing (all on the white notes), then Motion one sharp further.
-    const order = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
+    const order = ['steam', 'light', 'iron', 'fishing', 'motion', 'plenty', 'compute', 'code'];
     for (let i = 1; i < order.length; i++) {
       const a = set(KEYS[order[i - 1]]), b = set(KEYS[order[i]]);
       const diff = [...b].filter((x) => !a.has(x)).length;
@@ -532,5 +533,118 @@ describe('M4: interface', () => {
     expect(SOUND_EVENT_ALIASES.surveyed).toBe('surveyReveal');
     expect([...WORLD_EVENT_KINDS].sort()).toEqual(['surveyReveal', 'thresholdCrossed']);
     for (const k of WORLD_EVENT_KINDS) expect(hasRecipe(`ui:ledger:${k}`)).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* M5                                                                  */
+/* ------------------------------------------------------------------ */
+
+const m5v = (sector: string, p: Parameters<typeof preset>[1], extra: Partial<ReturnType<typeof preset>> = {}) => viewOf(sector, { ...preset(sector, p), ...extra });
+
+describe('M5: the Ministry room and the window', () => {
+  test('office is read from either shape; absent: no room, and every Industry exactly as before', () => {
+    expect(officeOf({} as SceneView)).toEqual({ room: 0, curtains: 0 });
+    expect(officeOf({ ministry: null, chair: null } as unknown as SceneView)).toEqual({ room: 0, curtains: 0 });
+    expect(officeOf({ chair: { opposition: false } } as unknown as SceneView)).toEqual({ room: 1, curtains: 0 });
+    expect(officeOf({ chair: { opposition: true } } as unknown as SceneView)).toEqual({ room: 1, curtains: 1 });
+    expect(officeOf({ ministry: {} } as unknown as SceneView)).toEqual({ room: 1, curtains: 0 });
+    expect(officeOf({ ministry: { inOpposition: true } } as unknown as SceneView)).toEqual({ room: 1, curtains: 1 });
+    expect(officeOf({ inOpposition: false } as unknown as SceneView)).toEqual({ room: 1, curtains: 0 });
+    expect(officeOf({ inOpposition: true } as unknown as SceneView)).toEqual({ room: 1, curtains: 1 });
+    for (const s of SECTORS) {
+      const m = mix(demoView(s, 'late'));
+      expect(m.room).toBe(0); expect(m.curtains).toBe(0);
+    }
+  });
+  test('in office the valley is heard through glass; in Opposition through the curtains too (quieter, duller)', () => {
+    for (const s of SECTORS) {
+      const out = mix(m5v(s, 'early')), inn = mix(m5v(s, 'early', { office: 'office' })), opp = mix(m5v(s, 'early', { office: 'opposition' }));
+      expect(inn.room).toBe(1); expect(opp.curtains).toBe(1);
+      expect(inn.air).toBeLessThanOrEqual(WINDOW_AIR); expect(opp.air).toBeLessThanOrEqual(CURTAIN_AIR);
+      expect(inn.air).toBeLessThanOrEqual(out.air); expect(opp.air).toBeLessThan(inn.air);
+      expect(opp.world).toBeLessThan(inn.world); expect(inn.world).toBeLessThan(out.world);
+      // The window changes nothing in the place itself: the same layers at the same levels.
+      for (const [id, l] of Object.entries(out.layers)) { expect(inn.layers[id].level).toBeCloseTo(l.level, 9); expect(opp.layers[id].density).toBeCloseTo(l.density, 9); }
+    }
+  });
+  test('the room: a clock on the beat (tick and tock), traffic, cars; recipes exist; its tempo is fixed', () => {
+    const ids = MINISTRY_ROOM.layers.map((l) => l.id).sort();
+    expect(ids).toEqual(['cars', 'clock', 'traffic']);
+    for (const l of MINISTRY_ROOM.layers) if (l.kind === 'hits') expect(hasRecipe((l as HitsDef).recipe)).toBe(true);
+    const clock = MINISTRY_ROOM.layers.find((l) => l.id === 'clock') as HitsDef;
+    expect(clock.grid?.every).toBe(1); expect(clock.variants).toBe(2);
+    expect(MINISTRY_ROOM.tempo[1] - MINISTRY_ROOM.tempo[0]).toBeLessThan(0.01);
+    expect(SOUNDSCAPES.ministry).toBeUndefined();   // not an Industry
+  });
+});
+
+describe('M5: Plenty', () => {
+  test('the machines by stage: a team at the plough, then the tractor, the pivot (2 and 3), drip lines (3)', () => {
+    const at = (stage: number) => mix(m5v('plenty', 'mid', { stage }));
+    expect(at(0).layers.team.level).toBeGreaterThan(0.3); expect(at(0).layers.tractor.level).toBe(0); expect(at(0).layers.pivot.level).toBe(0);
+    expect(at(1).layers.tractor.level).toBeGreaterThan(0.3); expect(at(1).layers.team.level).toBe(0);
+    expect(at(2).layers.pivot.level).toBeGreaterThan(0.2); expect(at(2).layers.drips.level).toBe(0);
+    expect(at(3).layers.drips.level).toBeGreaterThan(0.2);
+  });
+  test('the spray follows the return share: drip thins the hiss to drops; absent field = the pivot as drawn', () => {
+    expect(sprayFrom(undefined)).toBe(1); expect(sprayFrom(0.5)).toBe(1); expect(sprayFrom(0.425)).toBeCloseTo(1, 1);
+    expect(sprayFrom(0.136)).toBeLessThan(0.15); expect(sprayFrom(NaN)).toBe(1);
+    const flood = mix(m5v('plenty', 'late', { stage: 3, returnShare: 0.425 })), drip = mix(m5v('plenty', 'late', { stage: 3, returnShare: 0.136 }));
+    expect(drip.layers.pivot.level).toBeLessThan(flood.layers.pivot.level * 0.25);
+    expect(drip.layers.drips.level).toBeGreaterThan(flood.layers.drips.level);
+  });
+  test('the pump slows and drops as the water table falls', () => {
+    const hi = mix(m5v('plenty', 'mid', { reserve: 1 })), lo = mix(m5v('plenty', 'mid', { reserve: 0.1 }));
+    expect(hi.layers.pump.every).toBe(1);
+    expect(mix(m5v('plenty', 'mid', { reserve: 0.4 })).layers.pump.every).toBe(2);
+    expect(lo.layers.pump.every).toBe(4);
+    expect(lo.layers.pump.pitch).toBeLessThan(hi.layers.pump.pitch);
+    // monotone
+    let prev = Infinity;
+    for (let r = 0; r <= 1.0001; r += 0.1) { const e = mix(m5v('plenty', 'mid', { reserve: r })).layers.pump.every!; expect(e).toBeLessThanOrEqual(prev + 1e-9); prev = e; }
+    // other Industries have no stretched grid
+    for (const s of SECTORS.filter((x) => x !== 'plenty')) for (const l of Object.values(mix(demoView(s, 'late')).layers)) expect(l.every).toBeUndefined();
+  });
+  test('at high pressure the wind turns to dust and the wheat thins; skylarks only in clear air', () => {
+    const calmF = mix(m5v('plenty', 'early')), dust = mix(m5v('plenty', 'crisis'));
+    expect(dust.layers.dust.level).toBeGreaterThan(0.5); expect(calmF.layers.dust.level).toBeLessThan(0.01);
+    expect(dust.layers.larks.level).toBeLessThan(calmF.layers.larks.level * 0.3);
+  });
+  test('a water field on another Industry changes none of its layers', () => {
+    for (const s of SECTORS.filter((x) => x !== 'plenty')) {
+      const a = mix(demoView(s, 'late')), b = mix({ ...demoView(s, 'late'), water: { applied: 1, consumed: 1, returnShare: 0.1 } } as unknown as SceneView);
+      expect(b.layers).toEqual(a.layers);
+    }
+  });
+  test('the loophole in use is heard: an unmetered borehole in Plenty, more vans in Motion; nothing without it', () => {
+    const p0 = mix(m5v('plenty', 'mid')), p1 = mix({ ...m5v('plenty', 'mid'), exempt: ['borehole'] } as unknown as SceneView);
+    expect(p0.layers.borehole.level).toBe(0); expect(p1.layers.borehole.level).toBe(1);
+    const v0 = mix(demoView('motion', 'mid')), v1 = mix({ ...demoView('motion', 'mid'), exempt: ['vans'] } as unknown as SceneView);
+    expect(v1.layers.vans.level).toBeGreaterThan(v0.layers.vans.level);
+    const s0 = mix(demoView('steam', 'mid')), s1 = mix({ ...demoView('steam', 'mid'), exempt: ['vans', 'borehole'] } as unknown as SceneView);
+    expect(s1.layers).toEqual(s0.layers);
+  });
+  test("Plenty's pump is heard faintly under later Industries", () => {
+    expect(SOUNDSCAPES.plenty.trace).toEqual(['pump']);
+    const m = mix({ ...demoView('compute', 'mid'), heritage: { plenty: 0.8 } } as SceneView);
+    expect(m.traces.plenty).toBeGreaterThan(0.3);
+  });
+});
+
+describe('M5: interface', () => {
+  test('the contract names map; rivalAnswered is a conditional alias', () => {
+    expect(SOUND_EVENT_ALIASES.rivalAnswered).toBe('lobbied');
+    for (const k of ['officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'inspected', 'concealmentFound', 'litigated', 'loopholeUsed', 'loopholeClosed', 'treaty'])
+      expect(SOUND_EVENT_KINDS).toContain(k as never);
+  });
+  test('won and lost differ; the stamp after the footsteps; the second stamp and one gavel are short; the Treaty is long', () => {
+    const r = (name: string) => render(name, { rng: rngFrom(5), key: KEYS.motion, v: 0 });
+    expect(r('ui:chrome:electionWon')).not.toEqual(r('ui:chrome:electionLost'));
+    expect(r('ui:chrome:electionWon').length).toBeGreaterThan(r('ui:chrome:electionLost').length);
+    expect(r('ui:chrome:inspected').length / BUF_SR).toBeGreaterThan(2.2);
+    expect(r('ui:chrome:concealmentFound').length / BUF_SR).toBeLessThan(0.7);
+    expect(r('ui:chrome:litigated').length / BUF_SR).toBeLessThan(0.6);
+    expect(r('ui:chrome:treaty').length / BUF_SR).toBeGreaterThan(5);
   });
 });

@@ -150,6 +150,42 @@ export const motion: Layout = {
       hit: [380, 112, 220, 84],
       site: [420, 182, 90, 6],
     },
+    /* M5: Motion as Pryce runs it. The dated uses (motorway haulage, the school run, next-day delivery) and the loophole
+       rungs' exempt vehicles (light trucks; the footprint rule's four-by-fours): each only in a Ministry, so none has a
+       ghost before it is founded. */
+    {
+      key: 'haulage', match: ['motion.haulage'], noGhost: true, curve: 0.8,
+      anchor: { p: 'distShed', x: 66, y: 297, s: 0.95, band: 'mid', v: 0.4 },
+      slots: [{ p: 'distShed', x: 150, y: 299, s: 0.9, band: 'mid', v: 0.8 }],
+      movers: [{ p: 'artic', x0: -60, y0: 366, x1: 680, y1: 366, dur: 13, n: 2, s: 1, band: 'near' }, { p: 'artic', x0: 680, y0: 373, x1: -60, y1: 373, dur: 14, n: 2, s: 1, from: 0.3, band: 'near' }],
+      hit: [20, 272, 170, 30],
+    },
+    {
+      key: 'nextDay', match: ['motion.nextDay'], noGhost: true,
+      anchor: { p: 'fulfil', x: 214, y: 284, s: 0.9, band: 'mid' },
+      slots: [],
+      movers: [{ p: 'pickup', x0: -40, y0: 260.5, x1: 640, y1: 260.5, dur: 15, n: 3, s: 0.85, band: 'mid' }],
+      hit: [170, 262, 90, 26],
+    },
+    {
+      key: 'schoolRun', match: ['motion.schoolRun'], noGhost: true,
+      anchor: { p: 'schoolGate', x: 560, y: 300, s: 0.85, band: 'mid', v: 0.3 },
+      slots: [],
+      movers: [{ p: 'suv', x0: 640, y0: 236, x1: 300, y1: 236, dur: 14, n: 2, s: 0.75, band: 'mid', z: 236 }],
+      hit: [524, 282, 72, 22],
+    },
+    {
+      // The first rung: vans and pick-ups counted as trucks, on every lane and on the drives.
+      key: 'lightTrucks', match: ['motion.lightTrucks'], noGhost: true, curve: 0.7,
+      slots: ([[410, 252], [470, 254], [342, 231], [520, 252]] as [number, number][]).map(([x, y], i): Slot => ({ p: 'pickup', x, y, s: sAt(y) * 0.9, v: (i * 0.31) % 1, flip: i % 2 === 1 })),
+      movers: [LANE_FWD(336, 0, 0, 8.5), LANE_BACK(343, 0, 0, 9.5)].map((m, i) => ({ ...m, p: 'pickup', n: 2, from: 0.1 + i * 0.2 })),
+    },
+    {
+      // The footprint rule: the larger the vehicle, the easier its target. Four-by-fours on the drives and the motorway.
+      key: 'fourByFours', match: ['motion.fourByFours'], noGhost: true, curve: 0.7,
+      slots: ([[440, 232], [506, 233], [370, 212], [560, 231]] as [number, number][]).map(([x, y], i): Slot => ({ p: 'suv', x, y, s: sAt(y) * 0.9, v: (i * 0.37) % 1, flip: i % 2 === 0 })),
+      movers: [LANE_FWD(351, 0, 0, 9), LANE_BACK(358, 0, 0, 10)].map((m, i) => ({ ...m, p: 'suv', n: 2, from: 0.15 + i * 0.2 })),
+    },
   ],
 
   spares: [[10, 270, 120, 26], [140, 270, 90, 26], [250, 140, 120, 30]],
@@ -161,6 +197,8 @@ export const motion: Layout = {
     substitution: { p: 'turbines', x: 160, y: 156, s: 0.9, band: 'far' },
     circularity: { p: 'scrapyard', x: 250, y: 323, s: 1, band: 'near' },
     greenSpending: { p: 'park', x: 140, y: 324, s: 0.9, band: 'near' },
+    // M5: the congestion charge's gantry over the motorway.
+    charge: { p: 'ccgantry', x: 470, y: 371, s: 1.5, band: 'near' },
   },
   restraintSpare: [{ p: 'notice', x: 240, y: 324 }, { p: 'notice', x: 20, y: 324 }],
   // The Commons by the arterial road: the corporation bus garage near the depots, the lido and cricket field on the

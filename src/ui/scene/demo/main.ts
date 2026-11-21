@@ -36,7 +36,17 @@ const IND: Ind[] = [
   { id: 'fishing', name: 'Fishing', look: 'ledger', service: ['Fish landed', 'tons'], resource: 'Fish on the banks', pressure: 'Empty banks', crisis: 'A Poor Season', apps: [
     ['fishTrain', 'Fresh fish by rail', 'Billingsgate by breakfast.', 0], ['fryer', 'Fried fish shops', 'A cheap supper.', 500], ['smokehouse', 'Salt and smoked trade', 'Kippers.', 2000],
     ['sack', 'Fish meal for the fields', 'The by-catch, ground.', 6000], ['bottle', 'Cod liver oil', 'A spoonful a day.', 15000], ['carton', 'Fish fingers', 'Act II.', 90000]] },
+  /* M5 */
+  { id: 'plenty', name: 'Plenty', look: 'chrome', service: ['Calories', 'kcal'], resource: 'Groundwater', pressure: 'Nitrate', crisis: 'The Green Tide', apps: [
+    ['wheat', 'Bread grain', 'Wheat for the loaf.', 0], ['sack', 'Fertilised fields', 'Beet and potatoes on land that would not have grown them.', 30000],
+    ['cow', 'Meat & dairy', 'Grain through a cow.', 80000], ['orchard', 'Irrigated orchards', 'Almonds and citrus on scrub.', 160000],
+    ['plane', 'Air-freighted produce', 'Green beans in January.', 40000], ['pump', 'Biofuels', 'Grain distilled into motor spirit.', 80000]] },
 ];
+/** M5: the uses only a Ministry brings (Motion as Pryce runs it): id, icon, name, the share of the preset's adoption. */
+const M5_APPS: Record<string, [string, string, string, number][]> = {
+  motion: [['motion.haulage', 'van', 'Motorway haulage', 0.9], ['motion.schoolRun', 'car', 'The school run', 0.8], ['motion.nextDay', 'van', 'Next-day delivery', 0.7],
+    ['motion.lightTrucks', 'van', 'Light trucks', 1], ['motion.fourByFours', 'car', 'Family four-by-fours', 1]],
+};
 const LEVERS: [string, string][] = [['duty', 'Fuel duty'], ['cap', 'Hard cap'], ['sufficiency', 'Sufficiency'], ['substitution', 'Substitution'],
   ['circularity', 'Circularity'], ['greenSpending', 'Green spending'], ['deletion', 'Deletion'], ['reviewGate', 'Review gates'], ['sharedLibs', 'Shared libraries']];
 
@@ -50,6 +60,25 @@ interface DemoState {
   m3?: Partial<Pick<SceneView, 'seams' | 'load' | 'travel' | 'free' | 'figures' | 'watch'>> & { bite?: Record<string, number> };
   /* M4 (each absent = its Industry or system not there) */
   m4?: Partial<Pick<SceneView, 'feeds' | 'fedBy' | 'stock' | 'capstoned' | 'preview'>>;
+  /* M5 (absent = outside a Ministry) */
+  m5?: Partial<Pick<SceneView, 'chair' | 'rival' | 'exempt' | 'water' | 'sealed'>> & {
+    /** Levers of the Ministry in force: kind, and Pryce's answer drawn by its sign. */
+    levers?: { kind: string; name: string; lobbied?: boolean; litigated?: boolean }[];
+    /** Adoption of the Ministry's own uses (M5_APPS), 0–1 × each one's share; 0 = not founded. */
+    uses?: number;
+  };
+}
+
+/** M5 demo data: a Ministry at time t (0–1). Motion: the dated uses grow, then the rungs' exempt vehicles. */
+export function m5For(id: string, t: number): NonNullable<DemoState['m5']> {
+  const base = { chair: { opposition: false }, rival: true, uses: t };
+  switch (id) {
+    case 'motion': return { ...base, exempt: t > 0.5 ? ['vans', 'fourByFours'] : t > 0.3 ? ['vans'] : [],
+      levers: [{ kind: 'measure', name: 'The mileage rule', lobbied: t > 0.6 }, { kind: 'duty', name: 'Fuel duty', litigated: t > 0.4 }] };
+    case 'plenty': return { ...base, exempt: t > 0.5 ? ['borehole'] : [], water: { applied: 900, consumed: Math.round(900 * (1 - Math.max(0.12, 0.5 - t * 0.4))), returnShare: Math.round(Math.max(0.12, 0.5 - t * 0.4) * 100) / 100 },
+      levers: [{ kind: 'cap', name: 'Abstraction licence', lobbied: t > 0.6 }, { kind: 'subsidy', name: 'Drip subsidy' }] };
+    default: return { ...base };
+  }
 }
 
 /** M4 demo data: what the adapter fills at time t of a run (0–1) with Iron and Fishing open. */
@@ -138,6 +167,14 @@ export const PRESETS: Record<string, (ind: number) => DemoState> = {
   capstoneM4: (i) => { const m = m4For(IND[i].id, 0.5); return { ...PRESETS.settled(i), m4: { ...m, ...(m.stock ? { stock: { ...m.stock, truth: 0.55, reported: 0.84, surveyed: true, foreign: 0 } } : {}), capstoned: { year: 1911, arrears: false } } }; },
   arrearsM4: (i) => { const m = m4For(IND[i].id, 0.5); return { ...PRESETS.settled(i), pressure: 0.55, pace: 0.6, steady: false, clear: false, m4: { ...m, ...(m.stock ? { stock: { ...m.stock, truth: 0.35, reported: 0.73, surveyed: true } } : {}), capstoned: { year: 1911, arrears: true } } }; },
   previewM4: (i) => ({ ...PRESETS.midM3(i), m4: { ...m4For(IND[i].id, 0.45), preview: true } }),
+  /* M5: a Ministry. The window frame; Pryce's hoardings and notices; the dated uses and the exempt vehicles. */
+  earlyM5: (i) => ({ ...PRESETS.earlyM4(i), m5: m5For(IND[i].id, 0.15) }),
+  midM5: (i) => ({ ...PRESETS.midM4(i), m5: m5For(IND[i].id, 0.45) }),
+  lateM5: (i) => ({ ...PRESETS.lateM4(i), m5: m5For(IND[i].id, 0.75) }),
+  crisisM5: (i) => ({ ...PRESETS.crisisM4(i), m5: m5For(IND[i].id, 1) }),
+  oppositionM5: (i) => ({ ...PRESETS.lateM4(i), m5: { ...m5For(IND[i].id, 0.75), chair: { opposition: true } } }),
+  chargeM5: (i) => { const m = m5For(IND[i].id, 0.6); return { ...PRESETS.lateM4(i), m5: { ...m, levers: [...(m.levers ?? []), { kind: 'charge', name: 'Congestion charge' }] } }; },
+  capstoneM5: (i) => ({ ...PRESETS.capstoneM4(i), m5: { chair: { opposition: false }, rival: true } }),
   endingM3: (i) => ({ ...PRESETS.steady(i), clear: true, clearProgress: 1, m3: { ...m3For(IND[i].id, 0.6), figures: ['correspondent', 'whitlow', 'fenwick', 'pryce', 'minister', 'proprietor'], watch: 0.3 } }),
 };
 
@@ -146,14 +183,10 @@ export function viewOf(s: DemoState): SceneView {
   return {
     sectorId: ind.id, sectorName: ind.name, look: s.look || ind.look, serviceName: ind.service[0], serviceUnit: ind.service[1],
     resourceName: ind.resource, pressureName: ind.pressure, crisisName: ind.crisis, resourceKind: ind.flow ? 'flow' : 'stock',
-    apps: ind.apps.map(([icon, name, blurb, cost], k) => ({
-      id: `${ind.id}.${icon}`, name, icon, blurb, status: s.status[k], adoption: s.status[k] === 'founded' ? s.adoption[k] : 0,
-      demand: s.adoption[k] * 120 * Math.pow(3, k), foundCost: cost, canFound: cost <= 1000 || k % 2 === 0, affordFraction: 0.6, visibleBelow: 1 / (k + 1),
-    })),
+    apps: viewApps(ind, s),
     stage: s.stage, etaFold: Math.pow(2, s.stage * 1.5), rFold: Math.pow(16, s.pace), pace: s.pace, reserveFraction: s.reserve,
     pressureFraction: s.pressure, nextCrisisFraction: 0.65, population: Math.exp(s.pop * Math.log(12)), popFraction: s.pop, crises: s.crises,
-    levers: [...LEVERS.filter(([k]) => s.levers[k] || (s.m3?.bite?.[k] ?? 0) > 0), ...(s.m3?.bite?.measure ? [['measure', 'Fuel-economy standard'] as [string, string]] : [])]
-      .map(([kind, name]) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name, ...(s.m3?.bite?.[kind] ? { bite: s.m3.bite[kind] } : {}) })),
+    levers: viewLevers(ind, s),
     decoupling: s.decoupling, steadyProgress: s.steadyProgress, steady: s.steady,
     reckoning: s.reckoning ? { cause: s.reckoning, here: true } : null, year: null,
     clear: s.clear, clearProgress: s.clearProgress, pressureToClear: s.pressureToClear ?? undefined, settled: s.settled, settledYear: s.settled ? 1841 + s.ind * 40 : null,
@@ -161,7 +194,36 @@ export function viewOf(s: DemoState): SceneView {
     landmark: s.landmark || null,
     ...(s.m3 ? { seams: s.m3.seams, load: s.m3.load, travel: s.m3.travel, free: s.m3.free, figures: s.m3.figures, watch: s.m3.watch } : {}),
     ...(s.m4 ?? {}),
+    ...m5View(ind, s),
   };
+}
+
+/** The M5 part of a demo view: the Ministry's fields, its levers appended, and the Ministry's own uses. */
+function m5View(ind: Ind, s: DemoState): Partial<SceneView> {
+  if (!s.m5) return {};
+  const { levers, uses, ...rest } = s.m5;
+  const out: Partial<SceneView> = { ...rest };
+  const base = viewLevers(ind, s);
+  out.levers = [...base, ...(levers ?? []).map((l) => ({ id: `${ind.id}.m5.${l.kind}`, kind: l.kind, level: 1, name: l.name, ...(l.lobbied ? { lobbied: true } : {}), ...(l.litigated ? { litigated: true } : {}) }))];
+  const extra = M5_APPS[ind.id] ?? [];
+  if (extra.length) {
+    const ex = s.m5.exempt ?? [];
+    const ok = (id: string) => (id === 'motion.lightTrucks' ? ex.includes('vans') : id === 'motion.fourByFours' ? ex.includes('fourByFours') : (uses ?? 0) > 0.2);
+    out.apps = [...viewApps(ind, s), ...extra.map(([id, icon, name, k]): SceneApp => ({ id, name, icon, blurb: '', status: ok(id) ? 'founded' : 'hidden',
+      adoption: ok(id) ? Math.min(1, Math.max(0.15, (uses ?? 0) * k)) : 0, demand: 0, foundCost: 0, canFound: false, affordFraction: 0, visibleBelow: null }))];
+  }
+  return out;
+}
+
+function viewApps(ind: Ind, s: DemoState): SceneApp[] {
+  return ind.apps.map(([icon, name, blurb, cost], k) => ({
+    id: `${ind.id}.${icon}`, name, icon, blurb, status: s.status[k], adoption: s.status[k] === 'founded' ? s.adoption[k] : 0,
+    demand: s.adoption[k] * 120 * Math.pow(3, k), foundCost: cost, canFound: cost <= 1000 || k % 2 === 0, affordFraction: 0.6, visibleBelow: 1 / (k + 1),
+  }));
+}
+function viewLevers(ind: Ind, s: DemoState): SceneView['levers'] {
+  return [...LEVERS.filter(([k]) => s.levers[k] || (s.m3?.bite?.[k] ?? 0) > 0), ...(s.m3?.bite?.measure ? [['measure', 'Fuel-economy standard'] as [string, string]] : [])]
+    .map(([kind, name]) => ({ id: `${ind.id}.${kind}`, kind, level: 1, name, ...(s.m3?.bite?.[kind] ? { bite: s.m3.bite[kind] } : {}) }));
 }
 
 /** The demo's run, empty valley to collapse, at time t (0–1). */
@@ -193,8 +255,8 @@ function stripMode(indId: string): void {
   document.body.classList.add('strip');
   const wrap = document.getElementById('app')!;
   wrap.innerHTML = '';
-  const m2 = /m2/.test(location.hash), m3 = /m3/.test(location.hash), m4 = /m4/.test(location.hash);
-  for (const name of m4 ? ['earlyM4', 'midM4', 'lateM4', 'crisisM4', 'surveyedM4', 'scarM4', 'moratoriumM4', 'capstoneM4', 'arrearsM4', 'previewM4'] : m3 ? ['earlyM3', 'midM3', 'lateM3', 'crisisM3', 'thinnedM3', 'proprietorM3', 'endingM3'] : m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
+  const m2 = /m2/.test(location.hash), m3 = /m3/.test(location.hash), m4 = /m4/.test(location.hash), m5 = /m5/.test(location.hash);
+  for (const name of m5 ? ['earlyM5', 'midM5', 'lateM5', 'crisisM5', 'oppositionM5', 'chargeM5', 'capstoneM5'] : m4 ? ['earlyM4', 'midM4', 'lateM4', 'crisisM4', 'surveyedM4', 'scarM4', 'moratoriumM4', 'capstoneM4', 'arrearsM4', 'previewM4'] : m3 ? ['earlyM3', 'midM3', 'lateM3', 'crisisM3', 'thinnedM3', 'proprietorM3', 'endingM3'] : m2 ? ['clearing', 'steady', 'settled', 'commons'] : ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady']) {
     const fig = document.createElement('figure');
     const cap = document.createElement('figcaption');
     cap.textContent = name;
@@ -204,7 +266,7 @@ function stripMode(indId: string): void {
     const sc = createScene(host, { reducedMotion: true });
     const st = PRESETS[name](i);
     // The crisis frame shows the fog: bump crises after a first update.
-    if (name === 'crisis' || name === 'crisisM3' || name === 'crisisM4') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
+    if (name === 'crisis' || name === 'crisisM3' || name === 'crisisM4' || name === 'crisisM5') { sc.update(viewOf({ ...st, crises: st.crises - 1 })); }
     sc.update(viewOf(st));
   }
 }
@@ -315,6 +377,12 @@ function interactive(): void {
       ['M4: scar healed', () => { if (s.m4?.stock) s.m4 = { ...s.m4, stock: { ...s.m4.stock, scar: false, truth: 0.5 } }; fire('scarHealed', {}); }],
       ['M4: capstoned', () => { s = { ...PRESETS.capstoneM4(s.ind), look: s.look }; fire('capstoned', { id: 'actOne' }); }],
       ['M4: arrears', () => { s = { ...PRESETS.arrearsM4(s.ind), look: s.look }; fire('arrears', {}); }],
+      /* M5 */
+      ['M5: a Ministry (frame)', () => { s.m5 = m5For(IND[s.ind].id, 0.75); render(); }],
+      ['M5: Take office (thaw)', () => { s.m5 = m5For(IND[s.ind].id, 0.3); render(); document.dispatchEvent(new CustomEvent('rebound:office', { detail: 'thaw' })); }],
+      ['M5: Opposition', () => { s.m5 = { ...(s.m5 ?? m5For(IND[s.ind].id, 0.75)), chair: { opposition: !s.m5?.chair?.opposition } }; render(); }],
+      ['M5: an Inspector calls', () => { s.m5 = s.m5 ?? m5For(IND[s.ind].id, 0.75); fire('inspected', { by: 'player' }); }],
+      ['M5: concealment found', () => { s.m5 = s.m5 ?? m5For(IND[s.ind].id, 0.75); fire('concealmentFound', {}); }],
       ['Highlight a place', () => scene.highlight?.({ app: `${IND[s.ind].id}.${IND[s.ind].apps[1][0]}` })],
       ['Clear highlight', () => scene.highlight?.(null)],
       ['Replay a run (10 s)', () => { const vs: SceneView[] = []; for (let t = 0; t <= 1; t += 1 / 60) vs.push(viewOf(runAt(s.ind, t))); scene.replay?.(vs, { seconds: 10 }); }],

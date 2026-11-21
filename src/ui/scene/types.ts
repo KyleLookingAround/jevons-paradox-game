@@ -34,6 +34,13 @@ export interface SceneLever {
   /** M3 (optional): how hard the lever bites back, 0–1 (LeverState.bite), present only while feature 'sideEffects' is
    *  on and the bite is above zero. From 0.5 its side effect is drawn (heavier cars, a new road, another hall). */
   bite?: number;
+  /** M5 (only in a Ministry; absent = false): the rival is lobbying against it now (RivalState.lobbying): a hoarding
+   *  goes up by its sign. */
+  lobbied?: boolean;
+  /** M5: a raise of it is held up in court now (ChairState.litigation, until > time): a court notice on its sign. */
+  litigated?: boolean;
+  /** M5: a carve-out won by lobbying acts this Parliament (ChairState.carveOuts = parliament index). */
+  carvedOut?: boolean;
 }
 
 export interface SceneView {
@@ -140,7 +147,28 @@ export interface SceneView {
   capstoned?: { year: number | null; arrears: boolean };
   /** The Industry plays as a Preview (SectorDerived.preview): a small "Preview" mark in the picture's corner. */
   preview?: boolean;
+
+  /* --- M5 (all optional: absent = the M4 picture; nothing is drawn outside a Ministry) --- */
+  /** In a Ministry (Derived.chair non-null): the picture is seen through the Ministry window (the frame).
+   *  `opposition`: the government is in Opposition (ChairView.inOpposition): the curtains are half drawn. */
+  chair?: SceneChair;
+  /** The Industry is run by the rival (SectorDerived.rival: a chair Industry, or a capstoned one, in a Ministry). No
+   *  survey stakes; the card offers no founding; a capstoned one carries Pryce's bunting. */
+  rival?: boolean;
+  /** Scene props of this Industry's loophole rungs now in use (LoopholeDef.prop of rungs with status 'used', or
+   *  'drafting' after use; feature 'loopholes'): 'vans', 'fourByFours', 'borehole'. Unknown keys draw nothing. */
+  exempt?: string[];
+  /** Plenty's hidden flow (SectorDerived.water): water applied and consumed per second (acre-feet, rounded to three
+   *  figures) and the return share r (0–1: the share of what is applied that soaks back). consumed = applied × (1 − r). */
+  water?: SceneWater;
+  /** The Industry is sealed while office is taken (Derived.office.sealed): its postcard is the sealed one. */
+  sealed?: boolean;
 }
+
+/** M5: SceneView.chair. */
+export interface SceneChair { opposition: boolean }
+/** M5: SceneView.water. */
+export interface SceneWater { applied: number; consumed: number; returnShare: number }
 
 /** M4: SceneView.feeds. */
 export interface SceneFeed { to: string; factor: number }
@@ -246,6 +274,10 @@ export interface SceneHandle {
   prebuild?(view: SceneView): void;
   /** The current picture as one self-contained SVG string (styles inlined, no animation): for "save picture". */
   toSVG?(opts?: StillOptions): string;
+  /** M5: Take office's thaw: the window frame enters and the picture goes from grey to colour in four steps, 350 ms
+   *  apart (skipped under reduced motion). The scene also plays it on the page's document event `rebound:office` with
+   *  detail 'thaw', so a host need not call it. */
+  thaw?(): void;
   /** The current one-paragraph text alternative. */
   describe(): string;
   destroy(): void;

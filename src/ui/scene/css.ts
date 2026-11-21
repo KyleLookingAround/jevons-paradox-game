@@ -3,6 +3,8 @@
 // Every animation is transform/opacity on small elements, paused off-screen, and removed under reduced motion.
 
 import { allStyles } from './styles/index';
+import { FRAME_CSS } from './frame/ministry';
+import { PRYCE_CSS } from './props/pryce';
 
 const BASE = `
 .scn{position:relative;font-family:var(--body,Georgia,serif);color:var(--ink,#2a1f15);--sw:1;}
@@ -316,7 +318,7 @@ ${/* --- the card under the picture --- */ ''}
 .scn-found span{position:relative}
 .vh-scn{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .scn.rm *{animation:none!important;transition:none!important}
-`;
+${FRAME_CSS}${PRYCE_CSS}`;
 
 /** Inject the base CSS and every registered style once; styles registered later are appended on demand. */
 const done = new WeakMap<Document, Set<string>>();

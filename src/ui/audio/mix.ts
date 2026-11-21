@@ -41,6 +41,13 @@ export interface Sources {
   moratorium: number;
   /** The foreign share of the catch, 0–1 (their sails, their engines), silent under a moratorium. */
   foreign: number;
+  /* --- M5 (0 or neutral when absent; see M5View) --- */
+  /** Plenty: the spray, 0–1, from the return share (1 when absent): the pivot's hiss thins to drips as it falls. */
+  spray: number;
+  /** 1 in office (the Ministry room). */
+  office: number;
+  /** The props of loophole rungs in use (SceneView.exempt: 'vans', 'fourByFours', 'borehole') → 1. Read as 'exempt:<k>'. */
+  exempt: Record<string, number>;
 }
 
 /**
@@ -58,6 +65,48 @@ export interface M4View {
   preview?: boolean;
 }
 const m4 = (v: SceneView): M4View => (v ?? {}) as unknown as M4View;
+
+/**
+ * M5 SceneView fields (scene/types.ts SceneChair, SceneWater), read through this loose optional type so the sound stays
+ * silent-safe with older, hand-made or partial views. Every one is absent outside office or outside Plenty.
+ */
+export interface M5View {
+  /** In a Ministry (Derived.chair non-null), on every Industry's view; `opposition` draws the curtains. */
+  chair?: { opposition?: boolean } | null;
+  /** Earlier requested shapes, still read (the same meaning): `ministry.inOpposition`, or a top-level `inOpposition`. */
+  ministry?: { inOpposition?: boolean } | null;
+  inOpposition?: boolean;
+  /** Plenty (SectorDerived.water): water applied and consumed, and the share that soaks back to the aquifer. */
+  water?: { applied?: number; consumed?: number; returnShare?: number } | null;
+  /** Props of the loophole rungs in use in this Industry ('vans', 'fourByFours', 'borehole'). */
+  exempt?: string[];
+}
+const m5 = (v: SceneView): M5View => (v ?? {}) as unknown as M5View;
+
+/** In office (1/0) and in Opposition (1/0), from whichever of the two shapes the view carries. */
+export function officeOf(view: SceneView): { room: number; curtains: number } {
+  const v = m5(view);
+  const ch = v.chair && typeof v.chair === 'object' ? v.chair : null;
+  const mi = v.ministry && typeof v.ministry === 'object' ? v.ministry : null;
+  const room = ch || mi || typeof v.inOpposition === 'boolean' ? 1 : 0;
+  return { room, curtains: room && (ch?.opposition === true || mi?.inOpposition === true || v.inOpposition === true) ? 1 : 0 };
+}
+
+function exemptOf(view: SceneView): Record<string, number> {
+  const e = m5(view).exempt, out: Record<string, number> = {};
+  if (Array.isArray(e)) for (const k of e) if (typeof k === 'string') out[k] = 1;
+  return out;
+}
+
+/** M5: Plenty's return share mapped to the spray (1 = flood and pivot, half of it soaking back; 0 = drip at the floor).
+ *  Absent: 1, so a view without the field hears the pivot as it is drawn. */
+export function sprayFrom(r: unknown): number {
+  return typeof r === 'number' && Number.isFinite(r) ? clamp((r - 0.1) / 0.32, 0, 1) : 1;
+}
+
+/** M5: the window. In office the valley is heard through glass (its air no brighter than this); with the curtains drawn,
+ *  through cloth as well. Hz. */
+export const WINDOW_AIR = 4200, CURTAIN_AIR = 1150;
 
 /** The sea life from the true stock: silent near the threshold, full from about 70% of the natural size. */
 export function lifeFrom(truth: number, scar: boolean): number {
@@ -148,6 +197,7 @@ export function sourcesFrom(view: SceneView, hour?: number | null): Sources {
     freeOn, freeShare: fTot ? (freeW / fTot) * Math.min(1, built * 1.4) : 0, paidShare: fTot ? (paidW / fTot) * Math.min(1, built * 1.4) : 0,
     stockOn, life: lifeFrom(truth, !!(stockOn && st!.scar)), tied, fleet: clamp(built * 1.4 + 0.15 * pace0, 0, 1) * (1 - tied), moratorium,
     foreign: stockOn ? clamp(fin(st!.foreign), 0, 1) * (1 - moratorium) : 0,
+    spray: sprayFrom(m5(view).water?.returnShare), office: officeOf(view).room, exempt: exemptOf(view),
   };
 }
 
@@ -161,6 +211,7 @@ export function readSrc(s: Sources, src: Src): number {
   }
   if (src.startsWith('app:')) return s.apps[src.slice(4)] ?? 0;
   if (src.startsWith('lever:')) return s.levers[src.slice(6)] ?? 0;
+  if (src.startsWith('exempt:')) return s.exempt?.[src.slice(7)] ?? 0;
   if (src === 'one') return 1;
   const v = (s as unknown as Record<string, unknown>)[src];
   return typeof v === 'number' ? Math.min(1, v) : 0;
@@ -222,14 +273,17 @@ export function mixFrom(view: SceneView, def: SoundscapeDef, opt: MixOptions = {
   }
 
   const [t0, t1] = def.tempo;
+  // M5: from the Ministry the valley is heard through the window; in Opposition, through the curtains too.
+  const of = officeOf(view);
+  const win = of.curtains ? CURTAIN_AIR : of.room ? WINDOW_AIR : 12000;
   return {
     def: def.id,
     tempo: (t0 + (t1 - t0) * s.pace) * (frozen ? 0.5 : 1),
     // The smog takes the highs: two and a half octaves off the top at full pressure.
-    air: clamp(def.air.bright * Math.pow(2, -2.4 * s.haze), 1100, 12000),
+    air: Math.min(win, clamp(def.air.bright * Math.pow(2, -2.4 * s.haze), 1100, 12000)),
     thick: clamp(s.haze, 0, 1),
     wet: def.air.reverb * (1 + 0.6 * s.haze) * (frozen ? 1.4 : 1),
-    world: frozen ? 0.08 : 1 - 0.3 * ending,
+    world: (frozen ? 0.08 : 1 - 0.3 * ending) * (of.curtains ? 0.6 : of.room ? 0.85 : 1),
     stress: frozen ? 0 : s.stress,
     frozen,
     layers, traces, levers,
@@ -237,6 +291,7 @@ export function mixFrom(view: SceneView, def: SoundscapeDef, opt: MixOptions = {
     watch: frozen ? 0 : clamp(fin(view?.watch), 0, 1),
     ending,
     hour,
+    room: of.room, curtains: of.curtains,
   };
 }
 
@@ -258,6 +313,9 @@ function layerMix(l: LayerDef, s: Sources, stage: number, frozen: boolean, calm:
     if (calm) level *= 0.8;
   }
   const out: LayerMix = { level, density, pitch, tone, blackout: !!l.blackout && !frozen && s.stress > 0.01 };
+  // M5: grid.by slows a pulse in whole doublings (×1, ×2, ×4 …: the nearest power of two), so the stretched pattern
+  // still repeats within whole bars (the export's seamless loops; the beat-locked feel).
+  if (l.kind === 'hits' && l.grid?.by) { const [src, a, b] = l.grid.by; out.every = Math.pow(2, Math.round(Math.log2(Math.max(1, a + (b - a) * readSrc(s, src))))); }
   if (l.kind === 'hits' && l.variantBy && (l.variants ?? 1) > 1) out.variant = Math.round(clamp(readSrc(s, l.variantBy), 0, 1) * ((l.variants ?? 1) - 1));
   return out;
 }

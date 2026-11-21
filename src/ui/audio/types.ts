@@ -45,16 +45,31 @@ export type SoundEventKind =
   | 'arrears'         // a capstoned Industry falls into arrears ('arrears'): a muffled toll
   | 'thresholdCrossed'// the world's own (no sting): the sea life cuts out over two seconds ('thresholdCrossed')
   | 'surveyReveal'    // the Board's Survey (no sting): the sea life, honest all along, comes up a few dB for two seconds
+  /* --- M5 (additive): the Ministry's moments, named as the contract's events (the page passes e.kind straight on) --- */
+  | 'officeTaken'     // the Gazette at Take office: a paper boy's cry in the street, twice, then the Ministry clock (once in 20 s)
+  | 'electionCalled'  // polling day called: a murmur rises and settles
+  | 'electionWon'     // the count bell, then a cheer
+  | 'electionLost'    // the count bell, lower, then a door closing
+  | 'inspected'       // an Inspector's footsteps and a stamp
+  | 'concealmentFound'// a second, heavier stamp (after the first, when they come together)
+  | 'lobbied'         // a hoarding pasted up (paste brush). 'rivalAnswered' with label 'lobby' plays it
+  | 'litigated'       // one gavel. 'rivalAnswered' with label 'litigate' plays it; never twice within 2 s
+  | 'loopholeUsed'    // a side door: a latch, a creak, the latch
+  | 'loopholeClosed'  // a quill and the blotter
+  | 'treaty'          // the Treaty: a signature, the seal, a cadence (ducks the world)
   /* contract-named aliases of the above (the page may call either) */
   | 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared'
   /* M4: 'surveyed' plays 'surveyReveal' only with detail.label 'reveal' (the Board's free first survey); else nothing */
-  | 'surveyed';
+  | 'surveyed'
+  /* M5: 'rivalAnswered' plays 'lobbied' with label 'lobby', 'litigated' with 'litigate'; any other answer is silent */
+  | 'rivalAnswered';
 
 /** M3: contract event names accepted as aliases of the sound's own name. */
 export const SOUND_EVENT_ALIASES: Readonly<Record<string, SoundEventKind>> = {
   seamSunk: 'seam', dispatchArrived: 'letter', dispatchAnswered: 'answer', biteBack: 'bite', returnPublished: 'survey',
   featureUnlocked: 'arrived', historyCleared: 'history',
   surveyed: 'surveyReveal',
+  rivalAnswered: 'lobbied',
 };
 
 /** M4: kinds that are the world's own (they change the world's layers, play no interface sound, have no recipe). */
@@ -67,8 +82,10 @@ export const SOUND_EVENT_KINDS: readonly SoundEventKind[] = [
   'seam', 'letter', 'letterOpened', 'answer', 'letterExpired', 'bite', 'survey', 'proprietor', 'ending', 'ledgerContinues',
   'arrived', 'history',
   'wager', 'actEnding', 'arrears', 'thresholdCrossed', 'surveyReveal',
+  'officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'inspected', 'concealmentFound', 'lobbied', 'litigated',
+  'loopholeUsed', 'loopholeClosed', 'treaty',
   'seamSunk', 'dispatchArrived', 'dispatchAnswered', 'biteBack', 'returnPublished', 'featureUnlocked', 'historyCleared',
-  'surveyed',
+  'surveyed', 'rivalAnswered',
 ];
 
 export interface SoundEventDetail {
@@ -98,6 +115,9 @@ export interface SoundEventDetail {
   /** GameEvent.label, passed through: 'won' | 'lost' on a wager's 'dispatchAnswered' (plays 'wager'); 'reveal' on
    *  'surveyed' (plays 'surveyReveal'; any other 'surveyed' is silent). */
   label?: string;
+  /* --- M5 (optional) --- */
+  /** GameEvent.n, passed through (e.g. 'inspected': the share found, in %). Not needed by any sound yet. */
+  n?: number;
 }
 
 export interface Volumes {
@@ -209,6 +229,8 @@ export interface LayerMix {
   blackout: boolean;
   /** M3: the recipe variant to play when the layer's def says `variantBy` (e.g. a deeper seam's longer winding). */
   variant?: number;
+  /** M5: the grid step's multiplier when the def says `grid.by` (a power of two ≥ 1; absent: 1). */
+  every?: number;
 }
 
 export interface Mix {
@@ -241,4 +263,10 @@ export interface Mix {
   ending: number;
   /** Light's day: the hour the sound is at (0–24), or null without a load curve. */
   hour: number | null;
+  /* --- M5 --- */
+  /** 0–1: in a Ministry (the view's `ministry` or `inOpposition`): the room's clock and the traffic through the glass,
+   *  and the Industry heard through the window (its air capped). 0 outside office. */
+  room: number;
+  /** 0–1: Opposition: the curtains are drawn, and everything outside the room is muffled further. */
+  curtains: number;
 }

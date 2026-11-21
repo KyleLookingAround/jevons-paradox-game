@@ -97,7 +97,11 @@ export type Driver = 'app' | 'population' | 'pressure' | 'depletion' | 'reserve'
   | 'foreign'     // foreign sails: stock.foreign / 0.6
   | 'surveyed'    // the survey vessel and its track: 1 while stock.surveyed
   | 'scar'        // blank grey water on the chart: 1 while a scar lasts
-  | 'crises';     // crisis marks that stay for the run: slot i shows once crises > i (density crises / slots)
+  | 'crises'      // crisis marks that stay for the run: slot i shows once crises > i (density crises / slots)
+  /* M5 */
+  | 'exempt'      // the exempt thing of a loophole in use: 1 while any key in `match` is in SceneView.exempt
+  | 'returnFlow'   // Plenty's water soaking back: returnShare / 0.5 (1 without water)
+  | 'consumedFlow'; // Plenty's water used up (vapour off the crop): 0.3 at r = 0.5 rising to 1 at r ≤ 0.08 (0.3 without water)
 
 export interface PlotDef {
   key: string;
@@ -125,6 +129,8 @@ export interface PlotDef {
   byHour?: boolean;
   /** M3: sprawl that stays: with SceneView.travel the density is at least travel.sprawl (it does not fall with use). */
   sprawl?: boolean;
+  /** M5: no ghost while not founded (a use only Pryce's Ministry brings: nothing hints at it before). */
+  noGhost?: boolean;
 }
 
 export type Band = 'far' | 'mid' | 'near';

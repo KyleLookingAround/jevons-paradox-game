@@ -26,7 +26,11 @@ export type MomentKind =
   | 'threshold'  // the stock crossed its threshold: a veil drains across the chart, once
   | 'scarHealed' // the scar heals: the gulls come back over the fleet
   | 'capstoned'  // the cartouche stamps
-  | 'arrears';   // a capstoned Industry in arrears: the held wash withdraws, the smoke returns
+  | 'arrears'    // a capstoned Industry in arrears: the held wash withdraws, the smoke returns
+  /* M5 */
+  | 'inspected'  // an Inspector walks in from the edge to the first founded landmark and back
+  | 'found5'     // concealment found: a red stamp at that landmark
+  | 'litigated'; // a court notice is pinned on the lever's sign (it stands while the litigation lasts)
 
 export interface Moment { kind: MomentKind; app?: string; id?: string; by?: string; n?: number; text?: string }
 
@@ -132,6 +136,10 @@ function fromEvent(e: SceneEvent, v: SceneView): Moment | null {
     case 'scarHealed': return { kind: 'scarHealed' };
     case 'capstoned': return { kind: 'capstoned', id: e.id, n: v.capstoned?.year ?? undefined };
     case 'arrears': return { kind: 'arrears' };
+    /* M5 */
+    case 'inspected': return { kind: 'inspected', id: e.id, by: e.by };
+    case 'concealmentFound': return { kind: 'found5', id: e.id };
+    case 'litigated': return { kind: 'litigated', id: e.id };
     default: return null;
   }
 }

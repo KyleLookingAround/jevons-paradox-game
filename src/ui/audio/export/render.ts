@@ -9,7 +9,7 @@
 import { createSoundscape, LIMITER } from '../engine';
 import { obtain, attach, detach, unpin } from '../synthq';
 import type { Job } from '../jobs';
-import { SOUNDSCAPES, soundscapeFor, paletteFor, type HitsDef } from '../defs';
+import { SOUNDSCAPES, MINISTRY_ROOM, soundscapeFor, paletteFor, type HitsDef } from '../defs';
 import { UI_KINDS, MOTIFS, hasRecipe } from '../recipes';
 import { mixFrom } from '../mix';
 import type { SceneView } from '../../scene/types';
@@ -53,7 +53,8 @@ export async function render(p: Pass): Promise<Rendered> {
   const tap: SoundscapeTap = {
     limiter: false, dry: !!p.dry, variant: p.variant,
     onVoice: (v) => voices.push(v),
-    onTick: (v) => { ticks.push({ t: v.t, beat: v.beat, tempo: v.tempo }); },   // one Industry per render: one graph
+    // One Industry per render: its graph's clock (M5: not the Ministry room's, which keeps its own 60 bpm).
+    onTick: (v) => { if (v.sector === p.sector) ticks.push({ t: v.t, beat: v.beat, tempo: v.tempo }); },
   };
   if (p.gate) { const g = p.gate; tap.gate = (s) => (g(s) ? 1 : 0); }
   const ss = createSoundscape({ context: ctx, calm: false, clock: () => ctx.currentTime, tap, ...(p.seed != null ? { seed: p.seed } : {}) });
@@ -122,6 +123,8 @@ export function jobsFor(sector: string, look?: string, seed = 0x5eed): Job[] {
     if (l && l.kind === 'hits') for (let v = 0; v < ((l as HitsDef).variants ?? 1); v++) out.push({ t: 'recipe', name: (l as HitsDef).recipe, key: d.key, v, seed });
   }
   r(def.crisis.recipe); r('fogSwell'); r('watchTick', 0); r('watchTick', 1);
+  // M5: the Ministry room (any Industry can be heard from the Ministry), in its own key.
+  for (const l of MINISTRY_ROOM.layers) if (l.kind === 'hits') for (let v = 0; v < ((l as HitsDef).variants ?? 1); v++) out.push({ t: 'recipe', name: (l as HitsDef).recipe, key: MINISTRY_ROOM.key, v, seed });
   for (const k of LEVER_KINDS) r(def.levers?.[k] ?? (hasRecipe(`lv.${k}`) ? `lv.${k}` : 'lv.generic'));
   for (const k of UI_KINDS) {
     if (k === 'seam') { for (let v = 0; v < 4; v++) r('seamSink', v); continue; }
@@ -184,6 +187,7 @@ export function contentGate(sector: string, content: Content): ((src: string) =>
   const kindOf = (src: string): string | null => {
     let def = soundscapeFor(sector), id = src;
     if (src.startsWith('trace:')) { const [, s, l] = src.split(':'); def = SOUNDSCAPES[s] ?? def; id = l; }
+    if (src.startsWith('room:')) { def = MINISTRY_ROOM; id = src.slice(5); }
     const l = def.layers.find((x) => x.id === id);
     if (!l) return null;
     return l.kind === 'bed' ? 'bed' : (l as HitsDef).grid ? 'grid' : 'event';

@@ -38,6 +38,13 @@ const CAST: Record<string, Kit> = {
   tench: { hat: 'cap', stout: true, hold: 'none', coat: 'short', gansey: true },
   naturalist: { hat: 'bonnet', skirt: true, hold: 'jar' },
   isbister: { hat: 'bonnet', skirt: true, hold: 'jar' },
+  /* M5: Sir Edmund Pryce, stout, with a cane; the Permanent Secretary with the red box; the Chief Inspector with his
+     notebook; the Leader of the Opposition with the order paper; Mrs Okonedo of the growers with a basket. */
+  pryceChair: { hat: 'top', stout: true, hold: 'cane', coat: 'long', accent: true },
+  permanentSecretary: { hat: 'bowler', hold: 'box', coat: 'long' },
+  inspector: { hat: 'bowler', hold: 'notebook', coat: 'long' },
+  opposition: { hat: 'top', hold: 'paper', coat: 'long' },
+  okonedo: { hat: 'bonnet', skirt: true, hold: 'basket' },
 };
 
 export const FIGURE_KEYS = Object.keys(CAST);

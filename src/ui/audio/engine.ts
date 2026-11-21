@@ -7,7 +7,7 @@
 // synthesised in JS once (./recipes) and each plays as one buffer source + gain (+ panner). Voices are capped.
 import type { SceneView } from '../scene/types';
 import { SOUND_EVENT_ALIASES, WORLD_EVENT_KINDS, type Soundscape, type SoundscapeOptions, type SoundEventKind, type SoundEventDetail, type Volumes, type SoundscapeStats, type Mix } from './types';
-import { SOUNDSCAPES, soundscapeFor, paletteFor, type SoundscapeDef, type LayerDef, type BedDef, type HitsDef } from './defs';
+import { SOUNDSCAPES, MINISTRY_ROOM, soundscapeFor, paletteFor, type SoundscapeDef, type LayerDef, type BedDef, type HitsDef } from './defs';
 import { mixFrom, momentsBetween } from './mix';
 import { CAST_FAMILY, MOTIFS, MOTIF_AT } from './recipes';
 import { WORLD_NAMES } from './worker-src';
@@ -61,6 +61,8 @@ interface LayerRt {
   sour?: number;
   /** M3: the variant the mix chose (variantBy). */
   variant?: number;
+  /** M5: the grid step's multiplier (grid.by). */
+  every?: number;
   /** Export: the source id this layer reports to tap.gate / tap.onVoice. */
   src: string;
   /** M4: built while its graph is still fading in: its level starts at the mix's value instead of ramping up from 0
@@ -99,7 +101,7 @@ interface Graph {
 }
 
 /** The sound's own kinds (aliases resolve to these first). */
-type OwnKind = Exclude<SoundEventKind, 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared' | 'surveyed' | 'thresholdCrossed' | 'surveyReveal'>;
+type OwnKind = Exclude<SoundEventKind, 'seamSunk' | 'dispatchArrived' | 'dispatchAnswered' | 'biteBack' | 'returnPublished' | 'featureUnlocked' | 'historyCleared' | 'surveyed' | 'thresholdCrossed' | 'surveyReveal' | 'rivalAnswered'>;
 const KIND_GAIN: Record<OwnKind, number> = {
   sell: 0.22, buy: 0.3, cannotAfford: 0.26, found: 0.34, lever: 0.34, fork: 0.3, headline: 0.26, reveal: 0.42, backfire: 0.42,
   crisis: 0.32, decade: 0.3, steady: 0.38, reckoning: 0.4, industryOpened: 0.34, ageBegun: 0.4,
@@ -109,13 +111,25 @@ const KIND_GAIN: Record<OwnKind, number> = {
   ending: 0.4, ledgerContinues: 0.26, arrived: 0.26, history: 0.28,
   // M4: the coin sits with buy; the Act's ending with the first ending; the toll with the survey.
   wager: 0.3, actEnding: 0.4, arrears: 0.3,
+  // M5: the paper boy is the only sound at the Gazette; the count and the Treaty are considered moments; the stamps,
+  // brush and gavel sit with buy and lever; the side door and the quill a little under.
+  officeTaken: 0.36, electionCalled: 0.26, electionWon: 0.34, electionLost: 0.32, inspected: 0.3, concealmentFound: 0.32,
+  lobbied: 0.26, litigated: 0.3, loopholeUsed: 0.24, loopholeClosed: 0.26, treaty: 0.4,
 };
 const KIND_VARIANTS: Partial<Record<SoundEventKind, number>> = { sell: 6, buy: 3 };
 /** Moments worth playing late (a beat or so) rather than not at all, if their sound is not ready on first use. */
 const LATE_OK = new Set<SoundEventKind>(['reveal', 'backfire', 'steady', 'reckoning', 'ageBegun', 'industryOpened', 'crisis', 'decade', 'found', 'fork',
-  'seam', 'letter', 'survey', 'proprietor', 'ending', 'arrived', 'history', 'bite', 'wager', 'actEnding', 'arrears']);
+  'seam', 'letter', 'survey', 'proprietor', 'ending', 'arrived', 'history', 'bite', 'wager', 'actEnding', 'arrears',
+  'officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'inspected', 'concealmentFound', 'lobbied', 'litigated',
+  'loopholeUsed', 'loopholeClosed', 'treaty']);
 const DUCKS: Partial<Record<SoundEventKind, [number, number]>> = { reveal: [0.45, 4.5], backfire: [0.6, 2], steady: [0.6, 3], ageBegun: [0.5, 3.5], reckoning: [0.7, 3],
-  seam: [0.75, 2.5], proprietor: [0.4, 4.6], ending: [0.55, 5], survey: [0.8, 2.5], actEnding: [0.5, 7.5], arrears: [0.8, 3] };
+  seam: [0.75, 2.5], proprietor: [0.4, 4.6], ending: [0.55, 5], survey: [0.8, 2.5], actEnding: [0.5, 7.5], arrears: [0.8, 3],
+  officeTaken: [0.35, 3.2], electionWon: [0.75, 3.5], electionLost: [0.75, 3], treaty: [0.55, 5.5] };
+/** M5: the Ministry's moments that must not repeat close together: kind → shortest gap (s). */
+const MIN_GAP: Partial<Record<SoundEventKind, number>> = { officeTaken: 20, litigated: 2, lobbied: 1, inspected: 1, concealmentFound: 1 };
+const ROOM_GLASS = 950;          // M5: the traffic through the Ministry's glass (low-pass, Hz) …
+const ROOM_CURTAINS = 380;       // … and through the curtains in Opposition
+const STAMP2_AT = 2.7;           // M5: the second stamp lands this long after an 'inspected' that came just before it
 const CREDITS_S = 75;            // the first ending's credits bed holds this long by itself before it fades
 const ACT_CREDITS_S = 110;       // M4: an Act's credits hold longer, and their bells come less often
 const LIFE_RISE_TC = 5;          // M4: the sea life comes back slowly (≈ 15 s to 95%); it goes in ≈ 2 s
@@ -166,7 +180,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
   let credits: { out: GainNode; oscs: OscillatorNode[]; lfos: OscillatorNode[]; t0: number; stopAt: number; nextBell: number; key: Key; pal: string; rng: Rng; slow: number } | null = null;
   // M4: the world's own moments on the sea life ('thresholdCrossed' cuts it, 'surveyReveal' lifts it), per sector.
   let lifeFx: { sector: string; kind: 'cut' | 'lift'; t0: number } | null = null;
-  let endingAmt = 0;            // 0–1, what the mix is told (ramps in with the credits, out after them)
+  let endingAmt = 0;
+  // M5: the Ministry room (built the first time a view says office; outlives tab switches).
+  let room: { g: Graph; glass: BiquadFilterNode } | null = null;            // 0–1, what the mix is told (ramps in with the credits, out after them)
   const sync = !!external;                     // offline/tests: synthesise at once; live: in the worker
   // Export taps (offline only). Without them nothing below creates a node or changes a value.
   const tap = external ? opts.tap ?? null : null;
@@ -412,9 +428,9 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
 
   /* ---------------- graphs ---------------- */
 
-  function buildGraph(sector: string): Graph {
+  function buildGraph(sector: string, own?: SoundscapeDef): Graph {
     const c = ctx!;
-    const def = soundscapeFor(sector);
+    const def = own ?? soundscapeFor(sector);
     const out = c.createGain(); out.gain.value = 0;
     const world = c.createGain(); world.gain.value = 1;
     const air = c.createBiquadFilter(); air.type = 'lowpass'; air.frequency.value = def.air.bright; air.Q.value = 0.5;
@@ -432,7 +448,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     };
     // Layers are built lazily, the first time the mix gives them a level (see apply): an empty valley costs a few nodes,
     // and a busy one thickens as it fills.
-    queueWarm(def, sector);
+    if (!own) queueWarm(def, sector);
     return g;
   }
 
@@ -444,7 +460,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     let head: AudioNode = level;
     if (l.lp) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = l.lp; f.Q.value = 0.6; f.connect(level); head = f; }
     level.connect(cut);
-    const src = salt.startsWith('trace:') ? `${salt}:${l.id}` : l.id;
+    const src = salt.startsWith('trace:') || salt === 'room' ? `${salt}:${l.id}` : l.id;
     const out = gateTo(src, dest);
     if (l.kind === 'bed' && l.pan && canPan) { const p = (c as AudioContext).createStereoPanner(); p.pan.value = l.pan; cut.connect(p); p.connect(out); p.connect(send); }
     else { cut.connect(out); cut.connect(send); }
@@ -606,6 +622,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     applyTraces(g, m);
     applyLevers(g, m);
     applyWatch(g, m);
+    applyRoom(v, m);
     // Moments the world plays by itself (the picture plays them too).
     const mo = momentsBetween(prev, v);
     if (mo.crisis) worldCrisis(g);
@@ -633,6 +650,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (!lm) return;
     const l = rt.def;
     rt.variant = lm.variant;
+    rt.every = lm.every;
     if (rt.fresh) {
       rt.fresh = false;
       const v0 = lm.level * l.gain * scale;
@@ -703,6 +721,29 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     applyLayer(g, g.watch, { level: 1, density: m.watch * (calm() ? 0.6 : 1), pitch: 1, tone: 1, blackout: false });
   }
 
+  /** M5: the Ministry room, beside whichever Industry is showing (built once; no crossfade on a tab switch). The clock
+   *  is in the room; the traffic is outside, through the glass, and through the curtains in Opposition. */
+  function applyRoom(v: SceneView, m: Mix): void {
+    if (m.room <= 0) { if (room) { ramp(room.g.out.gain, 0, 1.2); for (const rt of room.g.layers) rt.density = 0; } return; }
+    if (!room) {
+      const g = buildGraph('ministry', MINISTRY_ROOM);
+      const glass = ctx!.createBiquadFilter(); glass.type = 'lowpass'; glass.frequency.value = ROOM_GLASS; glass.Q.value = 0.6;
+      glass.connect(inlet(g.air));
+      room = { g, glass };
+    }
+    const { g, glass } = room;
+    const rm = mixFrom(v, MINISTRY_ROOM, { calm: calm() });
+    g.mix = rm;
+    g.tempoTarget = MINISTRY_ROOM.tempo[0];
+    ramp(g.out.gain, m.frozen ? 0.35 : 1, 0.8);
+    ramp(glass.frequency, m.curtains ? ROOM_CURTAINS : ROOM_GLASS, 1.2);
+    for (const l of MINISTRY_ROOM.layers) {
+      let rt = g.byId.get(l.id);
+      if (!rt) { rt = buildLayer(g, l, g.def.key, l.id === 'clock' ? g.air : glass, g.send, 'room'); g.layers.push(rt); g.byId.set(l.id, rt); }
+      applyLayer(g, rt, rm.layers[l.id], l.id !== 'clock' && m.curtains ? 0.6 : 1);
+    }
+  }
+
   function worldCrisis(g: Graph): void {
     const t = now() + 0.05;
     try {
@@ -735,7 +776,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     synthSpent = 0;
     const t = now();
     const horizon = t + LOOKAHEAD;
-    for (const g of graphs.slice()) {
+    for (const g of [...graphs, ...(room ? [room.g] : [])]) {
       if (g.dieAt && t > g.dieAt) { killGraph(g, false); graphs = graphs.filter((x) => x !== g); continue; }
       // Beat clock: tempo glides towards its target, the beat advances with it.
       const dt = Math.max(0, t - g.beatAt);
@@ -745,7 +786,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       tap?.onTick?.({ t, beat: g.beat, tempo: g.tempo, sector: g.sector });
       if (!g.mix) continue;
       for (const rt of allLayers(g)) if (rt.def.kind === 'hits') schedule(g, rt, t, horizon);
-      if (g.mix.stress > 0.01 && !g.dieAt) blackouts(g, t);
+      if (g.mix.stress > 0.01 && !g.dieAt && g !== room?.g) blackouts(g, t);
     }
     if (credits) creditsTick(t, horizon);
     if (spent.length) { for (let i = spent.length - 1; i >= 0; i--) if (spent[i][0] <= t) { spent[i][1](); spent.splice(i, 1); } }
@@ -771,7 +812,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (rt.density <= 0.001) { rt.next = NaN; return; }
     const spb = 60 / g.tempo;
     if (l.grid) {
-      const every = l.grid.every;
+      const every = l.grid.every * (rt.every ?? 1);
       if (!Number.isFinite(rt.next) || rt.next < g.beat - 1) rt.next = Math.ceil(g.beat / every + 1e-6) * every;
       let guard = 0;
       while (guard++ < 64) {
@@ -873,6 +914,8 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     if (!ctx || !wanted() || !running() || !uiBus) return;
     // M4: the world's own moments (no interface sound): the sea life cut, or lifted for the Board's Survey.
     if (asked === 'surveyed' && d.label !== 'reveal') return;
+    // M5: the rival's answer is heard only as a hoarding (lobby) or a gavel (litigate).
+    if (asked === 'rivalAnswered') { if (d.label === 'litigate') asked = 'litigated'; else if (d.label !== 'lobby') return; }
     const wk = SOUND_EVENT_ALIASES[asked] ?? asked;
     if ((WORLD_EVENT_KINDS as readonly string[]).includes(wk)) { worldEvent(wk as SoundEventKind, d); return; }
     let kind = wk as OwnKind;
@@ -884,6 +927,10 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const pal = paletteFor(sector, d.look ?? view?.look);
     const key = soundscapeFor(sector).key;
     const t = now();
+    const gap = MIN_GAP[kind];
+    if (gap != null) { if (t - (lastAt.get(kind) ?? -1e9) < gap) return; lastAt.set(kind, t); }
+    // M5: a finding's stamp comes after the Inspector's own, when the two arrive together.
+    const delay = kind === 'concealmentFound' ? Math.max(0, (lastAt.get('inspected') ?? -1e9) + STAMP2_AT - t) : 0;
     const strength = Math.max(0.2, Math.min(1, d.strength ?? 1));
     let gain = KIND_GAIN[kind] * strength * (calm() ? 0.75 : 1) * (d.first ? 1.1 : 1);
     let name = `ui:${pal}:${kind}`;
@@ -950,11 +997,12 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
     const b = recipe(name, key, v, true, (nb) => {
       if (!nb || ctx !== c0 || !wanted() || !running()) return;
       const late = now() - t;
-      if (late < 0.3 || LATE_OK.has(kind)) { go(nb, now() + 0.01); after?.(); }
+      if (late < 0.3 || LATE_OK.has(kind)) { go(nb, now() + Math.max(0.01, delay - late)); after?.(); }
     });
-    if (b) { go(b, t + 0.005); after?.(); }
+    if (b) { go(b, t + 0.005 + delay); after?.(); }
   }
   let seamV = 0;
+  const lastAt = new Map<SoundEventKind, number>();
 
   /** M4: 'thresholdCrossed' (the sea life cuts out over two seconds, no sting) and 'surveyReveal' (it comes up a few dB
    *  for two seconds under the card, no sting). Acts on the sector named, else the one showing; the current view is
@@ -1103,6 +1151,7 @@ export function createSoundscape(opts: SoundscapeOptions & { clock?: () => numbe
       stopTimer(); disarm(); listen(false);
       for (const g of graphs) killGraph(g, true);
       graphs = [];
+      if (room) { killGraph(room.g, true); room = null; }
       stopCredits(0.1);
       last.clear(); warm.length = 0;
       if (attached) { detach(attached); attached = null; }

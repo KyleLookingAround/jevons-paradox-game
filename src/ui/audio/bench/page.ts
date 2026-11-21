@@ -444,7 +444,66 @@ const m4api = {
   },
 };
 
+
+/* ---------------- M5: the Ministry and Plenty ---------------- */
+
+type Office = '' | 'office' | 'opposition';
+const officeView = (sector: string, p: PresetName, office: Office, extra: Record<string, unknown> = {}) =>
+  ({ ...viewOf(sector, { ...preset(sector, p), ...(office ? { office } : {}) }), ...extra }) as unknown as SceneView;
+const voicesOf = (src: string, list: { source: string; at: number }[]) => list.filter((v) => v.source === src).map((v) => v.at);
+const gaps = (ts: number[]) => ts.slice(1).map((t, i) => Math.round((t - ts[i]) * 1000) / 1000);
+
+const m5api = {
+  /** A held Industry state, in or out of office. */
+  async office(sector: string, p: PresetName, office: Office, dur = 20, extra: Record<string, unknown> = {}) {
+    const out = await renderCase({ name: 'office', dur, view: hold(officeView(sector, p, office, extra)) });
+    return { a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, `${sector} · ${p}${office ? ' · ' + office : ''}`) };
+  },
+  /** The Ministry room alone (the Industry's own layers silenced): its level, and the clock's tick times. */
+  async roomOnly(office: Office = 'office', dur = 20) {
+    const orig = SOUNDSCAPES.motion;
+    registerSoundscape('motion', { ...orig, layers: [], trace: [] });
+    const vs: { source: string; at: number }[] = [];
+    try {
+      const out = await renderCase({ name: 'room', dur, view: hold(officeView('motion', 'late', office)), tap: { onVoice: (v) => vs.push(v) } });
+      return { a: analyse(out.l, out.r, 3), clockGaps: gaps(voicesOf('room:clock', vs)).slice(0, 12), cars: voicesOf('room:cars', vs).length, png: spectrogram(out.l, out.r, `the Ministry room alone · ${office}`) };
+    } finally { registerSoundscape('motion', orig); }
+  },
+  /** A tab switch at 6 s in office: the crossfade dip (as m4.switchDip), and the clock's ticks across it. */
+  async switchDip(a: string, b: string, p: PresetName = 'mid', office: Office = 'office') {
+    const va = officeView(a, p, office), vb = officeView(b, p, office);
+    const vs: { source: string; at: number }[] = [];
+    const out = await renderCase({ name: 'sw', dur: 16, view: (t) => (t < 6 ? va : vb), tap: { onVoice: (v) => vs.push(v) } });
+    const held = await renderCase({ name: 'held', dur: 16, view: hold(va) });
+    const w = (x: Rendered, from: number, to: number) => { let e = 0, n = 0; for (let i = Math.round(from * SR); i < Math.round(to * SR); i++) { e += x.l[i] ** 2 + x.r[i] ** 2; n += 2; } return 10 * Math.log10(e / n + 1e-20); };
+    const bw: number[] = []; for (let t = 11; t + 1 <= 16; t += 0.25) bw.push(w(out, t, t + 1));
+    bw.sort((x, y) => x - y);
+    const bq = bw[Math.floor(0.2 * (bw.length - 1))];
+    let lo = 0;
+    for (let t = 5.5; t < 10.5; t += 0.25) lo = Math.min(lo, w(out, t, t + 1) - Math.min(w(held, t, t + 1), bq));
+    const ticks = voicesOf('room:clock', vs).filter((t) => t > 3 && t < 10);
+    return { before: Math.round(w(out, 3, 6) * 10) / 10, after: Math.round(w(out, 11, 16) * 10) / 10, dipDb: Math.round(lo * 10) / 10, clockGapsAcross: gaps(ticks), a: analyse(out.l, out.r, 3), png: spectrogram(out.l, out.r, `in ${office}: tab switch ${a} → ${b} at 6 s`, [[6, b]]) };
+  },
+  /** Plenty's pump: its stroke times at a held reserve (pump solo). */
+  async pump(reserve: number, dur = 30) {
+    const vs: { source: string; at: number; grid: boolean }[] = [];
+    const v = viewOf('plenty', { ...preset('plenty', 'mid'), reserve });
+    const out = await renderCase({ name: 'pump', dur, view: hold(v), tap: { onVoice: (x) => vs.push(x) } });
+    const ts = voicesOf('pump', vs).filter((t) => t > 4);
+    const g = gaps(ts);
+    return { strokes: ts.length, meanGap: g.length ? Math.round((g.reduce((a, b) => a + b, 0) / g.length) * 100) / 100 : null, a: analyse(out.l, out.r, 3) };
+  },
+  /** Interface events at given times, alone (e.g. inspected + concealmentFound together; the RMS per 0.25 s). */
+  async events(sector: string, evs: [number, SoundEventKind, SoundEventDetail?][], dur = 8) {
+    const out = await renderCase({ name: 'evs', dur, view: () => null, events: evs.map(([t, k, d]) => [t, k, sector, d] as [number, SoundEventKind, string, SoundEventDetail?]) });
+    const q: number[] = [];
+    for (let t = 0; t + 0.25 <= dur; t += 0.25) { let e = 0, n = 0; for (let i = Math.round(t * SR); i < Math.round((t + 0.25) * SR); i++) { e += out.l[i] ** 2 + out.r[i] ** 2; n += 2; } q.push(Math.round(10 * Math.log10(e / n + 1e-20))); }
+    return { a: analyse(out.l, out.r, 0), quarterDb: q, png: spectrogram(out.l, out.r, `${sector} · ${evs.map((e) => e[1]).join(' + ')}`) };
+  },
+};
+
 (window as unknown as { bench: typeof api; m3: typeof m3api }).bench = api;
+(window as unknown as { m5: typeof m5api }).m5 = m5api;
 (window as unknown as { m4: typeof m4api }).m4 = m4api;
 (window as unknown as { m3: typeof m3api }).m3 = m3api;
 document.title = 'audio bench ready';

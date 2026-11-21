@@ -13,6 +13,7 @@ const SHARED: StemGroup[] = [
   { id: 'levers', label: 'lever signatures', layers: ['lever:*'], about: 'the small signature of each lever in force, now and then (souring as it bites back)' },
   { id: 'heritage', label: 'heritage', layers: ['trace:*'], about: 'faint, distant traces of earlier Industries under this one' },
   { id: 'watch', label: "the proprietor's watch", layers: ['watch'], about: 'a faint watch tick, after the Proprietor\'s Day' },
+  { id: 'ministry', label: 'the Ministry room', layers: ['room:*'], about: 'M5, in office only: the clock on the Ministry mantelpiece (tick and tock at 60 bpm, its own time, not the Industry\'s) and the traffic outside, through the glass (lower and quieter with the curtains drawn in Opposition)' },
 ];
 
 export const STEM_GROUPS: Record<string, StemGroup[]> = {
@@ -66,6 +67,14 @@ export const STEM_GROUPS: Record<string, StemGroup[]> = {
     { id: 'power', label: 'mains and grid', layers: ['mains', 'grid', 'dam'], about: 'mains hum at 50 Hz with harmonics that sag under load, the grid and a dam far off' },
     { id: 'training', label: 'training', layers: ['train'], about: 'the model-training throb on the beat' },
     { id: 'till', label: 'the till', layers: ['till', 'tillMute'], about: 'a small till for paid uses; the key and drawer without a bell for free ones' },
+  ],
+  plenty: [
+    { id: 'air', label: 'wind and larks', layers: ['wind', 'wheat', 'larks'], about: 'wind over the fields, the wheat rustling in gusts, skylarks while the air is clear' },
+    { id: 'machines', label: 'the machines', layers: ['team', 'tractor'], about: 'a team at the plough (hooves and harness) at first, then the tractor\'s putter on the half-beat' },
+    { id: 'water', label: 'irrigation', layers: ['pivot', 'drips'], about: 'the centre pivot\'s hiss, which thins as the return share falls, and the drip lines\' drops' },
+    { id: 'pump', label: 'the pump', layers: ['pump', 'borehole'], about: 'the pump\'s stroke and gulp, slowing in whole doublings (every 2, 4, 8 beats) and dropping in pitch as the water table falls; a second, quicker, unmetered borehole while the loophole is in use' },
+    { id: 'trade', label: 'grain trains and freight', layers: ['grain', 'freight', 'town'], about: 'the grain train, air freight climbing out, the town murmur' },
+    { id: 'dust', label: 'dust', layers: ['dust'], about: 'the wind lifting the topsoil at high pressure' },
   ],
   code: [
     { id: 'rain', label: 'rain', layers: ['rain', 'drips'], about: 'rain and drips' },

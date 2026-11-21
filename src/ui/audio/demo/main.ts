@@ -11,7 +11,7 @@ import { soundscapeFor } from '../defs';
 import { exportPanel } from '../export/panel';
 
 const LEVERS = ['duty', 'cap', 'sufficiency', 'substitution', 'circularity', 'greenSpending', 'deletion', 'reviewGate', 'sharedLibs'];
-const EARLIER = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute'];
+const EARLIER = ['steam', 'light', 'iron', 'fishing', 'motion', 'plenty', 'compute'];
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...kids: (Node | string)[]) => {
   const e = document.createElement(tag);
@@ -53,9 +53,15 @@ const m3s = {
 };
 /* M4 inputs: Fishing's stock by hand (else it follows the reserve slider), Steam or Light fed by Iron. */
 const m4s = { handStock: false, truth: 0.8, autoReported: true, reported: 0.9, scar: false, crossed: false, moratorium: false, foreign: 0.2, fedByIron: false };
+/* M5 inputs: the Ministry window (any Industry), Plenty's return share by hand (else by stage), the loopholes in use. */
+const m5s = { office: '' as '' | 'office' | 'opposition', handReturn: false, returnShare: 0.5, borehole: false, vans: false };
 function withM3(v: SceneView): SceneView {
   const o: SceneView = { ...v };
   const o4 = o as unknown as Record<string, unknown>;
+  if (m5s.office) o4.chair = { opposition: m5s.office === 'opposition' };
+  if (sector === 'plenty' && m5s.handReturn) o4.water = { applied: 1, consumed: 1 - m5s.returnShare, returnShare: m5s.returnShare };
+  const ex = [...(m5s.borehole && sector === 'plenty' ? ['borehole'] : []), ...(m5s.vans && sector === 'motion' ? ['vans'] : [])];
+  if (ex.length) o4.exempt = ex;
   if (sector === 'fishing' && m4s.handStock) o4.stock = stockOf({ truth: m4s.truth, reported: m4s.autoReported ? undefined : m4s.reported, scar: m4s.scar, crossed: m4s.crossed, moratorium: m4s.moratorium, foreign: m4s.foreign });
   if (m4s.fedByIron && (sector === 'steam' || sector === 'light')) o4.fedBy = [{ from: 'iron', app: sector === 'steam' ? 'iron.rails' : 'iron.girders', share: 0.3 }];
   if (m3s.seamsOn && sector === 'steam') o.seams = { sunk: m3s.sunk, total: m3s.total, next: m3s.sunk < m3s.total };
@@ -215,7 +221,7 @@ function buildPanel(): void {
     for (const [icon, name] of DEMO_INDUSTRIES.find((x) => x.id === 'compute')!.apps) mech.append(check(`free: ${name}`, () => m3s.free.includes(`compute.${icon}`), (v) => { m3s.free = v ? [...m3s.free, `compute.${icon}`] : m3s.free.filter((x) => x !== `compute.${icon}`); }));
     mech.append(el('p', {}, 'Paid uses ring a small till now and then. Free ones press the key and the drawer springs, and no bell rings. A dam and the grid hum, far off, as the free share grows.'));
   }
-  if (!['steam', 'light', 'motion', 'compute', 'fishing'].includes(sector)) mech.append(el('p', {}, 'No Industry mechanic here; the watch below works everywhere.'));
+  if (!['steam', 'light', 'motion', 'compute', 'fishing', 'plenty'].includes(sector)) mech.append(el('p', {}, 'No Industry mechanic here; the watch below works everywhere.'));
   // M4
   if (sector === 'steam' || sector === 'light') mech.append(check(`M4: fed by Iron (fedBy: ${sector === 'steam' ? 'rails' : 'girders'})`, () => m4s.fedByIron, (v) => (m4s.fedByIron = v)),
     el('p', {}, "Iron's drop hammer, faint and far off, under this Industry. (Light also has Fishing's bell buoy at its harbour edge, always, very faint.)"));
@@ -229,6 +235,18 @@ function buildPanel(): void {
     check('scarred', () => m4s.scar, (v) => (m4s.scar = v)),
     check('moratorium', () => m4s.moratorium, (v) => (m4s.moratorium = v)),
     el('p', {}, 'The gulls, the porpoises and the shoals follow the TRUE stock; the trawlers, winches and market follow the port. Pull the true stock down with catch per trip high: the sea goes quiet while the fleet works on. Scarred: the sea life stays thin at any stock, and comes back slowly. Moratorium (or crossed with the pace near 0): the fleet ties up; halyards and gulls.'));
+  // M5
+  if (sector === 'plenty') mech.append(check('M5: set the return share by hand (else by machine stage: flood 0.5, pivot 0.425, drip 0.136)', () => m5s.handReturn, (v) => (m5s.handReturn = v)),
+    slider('return share (water that soaks back)', () => m5s.returnShare, (v) => (m5s.returnShare = v)),
+    check("M5: Pryce's unlicensed borehole in use (exempt: borehole)", () => m5s.borehole, (v) => (m5s.borehole = v)),
+    el('p', {}, "Plenty: wind over the fields and through the wheat, skylarks in clear air. The machines by stage: a team at the plough (0), the tractor (1), the centre pivot's hiss (2), drip lines (3). The pump is the aquifer's clock: pull the reserve down and it slows (every 2 beats, then every bar below 55%, every other bar below 20%) and drops. Drip (or a low return share) thins the pivot's hiss to drops: less water seen, more water gone. High pressure: the wind lifts dust."));
+  if (sector === 'motion') mech.append(check('M5: light trucks exempt (exempt: vans): more vans', () => m5s.vans, (v) => (m5s.vans = v)));
+  const offSel = el('select') as HTMLSelectElement;
+  for (const [v, t] of [['', 'not in office'], ['office', 'in office: heard from the Ministry window'], ['opposition', 'in Opposition: the curtains drawn']]) offSel.append(el('option', { value: v, textContent: t }));
+  offSel.value = m5s.office;
+  offSel.onchange = () => { m5s.office = offSel.value as typeof m5s.office; render(); };
+  mech.append(el('div', { className: 'btns' }, 'M5, any Industry (chair): ', offSel),
+    el('p', {}, 'In office: the Ministry clock (tick and tock, 60 bpm, its own time) and traffic through the glass, the Industry heard through the window (a little duller, a little quieter). In Opposition the curtains are drawn: everything outside muffled further.'));
   mech.append(slider("proprietor's watch (watch)", () => m3s.watch, (v) => (m3s.watch = v)),
     el('p', {}, 'After the Proprietor\'s Day: a faint tick now and then, at most one every two seconds.'));
 
@@ -261,7 +279,16 @@ function buildPanel(): void {
     el('div', { className: 'btns' },
       el('button', { type: 'button', textContent: 'thresholdCrossed (Fishing: the sea life cuts out)', onclick: () => sound.event('thresholdCrossed') }),
       el('button', { type: 'button', textContent: "surveyed, label 'reveal' (the Board's Survey: the sea life lifted 2 s)", onclick: () => sound.event('surveyed', { label: 'reveal' }) })));
-  panel.append(audition(), head, events, m3ev, m4ev, mech, apps, world, lev, bites, her);
+  const m5ev = el('div', { className: 'grp' }, el('h3', {}, 'M5 moments (page calls event(kind, detail))'),
+    el('div', { className: 'btns' }, ...(['officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'treaty'] as SoundEventKind[]).map((k) => el('button', { type: 'button', textContent: k, onclick: () => sound.event(k) }))),
+    el('div', { className: 'btns' },
+      el('button', { type: 'button', textContent: 'inspected', onclick: () => sound.event('inspected') }),
+      el('button', { type: 'button', textContent: 'inspected + concealmentFound', onclick: () => { sound.event('inspected', { n: 18 }); sound.event('concealmentFound', { n: 18 }); } }),
+      el('button', { type: 'button', textContent: "rivalAnswered 'lobby'", onclick: () => sound.event('rivalAnswered', { label: 'lobby' }) }),
+      el('button', { type: 'button', textContent: "rivalAnswered 'litigate' + litigated", onclick: () => { sound.event('rivalAnswered', { label: 'litigate' }); sound.event('litigated'); } }),
+      el('button', { type: 'button', textContent: 'loopholeUsed', onclick: () => sound.event('loopholeUsed') }),
+      el('button', { type: 'button', textContent: 'loopholeClosed', onclick: () => sound.event('loopholeClosed') })));
+  panel.append(audition(), head, events, m3ev, m4ev, m5ev, mech, apps, world, lev, bites, her);
   syncers.forEach((f) => f());
 }
 
@@ -334,6 +361,39 @@ function stepsM4(): Step[] {
     { cap: 'Done.', secs: 0, go: () => { /* end */ } },
   ];
 }
+function stepsM5(): Step[] {
+  const ev = (k: SoundEventKind, d?: SoundEventDetail) => () => sound.event(k, d);
+  const st = (f: () => void) => () => { f(); syncers.forEach((g) => g()); render(); };
+  let fallT: ReturnType<typeof setInterval> | null = null;
+  const fall = () => { // the water table 0.9 → 0.1 over 40 s
+    const t0 = performance.now();
+    if (fallT) clearInterval(fallT);
+    fallT = setInterval(() => { const u = Math.min(1, (performance.now() - t0) / 40000); p.reserve = 0.9 - 0.8 * u; render(); if (u >= 1 && fallT) { clearInterval(fallT); fallT = null; } }, 200);
+  };
+  return [
+    { cap: "1. Take office: the Gazette. A paper boy's cry in the street below, twice, then the Ministry clock. The only sound.", secs: 6, go: () => { Object.assign(m5s, { office: '', handReturn: false, borehole: false, vans: false }); setInd('motion', 'late'); setTimeout(() => sound.event('officeTaken'), 600); } },
+    { cap: '2. In office, Motion: the clock on the mantelpiece (tick, tock, once a second) and traffic through the glass; the motorway heard through the window, duller and quieter.', secs: 16, go: st(() => { m5s.office = 'office'; }) },
+    { cap: '3. A tab switch in office: the room stays where it is (no crossfade), the Industry changes outside the window.', secs: 12, go: () => setInd('plenty', 'mid') },
+    { cap: "4. Plenty from the Ministry window (mid): wind in the wheat, skylarks, the tractor's putter, the pump on every other beat.", secs: 14, go: st(() => { m5s.office = ''; }) },
+    { cap: "5. The centre pivot (stage 2): its hiss sweeps round, half the water soaking back.", secs: 14, go: st(() => { p.stage = 2; }) },
+    { cap: '6. Drip lines (stage 3): the hiss thins to a ticking of drops. Less water seen; more water gone.', secs: 14, go: st(() => { p.stage = 3; }) },
+    { cap: "7. The water table falls from 90% to 10% over 40 seconds: listen to the pump slow (every bar below 55%, every other bar below 20%) and drop.", secs: 44, go: fall },
+    { cap: "8. Pryce's unlicensed borehole (a loophole in use): a second, quicker pump off to the right, unmetered.", secs: 14, go: st(() => { m5s.borehole = true; }) },
+    { cap: '9. High pressure: the wind lifts the dust, the larks go.', secs: 14, go: st(() => { m5s.borehole = false; p.pressure = 0.95; }) },
+    { cap: '10. Polling day called: a murmur.', secs: 5, go: () => { setInd('motion', 'mid'); m5s.office = 'office'; syncers.forEach((g) => g()); render(); setTimeout(() => sound.event('electionCalled'), 400); } },
+    { cap: '11. An election won: the count bell, a cheer.', secs: 6, go: ev('electionWon') },
+    { cap: '12. An election lost: the count bell, lower; a door closing.', secs: 6, go: ev('electionLost') },
+    { cap: '13. In Opposition: the curtains drawn; everything outside muffled further. The clock goes on.', secs: 14, go: st(() => { m5s.office = 'opposition'; }) },
+    { cap: "14. An inspection: the Inspector's footsteps, coming closer, and a stamp.", secs: 5, go: () => { m5s.office = 'office'; syncers.forEach((g) => g()); render(); sound.event('inspected'); } },
+    { cap: '15. An inspection that finds concealment: the footsteps, the stamp, and a second, heavier stamp.', secs: 6, go: () => { sound.event('inspected', { n: 18 }); sound.event('concealmentFound', { n: 18 }); } },
+    { cap: '16. Pryce lobbies: a hoarding pasted up (three wet strokes, the sheet slapped flat).', secs: 4, go: ev('rivalAnswered', { label: 'lobby' }) },
+    { cap: '17. Pryce litigates: one gavel (the answer and the court event together strike it once).', secs: 3, go: () => { sound.event('rivalAnswered', { label: 'litigate' }); sound.event('litigated'); } },
+    { cap: '18. A loophole used: a side door (the latch, a creak, the latch). Then light trucks exempt: more vans on the motorway.', secs: 12, go: () => { sound.event('loopholeUsed'); m5s.vans = true; syncers.forEach((g) => g()); render(); } },
+    { cap: '19. A loophole closed by amendment: a quill and the blotter.', secs: 4, go: ev('loopholeClosed') },
+    { cap: '20. The Treaty: a signature, the seal pressed, a slow cadence over a held chord; the world steps back.', secs: 9, go: () => { m5s.vans = false; render(); sound.event('treaty'); } },
+    { cap: 'Done.', secs: 0, go: () => { /* end */ } },
+  ];
+}
 function audition(): HTMLElement {
   const run = (i: number, list: Step[]) => {
     if (i >= list.length) { auditionT = null; return; }
@@ -346,6 +406,7 @@ function audition(): HTMLElement {
     el('div', { className: 'btns' },
       el('button', { type: 'button', className: 'play', textContent: '▶ Audition all M3 sounds, in order (about 7 minutes)', onclick: () => { if (!on) onBtn.click(); playing = null; if (auditionT) clearTimeout(auditionT); run(0, steps()); } }),
       el('button', { type: 'button', className: 'play', textContent: '▶ Audition the M4 sounds: Iron, Fishing, the Survey (about 6 minutes)', onclick: () => { if (!on) onBtn.click(); playing = null; if (auditionT) clearTimeout(auditionT); run(0, stepsM4()); } }),
+      el('button', { type: 'button', className: 'play', textContent: '▶ Audition the M5 sounds: the Ministry, Plenty (about 4 minutes)', onclick: () => { if (!on) onBtn.click(); playing = null; if (auditionT) clearTimeout(auditionT); run(0, stepsM5()); } }),
       el('button', { type: 'button', textContent: '■ Stop the audition', onclick: () => { if (auditionT) clearTimeout(auditionT); auditionT = null; capBox.textContent = 'Stopped.'; } })),
     capBox);
 }

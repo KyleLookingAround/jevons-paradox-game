@@ -14,7 +14,12 @@ export const DEMO_INDUSTRIES: Ind[] = [
   // M4 (icons as in src/content/sectors/iron.ts and fishing.ts)
   { id: 'iron', name: 'Iron & Steel', look: 'ledger', apps: [['wire', 'Fencing wire'], ['rails', 'Rails'], ['plate', 'Ship plate'], ['girder', 'Bridges & girders'], ['cans', 'Tinplate & cans'], ['lathe', 'Machine tools']] },
   { id: 'fishing', name: 'Fishing', look: 'ledger', apps: [['fishTrain', 'Fresh fish by rail'], ['fryer', 'Fried fish shops'], ['smokehouse', 'Salt and smoked trade'], ['sack', 'Fish meal for the fields'], ['bottle', 'Cod liver oil'], ['carton', 'Fish fingers']] },
+  // M5 (icons as in src/content/sectors/plenty.ts)
+  { id: 'plenty', name: 'Plenty', look: 'chrome', apps: [['wheat', 'Bread grain'], ['sack', 'Fertilised fields'], ['cow', 'Meat & dairy'], ['orchard', 'Irrigated orchards'], ['plane', 'Air-freighted produce'], ['pump', 'Biofuels']] },
 ];
+
+/** M5: Plenty's return share by machine stage as the cards bring it (flood, flood, pivot, drip): 0.5, 0.5, 0.425, 0.136. */
+export const RETURN_BY_STAGE = [0.5, 0.5, 0.425, 0.136];
 
 /** M4: Fishing's stock as the scene lane's SceneView.stock (briefs/m4-scene.md). `truth` is Q/K; `reported` is catch
  *  per trip, (Q/K)^0.3 (hyperstability), unless given. */
@@ -30,6 +35,10 @@ export interface DemoParams {
   stock?: DemoStock;
   /** M4: who feeds this Industry (SceneView.fedBy). */
   fedBy?: { from: string; app: string; share: number }[];
+  /** M5: in a Ministry ('office'), with the curtains drawn ('opposition'), or not (absent). */
+  office?: 'office' | 'opposition';
+  /** M5 (Plenty): the return share; absent = by stage (RETURN_BY_STAGE). */
+  returnShare?: number;
 }
 
 export const PRESET_NAMES = ['empty', 'early', 'mid', 'late', 'crisis', 'collapse', 'steady'] as const;
@@ -71,6 +80,9 @@ export function viewOf(sector: string, p: DemoParams): SceneView {
     // M4 fields (not yet on SceneView: the scene lane adds them; read through mix.ts M4View)
     ...(ind.id === 'fishing' ? { stock: stockOf(p.stock ?? { truth: p.reserve, foreign: 0.1 + 0.4 * p.pace }) } : {}),
     ...(p.fedBy ? { fedBy: p.fedBy } : {}),
+    // M5 fields (requested of the scene lane; read through mix.ts M5View)
+    ...(ind.id === 'plenty' ? { water: { applied: 1, consumed: 1, returnShare: p.returnShare ?? RETURN_BY_STAGE[Math.max(0, Math.min(3, p.stage))] } } : {}),
+    ...(p.office ? { chair: { opposition: p.office === 'opposition' } } : {}),
   } as SceneView;
 }
 

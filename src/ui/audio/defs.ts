@@ -11,7 +11,7 @@ import type { Palette } from './recipes';
  *  M3 (0 or neutral when the view field is absent): 'seamsOn' · 'depth' · 'loadOn' · 'hourLoad' · 'night' · 'day' ·
  *  'travelOn' · 'congestion' · 'sprawl' · 'freeOn' · 'freeShare' · 'paidShare' ·
  *  M4 (Fishing's stock; see mix.ts M4View): 'stockOn' · 'life' (the TRUE stock) · 'fleet' · 'tied' · 'moratorium' ·
- *  'foreign' — prefixed 'inv:' for 1 − x, or
+ *  'foreign' · M5 (mix.ts M5View): 'spray' (Plenty's return share; 1 when absent) · 'office' · 'exempt:<prop>' — prefixed 'inv:' for 1 − x, or
  *  'step<t>:<src>' for a soft step from 0 to 1 as <src> passes t (e.g. 'step0.5:reserve'). */
 export type Src = string;
 
@@ -63,7 +63,9 @@ export interface HitsDef extends LayerBase {
   /** Number of seeded variants of the recipe (default 1). */
   variants?: number;
   /** On the pulse: one step every `every` beats; pattern = probability per step (cycled), × density. */
-  grid?: { every: number; pattern?: number[]; jitter?: number };
+  grid?: { every: number; pattern?: number[]; jitter?: number; by?: [Src, number, number] };
+  // M5: grid.by slows the step from a source: every × (at 0 … at 1), rounded to ×1, ×2, ×4 … (Plenty's pump slows as the
+  // water table falls).
   /** Off the pulse: mean events per second at density 1 (seeded exponential gaps). */
   rate?: number;
   /** Shortest gap between two hits of this layer (s). */
@@ -217,7 +219,7 @@ const motion: SoundscapeDef = {
     { id: 'sprawlHum', kind: 'bed', src: 'brown', filter: ['bandpass', 320, 0.6], stereo: true, lp: 600,
       gain: 0.09, level: { add: [['sprawl', 1]], mul: [['travelOn', 1]] } },
     { id: 'vans', kind: 'hits', recipe: 'vanPass', variants: 3, rate: 0.07, minGap: 2.5, sweep: true, mech: true,
-      gain: 0.18, level: { add: [['app:van', 1]] } },
+      gain: 0.18, level: { add: [['app:van', 1], ['exempt:vans', 0.6]], max: 1 } },   // M5: more vans while light trucks are exempt
     { id: 'jet', kind: 'hits', recipe: 'jet', rate: 1 / 40, minGap: 20, pan: [-0.3, 0.3],
       gain: 0.2, level: { add: [['app:plane', 1]] }, send: 0.3 },
     { id: 'mall', kind: 'hits', recipe: 'chime', rate: 1 / 50, minGap: 25, pan: [0.4, 0.6], lp: 3500,
@@ -411,6 +413,74 @@ const fishing: SoundscapeDef = {
 };
 
 /* ------------------------------------------------------------------ */
+/* M5 Plenty: the farmland from a low hill                              */
+/* ------------------------------------------------------------------ */
+// G ionian (+F♯: Motion's and Compute's note set). Wind over the fields and through the wheat, skylarks while the air is
+// clear. The machines by stage: a team at the plough, then the tractor, then the centre pivot's hiss, then drip lines.
+// The pump is the aquifer's clock: its thud slows and drops as the water table (the reserve) falls. The pivot's spray
+// follows the return share (the water that soaks back): with drip it thins to a ticking of drops — less water seen,
+// more water gone. At high pressure (the nitrate) the wind turns to dust.
+const plenty: SoundscapeDef = {
+  id: 'plenty', key: KEYS.plenty, tempo: [52, 80], air: { bright: 8500, reverb: 0.25 }, palette: 'chrome',
+  layers: [
+    { id: 'wind', kind: 'bed', src: 'pink', filter: ['bandpass', 560, 0.7], lfo: { rate: 0.05, depth: 0.5, to: 'filter' }, stereo: true,
+      gain: 0.12, level: { add: [one(0.55), ['empty', 0.45]] }, send: 0.1 },
+    // Wind in the wheat: a dry rustle in gusts, as the fields fill.
+    { id: 'wheat', kind: 'bed', src: 'pink', filter: ['bandpass', 1900, 0.9], lfo: { rate: 0.11, depth: 0.7, to: 'gain' }, stereo: true,
+      gain: 0.05, level: { add: [one(0.3), ['app:wheat', 0.5], ['built', 0.4]], mul: [['inv:stress', 0.6]] }, send: 0.1 },
+    { id: 'larks', kind: 'hits', recipe: 'bird', variants: 6, rate: 0.4, minGap: 0.8, pan: [-0.8, 0.8], lp: 5000,
+      gain: 0.08, level: { add: [['empty', 0.5], one(0.3), ['steady', 0.7]], mul: [['inv:haze', 1]], max: 1 }, send: 0.35 },
+    // The machines, one per stage: a team at the plough, the tractor (from 1), the centre pivot (2), drip lines (3).
+    { id: 'team', kind: 'hits', recipe: 'plough', variants: 3, rate: 1 / 9, minGap: 4, stages: [0], pan: [-0.6, 0.2], lp: 3500,
+      gain: 0.14, level: { add: [['step0.005:built', 0.5], ['built', 0.8]], max: 1 }, send: 0.3 },
+    { id: 'tractor', kind: 'hits', recipe: 'trawler', variants: 3, grid: { every: 0.5, pattern: [1, 0.6] }, stages: [1, 2, 3], mech: true, pan: [-0.5, -0.1], lp: 1700,
+      pitch: ['one', 1.3, 1.3], gain: 0.12, level: { add: [['step0.005:built', 0.4], ['built', 0.7]], max: 1 }, send: 0.25 },
+    { id: 'pivot', kind: 'bed', src: 'white', filter: ['bandpass', 2300, 0.8], lfo: { rate: 0.04, depth: 0.5, to: 'gain' }, stages: [2, 3], pan: 0.3,
+      gain: 0.045, level: { add: [['built', 0.9], ['pace', 0.2]], mul: [['spray', 1]] }, send: 0.15 },
+    { id: 'drips', kind: 'hits', recipe: 'drip', variants: 5, rate: 1.5, minGap: 0.06, stages: [3], pan: [-0.8, 0.8], lp: 4000,
+      gain: 0.05, level: { add: [['built', 1]], mul: [['inv:spray', 0.7]] }, send: 0.2 },
+    // The pump: the aquifer's clock. Every other beat while the water table is high; every bar below 55% of the reserve;
+    // every other bar below 20%; and lower as it goes down.
+    { id: 'pump', kind: 'hits', recipe: 'pumpThud', variants: 2, grid: { every: 2, by: ['reserve', 3.64, -0.41] }, mech: true, pan: [0.15, 0.35], lp: 2500,
+      pitch: ['reserve', 0.78, 1], gain: 0.22, level: { add: [['step0.005:built', 0.45], ['built', 0.8]], max: 1 }, density: { add: [one(1)] }, send: 0.3 },
+    // M5: Pryce's unlicensed borehole (the loophole in use): a second, quicker pump off to the right, unmetered.
+    { id: 'borehole', kind: 'hits', recipe: 'pumpThud', variants: 2, grid: { every: 1 }, mech: true, pan: [0.6, 0.75], lp: 2000,
+      pitch: ['reserve', 0.85, 1.12], gain: 0.13, level: { add: [['exempt:borehole', 1]] }, density: { add: [one(1)] }, send: 0.35 },
+    { id: 'grain', kind: 'hits', recipe: 'trainPass', rate: 1 / 45, minGap: 20, sweep: true, mech: true, lp: 1500,
+      gain: 0.14, level: { add: [['app:wheat', 0.5], ['app:sack', 0.4]], max: 1 }, send: 0.35 },
+    { id: 'freight', kind: 'hits', recipe: 'jet', rate: 1 / 40, minGap: 20, pan: [-0.3, 0.3], lp: 1800,
+      gain: 0.1, level: { add: [['app:plane', 1]] }, send: 0.4 },
+    { id: 'town', kind: 'bed', src: 'brown', filter: ['bandpass', 380, 0.8], stereo: true,
+      gain: 0.1, level: { add: [['pop', 0.8], ['built', 0.2]] } },
+    // The Dust Bowl: at high pressure the wind lifts the topsoil.
+    { id: 'dust', kind: 'bed', src: 'white', filter: ['bandpass', 1100, 0.6], lfo: { rate: 0.09, depth: 0.6, to: 'gain' }, stereo: true,
+      gain: 0.06, level: { add: [['stress', 1], ['haze', 0.25]], pow: 1.6 }, send: 0.2 },
+  ],
+  crisis: { recipe: 'churchBell', gain: 0.2 },
+  trace: ['pump'], traceGain: 0.6,
+};
+
+/* ------------------------------------------------------------------ */
+/* M5: the Ministry room (under every Industry while in office)         */
+/* ------------------------------------------------------------------ */
+// Not an Industry: the engine builds it once, beside whichever Industry is showing (no crossfade on a tab switch), from
+// the mix's `room` and `curtains`. The clock on the mantelpiece, close and dry, tick and tock once a second; the traffic
+// outside, through the glass (the engine's own low-pass, lower with the curtains drawn), and now and then a car.
+export const MINISTRY_ROOM: SoundscapeDef = {
+  id: 'ministry', key: KEYS.generic, tempo: [60, 60.001], air: { bright: 12000, reverb: 0.1 }, palette: 'chrome',
+  layers: [
+    { id: 'clock', kind: 'hits', recipe: 'watchTick', variants: 2, grid: { every: 1 }, pitch: ['one', 0.42, 0.42], pan: [0.35, 0.35], lp: 3200,
+      gain: 0.06, level: { add: [one(1)] }, density: { add: [one(1)] }, send: 0.2 },
+    { id: 'traffic', kind: 'bed', src: 'brown', filter: ['lowpass', 420, 0.6], lfo: { rate: 0.045, depth: 0.45, to: 'gain' }, stereo: true,
+      gain: 0.1, level: { add: [one(1)] }, send: 0.05 },
+    { id: 'cars', kind: 'hits', recipe: 'carPass', variants: 5, rate: 1 / 9, minGap: 4, sweep: true,
+      gain: 0.16, level: { add: [one(1)] }, send: 0.05 },
+  ],
+  crisis: { recipe: 'churchBell', gain: 0.01 },
+  trace: [],
+};
+
+/* ------------------------------------------------------------------ */
 /* Generic: any Industry without its own                               */
 /* ------------------------------------------------------------------ */
 const generic: SoundscapeDef = {
@@ -433,7 +503,7 @@ const generic: SoundscapeDef = {
   trace: ['works'],
 };
 
-export const SOUNDSCAPES: Record<string, SoundscapeDef> = { steam, light, iron, fishing, motion, compute, code, generic };
+export const SOUNDSCAPES: Record<string, SoundscapeDef> = { steam, light, iron, fishing, motion, plenty, compute, code, generic };
 
 /** Register (or replace) the soundscape for a sector id. */
 export function registerSoundscape(sectorId: string, def: SoundscapeDef): void { SOUNDSCAPES[sectorId] = def; }

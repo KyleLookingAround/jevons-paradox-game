@@ -18,7 +18,8 @@ import { figureArt } from './props/figures';
 import { sceneCss } from './css';
 
 export type SpotKind = 'scaffold' | 'stakes' | 'sunrise' | 'fog' | 'ruin' | 'chimneys' | 'pamphlet' | 'sign' | 'clear' | 'seam' | 'bite' | 'letter'
-  /* M4 */ | 'banks' | 'survey' | 'sails' | 'gulls' | 'cartouche';
+  /* M4 */ | 'banks' | 'survey' | 'sails' | 'gulls' | 'cartouche'
+  /* M5 */ | 'window' | 'hoarding' | 'inspector' | 'ballot' | 'court';
 
 /** Every HeadlineKey of the contract (M1–M3) → its spot. The coverage test checks this list against types.ts. */
 export const SPOT_OF: Record<string, SpotKind> = {
@@ -34,6 +35,11 @@ export const SPOT_OF: Record<string, SpotKind> = {
   seamSunk: 'seam', biteBack: 'bite', dispatch: 'letter', answered: 'letter',
   // M4
   threshold: 'banks', surveyed: 'survey', foreignFleets: 'sails', scarHealed: 'gulls', arrears: 'chimneys', actEnding: 'cartouche', achievement: 'survey', // M4 polish: the spring surveys
+  // M5: the valley from the Ministry window; Pryce's hoardings; the Inspector; the poll; the court.
+  officeTaken: 'window', ministryDefeated: 'window', treaty: 'window', articleBought: 'cartouche', compensated: 'letter',
+  acquisition: 'hoarding', rivalAnswered: 'hoarding', carveOut: 'hoarding', playbookLearnt: 'hoarding', loopholeOpened: 'bite', loopholeUsed: 'bite',
+  loopholeClosed: 'sign', leverRepealed: 'sign', inspected: 'inspector', inspectedClean: 'inspector', concealmentFound: 'inspector',
+  electionCalled: 'ballot', electionWon: 'ballot', electionLost: 'ballot', litigated: 'court',
 };
 
 /** Each look's own props for the spots' parts (lookup falls back like the scene's). */
@@ -130,6 +136,28 @@ export function spot(key: string, look: string, o: SpotOptions = {}): string {
       else body = `<g class="sunf"><circle cx="96" cy="16" r="7" class="k" style="fill:var(--s-sun)"/></g>` + sea + boat(40) + gull(30, 22) + gull(44, 16) + gull(56, 26) + gull(64, 14) + gull(78, 24) + chart + shoal(50, 68, 14);
       break;
     }
+    /* M5 */
+    case 'window':
+      // The valley through the Ministry's glazing bars, a sill along the bottom.
+      body = hill + ground + put(parts.house, 30, G, 0.5, 0.3) + put(parts.works, 80, G, 0.6, 0.6) +
+        P('M0 0H120V5H10V80H0Z', 'mt k') + P('M120 0V80H112V5Z', 'mt k') + R(0, 74, 120, 6, 'b2 k') + L(60, 5, 60, 74, 'mt k');
+      break;
+    case 'hoarding':
+      body = hill + ground + put(parts.house, 22, G, 0.5, 0.3) + put('hoarding.measure', 72, G, 1.5);
+      break;
+    case 'inspector': {
+      const fig = figureArt('inspector', st);
+      body = hill + ground + put(parts.works, 80, G, 0.7, 0.5) + (fig ? `<g transform="translate(36 ${G}) scale(1.6)">${fig.body}</g>` : '') +
+        (key === 'concealmentFound' ? `<g transform="rotate(-12 82 36)">${R(62, 28, 40, 14, 'k K', 'fill="none" style="stroke:#b8322a"')}<text x="82" y="38.5" text-anchor="middle" class="spt spc" style="fill:#b8322a">FOUND</text></g>` : '');
+      break;
+    }
+    case 'ballot':
+      body = R(0, G, 120, 80 - G, 'gd') + L(0, G, 120, G, 'k K') + R(40, 30, 40, 34, 'd k') + R(52, 30, 16, 2.4, 'b') +
+        `<g transform="rotate(-10 60 24)">${R(50, 12, 20, 16, 'b k')}${P('M53 18l4 4l8 -8', 'k K')}</g>` + put(parts.house, 100, G, 0.45, 0.5);
+      break;
+    case 'court':
+      body = hill + ground + put(parts.house, 26, G, 0.55, 0.4) + put(parts.sign, 76, G, 0.9, 0.5) + put('courtNotice', 78, G - 18, 1.6);
+      break;
     case 'cartouche':
       body = hill + ground + put(parts.house, 22, G, 0.5, 0.3) + put(parts.house, 100, G, 0.5, 0.7) +
         `<g transform="translate(60 34)">${P('M-34 -12Q-38 0 -34 12H34Q38 0 34 -12Z', 'b k K')}${P('M-30 -8Q-33 0 -30 8H30Q33 0 30 -8Z', 'k k2')}<text x="0" y="4" text-anchor="middle" class="spt spi spc">Settled</text></g>`;
@@ -144,4 +172,4 @@ export function spot(key: string, look: string, o: SpotOptions = {}): string {
 }
 
 /** The spot kinds, for a gallery or a test. */
-export const SPOT_KINDS: SpotKind[] = ['scaffold', 'stakes', 'sunrise', 'fog', 'ruin', 'chimneys', 'pamphlet', 'sign', 'clear', 'seam', 'bite', 'letter', 'banks', 'survey', 'sails', 'gulls', 'cartouche'];
+export const SPOT_KINDS: SpotKind[] = ['scaffold', 'stakes', 'sunrise', 'fog', 'ruin', 'chimneys', 'pamphlet', 'sign', 'clear', 'seam', 'bite', 'letter', 'banks', 'survey', 'sails', 'gulls', 'cartouche', 'window', 'hoarding', 'inspector', 'ballot', 'court'];

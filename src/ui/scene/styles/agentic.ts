@@ -1,7 +1,8 @@
 // Agentic (v1 Code look, kept for generic scenes under the pale page look): crisp 2020s diagram.
+// M5: its prop library (props/agentic.ts) is no longer shipped: no layout draws in this style (Code is `cyberpunk`, whose
+// library covers every key Code uses), and a generic scene under this look falls back to the shared props. ~2.5 KB gz.
 import type { ArtStyle } from '../style';
 import { lineHatch, glowDefs } from '../style';
-import { AGENTIC } from '../props/agentic';
 
 export const agentic: ArtStyle = {
   id: 'agentic',
@@ -35,5 +36,5 @@ export const agentic: ArtStyle = {
 
 .scn[data-look=agentic] .scn-stage{border-radius:6px}`,
   defs: (p) => ([[0, 3], [1, 4], [2, 5], [3, 6.5]] as const).map(([i, sp]) => lineHatch(p, `h${i}`, sp, sp * 0.14, 45, 0.28) + lineHatch(p, `x${i}`, sp * 0.7, sp * 0.16, 45, 0.4)).join('') + glowDefs(p),
-  props: AGENTIC,
+  props: {},
 };

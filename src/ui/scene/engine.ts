@@ -18,6 +18,8 @@ import type { ArtStyle } from './style';
 import { scaffold, survey } from './props/common';
 import { MomentDesk, type Moment } from './moments';
 import { figureArt } from './props/figures';
+import { frameMarkup, THAW_STEPS, THAW_MS } from './frame/ministry';
+import { hoardingKey } from './props/pryce';
 
 const NS = 'http://www.w3.org/2000/svg';
 const VB = '0 0 600 400';
@@ -84,6 +86,8 @@ interface Built {
     /** Light's clock: the hand's animation (its time is the hour), the scale on lit things at that hour, the hour shown. */
     hand: Animation | null; hourK: number; hour: number;
   };
+  /** M5: last applied lobbied / litigated lever kinds and exempt props. */
+  m5: { lob: string; lit: string; ex: string };
 }
 
 const num0 = (v: number): string => {
@@ -167,7 +171,11 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
   const prevMark = div('scn-prev');
   prevMark.setAttribute('aria-hidden', 'true');
   prevMark.textContent = 'Preview';
-  stage.append(banner, toast, emblem, prevMark, ring);
+  // M5: the Ministry window (shown by the root classes `ministry` / `opposition`), over the worlds, under the lettering.
+  const frame = div('scn-frm');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.innerHTML = frameMarkup(id + 'f');
+  stage.append(frame, banner, toast, emblem, prevMark, ring);
   const summary = document.createElement('p');
   summary.className = 'vh-scn';
   summary.id = id + 'sum';
@@ -393,7 +401,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return [view.sectorId, view.look, clamp(Math.round(view.stage), 0, 3), view.apps.map((a) => a.id + '/' + a.icon).join(','),
       view.levers.map((x) => x.kind).filter((k) => !l.restraint[k]).sort().join(','),
       Object.entries(view.heritage ?? {}).map(([k, x]) => k + Math.round(x * 3)).join(','),
-      (view.commons ?? []).map((c) => `${c.id}/${c.icon}/${Math.min(3, c.level)}`).join(','), view.landmark ?? '', m3Key(view)].join('|');
+      (view.commons ?? []).map((c) => `${c.id}/${c.icon}/${Math.min(3, c.level)}`).join(','), view.landmark ?? '', m3Key(view)].join('|') + m5Key(view);
   }
 
   function build(v: SceneView, key: string): Built {
@@ -524,6 +532,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     const rkinds = Object.keys(l.restraint);
     const extra = v.levers.map((x) => x.kind).filter((k) => !l.restraint[k]);
     const spareR = l.restraintSpare ?? [];
+    const m5Kinds = new Set<string>(), inForce5 = new Set(v.levers.map((x) => x.kind));
     [...rkinds, ...extra].forEach((k, i) => {
       const sl = l.restraint[k] ?? (spareR[(i - rkinds.length) % Math.max(1, spareR.length)] ? { ...spareR[(i - rkinds.length) % spareR.length], p: 'notice' } : null);
       if (!sl) return;
@@ -531,7 +540,25 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       it.ord = uid++;
       items.push(it);
       spots.set('lever:' + k, spotOf(sl));
+      // M5 (in a Ministry only): Pryce's hoarding beside the sign while he lobbies, a court notice on it while litigated
+      // (once per kind: two levers of one kind share a sign).
+      if (v.chair && !m5Kinds.has(k) && inForce5.has(k)) {
+        m5Kinds.add(k);
+        const s0 = sl.s ?? depthScale(l, sl.y) * (sl.k ?? 1);
+        const h = renderSlot(l, look, { ...sl, x: sl.x + 34 * s0, y: sl.y + 0.2, flip: false }, `h:${k}`, 'rst', stageN, `${l.id}:h:${k}`, false, hoardingKey(k));
+        h.ord = uid++; items.push(h);
+        const n = renderSlot(l, look, { ...sl, x: sl.x + 4 * s0, y: sl.y - 14 * s0 + 0.3, flip: false }, `n:${k}`, 'rst', stageN, `${l.id}:n:${k}`, false, 'courtNotice');
+        n.y = sl.y + 0.3; n.ord = uid++; items.push(n);
+      }
     });
+    // M5: Pryce's bunting on a capstoned Industry he runs: across the first landmark (or the middle of the land).
+    if (v.capstoned && v.rival) {
+      const a0 = l.plots.find((p) => (p.driver ?? 'app') === 'app' && p.anchor && !p.anchor.w)?.anchor;
+      const s0 = a0 ? (a0.s ?? depthScale(l, a0.y)) : 1;
+      const bsl: Slot = a0 ? { p: 'bunting', x: a0.x, y: a0.y - 44 * s0, s: s0, w: 90, band: a0.band ?? bandOf(l, a0.y) } : { p: 'bunting', x: 300, y: 200, s: 1, w: 120 };
+      const it = renderSlot(l, look, bsl, 'bunt', 'rst on', stageN, `${l.id}:bunt`);
+      it.y = (a0?.y ?? 200) + 0.4; it.ord = uid++; items.push(it);
+    }
 
     // The Commons: the founded projects of this Industry, each on a civic site of the town (Layout.commons, else
     // sites taken from the town's own house plots), drawn by icon (unknown icons: a civic hall). Levels add detail.
@@ -647,6 +674,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       prevPace: -1, leverKey: '\u0000', smokeDirty: true, prevSteadyOn: null, moversDirty: true, lastSig: '', stageN, used: 0, vars: new Map(), scafs: 0,
       hy: new Map(),
       m3: { seams: '', free: '', bites: '', slow: -1, overlay: '', hand: null, hourK: 1, hour: -1 },
+      m5: { lob: '', lit: '', ex: '' },
     };
     for (const p of plots) {
       p.movers = p.mkeys.map((k) => (elsByKey.get(k) ?? [])[0]).filter(Boolean);
@@ -695,8 +723,8 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     // Only the active world is in the document. Kept worlds wait detached (M4 perf pass: seven kept worlds in the
     // document were ~10,000 undisplayed nodes the page's DOM and style bookkeeping carried for nothing); putting one back
     // costs what showing an undisplayed one did (its styles are computed either way), so a revisit stays a re-attach.
-    if (nb.el.world.parentNode !== stage) stage.insertBefore(nb.el.world, banner);
-    if (nb.el.places.parentNode !== stage) stage.insertBefore(nb.el.places, banner);
+    if (nb.el.world.parentNode !== stage) stage.insertBefore(nb.el.world, frame);
+    if (nb.el.places.parentNode !== stage) stage.insertBefore(nb.el.places, frame);
     for (const w of Array.from(stage.children)) {
       if (!w.classList.contains('scn-world') && !w.classList.contains('scn-places')) continue;
       const act = w === nb.el.world || w === nb.el.places;
@@ -824,6 +852,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       case 'surveyed': return v.stock?.surveyed ? 1 : 0;
       case 'scar': return v.stock?.scar ? 1 : 0;
       case 'crises': return p.keys.length ? clamp(v.crises / p.keys.length, 0, 1) : 0;
+      /* M5 */
+      case 'exempt': return (p.def.match ?? []).some((k) => v.exempt?.includes(k)) ? 1 : 0;
+      case 'returnFlow': return v.water ? clamp(v.water.returnShare / 0.5, 0, 1) : 1;
+      case 'consumedFlow': return v.water ? clamp(0.3 + (0.5 - v.water.returnShare) * 1.67, 0.3, 1) : 0.3;
       default: return 0;
     }
   }
@@ -923,6 +955,9 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     if (emblem.classList.contains('cart') !== !!v.capstoned) emblem.classList.toggle('cart', !!v.capstoned);
     if (prevMark.classList.contains('on') !== !!v.preview) prevMark.classList.toggle('on', !!v.preview);
     if (root.classList.contains('arrears') !== !!v.capstoned?.arrears) root.classList.toggle('arrears', !!v.capstoned?.arrears);
+    // M5: the Ministry window, and its curtains in Opposition.
+    if (root.classList.contains('ministry') !== !!v.chair) root.classList.toggle('ministry', !!v.chair);
+    if (root.classList.contains('opposition') !== !!v.chair?.opposition) root.classList.toggle('opposition', !!v.chair?.opposition);
 
     // Refresh each plot's application from this view (plots are built once; the data moves every tick).
     const byId = new Map(v.apps.map((a) => [a.id, a]));
@@ -939,11 +974,12 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         if (p.status !== st) {
           p.status = st;
           setOn(`${p.idx}:a`, st === 'founded');
-          if (p.ghost) { p.ghost.classList.toggle('on', st !== 'founded'); p.ghost.classList.toggle('avail', st === 'available'); }
-          p.svy?.classList.toggle('on', st === 'available');
+          if (p.ghost) { p.ghost.classList.toggle('on', st !== 'founded' && !p.def.noGhost); p.ghost.classList.toggle('avail', st === 'available'); }
+          p.svy?.classList.toggle('on', st === 'available' && !v.rival);
         }
         if (p.btn) {
-          p.btn.classList.toggle('avail', st === 'available');
+          p.btn.classList.toggle('avail', st === 'available' && !v.rival);
+          if (p.def.noGhost) p.btn.hidden = st === 'hidden';
           const lbl = placeLabel(p.app, v);
           if (p.btn.getAttribute('aria-label') !== lbl) p.btn.setAttribute('aria-label', lbl);
         }
@@ -1022,6 +1058,16 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
       const kinds = Object.keys(b.layout.bite ?? {});
       const shown = new Set(bit.map((k) => (kinds.includes(k) ? k : '*')));
       for (const k of kinds) setOn(`b:${k}`, shown.has(k));
+    }
+    // M5: Pryce's answers by the signs (a hoarding while he lobbies, a court notice while a raise is in court).
+    if (v.chair) {
+      const lob = v.levers.filter((x) => x.lobbied).map((x) => x.kind).sort().join(',');
+      const lit = v.levers.filter((x) => x.litigated).map((x) => x.kind).sort().join(',');
+      if (lob !== b.m5.lob || lit !== b.m5.lit) {
+        b.m5.lob = lob; b.m5.lit = lit;
+        const L1 = new Set(lob.split(',')), L2 = new Set(lit.split(','));
+        b.restraintEls.forEach((_, k) => { setOn(`h:${k}`, L1.has(k)); setOn(`n:${k}`, L2.has(k)); });
+      }
     }
     // M3: the sprites over the drawing (Light's day clock, the cast).
     patchOverlay(b, v);
@@ -1154,6 +1200,13 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         if (!still) { emblem.classList.remove('stamp'); void emblem.offsetWidth; emblem.classList.add('stamp'); later(() => emblem.classList.remove('stamp'), 1600); }
         break;
       case 'arrears': flashCls('fl-backfire', 5000); showToast('In arrears'); break;
+      /* M5 */
+      case 'inspected': case 'found5': playInspection(b, m, still); break;
+      case 'litigated': {
+        const kind = v.levers.find((x) => x.id === m.id)?.kind ?? '';
+        pulse(b.elsByKey.get(`n:${kind}`) ?? [], 'raise', 1800);
+        break;
+      }
       case 'ending': {
         // The sky clears completely (the fresh sky, held for a while) and a paper boy runs along the front with it.
         flashCls('fl-clear', 3200);
@@ -1169,6 +1222,28 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
         break;
       }
     }
+  }
+  /** M5: an Inspector walks in from the left edge to the first founded landmark, stands, and walks back (a composited
+   *  sprite, about six seconds); concealment found: a red stamp at that landmark. Reduced motion: the stamp only. */
+  function playInspection(b: Built, m: Moment, still: boolean): void {
+    const p = b.plots.find((q) => q.app && q.app.status === 'founded' && q.def.anchor) ?? b.plots.find((q) => q.app && q.def.anchor);
+    const a = p?.def.anchor;
+    const x = a ? Math.max(30, Math.min(570, a.x + (a.w ? a.w / 2 : 0))) : 300;
+    const y = b.layout.figures?.[0]?.y ?? (a ? Math.min(392, a.y + 6) : 360);
+    if (m.kind === 'found5') {
+      const sy = a ? a.y - 30 * (a.s ?? depthScale(b.layout, a.y)) : 200;
+      momentSprite(b, `<div class="fx on stmp" style="left:${f(x)}px;top:${f(sy)}px"><b>Found</b></div>`, 4200);
+      showToast('Concealment found');
+      return;
+    }
+    if (still) return;
+    const art = figureArt('inspector', b.look);
+    if (!art) return;
+    const el = momentSprite(b, `<div class="fx on fig fg-inspector" style="left:-20px;top:${f(y)}px">${spr(`<g transform="scale(1.4)">${art.body}</g>`)}</div>`, 6400);
+    if (el && typeof el.animate === 'function') {
+      try { el.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${f(x + 20)}px)`, offset: 0.42 }, { transform: `translateX(${f(x + 20)}px)`, offset: 0.58 }, { transform: 'translateX(0)' }], { duration: 6200, easing: 'ease-in-out', fill: 'forwards' }); } catch { /* ignore */ }
+    }
+    showToast('An Inspector calls');
   }
   /** M4: play the sea's moments (the survey vessel putting out, the chart draining, the gulls returning). */
   function playSea(b: Built, m: Moment, v: SceneView, still: boolean): void {
@@ -1317,6 +1392,10 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     selN.textContent = a.status === 'hidden' ? 'An empty plot' : a.name;
     if (a.status === 'founded') {
       selM.innerHTML = `<span>${esc(numf(a.demand))} ${esc(v.serviceUnit)}/s</span><span class="scn-bar" aria-hidden="true"><i style="width:${(a.adoption * 100).toFixed(1)}%"></i></span><span>${Math.round(a.adoption * 100)}% adopted</span>`;
+      selB.textContent = a.blurb; found.hidden = true;
+    } else if (a.status === 'available' && v.rival) {
+      // M5: Pryce runs it; the Ministry founds nothing.
+      selM.textContent = 'Pryce has his eye on it.';
       selB.textContent = a.blurb; found.hidden = true;
     } else if (a.status === 'available') {
       selM.textContent = 'Surveyed and staked out.';
@@ -1538,8 +1617,24 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     return serialise(root, B.el, B.look, o);
   }
 
+  /** M5: Take office's thaw: the frame enters by a transform on its wrapper and the picture inside it goes from grey to
+   *  colour in four steps on timers (a filter on the active world, an HTML element; never inside the SVG bands). */
+  function thaw(): void {
+    const w = B?.el.world;
+    if (rm()) { if (w) w.style.filter = ''; return; }
+    root.classList.add('ministry'); // the next update keeps it (office is taken)
+    frame.classList.remove('in'); frame.classList.add('enter');
+    void frame.offsetWidth;
+    later(() => { frame.classList.add('in'); frame.classList.remove('enter'); }, 30);
+    later(() => frame.classList.remove('in'), 1500);
+    THAW_STEPS.forEach((g, i) => later(() => { const el = B?.el.world; if (el) el.style.filter = g ? `grayscale(${g})` : ''; }, i * THAW_MS));
+  }
+  const onOffice = (ev: Event) => { if ((ev as CustomEvent).detail === 'thaw') thaw(); };
+  document.addEventListener('rebound:office', onOffice);
+
   function destroy(): void {
     destroyed = true;
+    document.removeEventListener('rebound:office', onOffice);
     stopReplay();
     io?.disconnect(); ro?.disconnect();
     cache.forEach(discard); cache.clear();
@@ -1566,6 +1661,7 @@ export function createScene(host: HTMLElement, opts: SceneOptions = {}): SceneHa
     toSVG,
     describe: () => summaryText,
     destroy,
+    thaw,
   };
   return handle;
 }
@@ -1794,6 +1890,11 @@ function m3Key(v: SceneView): string {
 }
 
 /** M3 fields, cleaned (each stays absent when absent or malformed). */
+/** M5: what of the M5 view changes the built picture (a Ministry's hoardings and notices; Pryce's bunting). */
+function m5Key(v: SceneView): string {
+  // In a Ministry the hoardings and notices are built for the lever kinds in force only (a new kind rebuilds, once).
+  return (v.chair ? '|M' + [...new Set(v.levers.map((x) => x.kind))].sort().join(',') : '') + (v.capstoned && v.rival ? 'B' : '');
+}
 function normaliseM3(v: SceneView): Partial<SceneView> {
   const n = (x: unknown, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
   const o: Partial<SceneView> = { seams: undefined, load: undefined, travel: undefined, free: undefined, figures: undefined, watch: undefined };
@@ -1931,7 +2032,7 @@ function caption(v: SceneView): string {
   else if (v.clear) parts.push('clear skies');
   else if (v.decoupling) parts.push('holding the line');
   let s = parts.join(' · ') + '.';
-  if (avail) s += ' A site is staked out: tap it.';
+  if (avail && !v.rival) s += ' A site is staked out: tap it.';
   else if (founded === 0) s += ' Empty country.';
   return s;
 }

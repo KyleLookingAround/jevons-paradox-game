@@ -5,13 +5,15 @@ import { ledger } from './ledger';
 import { gaslight } from './gaslight';
 import { chrome } from './chrome';
 import { terminal } from './terminal';
-import { agentic } from './agentic';
 import { cyberpunk } from './cyberpunk';
 import { generic } from './generic';
 import { foundry } from './foundry';
 import { harbour } from './harbour';
+import { seed } from './seed';
 
-const STYLES: Record<string, ArtStyle> = { ledger, gaslight, chrome, terminal, agentic, cyberpunk, generic, foundry, harbour };
+// M5: `agentic` (the v1 Code look, styles/agentic.ts) is no longer registered: no layout draws in it (Code is `cyberpunk`),
+// and a generic scene under that page look takes the `generic` style. Saved ~2.4 KB gz with its props for Plenty.
+const STYLES: Record<string, ArtStyle> = { ledger, gaslight, chrome, terminal, cyberpunk, generic, foundry, harbour, seed };
 
 export function registerStyle(style: ArtStyle): void {
   const old = STYLES[style.id];

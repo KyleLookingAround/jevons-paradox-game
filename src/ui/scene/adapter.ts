@@ -189,7 +189,52 @@ export function sceneViewFrom(content: Content, state: GameState, derived: Deriv
     events: sceneEvents(events, sectorId),
     ...m3.fields,
     ...m4Fields(content, state, derived, sectorId),
+    ...m5Fields(content, state, derived, sectorId, levers),
   };
+}
+
+/**
+ * M5: the optional fields of one Industry's view (chair, rival, exempt, water, sealed; lever flags lobbied, litigated,
+ * carvedOut). Each is left out outside a Ministry or while the core reports nothing, so an M4 host draws the M4 picture.
+ */
+function m5Fields(content: Content, state: GameState, derived: Derived | null | undefined, sectorId: string, levers: SceneLever[]): Partial<SceneView> {
+  const out: Partial<SceneView> = {};
+  type SD5 = Partial<{ rival: boolean; water: { applied?: number; consumed?: number; returnShare?: number } | null }>;
+  const sd = derived?.sectors?.[sectorId] as SD5 | undefined;
+  const dchair = (derived as { chair?: { inOpposition?: boolean } | null } | null | undefined)?.chair;
+  if (dchair && typeof dchair === 'object') out.chair = { opposition: !!dchair.inOpposition };
+  if (sd?.rival === true) out.rival = true;
+  const w = sd?.water;
+  if (w && typeof w === 'object') {
+    const sig = (x: number) => (x > 0 ? Number(x.toPrecision(3)) : 0);
+    out.water = { applied: sig(n(w.applied)), consumed: sig(n(w.consumed)), returnShare: Math.round(clamp(n(w.returnShare), 0, 1) * 100) / 100 };
+  }
+  const sealed = (derived as { office?: { sealed?: unknown } } | null | undefined)?.office?.sealed;
+  if (Array.isArray(sealed) && sealed.includes(sectorId)) out.sealed = true;
+  // In a Ministry only: the rival's answers in the landscape, and the exempt things of the rungs he uses.
+  const ch = (state as { chair?: { parliament?: { index?: number }; carveOuts?: Record<string, number>; litigation?: Record<string, { until?: number }>;
+    loopholes?: Record<string, { status?: string; before?: string }>; rival?: { lobbying?: Record<string, boolean> } } | null } | undefined)?.chair;
+  if (!dchair || !ch || typeof ch !== 'object') return out;
+  const t = n(state?.time);
+  for (const l of levers) {
+    if (ch.rival?.lobbying?.[l.id] === true) l.lobbied = true;
+    const lit = ch.litigation?.[l.id];
+    if (lit && n(lit.until) > t) l.litigated = true;
+    const co = ch.carveOuts?.[l.id];
+    if (typeof co === 'number' && co === n(ch.parliament?.index, -1)) l.carvedOut = true;
+  }
+  if (featureOn(derived, 'loopholes')) {
+    const ex: string[] = [];
+    const lsec = new Map<string, string>();
+    for (const l of Array.isArray(content?.levers) ? content.levers : []) if (l) lsec.set(l.id, String((l as { sector?: string }).sector ?? ''));
+    for (const r of Array.isArray((content as { loopholes?: unknown[] })?.loopholes) ? (content as { loopholes: { id: string; lever: string; prop?: string }[] }).loopholes : []) {
+      if (!r || !r.prop || lsec.get(r.lever) !== sectorId) continue;
+      const st = ch.loopholes?.[r.id];
+      if (st && (st.status === 'used' || (st.status === 'drafting' && st.before === 'used')) && !ex.includes(r.prop)) ex.push(String(r.prop));
+    }
+    if (ex.length) out.exempt = ex;
+  }
+  return out;
 }
 
 /**

@@ -14,9 +14,13 @@ import { render, layOut, settle, cut, needed, contentGate, PREROLL_S, SEARCH_S, 
 import { trimOneShot, normalise, peakOf, rmsOf, type Voice } from './loop';
 
 export const ROOT = 'rebound-audio';
-export const EXPORT_INDUSTRIES = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute', 'code'];
-export const AGES: [string, string[]][] = [['The Coal Age', ['steam', 'light', 'iron', 'fishing']], ['The Great Acceleration', ['motion']], ['The Attention Age', ['compute', 'code']]];
-export const STATE_NAMES = [...PRESET_NAMES, 'clearing'] as const;
+export const EXPORT_INDUSTRIES = ['steam', 'light', 'iron', 'fishing', 'motion', 'plenty', 'compute', 'code'];
+export const AGES: [string, string[]][] = [['The Coal Age', ['steam', 'light', 'iron', 'fishing']], ['The Great Acceleration', ['motion', 'plenty']], ['The Attention Age', ['compute', 'code']]];
+export const STATE_NAMES = [...PRESET_NAMES, 'clearing', 'office', 'opposition'] as const;
+/** M5: the Ministry's states ('late' heard from the Ministry window; and with the curtains drawn), exported for the
+ *  Industries a Ministry runs. */
+export const MINISTRY_STATES: readonly string[] = ['office', 'opposition'];
+export const ACT_II = ['motion', 'plenty'];
 export type StateName = (typeof STATE_NAMES)[number];
 export const LENGTHS = [15, 30, 60, 120, 240];
 export const RUN_LENGTHS = [60, 180, 300];
@@ -43,7 +47,7 @@ export const seedOf = (take: number) => (take <= 1 ? 0x5eed : (0x5eed ^ Math.imu
 /** A state to export: an Industry and a view held still. */
 export interface Source { sector: string; state: string; view: SceneView }
 
-const EARLIER = ['steam', 'light', 'iron', 'fishing', 'motion', 'compute'];
+const EARLIER = ['steam', 'light', 'iron', 'fishing', 'motion', 'plenty', 'compute'];
 /** The demo's heritage for an Industry (earlier ones at 0.8), as its Industry menu sets it. */
 export function heritageFor(sector: string): Record<string, number> | undefined {
   if (sector === 'steam') return undefined;
@@ -52,7 +56,8 @@ export function heritageFor(sector: string): Record<string, number> | undefined 
 }
 /** A named state of an Industry as the demo plays it ('clearing': on the way to Steady State, levers in, haze lifting). */
 export function stateView(sector: string, state: StateName): SceneView {
-  const p = state === 'clearing' ? runParams(sector, 0.8, 'steady') : preset(sector, state as PresetName);
+  const p = state === 'clearing' ? runParams(sector, 0.8, 'steady')
+    : state === 'office' || state === 'opposition' ? { ...preset(sector, 'late'), office: state } : preset(sector, state as PresetName);
   const h = heritageFor(sector);
   return viewOf(sector, h ? { ...p, heritage: h } : p);
 }
@@ -195,7 +200,16 @@ export const ONESHOT_ABOUT: Record<string, string> = {
   'wager-won': 'a wager answered and won: a coin on the counter, then one note on the fifth', 'wager-lost': 'a wager answered and lost: the coin, then the note a fifth lower',
   actEnding: "an Act's ending (Act I): the first ending's shape, slower and lower (the sting alone; the bed is actEnding-credits)",
   'actEnding-credits': "an Act's credits bed alone: the held chord, its bells less often than the first ending's, for 110 s, then a 6 s fade",
-  arrears: 'a capstoned Industry falls into arrears: a muffled toll, twice', 'world-crisis': "the world's own crisis moment (a low fog swell and the Age's alarm), alone",
+  arrears: 'a capstoned Industry falls into arrears: a muffled toll, twice',
+  // M5
+  officeTaken: "Take office, the Gazette: a paper boy's two-note cry in the street below, twice, then the Ministry clock (ducks the world)",
+  electionCalled: 'polling day called: a murmur rises and settles', electionWon: 'an election won: the count bell, then a cheer and applause',
+  electionLost: 'an election lost: the count bell, lower, a murmur dying, a door closing', inspected: "an inspection: an Inspector's footsteps coming closer, then a stamp",
+  'inspected-found': 'an inspection that finds concealment: the footsteps and the stamp, then a second, heavier stamp',
+  concealmentFound: 'the second stamp alone', lobbied: 'Pryce lobbies against a lever: a hoarding pasted up (three wet brush strokes, the sheet slapped flat)',
+  litigated: 'Pryce litigates: one gavel', loopholeUsed: 'a loophole used: a side door (the latch, a creak, the latch)',
+  loopholeClosed: 'a loophole closed by amendment: a quill, then the blotter', treaty: 'the Treaty: a signature, the seal pressed, a slow cadence over a held chord (ducks the world)',
+  'world-crisis': "the world's own crisis moment (a low fog swell and the Age's alarm), alone",
 };
 
 export interface Shot { what: string; about: string; dur: number; events: [number, SoundEventKind, SoundEventDetail?][]; variant?: number; gate?: (s: string) => boolean; view?: (t: number) => SceneView | null; trim?: boolean }
@@ -231,6 +245,10 @@ function shotsAt0(sector: string): Shot[] {
   L.push({ what: 'actEnding', about: ONESHOT_ABOUT.actEnding, dur: 16, events: [[0, 'actEnding']], gate: (s) => s !== 'credits' });
   L.push({ what: 'actEnding-credits', about: ONESHOT_ABOUT['actEnding-credits'], dur: 122, events: [[0, 'actEnding']], gate: (s) => s === 'credits' });
   one('arrears', 8);
+  // M5: the Ministry
+  one('officeTaken', 6); one('electionCalled', 6); one('electionWon', 7); one('electionLost', 6); one('inspected', 5);
+  L.push({ what: 'inspected-found', about: ONESHOT_ABOUT['inspected-found'], dur: 6, events: [[0, 'inspected'], [0, 'concealmentFound']] });
+  one('concealmentFound', 3); one('lobbied', 4); one('litigated', 3); one('loopholeUsed', 4); one('loopholeClosed', 4); one('treaty', 9);
   const base = stateView(sector, 'late');
   L.push({ what: 'world-crisis', about: ONESHOT_ABOUT['world-crisis'], dur: 18, events: [], view: (t) => (t < 1 ? base : { ...base, crises: base.crises + 1 }), gate: (s) => s === 'crisis' });
   return L;
@@ -292,7 +310,7 @@ export type Kind = 'loop' | 'stems' | 'oneshots' | 'runs' | 'industry' | 'everyt
 export function tasksFor(kind: Kind, src: Source, s: Settings, ledger: Ledger, fallback: StateName = 'late'): Task[] {
   const industry = (sector: string, own: Source | null): Task[] => {
     const t: Task[] = [];
-    for (const st of STATE_NAMES) t.push(loopTask(own && own.state === st ? own : { sector, state: st, view: stateView(sector, st) }, s, ledger));
+    for (const st of STATE_NAMES) if (ACT_II.includes(sector) || !MINISTRY_STATES.includes(st)) t.push(loopTask(own && own.state === st ? own : { sector, state: st, view: stateView(sector, st) }, s, ledger));
     if (own && !(STATE_NAMES as readonly string[]).includes(own.state)) t.push(loopTask(own, s, ledger));
     t.push(stemsTask(own ?? { sector, state: fallback, view: stateView(sector, fallback) }, s, ledger));
     t.push(oneShotsTask(sector, s, ledger));

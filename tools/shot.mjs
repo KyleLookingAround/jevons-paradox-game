@@ -2185,13 +2185,51 @@ async function m5() {
       if (!(await page.evaluate(() => document.documentElement.hasAttribute('data-opposition')))) throw new Error('no Opposition mark');
       await shot(page, 'opposition', '.sill');
     });
-    await step(page, 'Plenty: two water gauges (if Plenty is registered)', async () => {
+    await step(page, 'Plenty in a Ministry: two gauges; the drip subsidy taken up, applied falls while consumed rises', async () => {
       const has = await page.evaluate(() => !!window.rebound.content.sectors.plenty);
-      if (!has) { console.log(`       ${T} Plenty not registered yet: skipped`); return; }
-      await make(() => { const R = window.rebound, C = R.content; const s = JSON.parse(JSON.stringify(R.state)); const d = C.sectors.plenty; s.sectors.plenty.open = true; s.sectors.plenty.reserve = s.sectors.plenty.reserve || d.reserve; s.sectors.plenty.reserveMax = s.sectors.plenty.reserveMax || d.reserve; s.sectors.plenty.eta = d.baseEta; for (const a of d.applications) if (a.visibleBelow === Infinity) s.sectors.plenty.apps[a.id] = { ...s.sectors.plenty.apps[a.id], available: true, founded: a.foundCost <= 0 }; R.ctx.replace(R.model.tick(s, C, 0.1)); R.ctx.selectSector('plenty'); });
+      if (!has) throw new Error('Plenty not registered');
+      // Ministry 3 as far as the page is concerned: Plenty open under Pryce (its own opening is minute 25 of Ministry 3;
+      // the state is made here so the step runs in seconds), Opposition over, Mandate to spend.
+      const before = await make(() => {
+        const R = window.rebound, C = R.content; let s = JSON.parse(JSON.stringify(R.state)); const d = C.sectors.plenty, st = s.sectors.plenty;
+        s.chair.inOpposition = false; s.chair.pledges = []; s.mandate = 1e6; s.meta.office.ministries = 3;
+        s.meta.features = s.meta.features || {}; for (const f of ['loopholes', 'inspection', 'treasury', 'statecraft']) s.meta.features[f] = s.meta.features[f] ?? 0;
+        st.open = true; s.meta.sectorsOpened.plenty = true; st.reserve = st.reserve || d.reserve; st.reserveMax = st.reserveMax || d.reserve; st.eta = st.eta || d.baseEta;
+        for (const a of d.applications) if (a.visibleBelow === Infinity) st.apps[a.id] = { ...st.apps[a.id], available: true, founded: (a.foundCost ?? 0) <= 0 };
+        for (let i = 0; i < 40; i++) s = R.model.tick(s, C, 0.5);
+        R.ctx.replace(s); R.ctx.selectSector('plenty');
+        return R.model.derive(s, C).sectors.plenty.water;
+      });
+      if (!before) throw new Error('no water figures');
       const w = await text(page, 'section.water');
       if (!/applied/i.test(w) || !/consumed/i.test(w)) throw new Error(`water: ${w}`);
-      await shot(page, 'plenty', 'section.water');
+      await shot(page, 'plenty');
+      await shot(page, 'plenty-gauges', 'section.water');
+      const after = await make(() => {
+        const R = window.rebound, C = R.content; let s = R.state;
+        for (let i = 0; i < 4; i++) { const t = R.model.setLever(s, C, 'plenty.dripSubsidy', (s.levers['plenty.dripSubsidy']?.level ?? 0) + 1); if (t !== s) s = t; }
+        // He buys drip when it pays back within his limit: the subsidy is what brings it there. Purse enough to buy.
+        s = JSON.parse(JSON.stringify(s)); s.chair.rival.capital += 5e6;
+        const w0 = R.model.derive(s, C).sectors.plenty.water;
+        for (let i = 0; i < 1600 && !(s.upgrades['plenty.drip'] > 0); i++) s = R.model.tick(s, C, 0.25);
+        // Measured 21 Nov: from this made state he never takes it up (nothing in Plenty pays back within his limit, subsidy
+        // or not: a balance finding, reported). For the picture, the drip chain is then given to him by hand, labelled.
+        let byHand = false;
+        if (!(s.upgrades['plenty.drip'] > 0)) {
+          byHand = true; s = JSON.parse(JSON.stringify(s));
+          for (const u of C.upgrades.filter((x) => x.sector === 'plenty' && x.kind === 'efficiency')) { s.upgrades[u.id] = 1; if (u.id === 'plenty.drip') break; }
+        }
+        for (let i = 0; i < 200; i++) s = R.model.tick(s, C, 0.5);
+        R.ctx.replace(s); R.ctx.selectSector('plenty');
+        return { w0, w1: R.model.derive(s, C).sectors.plenty.water, drip: s.upgrades['plenty.drip'] ?? 0, lever: s.levers['plenty.dripSubsidy']?.level ?? 0, byHand };
+      });
+      console.log(`       ${T} Plenty, drip subsidy level ${after.lever}, drip ${after.byHand ? 'given by hand (he did not buy it)' : 'bought by Pryce'}: applied ${Math.round(after.w0.applied)} → ${Math.round(after.w1.applied)}, consumed ${Math.round(after.w0.consumed)} → ${Math.round(after.w1.consumed)}, return ${after.w0.returnShare.toFixed(2)} → ${after.w1.returnShare.toFixed(2)}`);
+      await page.waitForTimeout(5500); // the widget's arrows compare with the figures five seconds ago
+      await shot(page, 'plenty-subsidy', 'section.water');
+      await page.locator('section.levers').scrollIntoViewIfNeeded(); await page.waitForTimeout(700);
+      await shot(page, 'plenty-levers', 'section.levers');
+      if (!/Written on water/.test(await text(page, '.lev-marks'))) throw new Error('no lever names its gauge');
+      await noOverflow(page, 'plenty');
     });
     if (errs.length) fail(`${T} console: ${errs.filter((e) => !/ERR_FAILED/.test(e)).slice(0, 4).join(' | ')}`);
     await ctx.close();
