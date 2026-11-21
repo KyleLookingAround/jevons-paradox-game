@@ -158,7 +158,7 @@ export function createState(content: Content, meta?: MetaState, seed?: number): 
   const chair = freshChair(content, m); // M5: a Ministry while office is taken
   // M5 (follow-up 2): a Ministry is built revealed. Whoever took office had the reveal long ago; the wipe (Institutions at
   // level 0, the reveal card's Industry capstoned) must not hide every lever of the Chair
-  if (chair) s = { ...s, chair, flags: { ...s.flags, revealed: true } };
+  if (chair) s = { ...s, chair, flags: { ...s.flags, revealed: true }, mandate: Math.max(0, fin(content.chair?.startMandate ?? 0)) }; // M5 (amend): ChairDef.startMandate
   // M5 (follow-up): ApplicationDef.when gates the uses of the sectors open at the start
   if (ix.whenApps) {
     const gated = { ...s.sectors };
@@ -204,7 +204,7 @@ export function withMeta(state: GameState, content: Content, meta: MetaState): G
   const before = createState(content, state.meta, state.seed);
   const fresh = createState(content, meta, state.seed);
   return {
-    ...fresh, capital: fresh.capital + Math.max(0, state.capital - before.capital), mandate: state.mandate,
+    ...fresh, capital: fresh.capital + Math.max(0, state.capital - before.capital), mandate: Math.max(state.mandate, fresh.mandate), // M5 (amend): a Ministry's opening grant survives takeOffice's rebuild
     run: { ...fresh.run, clicks: state.run.clicks }, news: state.news,
     events: state.events, charterOffer: state.charterOffer, lastOffline: state.lastOffline,
     ...(state.officeOffer ? { officeOffer: true } : {}), // M5: the invitation stands through a rebuild

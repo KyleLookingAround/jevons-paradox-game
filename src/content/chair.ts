@@ -44,6 +44,10 @@ export function officeDef(text: OfficeText): OfficeDef {
 export const POLLING_NODE = 'kh.sc.polling';
 
 export const chair: ChairDef = {
+  /* M5 balance (the owner's item 2): a Ministry opens with Mandate for its first rule. Income in Ministry 1 is about 1.7
+   * a second against first-level lever costs of 200 to 280, so without a grant the first rule waited 130 to 170 s; 200
+   * puts walking distance (200) in reach at once and every first level (220 to 280) within the first half minute. */
+  startMandate: 200,
   confidence: {
     /* The design's figures (§3.1, §6.4): a new Ministry starts a little above the line, so the caretaker Parliament's
      * first poll is winnable by doing nothing and lost by doing everything at once. */

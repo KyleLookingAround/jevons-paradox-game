@@ -47,10 +47,14 @@ const path = require('node:path');
   await page.click('#on');
   await page.evaluate(() => window.stall.start('steam'));
   await page.waitForTimeout(20000);
-  for (const s of ['light', 'iron', 'fishing', 'motion', 'compute']) { await mark(`switch ${s}`); await page.evaluate((x) => window.stall.switchTo(x), s); await page.waitForTimeout(15000); }
+  for (const s of ['light', 'iron', 'fishing', 'motion', 'plenty', 'compute']) { await mark(`switch ${s}`); await page.evaluate((x) => window.stall.switchTo(x), s); await page.waitForTimeout(15000); }
+  // M5: in office (the Ministry room beside the Industry), a tab switch, then Opposition (the curtains)
+  await mark('office'); await page.evaluate(() => window.stall.office('office')); await page.waitForTimeout(8000);
+  await mark('switch plenty (office)'); await page.evaluate(() => window.stall.switchTo('plenty')); await page.waitForTimeout(8000);
+  await mark('opposition'); await page.evaluate(() => window.stall.office('opposition')); await page.waitForTimeout(8000);
   await mark('events');
   const evMs = [];
-  for (const k of ['buy', 'found', 'lever', 'headline', 'decade', 'letter', 'answer', 'seam', 'bite', 'survey', 'arrived', 'proprietor', 'ending', 'reveal', 'backfire', 'wager', 'arrears', 'thresholdCrossed', 'surveyReveal', 'actEnding']) { evMs.push([k, await page.evaluate((x) => window.stall.event(x), k)]); await page.waitForTimeout(400); }
+  for (const k of ['buy', 'found', 'lever', 'headline', 'decade', 'letter', 'answer', 'seam', 'bite', 'survey', 'arrived', 'proprietor', 'ending', 'reveal', 'backfire', 'wager', 'arrears', 'thresholdCrossed', 'surveyReveal', 'actEnding', 'officeTaken', 'electionCalled', 'electionWon', 'electionLost', 'inspected', 'concealmentFound', 'lobbied', 'litigated', 'loopholeUsed', 'loopholeClosed', 'treaty']) { evMs.push([k, await page.evaluate((x) => window.stall.event(x), k)]); await page.waitForTimeout(400); }
   await page.waitForTimeout(3000);
   for (let i = 0; i < 3; i++) {
     await mark(`off ${i}`); const offMs = await page.evaluate(() => window.stall.off()); evMs.push([`off${i}`, offMs]);

@@ -21,7 +21,7 @@ export function frameMarkup(p: string): string {
     `<linearGradient id="${p}frmC" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6e2a2a"/><stop offset=".55" stop-color="#9c4038"/><stop offset="1" stop-color="#7a3030"/></linearGradient>` +
     `<linearGradient id="${p}frmS" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9d2c0"/><stop offset="1" stop-color="#8f8670"/></linearGradient></defs>` +
     corner(false) + corner(true) +
-    `<path d="M0 393H600V400H0Z" fill="url(#${p}frmS)"/><path d="M0 393H600" stroke="rgba(255,255,255,.75)" stroke-width="1" fill="none"/>` +
+    `<path d="M0 396H600V400H0Z" fill="url(#${p}frmS)"/><path d="M0 396H600" stroke="rgba(255,255,255,.75)" stroke-width="1" fill="none"/>` +
     curtain(false) + curtain(true) + `</svg>`;
 }
 

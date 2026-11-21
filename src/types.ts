@@ -2556,6 +2556,10 @@ export interface OfficeText {
  * GameState.capital in a Ministry (see ChairDef.treasury). AMENDMENT: LoopholeDef.
  */
 export interface ChairDef {
+  /** M5 (amend): Mandate every Ministry opens with (createState in office; takeOffice's rebuild and the between-runs
+   *  rebuilds keep the larger of the run's Mandate and this). Absent = 0 (the Act I opening). The Ministry's first rule
+   *  can be written in its first half minute. */
+  startMandate?: number;
   confidence: {
     /** C at the start of every Ministry (55). */
     start: number;
