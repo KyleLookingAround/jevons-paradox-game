@@ -11,11 +11,15 @@ import { fileOf, prospectusOf } from './chair/office';
 import { treasuryOf } from './chair/treasury';
 
 const C: Content = { ...fixtureM5B, office: { ...fixtureM5B.office!, when: { stat: 'time', op: '>=', value: 30 } },
-  institutions: [{ id: 'inst.board', name: 'Board', blurb: '', cost: 5, effects: [], when: { stat: 'time', op: '>=', value: 1e9 } } as never] };
+  institutions: [
+    { id: 'inst.board', name: 'Board', blurb: '', cost: 5, effects: [], needs: { stat: 'time', op: '>=', value: 1e9 } } as never,
+    // M5 (follow-up 3): a "not in a Ministry" gate still holds once the Institution is wiped to level 0
+    { id: 'inst.temperance', name: 'Temperance', blurb: '', cost: 5, effects: [], when: { not: { flag: 'office' }, label: 'Not in a Ministry' } } as never,
+  ] };
 
 function beforeOffice(meta: Partial<MetaState> = {}): GameState {
   const m: MetaState = {
-    ...freshMeta(C), hindsight: 40, reckonings: 3, knowhow: { 'kh.engines': 3, 'kh.whips': 1 }, institutions: { 'inst.board': 1 },
+    ...freshMeta(C), hindsight: 40, reckonings: 3, knowhow: { 'kh.engines': 3, 'kh.whips': 1 }, institutions: { 'inst.board': 1, 'inst.temperance': 1 },
     loadout: ['inst.board'],
     firstOpening: { actions: [
       { t: 18, kind: 'upgrade', id: 'motor.carburettor', by: 'player' }, { t: 37, kind: 'upgrade', id: 'motor.roads', by: 'player' },
@@ -52,7 +56,7 @@ describe('M5 office: Take office', () => {
     const s = model.takeOffice(s0, C);
     const o = s.meta.office!;
     expect(s.meta.hindsight).toBe(0);
-    expect(s.meta.institutions).toEqual({ 'inst.board': 0 });
+    expect(s.meta.institutions).toEqual({ 'inst.board': 0, 'inst.temperance': 0 });
     expect(s.meta.loadout).toEqual([]);
     expect(s.meta.knowhow).toEqual({ 'kh.whips': 1 }); // the industrial tree passes to the rival
     expect(o.handedOver).toEqual({ 'kh.engines': 3 });
@@ -70,10 +74,15 @@ describe('M5 office: Take office', () => {
     const keys = s.news.map((n) => n.key);
     expect(keys.indexOf('acquisition')).toBeGreaterThanOrEqual(0);
     expect(keys.indexOf('officeTaken')).toBeGreaterThanOrEqual(0);
-    // an unlocked Institution at level 0 is bought back at its level-1 cost, past its `when`
-    const back = model.buyInstitution({ ...s, meta: { ...s.meta, hindsight: 10 } }, C, 'inst.board');
+    // an unlocked Institution at level 0 is bought back at its level-1 cost, past its level-1 `needs`
+    const rich = { ...s, meta: { ...s.meta, hindsight: 10 } };
+    const back = model.buyInstitution(rich, C, 'inst.board');
     expect(back.meta.institutions['inst.board']).toBe(1);
     expect(model.institutionViews(s, C)[0].unlocked).toBe(true);
+    // ... but its `when` still applies: "not in a Ministry" hides it and refuses it (M5 (amend))
+    expect(model.buyInstitution(rich, C, 'inst.temperance')).toBe(rich);
+    const tv = model.institutionViews(rich, C)[1];
+    expect([tv.unlocked, tv.visible, tv.canBuy]).toEqual([true, false, false]);
     // the industrial tree is held: not bought in office
     expect(model.buyKnowhow({ ...s, meta: { ...s.meta, hindsight: 100 } }, C, 'kh.engines').meta.knowhow['kh.engines']).toBeUndefined();
     expect(model.knowhowViews(s, C).find((v) => v.def.id === 'kh.engines')!.held).toBe(true);

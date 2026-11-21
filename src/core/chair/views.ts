@@ -39,10 +39,11 @@ export function sectorM5(state: GameState, content: Content, s: SectorId, f: Sec
     rivalBought: ch && chairIdx(content).chairSet.has(s) ? rivalBoughtIn(state, content, s) : null,
   };
 }
+/** M5 (follow-up 3): the rival's card purchases in chair sector s this run, as levels (in a Ministry every level of a
+ *  chair sector's cards is his: the player cannot buy them). Exact, unlike a count of the trimmed event list. */
 function rivalBoughtIn(state: GameState, content: Content, s: SectorId): number {
   let n = 0;
-  for (const e of state.events ?? []) if (e.kind === 'upgradeBought' && e.by === 'rival' && e.sector === s) n++;
-  void content;
+  for (const u of content.upgrades ?? []) if (u.sector === s) n += state.upgrades[u.id] ?? 0;
   return n;
 }
 

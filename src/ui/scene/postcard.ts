@@ -30,7 +30,7 @@ export interface PostcardOptions {
 export function postcardKey(v: SceneView): string {
   const warn = warning(v);
   return [v.sectorId, v.stage, v.apps.filter((a) => a.status === 'founded').map((a) => a.id).join(','), Math.round(clamp(v.pressureFraction, 0, 1) * 4),
-    v.settled ? 's' : '', v.capstoned ? `c${v.capstoned.year ?? ''}${v.capstoned.arrears ? 'a' : ''}` : '', v.preview ? 'p' : '', warn ? 'w' : ''].join('|');
+    v.settled ? 's' : '', v.capstoned ? `c${v.capstoned.year ?? ''}${v.capstoned.arrears ? 'a' : ''}` : '', v.preview ? 'p' : '', warn ? 'w' : '', v.sealed ? 'x' : ''].join('|');
 }
 
 function warning(v: SceneView): boolean {
@@ -77,7 +77,15 @@ export function postcard(v: SceneView, o: PostcardOptions = {}): string {
     over += `<path d="M${cx} ${cy}h${f(s)}L${cx} ${f(cy + s)}Z" style="fill:var(--s-paper);stroke:var(--s-ink)" stroke-width="${f(k * 0.5)}" stroke-dasharray="${f(k)} ${f(k * 0.8)}"/>` +
       `<text x="${f(cx + s * 0.28)}" y="${f(cy + s * 0.42)}" text-anchor="middle" style="fill:var(--s-ink);font:italic 700 ${f(4.6 * k)}px Georgia,serif">P</text>`;
   }
-  if (marks && warning(v)) over += `<circle cx="${f(cx + cw - 5 * k)}" cy="${f(cy + 5 * k)}" r="${f(3 * k)}" style="fill:var(--bad,#b3261e);stroke:var(--s-paper)" stroke-width="${f(k * 0.8)}"/>`;
+  // M5: sealed while office is taken (Compute, Code): the card faded under paper, tied with tape and a red wax seal.
+  if (v.sealed) {
+    const r = 7 * k, x0 = cx + cw / 2, y0 = cy + ch / 2;
+    over += `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" style="fill:var(--s-paper)" opacity=".72"/>` +
+      `<path d="M${cx} ${f(y0)}H${cx + cw}M${f(x0)} ${cy}V${cy + ch}" style="stroke:#b9402c" stroke-width="${f(2.2 * k)}" fill="none"/>` +
+      `<circle cx="${f(x0)}" cy="${f(y0)}" r="${f(r)}" style="fill:#9e2b22;stroke:#6b1a14" stroke-width="${f(k * 0.6)}"/>` +
+      `<circle cx="${f(x0)}" cy="${f(y0)}" r="${f(r * 0.62)}" style="fill:none;stroke:#d9796c" stroke-width="${f(k * 0.4)}"/>`;
+  }
+  if (marks && warning(v) && !v.sealed) over += `<circle cx="${f(cx + cw - 5 * k)}" cy="${f(cy + 5 * k)}" r="${f(3 * k)}" style="fill:var(--bad,#b3261e);stroke:var(--s-paper)" stroke-width="${f(k * 0.8)}"/>`;
   const w = o.width ?? 64, h = o.height ?? 40;
   const css = o.standalone ? `<style>${(drawingCss() + st.css).replace(/<\/style/gi, '')}\n.scn-pc .scn{--sw:.55}.scn-pc *{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}</style>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" class="scn-pc" viewBox="${cx} ${cy} ${cw} ${ch}" width="${f(w)}" height="${f(h)}" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">${css}` +

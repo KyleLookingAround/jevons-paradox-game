@@ -14,7 +14,8 @@ import { setLever } from './policy';
 import { computeFlows } from './flows';
 import { sectorLevers } from './levers';
 import { evalCond, statValue } from './conditions';
-import { bestCandidate } from './candidates';
+import { bestCandidate, flowsWithUpgrade, marketGain } from './candidates';
+import { model } from './index';
 
 const C = fixtureM5;
 /** setLever, with raisedAt recorded as Core B's setLever does (a test written before it lands stays valid after). */
@@ -233,5 +234,37 @@ describe('M5 rival (follow-up): a reserve card', () => {
     expect(pick(s0, true).best).toBeNull();
     const lower = { ...low, sectors: { ...low.sectors, motor: { ...low.sectors.motor, reserve: 0.1 * s0.sectors.motor.reserveMax } } };
     expect(pick(lower, true).best!.payback).toBeLessThan(r.payback);
+  });
+});
+
+describe('M5 rival (follow-up 3): his order book in the upgrade views; rivalBought', () => {
+  test('a chair sector\'s cards: byRival, not affordable, his payback (= the candidate rule\'s), the subsidy share', () => {
+    const s = { ...grown(), capital: 1e9 };
+    const vs = model.upgradeViews(s, C, 'motor');
+    const roads = vs.find((v) => v.def.id === 'motor.roads')!;
+    expect([roads.byRival, roads.affordable, roads.subsidised]).toEqual([true, false, 0]);
+    // the same figure his rule computes for the card alone
+    const gain = marketGain(computeFlows(s, C), flowsWithUpgrade(s, C, 'motor.roads', true));
+    expect(roads.rivalPayback!).toBeCloseTo(roads.cost / gain, 6);
+    expect(model.upgradeViews(s, C, 'motor').find((v) => v.def.id === 'motor.roads')!.rivalPayback).toBe(roads.rivalPayback); // cached
+    // outside a Ministry: the M4 view (no rival fields)
+    const out = model.upgradeViews({ ...s, chair: null }, C, 'motor').find((v) => v.def.id === 'motor.roads')!;
+    expect(out.byRival).toBeUndefined();
+  });
+  test('a subsidy lever on his card shows its share and lowers his payback', () => {
+    const SC: Content = { ...C, levers: [...C.levers!, { id: 'motor.grant', sector: 'motor', kind: 'subsidy', name: 'g', blurb: '', catch: '', targets: ['motor.roads'], levels: [{ mandateCost: 1, mandateUpkeep: 0, value: 0.5, label: '50%' }] }] };
+    const s = { ...grown(), capital: 1e9 };
+    const base = model.upgradeViews(s, SC, 'motor').find((v) => v.def.id === 'motor.roads')!;
+    const sub = { ...s, levers: { ...s.levers, 'motor.grant': { level: 1, ref: 0 } } };
+    const v = model.upgradeViews(sub, SC, 'motor').find((x) => x.def.id === 'motor.roads')!;
+    expect(v.subsidised).toBe(0.5);
+    expect(v.rivalPayback!).toBeCloseTo(base.rivalPayback! * 0.5, 6);
+  });
+  test('rivalBought: his card levels in the sector this run', () => {
+    const s = grown();
+    let n = 0;
+    for (const u of C.upgrades!) if (u.sector === 'motor') n += s.upgrades[u.id] ?? 0;
+    expect(n).toBeGreaterThan(0);
+    expect(model.derive(s, C).sectors.motor!.rivalBought).toBe(n);
   });
 });

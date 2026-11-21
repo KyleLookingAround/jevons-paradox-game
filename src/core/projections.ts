@@ -16,6 +16,9 @@
 import type { Content, GameState, SectorId, UpgradeDef, UpgradeView } from '../types';
 import { PROJECTION_SECONDS, PROJECTION_DT, PROJECTION_BUCKET } from './constants';
 import { idx } from './contentIndex';
+import { chairIdx } from './chair/chairIndex';
+import { rivalCardPayback } from './chair/rival';
+import { subsidyShareOf } from './chair/treasury';
 import { modsOf, isForbidden } from './effects';
 import { computeFlows, primeFocusedFlows } from './flows';
 import { applyUpgrade, upgradeCost, upgradeMax, upgradeVisible, upgradeExcludedBy } from './purchases';
@@ -201,11 +204,19 @@ export function upgradeViews(state: GameState, content: Content, sector?: Sector
       && (sector === undefined || def.sector === sector)) {
       proj = projectionFor(state, content, def);
     }
-    out.push({
+    const v: UpgradeView = {
       def, level, cost, visible, affordable: visible && !maxed && !excludedBy && !forbidden && state.capital >= cost, maxed, excludedBy,
       promisedChange, projectedDecade: proj.projectedDecade, bringsWithinReach: proj.bringsWithinReach, forbidden,
       wantedChange: visible && !maxed ? cardWanted(state, content, def) : null,
-    });
+    };
+    // M5 (follow-up 3): a chair sector's card in a Ministry is the rival's order book: read-only, his payback and subsidy
+    if (state.chair && chairIdx(content).chairSet.has(def.sector)) {
+      v.byRival = true;
+      v.affordable = false;
+      v.subsidised = subsidyShareOf(state, content, def.id);
+      v.rivalPayback = sector === undefined || def.sector === sector ? rivalCardPayback(state, content, def) : null;
+    }
+    out.push(v);
   }
   return out;
 }

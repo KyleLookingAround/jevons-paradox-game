@@ -135,6 +135,41 @@ nothing**: a view without them draws the M4 picture (checked pixel for pixel aga
 
 The scene never reads `SectorDerived.reportedR`: under concealment the gauge reads clean and the sky stays honest.
 
+What M5 draws:
+
+- **The Ministry window** (`frame/ministry.ts`): HTML over the stage (`.scn-frm`, after the worlds, before the lettering),
+  never inside the SVG bands: airbrushed glazing bars at the top corners, a painted sill edge along the bottom, curtains
+  (root class `opposition`). Shown by root class `ministry` (from `view.chair`). **The thaw**: `handle.thaw()`, also
+  played on the page's `document` event `rebound:office` (detail `'thaw'`): the frame enters by a transform on its
+  wrapper; the active world goes `grayscale(1 → .66 → .33 → 0)` in four timer steps 350 ms apart (nothing under
+  reduced motion).
+- **Pryce's props** (`props/pryce.ts`, shared, tinted per style through `.pry`/`.pry2`): a hoarding beside a lever's sign
+  while he lobbies (`hoarding.<kind>`: "Freedom of the Road" against the mileage rule, "A fair price at the pump", …),
+  a court notice on the sign while litigated, both built only in a Ministry and only for lever kinds in force
+  (`m5Key` in the build key); his bunting over the first landmark of a capstoned Industry he runs; the congestion
+  charge's gantry (`restraint.charge`); an unmetered borehole with a nodding pump-jack (driver `exempt`). Moments:
+  `inspected` (the Inspector walks in to the first founded landmark and back, ~6 s, a composited sprite),
+  `concealmentFound` (a red "Found" stamp), `litigated` (the notice lifts).
+- **Motion as Pryce runs it**: plots for the Ministry-only uses, each `noGhost` (nothing hints at them, and no tap target,
+  before they are founded): motorway haulage (distribution sheds, articulated lorries on the outer lanes), next-day
+  delivery (the fulfilment centre, vans on the arterial), the school run (cars nose to tail along the railings), light
+  trucks (pick-ups on the drives and lanes) and the footprint rule's four-by-fours. A rival Industry shows no survey
+  stakes or pin, and its card offers no founding.
+- **Plenty** (`layouts/plenty.ts`, style `seed`: `styles/seed.ts`, `props/seed.ts`): the seed catalogue, a variant of
+  `chrome` (the Age's poster family; chrome's cars, lorries and planes are borrowed) in flat litho colour with the key
+  line off register (`.reg`). The valley's hill line, estuary and viaduct on the horizon; the river across the fields.
+  Fields turn from striped strips to pivot circles at stage 2; the machine on the near field goes horse, tractor, centre
+  pivot, drip lines. The cut-away (in the near band's backdrop, so items draw over it): roots, the aquifer standing to
+  a water table that falls with `reserveFraction` (`.ry`), the well, the return flow soaking down (driver `returnFlow`:
+  `returnShare / 0.5`, it thins) and the water consumed rising off the crop as vapour (driver `consumedFlow`, it
+  thickens). Nitrate: algae on the river (driver `pressure`) and the wash greening the water; high pressure yellows
+  the paper (ochre haze).
+- **Figures**: `pryceChair`, `permanentSecretary`, `inspector`, `opposition`, `okonedo`. **Spots**: every M5 headline key
+  (new kinds `window`, `hoarding`, `inspector`, `ballot`, `court`). **Postcards**: Plenty's crop; `view.sealed` draws the
+  sealed card (faded under paper, red tape, a wax seal).
+- Measure: `node tools/scene-shot.mjs [industries] --m5` (the strip `#strip=<id>&m5`: early, mid, late, crisis,
+  Opposition, the charge, a capstone in a Ministry); `#cards` has `lateM5` and `sealedM5` columns.
+
 `sceneViewFrom` (in `adapter.ts`) is the only code that reads the contract. It is pure and total (never throws) and
 holds no game rules: it reads `Content`, `GameState` and `Derived` and maps them to cosmetic fractions (`SceneView`
 in `types.ts`). The scene ships its own CSS (`css.ts`, injected once as `<style id="scn-css">`), reading the page's
@@ -174,7 +209,7 @@ an Age reuses its Age's style with a new layout (`Layout.look` names the style).
 | `chrome` | Travel poster / airbrushed advert, 1950s–60s: gradient hills and sky, haloed sun, headline, contrails | Motion |
 | `terminal` | Vector display / early CAD: phosphor wireframe, scanlines, isometric faces, text-mode labels, HUD | Compute |
 | `cyberpunk` | Night megacity in rain: neon tube + halo, invented signage, wet reflections, rain, signal noise | Code |
-| `agentic` | 2020s developer diagram (the v1 Code look, kept for generic scenes under that page theme) | — |
+| `seed` | Seed catalogue and agricultural print, 1910s–50s (M5): flat litho colour off register, crop bands, root-and-aquifer cut-away | Plenty |
 | `generic` | Follows the page's theme tokens | unknown industries |
 
 A style defines:

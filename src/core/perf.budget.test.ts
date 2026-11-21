@@ -126,6 +126,10 @@ describe('per-call cost budgets (M5: a Ministry on fixtureM5)', () => {
     const outOffice = cost(states.map((s) => ({ ...s, chair: null })), (s) => stepM5(s, F, 0.1), 3);
     console.log(`  answer line (cold) ${al.toFixed(0)} µs; step in office ${inOffice.toFixed(0)} µs, outside ${outOffice.toFixed(0)} µs`);
     expect(al).toBeLessThan(2000);
+    // M5 (follow-up 3): his order book (per-card payback, cold: fresh upgrades and levers objects) within the views' budget
+    const book = cost(states.slice(0, 10).map((s) => ({ ...s, upgrades: { ...s.upgrades }, levers: { ...s.levers } })), (s) => model.upgradeViews(s, F, 'motor'), 1);
+    console.log(`  upgradeViews in a Ministry (his order book, cold) ${book.toFixed(0)} µs`);
+    expect(book).toBeLessThan(BUDGET.upgradeViews);
     expect(inOffice).toBeLessThan(1.25 * outOffice + 20);
   });
 });

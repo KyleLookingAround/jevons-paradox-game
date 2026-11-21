@@ -13,7 +13,7 @@ import type {
   RivalState, RivalView, SectorId, UpgradeDef,
 } from '../../types';
 import { calendarYear } from '../calendar';
-import { bestCandidate } from '../candidates';
+import { bestCandidate, flowsWithUpgrade, marketGain } from '../candidates';
 import { PROJECTION_BUCKET } from '../constants';
 import { idx } from '../contentIndex';
 import { modsOf, refreshEta } from '../effects';
@@ -23,7 +23,7 @@ import { featureOn } from '../features';
 import { computeFlows } from '../flows';
 import { headline, newsWith } from '../headlines';
 import { leverReachable } from '../levers';
-import { buyUpgradeAs, foundAppAs } from '../purchases';
+import { buyUpgradeAs, foundAppAs, upgradeCost, upgradeExcludedBy, upgradeMax, upgradeVisible } from '../purchases';
 import { isFreshRun } from '../state';
 import { clamp, fin } from '../util';
 import { chairIdx } from './chairIndex';
@@ -552,6 +552,33 @@ export function rivalView(state: GameState, content: Content): RivalView | null 
     paybackMax: pol.paybackMax, foundPaybackMax: pol.foundPaybackMax, quietYears: pol.quietYears,
     next, answers: answersOut, playbooks: (state.meta.playbooks ?? []).slice(),
   };
+}
+
+const paybackCache = new WeakMap<object, WeakMap<object, Map<string, number>>>();
+/**
+ * M5 (follow-up 3): UpgradeView.rivalPayback for card `u` of a chair sector: his payback on it now by his candidate rule
+ * (marketGain on whole-state flows with the card raised, reserve valued, at his share of the cost after a subsidy);
+ * Infinity if no gain; null for a card he never considers (not 'efficiency'/'capital'), maxed, invisible or excluded.
+ * Cached per (upgrades, levers) and PROJECTION_BUCKET, as the temptation views.
+ */
+export function rivalCardPayback(state: GameState, content: Content, u: UpgradeDef): number | null {
+  if (u.kind !== 'efficiency' && u.kind !== 'capital') return null;
+  const mods = modsOf(state, content);
+  const lvl = state.upgrades[u.id] ?? 0;
+  if (lvl >= upgradeMax(u) || !upgradeVisible(state, u, mods, content) || upgradeExcludedBy(state, content, u.id)) return null;
+  let byLev = paybackCache.get(state.upgrades);
+  if (!byLev) { byLev = new WeakMap(); paybackCache.set(state.upgrades, byLev); }
+  let m = byLev.get(state.levers);
+  if (!m) { m = new Map(); byLev.set(state.levers, m); }
+  const k = `${u.id}|${Math.floor(state.time / PROJECTION_BUCKET)}|${state.meta.reckonings}`;
+  const hit = m.get(k);
+  if (hit !== undefined) return hit;
+  const cost = upgradeCost(u, lvl, mods) * (1 - subsidyShareOf(state, content, u.id));
+  const gain = marketGain(computeFlows(state, content), flowsWithUpgrade(state, content, u.id, true));
+  const out = gain > 0 ? fin(cost / gain, Infinity) : Infinity;
+  if (m.size > 400) m.clear();
+  m.set(k, out);
+  return out;
 }
 
 /** Confidence clamp helper shared with tests. */

@@ -174,6 +174,7 @@ export const PRESETS: Record<string, (ind: number) => DemoState> = {
   crisisM5: (i) => ({ ...PRESETS.crisisM4(i), m5: m5For(IND[i].id, 1) }),
   oppositionM5: (i) => ({ ...PRESETS.lateM4(i), m5: { ...m5For(IND[i].id, 0.75), chair: { opposition: true } } }),
   chargeM5: (i) => { const m = m5For(IND[i].id, 0.6); return { ...PRESETS.lateM4(i), m5: { ...m, levers: [...(m.levers ?? []), { kind: 'charge', name: 'Congestion charge' }] } }; },
+  sealedM5: (i) => ({ ...PRESETS.lateM4(i), m5: { chair: { opposition: false }, sealed: true } }),
   capstoneM5: (i) => ({ ...PRESETS.capstoneM4(i), m5: { chair: { opposition: false }, rival: true } }),
   endingM3: (i) => ({ ...PRESETS.steady(i), clear: true, clearProgress: 1, m3: { ...m3For(IND[i].id, 0.6), figures: ['correspondent', 'whitlow', 'fenwick', 'pryce', 'minister', 'proprietor'], watch: 0.3 } }),
 };
@@ -524,7 +525,7 @@ function cardsMode(): void {
   const wrap = document.getElementById('app')!;
   wrap.innerHTML = '';
   wrap.style.maxWidth = 'none';
-  const states = ['earlyM4', 'lateM4', 'crisisM4', 'capstoneM4', 'arrearsM4', 'previewM4'];
+  const states = ['earlyM4', 'lateM4', 'crisisM4', 'capstoneM4', 'arrearsM4', 'previewM4', 'lateM5', 'sealedM5'];
   let html = '<table style="border-collapse:collapse;font:11px system-ui"><tr><th></th>' + states.map((x) => `<th>${x}</th>`).join('') + '</tr>';
   IND.forEach((ind, i) => {
     html += `<tr><th style="text-align:left">${ind.id}</th>`;

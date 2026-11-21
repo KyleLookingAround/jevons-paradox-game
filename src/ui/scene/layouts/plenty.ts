@@ -28,7 +28,7 @@ export const plenty: Layout = {
   caption: 'Plenty',
   bands: [236, 300],
   depth: [180, 0.6, 340, 1.2],
-  card: [40, 150, 416, 260],
+  card: [20, 170, 384, 240],
 
   backdrop(c) {
     const sky = `<g class="sunf"><circle cx="500" cy="96" r="22" class="sun"/></g>`;
@@ -40,7 +40,10 @@ export const plenty: Layout = {
       // The far patchwork, printed in bands.
       P('M0 196H140L150 186H0ZM160 186H300L292 196H150ZM310 185H440L436 194H302Z', 'sd1') + P('M0 206H120L130 196H0ZM146 196H290L282 206H136ZM300 196H430L426 205H292Z', 'sd5') +
       P('M0 216H160L166 206H0ZM180 206H420L416 214H176Z', 'sd3') + river + P('M0 232Q200 226 300 216T470 190', 'reg', 'transform="translate(1 -.7)"');
-    const mid = P('M0 236H600V300H0Z', 'gd') + P('M0 299H600', 'k k2');
+    // The open land in pale bands of stubble and fallow, under the fields the uses plant (and on the postcard).
+    let pale = '';
+    for (let i = 0; i < 8; i++) pale += `M0 ${240 + i * 7.5}H600V${243.5 + i * 7.5}H0Z`;
+    const mid = P('M0 236H600V300H0Z', 'gd') + P(pale, 'sd1', 'opacity=".35"') + P('M0 299H600', 'k k2');
     // The near field in decorative bands of crop, and the farm road.
     let bandsN = '';
     for (let i = 0; i < 6; i++) bandsN += P(`M-10 ${316 + i * 4}H610V${319.4 + i * 4}H-10Z`, i % 2 ? 'sd2' : 'sd5');

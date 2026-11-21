@@ -230,9 +230,10 @@ export function buyInstitution(state: GameState, content: Content, id: string): 
   const cost = institutionCost(def, lvl);
   if (cost === null) return state;
   if (!(def.requires ?? []).every((r) => (state.meta.institutions[r] ?? 0) >= 1)) return state;
-  // M5: an Institution unlocked at level 0 (Take office, the Treaty) was bought once: `when` and level-1 `needs` pass
+  // M5: an Institution unlocked at level 0 (Take office, the Treaty) was bought once: its level-1 `needs` pass. M5 (amend):
+  // its `when` still applies (content's "not in a Ministry" gates hold for a wiped Institution too)
   const unlocked = Object.prototype.hasOwnProperty.call(state.meta.institutions, id);
-  if (!unlocked && lvl < 1 && def.when && !evalCond(state, content, def.when)) return state; // M4 (amend): not offered yet
+  if (lvl < 1 && def.when && !evalCond(state, content, def.when)) return state; // M4 (amend): not offered yet
   if (!(unlocked && lvl === 0) && institutionNeeds(state, content, def, lvl) !== null) return state; // M4 (polish): the level's evidence
   if (!(state.meta.hindsight >= cost)) return state;
   return withMeta(state, content,
@@ -284,7 +285,7 @@ export function institutionViews(state: GameState, content: Content): Institutio
     const seated = isSeated(state.meta, def.id);
     const slots = def.slots ?? 1;
     const unlocked = Object.prototype.hasOwnProperty.call(state.meta.institutions, def.id); // M5: level 0 = unlocked
-    const visible = level >= 1 || unlocked || !def.when || evalCond(state, content, def.when); // M4 (amend)
+    const visible = level >= 1 || !def.when || evalCond(state, content, def.when); // M4 (amend); M5 (amend): also when unlocked at 0
     const needs = unlocked && level === 0 ? null : institutionNeeds(state, content, def, level); // M4 (polish)
     return {
       def, level, maxLevel: institutionMax(def), nextCost, requirementsMet, affordable, seated, slots,
