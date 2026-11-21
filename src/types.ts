@@ -5091,8 +5091,9 @@ export interface InstitutionView {
    *  or it holds. Absent = null. */
   needs?: string | null;
   /** M5: unlocked: meta.institutions has an own key for it (level ≥ 0). An unlocked Institution at level 0 (after Take
-   *  office or a Treaty) is shown as "unlocked, not bought", is visible whatever its `when`, and its level 1 ignores
-   *  `needs` (it was bought once); it cannot be seated until level ≥ 1. Absent = level ≥ 1. */
+   *  office or a Treaty) is shown as "unlocked, not bought" and its level 1 ignores `needs` (it was bought once); it
+   *  cannot be seated until level ≥ 1. M5 (amend): its `when` still applies (visibility and purchase), so a "not in a
+   *  Ministry" gate holds for a wiped Institution too. Absent = level ≥ 1. */
   unlocked?: boolean;
 }
 
@@ -5244,6 +5245,8 @@ export interface ArticleView {
  * Entries:
  *   - AppDerived.waiting (new, optional): the label of a failing ApplicationDef.when, as LeverView.waiting.
  *   - ProspectusView doc: `every` is the mean interval among the card's purchases up to the last quoted item's time.
+ *   - InstitutionView.unlocked / ModelApi M5 CHANGES (wording): an Institution unlocked at level 0 skips its level-1
+ *     `needs` only; its `when` still applies (contract decision 13 narrowed: a "not in a Ministry" gate holds).
  *   - DispatchDef.recur (new, optional): 'parliament' lets a letter recur once per Parliament in a Ministry.
  *   - LoopholeDef doc: rungs and feature 'loopholes' arriving mid-run (a lever raised before it opens its first rung at
  *     the first order tick after the arrival; its answer falls due).
@@ -5645,7 +5648,7 @@ export interface ModelApi {
    *     opens its first rung (LoopholeDef). The Civil Service is bound the same way.
    *   - buyKnowhow refuses a node of a rival-held tree while office is taken, and any node whose KnowhowDef.when fails
    *     (in or out of office). buyInstitution accepts level 1 of an unlocked (level 0) Institution at def.cost, ignoring
-   *     `when` and the level-1 `needs`. setLoadout refuses an Institution at level 0 (not owned).
+   *     the level-1 `needs` (M5 (amend): its `when` still applies). setLoadout refuses an Institution at level 0.
    *   - settle in a Ministry is allowed on chair sectors (a settlement from the Chair) as on any sector; the Reckoning
    *     adds the chair sectors settled at its moment to office.record.settledFromChair.
    *   - reckon: cause 'defeated' when pending (ChairState); in office, office.ministries += 1 and office.record is added
